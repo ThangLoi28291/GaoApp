@@ -34,7 +34,7 @@ jobs:
         run: dotnet build GaoApp.sln --configuration Release --no-restore
 
       - name: Publish Web project
-        run: dotnet publish src/GaoApp.Web/GaoApp.Web.csproj --configuration Release --no-build -o ./publish-web
+        run: dotnet publish GaoApp.Web/GaoApp.Web.csproj --configuration Release --no-build -o ./publish-web
 
       - name: Publish Migrator project
         run: dotnet publish GaoApp.Migrator/GaoApp.Migrator.csproj --configuration Release --no-build -o ./publish-migrator
