@@ -1,0 +1,784 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Products.ProductUnitConversionManageVm
+
+<style>
+    .ucx-modal .modal-dialog {
+        max-width: 1380px;
+    }
+
+    .ucx-modal .modal-content {
+        border: 0;
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: 0 24px 70px rgba(15, 23, 42, .18);
+        background: #f8fafc;
+    }
+
+    .ucx-modal .modal-header {
+        border-bottom: 0;
+        padding: 20px 24px 14px;
+        background: radial-gradient(circle at top right, rgba(37,99,235,.10), transparent 24%), linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .ucx-modal .modal-body {
+        padding: 0 24px 20px;
+    }
+
+    .ucx-modal .modal-footer {
+        border-top: 1px solid rgba(15, 23, 42, .06);
+        padding: 14px 24px 20px;
+        background: #f8fafc;
+    }
+
+    .ucx-title {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+    }
+
+    .ucx-subline {
+        margin-top: 10px;
+        text-align: center;
+    }
+
+    .ucx-variant-name {
+        font-size: 1.45rem;
+        font-weight: 800;
+        line-height: 1.35;
+        color: #1e293b;
+        margin-bottom: 4px;
+        word-break: break-word;
+    }
+
+    .ucx-variant-meta {
+        color: #64748b;
+        font-size: .95rem;
+        font-weight: 600;
+    }
+
+    .ucx-layout {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
+
+    .ucx-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    .ucx-card {
+        background: #fff;
+        border: 1px solid rgba(15, 23, 42, .06);
+        border-radius: 22px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+        overflow: hidden;
+    }
+
+    .ucx-card-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px 18px 12px;
+        border-bottom: 1px solid rgba(15, 23, 42, .06);
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .ucx-card-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .ucx-card-note {
+        margin-top: 4px;
+        color: #64748b;
+        font-size: .84rem;
+    }
+
+    .ucx-card-body {
+        padding: 16px 18px 18px;
+    }
+
+    .ucx-grid-right {
+        display: grid;
+        grid-template-rows: auto auto auto;
+        gap: 18px;
+    }
+
+    .ucx-form-group {
+        margin-bottom: 14px;
+    }
+
+        .ucx-form-group:last-child {
+            margin-bottom: 0;
+        }
+
+    .ucx-label {
+        display: block;
+        margin-bottom: 7px;
+        font-size: .875rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .ucx-modal .form-control,
+    .ucx-modal .form-select {
+        min-height: 44px;
+        border-radius: 14px;
+        border-color: rgba(148, 163, 184, .45);
+        box-shadow: none !important;
+    }
+
+        .ucx-modal .form-control:focus,
+        .ucx-modal .form-select:focus {
+            border-color: rgba(37,99,235,.55);
+            box-shadow: 0 0 0 .18rem rgba(37,99,235,.10) !important;
+        }
+
+    .ucx-check-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px 18px;
+        padding-top: 4px;
+    }
+
+        .ucx-check-row .form-check {
+            margin: 0;
+        }
+
+        .ucx-check-row .form-check-input {
+            margin-top: .22rem;
+        }
+
+    .ucx-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+        .ucx-actions .btn {
+            min-width: 118px;
+            border-radius: 14px;
+            font-weight: 700;
+            padding: 10px 16px;
+        }
+
+    .ucx-chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: .8rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .ucx-chip-blue {
+        background: rgba(37,99,235,.10);
+        color: #2563eb;
+    }
+
+    .ucx-chip-green {
+        background: rgba(22,163,74,.10);
+        color: #15803d;
+    }
+
+    .ucx-chip-slate {
+        background: rgba(100,116,139,.12);
+        color: #475569;
+    }
+
+    .ucx-inline-readonly {
+        display: flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 14px;
+        background: #f8fafc;
+        border: 1px solid rgba(148, 163, 184, .35);
+        border-radius: 14px;
+        color: #334155;
+        font-weight: 700;
+    }
+
+    .ucx-section-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .ucx-section-toolbar .btn {
+            border-radius: 12px;
+        }
+
+    .ucx-table-box,
+    .ucx-history-box {
+        border: 1px solid rgba(15, 23, 42, .06);
+        border-radius: 18px;
+        background: #fff;
+        overflow: hidden;
+    }
+
+    .ucx-scroll {
+        overflow: auto;
+    }
+
+    .ucx-scroll-conversion {
+        max-height: 330px;
+    }
+
+    .ucx-scroll-barcode {
+        max-height: 270px;
+    }
+
+    .ucx-scroll-history {
+        max-height: 330px;
+    }
+
+    .ucx-table {
+        width: 100%;
+        min-width: 760px;
+        margin: 0;
+    }
+
+        .ucx-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #f8fafc;
+            color: #475569;
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .02em;
+            white-space: nowrap;
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(15, 23, 42, .06);
+        }
+
+        .ucx-table tbody td {
+            padding: 14px 16px;
+            border-top: 1px solid rgba(15, 23, 42, .05);
+            vertical-align: middle;
+            color: #334155;
+        }
+
+    .ucx-row-click {
+        cursor: pointer;
+        transition: background .12s ease, transform .12s ease;
+    }
+
+        .ucx-row-click:hover {
+            background: rgba(37,99,235,.04);
+        }
+
+        .ucx-row-click.is-selected {
+            background: rgba(37,99,235,.08) !important;
+            box-shadow: inset 4px 0 0 #2563eb;
+        }
+
+            .ucx-row-click.is-selected td {
+                font-weight: 700;
+            }
+
+    .ucx-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-weight: 700;
+        font-size: .92rem;
+        color: #1e293b;
+    }
+
+    .ucx-muted {
+        color: #64748b;
+    }
+
+    .ucx-empty {
+        padding: 30px 18px;
+        text-align: center;
+        color: #64748b;
+        font-weight: 600;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .ucx-history-item {
+        padding: 16px 18px;
+        border-bottom: 1px solid rgba(15, 23, 42, .06);
+    }
+
+        .ucx-history-item:last-child {
+            border-bottom: 0;
+        }
+
+    .ucx-history-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .ucx-history-time {
+        color: #64748b;
+        font-size: .8rem;
+        white-space: nowrap;
+        font-weight: 700;
+    }
+
+    .ucx-history-grid {
+        display: grid;
+        grid-template-columns: 80px minmax(0, 1fr);
+        gap: 6px 12px;
+        font-size: .9rem;
+    }
+
+        .ucx-history-grid .k {
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .ucx-history-grid .v {
+            color: #1e293b;
+            font-weight: 600;
+            word-break: break-all;
+        }
+
+    .ucx-history-user {
+        margin-top: 8px;
+        color: #64748b;
+        font-size: .84rem;
+        font-weight: 600;
+    }
+
+    .ucx-footer-actions .btn {
+        border-radius: 14px;
+        min-width: 110px;
+        font-weight: 700;
+    }
+
+    @@media (max-width: 1199px) {
+        .ucx-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @@media (max-width: 767px) {
+        .ucx-modal .modal-header,
+        .ucx-modal .modal-body,
+        .ucx-modal .modal-footer {
+            padding-left: 14px;
+            padding-right: 14px;
+        }
+
+        .ucx-card-head,
+        .ucx-card-body {
+            padding-left: 14px;
+            padding-right: 14px;
+        }
+
+        .ucx-title {
+            font-size: 1.1rem;
+        }
+
+        .ucx-variant-name {
+            font-size: 1.15rem;
+        }
+
+        .ucx-history-grid {
+            grid-template-columns: 1fr;
+            gap: 3px;
+        }
+    }
+    .ucx-history-box {
+    border: 1px solid rgba(15, 23, 42, .06);
+    border-radius: 18px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.ucx-history-scroll {
+    max-height: 360px;
+    overflow: auto;
+    padding: 14px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+}
+
+.ucx-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ucx-history-card {
+    border: 1px solid rgba(148, 163, 184, .22);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+    overflow: hidden;
+}
+
+.ucx-history-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(15, 23, 42, .06);
+    background: #f8fafc;
+}
+
+.ucx-history-card-body {
+    padding: 14px;
+}
+
+.ucx-action-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.ucx-action-assigned {
+    background: rgba(37, 99, 235, .10);
+    color: #2563eb;
+}
+
+.ucx-action-replaced {
+    background: rgba(245, 158, 11, .12);
+    color: #b45309;
+}
+
+.ucx-action-deactivated {
+    background: rgba(239, 68, 68, .10);
+    color: #dc2626;
+}
+
+.ucx-action-reactivated {
+    background: rgba(22, 163, 74, .10);
+    color: #15803d;
+}
+
+.ucx-action-imported {
+    background: rgba(100, 116, 139, .12);
+    color: #475569;
+}
+
+.ucx-history-time {
+    font-size: .8rem;
+    font-weight: 700;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.ucx-history-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.ucx-history-codebox {
+    border: 1px solid rgba(148, 163, 184, .20);
+    border-radius: 14px;
+    padding: 12px;
+    background: #fcfcfd;
+}
+
+.ucx-history-codebox-label {
+    font-size: .75rem;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    margin-bottom: 6px;
+}
+
+.ucx-history-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: .95rem;
+    font-weight: 800;
+    color: #0f172a;
+    word-break: break-all;
+    line-height: 1.45;
+}
+
+.ucx-history-code.is-empty {
+    color: #94a3b8;
+    font-weight: 700;
+}
+
+.ucx-history-meta {
+    display: grid;
+    gap: 10px;
+}
+
+.ucx-history-meta-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: 10px;
+    align-items: start;
+}
+
+.ucx-history-meta-key {
+    font-size: .82rem;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    padding-top: 1px;
+}
+
+.ucx-history-meta-value {
+    font-size: .92rem;
+    color: #334155;
+    font-weight: 600;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.ucx-history-empty {
+    padding: 30px 18px;
+    text-align: center;
+    color: #64748b;
+    font-weight: 700;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+@@media (max-width: 767px) {
+    .ucx-history-main {
+        grid-template-columns: 1fr;
+    }
+
+    .ucx-history-card-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .ucx-history-meta-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
+</style>
+
+<div class="modal fade ucx-modal" id="mdlVariantUnitConversions" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="w-100">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                            <h5 class="ucx-title">Quy đổi đơn vị & Barcode</h5>
+                        </div>
+                        <button type="button" class="btn-close mt-1" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                    </div>
+
+                    <div class="ucx-subline">
+                        <div id="unitConvVariantName" class="ucx-variant-name">Chưa chọn biến thể</div>
+                        <div id="unitConvVariantInfo" class="ucx-variant-meta">Variant ID: - • SKU: -</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-body">
+                <div class="ucx-layout">
+                    <div class="ucx-stack">
+                        <div class="ucx-card">
+                            <div class="ucx-card-head">
+                                <div>
+                                    <div class="ucx-card-title">Thông tin quy đổi</div>
+                                </div>
+                            </div>
+                            <div class="ucx-card-body">
+                                <input type="hidden" id="uc_Id" value="" />
+                                <input type="hidden" id="uc_ProductVariantId" value="" />
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label">Đang chọn</label>
+                                    <div>
+                                        <span id="uc_SelectedHint" class="ucx-chip ucx-chip-blue">Chưa chọn</span>
+                                    </div>
+                                </div>
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label" for="uc_UnitId">Đơn vị</label>
+                                    <select id="uc_UnitId" class="form-select">
+                                        <option value="">-- Chọn đơn vị --</option>
+                                        @foreach (var x in Model.Units)
+                                        {
+                                            <option value="@x.Id">@x.Name</option>
+                                        }
+                                    </select>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <div class="ucx-form-group">
+                                            <label class="ucx-label" for="uc_Factor">Hệ số</label>
+                                            <input id="uc_Factor" type="number" min="0.0001" step="0.0001" class="form-control" />
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="ucx-form-group">
+                                            <label class="ucx-label" for="uc_SortOrder">Thứ tự</label>
+                                            <input id="uc_SortOrder" type="number" min="0" step="1" class="form-control" value="0" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label" for="uc_Price">Giá bán</label>
+                                    <input id="uc_Price" type="number" min="0" step="1000" class="form-control" />
+                                </div>
+
+                                <div class="ucx-check-row">
+                                    <div class="form-check">
+                                        <input id="uc_IsBaseUnit" class="form-check-input" type="checkbox" />
+                                        <label class="form-check-label" for="uc_IsBaseUnit">Đơn vị gốc</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input id="uc_IsDefaultForSale" class="form-check-input" type="checkbox" />
+                                        <label class="form-check-label" for="uc_IsDefaultForSale">Mặc định bán</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input id="uc_IsActive" class="form-check-input" type="checkbox" checked />
+                                        <label class="form-check-label" for="uc_IsActive">Hoạt động</label>
+                                    </div>
+                                </div>
+
+                                <div class="ucx-actions">
+                                    <button type="button" class="btn btn-primary" id="btnSaveConversion">Lưu quy đổi</button>
+                                    <button type="button" class="btn btn-light" id="btnResetConversionForm">Làm mới</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ucx-card">
+                            <div class="ucx-card-head">
+                                <div>
+                                    <div class="ucx-card-title">Thông tin barcode</div>
+                                </div>
+                            </div>
+                            <div class="ucx-card-body">
+                                <input type="hidden" id="bc_Id" value="" />
+                                <input type="hidden" id="bc_ProductUnitConversionId" value="" />
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label">Đơn vị đang gắn</label>
+                                    <div id="bc_ConversionName" class="ucx-inline-readonly">Chọn một dòng quy đổi</div>
+                                </div>
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label">Barcode đang chọn</label>
+                                    <div>
+                                        <span id="bc_SelectedHint" class="ucx-chip ucx-chip-green">Chưa chọn</span>
+                                    </div>
+                                </div>
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label" for="bc_Barcode">Mã barcode</label>
+                                    <input id="bc_Barcode"
+                                           class="form-control"
+                                           maxlength="64"
+                                           placeholder="Nhập barcode hoặc để trống để tự sinh" />
+                                </div>
+
+                                <div class="ucx-form-group">
+                                    <label class="ucx-label" for="bc_BarcodeType">Loại barcode</label>
+                                    <select id="bc_BarcodeType" class="form-select">
+                                        @foreach (var x in Model.BarcodeTypes)
+                                        {
+                                            <option value="@x.Value">@x.Name</option>
+                                        }
+                                    </select>
+                                </div>
+
+                                <div class="ucx-check-row">
+                                    <div class="form-check">
+                                        <input id="bc_IsPrimary" class="form-check-input" type="checkbox" checked />
+                                        <label class="form-check-label" for="bc_IsPrimary">Barcode chính</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input id="bc_IsActive" class="form-check-input" type="checkbox" checked />
+                                        <label class="form-check-label" for="bc_IsActive">Hoạt động</label>
+                                    </div>
+                                </div>
+
+                                <div class="ucx-form-group mt-3">
+                                    <label class="ucx-label" for="bc_Note">Ghi chú</label>
+                                    <input id="bc_Note" class="form-control" maxlength="250" />
+                                </div>
+
+                                <div class="ucx-actions">
+                                    <button type="button" class="btn btn-success" id="btnSaveBarcode">Lưu barcode</button>
+                                    <button type="button" class="btn btn-light" id="btnResetBarcodeForm">Làm mới</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ucx-grid-right">
+                        <div class="ucx-card">
+                            <div class="ucx-card-head">
+                                <div class="ucx-section-toolbar w-100">
+                                    <div>
+                                        <div class="ucx-card-title">Danh sách quy đổi</div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnReloadConversions">Tải lại</button>
+                                </div>
+                            </div>
+                            <div class="ucx-card-body pt-0">
+                                <div id="conversionListWrap" class="ucx-table-box">
+                                    <div class="ucx-empty">Chưa có dữ liệu</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ucx-card">
+                            <div class="ucx-card-head">
+                                <div class="ucx-section-toolbar w-100">
+                                    <div>
+                                        <div class="ucx-card-title">Barcode theo đơn vị</div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnReloadBarcodeHistory">Tải lại lịch sử</button>
+                                </div>
+                            </div>
+                            <div class="ucx-card-body pt-0">
+                                <div id="barcodeListWrap" class="ucx-table-box">
+                                    <div class="ucx-empty">Chọn một dòng quy đổi để xem barcode</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ucx-card">
+                            <div class="ucx-card-head">
+                                <div>
+                                    <div class="ucx-card-title">Lịch sử thay đổi</div>
+                                </div>
+                            </div>
+                            <div class="ucx-card-body pt-0">
+                                <div id="barcodeHistoryWrap" class="ucx-history-box">
+                                    <div class="ucx-empty">Chọn một dòng quy đổi để xem lịch sử</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <div class="ms-auto d-flex gap-2 ucx-footer-actions">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,129 @@
+﻿@{
+    // Compact/Fluid class
+    ViewData["contentType"] = ViewData["container"] is string container && container == "container-xxl"
+        ? "layout-compact layout-menu-fixed"
+        : "";
+}
+
+@inject IHttpContextAccessor httpContextAccessor
+
+<!DOCTYPE html>
+<html lang="en"
+      class="@(ViewData["navbarType"] is string navbarType ? navbarType : "")
+             @(ViewData["menuFixed"] is string menuFixed ? menuFixed : "")
+             @(ViewData["menuCollapsed"] is string menuCollapsed ? menuCollapsed : "")
+             @(ViewData["contentType"] is string contentType ? contentType : "")
+             @(ViewData["footerFixed"] is string footerFixed ? footerFixed : "")
+             @(ViewData["customizerHidden"] is string customizerHidden ? customizerHidden : "")"
+      dir="ltr"
+      data-skin="default"
+      data-bs-theme="light"
+      data-assets-path='@((httpContextAccessor.HttpContext?.Request.PathBase ?? "") + "/")'
+      data-template='@(("vertical-menu-template-free"))'>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+
+    @{
+        string title = ViewData["title"] as string ?? ViewData["Title"] as string ?? "";
+        string appName = TempData.Peek("appName") as string ?? "";
+        string productPage = TempData.Peek("productPage") as string ?? "";
+    }
+
+    <title>@title | @appName</title>
+    <meta name="description" content="" />
+
+    <link rel="canonical" href='@productPage'>
+    <link rel="icon" type="image/x-icon" href="~/img/favicon/favicon.ico" />
+
+    <!-- Core Styles -->
+    @await Html.PartialAsync("Sections/_Styles")
+
+    <!-- Vendor Styles -->
+    @RenderSection("VendorStyles", required: false)
+
+    <!-- Toastr CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
+
+    <!-- Page Styles -->
+    @RenderSection("PageStyles", required: false)
+
+    <!-- Include Scripts for customizer, helper, analytics, config -->
+    @await Html.PartialAsync("Sections/_ScriptsIncludes")
+</head>
+
+<body>
+    <!-- Layout Content -->
+    @RenderBody()
+    <!--/ Layout Content -->
+    <!-- Core Scripts -->
+    @await Html.PartialAsync("Sections/_Scripts")
+
+    <!-- jQuery + Toastr -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+
+    <!-- Vendor Scripts -->
+    @RenderSection("VendorScripts", required: false)
+
+    <!-- Page Scripts (đúng chuẩn: render 1 lần) -->
+    @RenderSection("PageScripts", required: false)
+    @RenderSection("Scripts", required: false)
+
+    @using System.Text.Json
+    @{
+        // ✅ ĐỌC + XÓA NGAY TempData Toast
+        var success = TempData["Success"] as string;
+        var error = TempData["Error"] as string;
+        var warning = TempData["Warning"] as string;
+        var info = TempData["Info"] as string;
+
+        TempData.Remove("Success");
+        TempData.Remove("Error");
+        TempData.Remove("Warning");
+        TempData.Remove("Info");
+    }
+
+    <script>
+        (function () {
+            if (!window.toastr) return;
+
+        toastr.options = {
+        closeButton: true,
+        progressBar: true,
+        newestOnTop: true,
+        positionClass: "toast-top-right",
+        preventDuplicates: true,
+        showDuration: 300,
+        hideDuration: 1000,
+        timeOut: 2500,
+        extendedTimeOut: 1000,
+        showEasing: "swing",
+        hideEasing: "linear",
+        showMethod: "fadeIn",
+        hideMethod: "fadeOut"
+        };
+
+            const success = @Html.Raw(JsonSerializer.Serialize(success));
+            const error   = @Html.Raw(JsonSerializer.Serialize(error));
+            const warning = @Html.Raw(JsonSerializer.Serialize(warning));
+            const info    = @Html.Raw(JsonSerializer.Serialize(info));
+
+            if (success) toastr.success(success);
+            if (error) toastr.error(error);
+            if (warning) toastr.warning(warning);
+            if (info) toastr.info(info);
+        })();
+    </script>
+
+    <!-- Main JS -->
+    <script src="~/js/main.js"></script>
+
+    <!-- Extra -->
+    <script async defer src="https://buttons.github.io/buttons.js"></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js"></script>
+    <partial name="~/Areas/Admin/Views/Shared/_ToastMessages.cshtml" />
+</body>
+</html>

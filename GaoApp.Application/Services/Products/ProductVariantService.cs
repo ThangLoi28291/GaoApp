@@ -1,0 +1,185 @@
+﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Results;
+using GaoApp.Application.DTOs.Products;
+using GaoApp.Application.Interfaces.Repositories.Products;
+using GaoApp.Application.Interfaces.Services.Products;
+
+namespace GaoApp.Application.Services.Products;
+
+/// <summary>
+/// Service trung gian cho màn hình quản lý ProductVariant.
+///
+/// CHỐT KIẾN TRÚC:
+/// - Frontend bảng _Variants cần mỗi dòng có:
+///   + SKU
+///   + ProductVariantName
+///   + CostPrice
+///   + Price
+///   + IsActive
+///   + PrimaryProductImageId
+///   + AttributeValueIds
+///   + IsLocked
+/// - Vì vậy service phải map đầy đủ dữ liệu từ entity -> ProductVariantRowDto
+/// - Save vẫn đẩy toàn bộ list variant xuống repository xử lý.
+/// </summary>
+public sealed class ProductVariantService : IProductVariantService
+{
+    private readonly IProductVariantRepository _repo;
+
+    public ProductVariantService(IProductVariantRepository repo)
+    {
+        _repo = repo;
+    }
+
+    /// <summary>
+    /// Lấy danh sách thuộc tính + giá trị thuộc tính
+    /// để dựng UI chọn combo tạo biến thể.
+    /// </summary>
+    public Task<List<AttributeWithValuesDto>> GetAttributesAsync(int storeId, CancellationToken ct = default)
+        => _repo.GetAttributesWithValuesAsync(storeId, ct);
+
+    /// <summary>
+    /// Lấy danh sách variant của sản phẩm cho màn hình edit/create.
+    /// </summary>
+    public async Task<List<ProductVariantRowDto>> GetVariantsAsync(
+        int storeId,
+        int productId,
+        CancellationToken ct = default)
+    {
+        var list = await _repo.GetByProductAsync(storeId, productId, ct);
+
+        return list.Select(v => new ProductVariantRowDto
+        {
+            Id = v.Id,
+            Sku = v.Sku,
+            ProductVariantName = v.ProductVariantName,
+            CostPrice = v.CostPrice,
+            Price = v.Price,
+            IsActive = v.IsActive,
+            PrimaryProductImageId = v.PrimaryProductImageId,
+            AttributeValueIds = v.AttributeValues
+                .Where(x => !x.IsDeleted)
+                .Select(x => x.AttributeValueId)
+                .Distinct()
+                .ToList(),
+            IsLocked = false
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Lưu toàn bộ danh sách variant.
+    /// Repository sẽ xử lý:
+    /// - create
+    /// - update
+    /// - restore soft delete
+    /// - sync attribute mappings
+    /// - tự sinh / lưu ProductVariantNameNormalized
+    /// </summary>
+    public async Task<Result> SaveVariantsAsync(
+        int storeId,
+        int productId,
+        List<ProductVariantRowDto> variants,
+        int? userId,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _repo.SaveVariantsAsync(storeId, productId, variants, userId, ct);
+            return Result.Success();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(Error.Validation("Variants", ex.Message));
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Đổi trạng thái mở bán / ngưng bán của 1 variant.
+    /// </summary>
+    public async Task<Result> ToggleStatusAsync(
+        int storeId,
+        int variantId,
+        int? userId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var ok = await _repo.ToggleStatusAsync(storeId, variantId, userId, ct);
+            return ok
+                ? Result.Success()
+                : Result.Failure(Error.NotFound("Không thể đổi trạng thái biến thể."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(Error.Validation("Variant", ex.Message));
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Soft delete variant.
+    /// Nếu variant đã phát sinh giao dịch thì repo sẽ chặn.
+    /// </summary>
+    public async Task<Result> SoftDeleteVariantAsync(
+        int storeId,
+        int variantId,
+        int? userId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var ok = await _repo.SoftDeleteVariantAsync(storeId, variantId, userId, ct);
+            return ok
+                ? Result.Success()
+                : Result.Failure(Error.NotFound("Xóa biến thể thất bại."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(Error.Validation("Variant", ex.Message));
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Gán / đổi / bỏ ảnh đại diện của variant.
+    /// </summary>
+    public async Task<Result> SetVariantImageAsync(
+        int storeId,
+        int variantId,
+        int? primaryProductImageId,
+        int? userId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var ok = await _repo.SetVariantImageAsync(
+                storeId,
+                variantId,
+                primaryProductImageId,
+                userId,
+                ct);
+
+            return ok
+                ? Result.Success()
+                : Result.Failure(Error.NotFound("Không lưu được ảnh biến thể."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(Error.Validation("VariantImage", ex.Message));
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+        }
+    }
+}

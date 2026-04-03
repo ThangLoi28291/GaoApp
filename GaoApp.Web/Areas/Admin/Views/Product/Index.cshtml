@@ -1,0 +1,182 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Products
+@model ProductIndexVM
+
+@{
+    ViewData["Title"] = "Sản phẩm";
+    Layout = "_ContentNavbarLayout";
+    
+}
+@section VendorStyles {
+    <style>
+        .js-toggle-status:hover {
+            opacity: .85;
+            box-shadow: 0 0 0 2px rgba(13,110,253,.15);
+        }
+    </style>
+    <link href="~/css/admin/product.css" rel="stylesheet" />
+}
+@section header {
+    <div class="py-2">
+        <h3 class="mb-0 fw-bold">Danh sách sản phẩm</h3>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+
+        <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Tìm kiếm</label>
+                <div class="position-relative">
+                    <input id="txtSearch" class="form-control pe-5"
+                           placeholder="Tên / alias ..."
+                           autocomplete="off"
+                           value="@Model.SearchString" />
+                    <button type="button" class="btn btn-sm btn-outline-secondary position-absolute top-50 end-0 translate-middle-y me-2"
+                            onclick="clearSearch()">
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Page size</label>
+                <select id="ddlPageSize" class="form-select">
+                    @{
+                        int[] sizes = new[] { 10, 20, 50, 100, 200 };
+                        foreach (var s in sizes)
+                        {
+                            <option value="@s" selected="@(Model.PageSize == s)">
+                                @s
+                            </option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-4 text-end">
+                <a class="btn btn-primary" href="/Admin/Product/Create">+ Tạo sản phẩm</a>
+            </div>
+        </div>
+
+        @Html.AntiForgeryToken()
+
+        <div id="productTable">
+            @await Html.PartialAsync("_ProductTable", Model)
+        </div>
+
+    </div>
+</div>
+
+@section PageScripts {
+    @if (TempData["Success"] != null)
+    {
+        <script>
+            (function () {
+                const msg = '@TempData["Success"]';
+                if (window.toastr) toastr.success(msg);
+            })();
+        </script>
+    }
+    <script>
+        let _debounceTimer = null;
+
+        const tableWrap = document.getElementById('productTable');
+        const txtSearch = document.getElementById('txtSearch');
+        const ddlPageSize = document.getElementById('ddlPageSize');
+
+        function getToken() {
+            const el = document.querySelector('input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        function clearSearch() {
+            txtSearch.value = '';
+            reloadProductTable(1);
+            txtSearch.focus();
+        }
+
+        txtSearch.addEventListener('input', function () {
+            clearTimeout(_debounceTimer);
+            _debounceTimer = setTimeout(() => reloadProductTable(1), 350);
+        });
+
+        ddlPageSize.addEventListener('change', function () {
+            reloadProductTable(1);
+        });
+
+        tableWrap.addEventListener('click', async function (e) {
+            const pageBtn = e.target.closest('[data-page]');
+            if (pageBtn) {
+                e.preventDefault();
+                const p = parseInt(pageBtn.getAttribute('data-page') || '1');
+                reloadProductTable(p);
+                return;
+            }
+
+            const toggleBtn = e.target.closest('[data-toggle-id]');
+            if (toggleBtn) {
+                e.preventDefault();
+                const id = parseInt(toggleBtn.getAttribute('data-toggle-id'));
+                await postAction('/Admin/Product/ToggleStatus', { id });
+                return;
+            }
+
+            const delBtn = e.target.closest('[data-delete-id]');
+            if (delBtn) {
+                e.preventDefault();
+                const id = parseInt(delBtn.getAttribute('data-delete-id'));
+                if (!confirm('Xóa sản phẩm này (soft delete)?')) return;
+                await postAction('/Admin/Product/SoftDelete', { id });
+                return;
+            }
+        });
+
+        async function postAction(url, data) {
+            const body = new URLSearchParams(data).toString();
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'RequestVerificationToken': getToken()
+                },
+                body
+            });
+
+            const json = await res.json().catch(() => null);
+            if (json && json.ok) {
+                if (window.toastr) toastr.success(json.message || 'OK');
+                reloadProductTable(getCurrentPage());
+            } else {
+                if (window.toastr) toastr.error((json && json.message) || 'Thất bại');
+            }
+        }
+
+        function getCurrentPage() {
+            const cur = tableWrap.querySelector('[data-current-page]');
+            return cur ? parseInt(cur.getAttribute('data-current-page')) : 1;
+        }
+
+               async function reloadProductTable(page) {
+            const search = txtSearch.value || '';
+            const pageSize = parseInt(ddlPageSize.value || '20');
+
+            // ✅ 1) update URL để giữ state
+            const qs = new URLSearchParams();
+            if (search) qs.set('search', search);
+            if (page > 1) qs.set('page', page);
+            if (pageSize !== 20) qs.set('pageSize', pageSize);
+
+            const newUrl = `/Admin/Product/Index${qs.toString() ? '?' + qs.toString() : ''}`;
+            window.history.pushState({}, '', newUrl);
+
+            // ✅ 2) load partial như cũ
+            const url = `/Admin/Product/Search?${qs.toString()}`;
+            const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const html = await res.text();
+            tableWrap.innerHTML = html;
+        }
+
+    </script>
+}

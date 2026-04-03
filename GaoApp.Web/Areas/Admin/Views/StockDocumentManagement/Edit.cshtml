@@ -1,0 +1,465 @@
+﻿@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Inventory
+@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
+@{
+    ViewData["Title"] = "Chi tiết phiếu nhập kho";
+    Layout = "_ContentNavbarLayout";
+
+    var hasCreatePermission = (await AuthorizationService
+    .AuthorizeAsync(User, resource: null, policyName: AppPermissions.InventoryStockDocumentCreate)).Succeeded;
+
+    var hasApprovePermission = (await AuthorizationService
+        .AuthorizeAsync(User, resource: null, policyName: AppPermissions.InventoryStockDocumentApprove)).Succeeded;
+
+    var canEditHeaderByStatus = Model.Status == StockDocumentStatus.Draft
+                             || Model.Status == StockDocumentStatus.PendingApproval
+                             || Model.Status == StockDocumentStatus.Rejected;
+
+    var canEditLinesByStatus = Model.Status == StockDocumentStatus.Draft
+                            || Model.Status == StockDocumentStatus.PendingApproval
+                            || Model.Status == StockDocumentStatus.Rejected;
+
+    var canSubmitApprovalByStatus = Model.Status == StockDocumentStatus.Draft
+                                 || Model.Status == StockDocumentStatus.Rejected;
+
+    var canApproveByStatus = Model.Status == StockDocumentStatus.PendingApproval;
+
+    var canEditHeader = hasCreatePermission && canEditHeaderByStatus;
+    var canEditLines = hasCreatePermission && canEditLinesByStatus;
+    var canSubmitApproval = hasCreatePermission && canSubmitApprovalByStatus;
+    var canApprove = hasApprovePermission && canApproveByStatus;
+
+    var linesTableVm = new StockDocumentLinesTableViewModel
+    {
+        CanEdit = canEditLines,
+        Lines = Model.Lines?.OrderBy(x => x.LineNo).ToList() ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>()
+    };
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <style>
+        .sd-card {
+            border: 0;
+            border-radius: 16px;
+            box-shadow: 0 0.125rem 0.75rem rgba(0,0,0,.08);
+        }
+
+            .sd-card .card-body {
+                padding: 1.25rem;
+            }
+
+        .sd-section-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #2b2f32;
+            margin-bottom: 1rem;
+        }
+
+        .sd-status-text {
+            font-weight: 600;
+            color: #6c757d;
+            margin-top: -0.35rem;
+            margin-bottom: 1rem;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection {
+            min-height: 38px;
+        }
+
+        .quick-preview {
+            background: #f8f9fa;
+            font-weight: 500;
+        }
+
+        .quick-lookup-hint {
+            font-size: .875rem;
+            color: #6c757d;
+        }
+
+        .sd-readonly {
+            background-color: #f8f9fa !important;
+        }
+
+        .select2-result-title {
+            font-weight: 600;
+            color: #212529;
+        }
+
+        .select2-result-meta {
+            font-size: .825rem;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+
+        .sd-toolbar {
+            display: flex;
+            gap: .5rem;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .sd-summary-box {
+            border: 1px solid #edf0f2;
+            border-radius: 12px;
+            padding: .85rem 1rem;
+            background: #fafbfc;
+        }
+
+        .sd-summary-label {
+            font-size: .85rem;
+            color: #6c757d;
+            margin-bottom: .2rem;
+        }
+
+        .sd-summary-value {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .select2-container {
+            width: 100% !important;
+        }
+
+        .select2-result-title {
+            font-weight: 700;
+            color: #212529;
+            white-space: normal;
+            line-height: 1.25;
+        }
+
+        .select2-result-meta {
+            font-size: .875rem;
+            color: #6c757d;
+            margin-top: 4px;
+            white-space: normal;
+            line-height: 1.35;
+        }
+
+        .select2-container--bootstrap-5 .select2-dropdown {
+            min-width: 620px;
+        }
+
+        .sd-select2-item {
+            padding: 2px 0;
+        }
+
+        .sd-select2-item-simple {
+            padding: 4px 0;
+        }
+
+        .select2-container--bootstrap-5 .select2-results__option {
+            padding: 8px 12px;
+        }
+
+        .select2-container--bootstrap-5 .select2-results__option--highlighted,
+        .select2-container--bootstrap-5 .select2-results__option--highlighted.select2-results__option--selectable {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+
+            .select2-container--bootstrap-5 .select2-results__option--highlighted .select2-result-title,
+            .select2-container--bootstrap-5 .select2-results__option--highlighted .select2-result-meta {
+                color: #fff !important;
+            }
+
+        .select2-container--bootstrap-5 .select2-selection__rendered {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .select2-container--bootstrap-5 .select2-dropdown {
+            min-width: 620px;
+        }
+
+        .select2-container--bootstrap-5 .select2-results__option--highlighted {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+
+            .select2-container--bootstrap-5 .select2-results__option--highlighted .select2-result-title,
+            .select2-container--bootstrap-5 .select2-results__option--highlighted .select2-result-meta {
+                color: #fff !important;
+            }
+
+        .select2-container--bootstrap-5 .select2-results__option--selected:not(.select2-results__option--highlighted) {
+            background-color: transparent !important;
+            color: inherit !important;
+        }
+
+        .select2-result-title {
+            font-weight: 700;
+        }
+
+        .select2-result-meta {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+    </style>
+}
+
+<div class="container-xxl flex-grow-1 container-p-y">
+    <input type="hidden" id="StockDocumentId" value="@Model.Id" />
+    <input type="hidden" id="CurrentWarehouseId" value="@Model.WarehouseId" />
+    <input type="hidden" id="CurrentWarehouseText" value="@Model.WarehouseName" />
+    <input type="hidden" id="CurrentSupplierId" value="@(Model.SupplierId?.ToString() ?? "")" />
+    <input type="hidden" id="CurrentSupplierText" value="@(Model.SupplierName ?? "")" />
+    <input type="hidden" id="CanEditHeader" value="@canEditHeader.ToString().ToLower()" />
+    <input type="hidden" id="CanEditLines" value="@canEditLines.ToString().ToLower()" />
+
+    <div class="card sd-card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                <div>
+                    <h4 class="mb-1">Phiếu nhập kho: @Model.DocumentNo</h4>
+                    <div class="sd-status-text">Trạng thái: @Model.Status</div>
+                </div>
+
+                <div class="sd-toolbar">
+                    <a href="@Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })" class="btn btn-outline-secondary">
+                        Quay lại danh sách
+                    </a>
+
+                    @if (canSubmitApproval)
+                    {
+                        <button type="button" class="btn btn-warning" id="btnOpenSubmitApprovalModal">
+                            @(Model.Status == StockDocumentStatus.Rejected ? "Gửi duyệt lại" : "Gửi duyệt")
+                        </button>
+                    }
+
+                    @if (canApprove)
+                    {
+                        <button type="button" class="btn btn-success" id="btnOpenApproveModal">
+                            Duyệt phiếu
+                        </button>
+                        <button type="button" class="btn btn-danger" id="btnOpenRejectModal">
+                            Từ chối
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Mã phiếu</label>
+                    <input type="text" class="form-control sd-readonly" value="@Model.DocumentNo" readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Kho</label>
+                    <select id="WarehouseId" class="form-select"></select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Nhà cung cấp</label>
+                    <select id="SupplierId" class="form-select"></select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Trạng thái</label>
+                    <input type="text" class="form-control sd-readonly" value="@Model.Status" readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Ngày phiếu</label>
+                    <input type="text" class="form-control sd-readonly" value="@Model.DocumentDate.ToString("dd/MM/yyyy HH:mm")" readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Gửi duyệt lúc</label>
+                    <input type="text"
+                           class="form-control sd-readonly"
+                           value="@(Model.SubmittedAtUtc.HasValue? Model.SubmittedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
+                           readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Duyệt lúc</label>
+                    <input type="text"
+                           class="form-control sd-readonly"
+                           value="@(Model.ApprovedAtUtc.HasValue? Model.ApprovedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
+                           readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Tổng tiền</label>
+                    <input type="text" class="form-control sd-readonly" id="txtTotalAmount" value="@Model.TotalAmount.ToString("N0")" readonly />
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Ghi chú phiếu</label>
+                    <textarea id="DocumentNote" class="form-control" rows="2">@Model.Note</textarea>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Ghi chú duyệt / từ chối</label>
+                    <textarea id="ApprovalNote" class="form-control" rows="2">@Model.ApprovalNote</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (canEditLines)
+    {
+        <div class="row g-3 align-items-end">
+            <div class="col-lg-10">
+                <label class="form-label">Sản phẩm / Barcode / SKU</label>
+                <select id="quickLookupInput" class="form-select"></select>
+                <div class="quick-lookup-hint mt-1">
+                    Quét barcode, nhập SKU hoặc gõ tên sản phẩm để tìm nhanh.
+                </div>
+            </div>
+
+            <div class="col-lg-2">
+                <label class="form-label">Số lượng</label>
+                <input type="number" id="quickQty" class="form-control" value="1" min="0.001" step="0.001" />
+            </div>
+
+            <div class="col-12 d-flex justify-content-end">
+                <button type="button" id="btnQuickAddLine" class="btn btn-primary px-4">
+                    Thêm
+                </button>
+            </div>
+        </div>
+    }
+
+    <div class="card sd-card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div class="sd-section-title mb-0">Danh sách dòng nhập</div>
+
+                <div class="sd-summary-box">
+                    <div class="sd-summary-label">Tổng tiền phiếu</div>
+                    <div class="sd-summary-value" id="stockDocumentTotalAmount">@Model.TotalAmount.ToString("N0")</div>
+                </div>
+            </div>
+
+            <div id="stockDocumentLinesContainer">
+                @await Html.PartialAsync("_StockDocumentLinesTable", linesTableVm)
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="submitApprovalModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Gửi duyệt phiếu nhập</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Ghi chú</label>
+                <textarea class="form-control" id="submitApprovalNote" rows="3"></textarea>
+                <div class="form-text text-danger mt-2" id="submitApprovalMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-warning" id="btnSubmitApproval">Gửi duyệt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Duyệt phiếu nhập</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Ghi chú duyệt</label>
+                <textarea class="form-control" id="approveNote" rows="3"></textarea>
+                <div class="form-text text-danger mt-2" id="approveMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-success" id="btnApprove">Duyệt phiếu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Từ chối phiếu nhập</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Lý do từ chối</label>
+                <textarea class="form-control" id="rejectNote" rows="3"></textarea>
+                <div class="form-text text-danger mt-2" id="rejectMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-danger" id="btnReject">Từ chối</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editLineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Sửa dòng nhập</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editLineId" />
+
+                <div class="mb-3">
+                    <label class="form-label">Đơn vị</label>
+                    <select class="form-select" id="editLineUnitId"></select>
+                    <div class="form-text" id="editLineUnitInfo"></div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Số lượng</label>
+                    <input type="number" class="form-control" id="editLineQuantity" min="0.001" step="0.001" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Đơn giá nhập</label>
+                    <input type="number" class="form-control" id="editLineUnitCost" min="0" step="100" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Ghi chú</label>
+                    <textarea class="form-control" id="editLineNote" rows="3"></textarea>
+                </div>
+
+                <div class="form-text text-danger" id="editLineMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btnSaveEditLine">Lưu thay đổi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+}
+
+@section PageScripts {
+    <script>
+        window.stockDocumentPage = {
+            mode: 'edit',
+            documentId: @Model.Id,
+            editableHeader: @canEditHeader.ToString().ToLower(),
+            editableLines: @canEditLines.ToString().ToLower()
+        };
+    </script>
+    <script src="~/admin/js/stock-document-management.js"></script>
+}

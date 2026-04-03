@@ -1,0 +1,194 @@
+﻿@model GaoApp.Application.DTOs.Security.Roles.RoleUpdateRequest
+@using GaoApp.Application.DTOs.Security.Roles
+
+@{
+    ViewData["Title"] = "Cập nhật vai trò";
+    var roleInfo = ViewBag.RoleInfo as RoleEditDto;
+    var canPermissions = (bool?)ViewBag.CanPermissions == true;
+}
+
+<div class="container-fluid">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="mb-1">Cập nhật vai trò</h3>
+            <div class="text-muted">Chỉnh sửa thông tin vai trò của cửa hàng hiện tại.</div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <a asp-area="Admin"
+                   asp-controller="Roles"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Quay lại
+            </a>
+
+            
+           
+            @if (canPermissions)
+            {
+                <a asp-area="Admin"
+                   asp-controller="RolePermissions"
+                   asp-action="Index"
+                   asp-route-roleId="@Model.Id"
+                   class="btn btn-outline-primary">
+                    <i class="bi bi-shield-lock me-1"></i> Phân quyền
+                </a>
+            }
+           
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (roleInfo != null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Trạng thái</div>
+                        <div class="mt-2">
+                            @if (roleInfo.IsActive)
+                            {
+                                <span class="badge bg-success-subtle text-success">Đang hoạt động</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary">Ngưng sử dụng</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Số quyền hiện có</div>
+                        <div class="fs-4 fw-bold mt-2">@roleInfo.PermissionCount</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Số user đang gán</div>
+                        <div class="fs-4 fw-bold mt-2">@roleInfo.UserCount</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Loại vai trò</div>
+                        <div class="mt-2">
+                            @if (roleInfo.IsSystemRole)
+                            {
+                                <span class="badge bg-warning-subtle text-warning">Vai trò hệ thống</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-info-subtle text-info">Vai trò tùy chỉnh</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="text-muted small">Ngày tạo</div>
+                        <div class="fw-semibold mt-1">
+                            @roleInfo.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="text-muted small">Cập nhật gần nhất</div>
+                        <div class="fw-semibold mt-1">
+                            @(roleInfo.UpdatedAtUtc.HasValue
+                                ? roleInfo.UpdatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                : "Chưa cập nhật")
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <form asp-area="Admin"
+          asp-controller="Roles"
+          asp-action="Edit"
+          method="post">
+        @Html.AntiForgeryToken()
+        <input asp-for="Id" type="hidden" />
+
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white border-0 pb-0">
+                <h5 class="mb-1">Thông tin vai trò</h5>
+                <div class="text-muted small">Cập nhật mã và tên vai trò.</div>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="Code" class="form-label fw-semibold">Mã vai trò</label>
+                        <input asp-for="Code"
+                               class="form-control"
+                               placeholder="Ví dụ: manager, cashier, warehouse_staff" />
+                        <span asp-validation-for="Code" class="text-danger small"></span>
+                        <div class="form-text">
+                            Mã vai trò nên ngắn gọn, ổn định và không bị đổi thường xuyên.
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label asp-for="Name" class="form-label fw-semibold">Tên vai trò</label>
+                        <input asp-for="Name"
+                               class="form-control"
+                               placeholder="Ví dụ: Quản lý, Thu ngân, Nhân viên kho" />
+                        <span asp-validation-for="Name" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i> Lưu thay đổi
+            </button>
+
+            <a asp-area="Admin"
+                   asp-controller="Roles"
+                   asp-action="Index"
+                   class="btn btn-light border">
+                Hủy
+            </a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

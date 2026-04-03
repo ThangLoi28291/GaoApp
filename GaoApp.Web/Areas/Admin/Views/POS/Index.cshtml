@@ -1,0 +1,3068 @@
+﻿@{
+    ViewData["Title"] = "POS Bán hàng";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <style>
+        /* =========================================================
+                   1. KHUNG GIAO DIỆN CHUNG
+                ========================================================= */
+        .pos-shell {
+            min-height: calc(100vh - 132px);
+        }
+
+        .pos-card {
+            border: 0;
+            border-radius: 18px;
+            box-shadow: 0 0.125rem 0.75rem rgba(0,0,0,.08);
+            overflow: visible;
+            background: #fff;
+        }
+
+            .pos-card .card-body {
+                padding: 1rem;
+            }
+
+        .pos-section-title {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #212529;
+            margin-bottom: .85rem;
+        }
+
+        .pos-subtext {
+            color: #6c757d;
+            font-size: .9rem;
+        }
+
+        .pos-current-badge {
+            font-size: .92rem;
+            padding: .65rem .85rem;
+            border-radius: 999px;
+        }
+
+        .sticky-right {
+            position: sticky;
+            top: 16px;
+        }
+
+        /* =========================================================
+                   2. THANH TÌM / QUÉT SẢN PHẨM
+                ========================================================= */
+        .pos-toolbar-card {
+            border-radius: 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+            position: relative;
+            z-index: 30;
+        }
+
+        .pos-inline-label {
+            font-size: .82rem;
+            color: #6c757d;
+            margin-bottom: 4px;
+        }
+
+        .pos-barcode-wrap {
+            position: relative;
+            z-index: 50;
+        }
+
+        .pos-barcode-input {
+            height: 58px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            border-radius: 14px;
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+        .pos-toolbar-btn {
+            min-height: 58px;
+            border-radius: 14px;
+            font-weight: 700;
+        }
+
+        /* =========================================================
+                   3. AUTOCOMPLETE SẢN PHẨM
+                ========================================================= */
+        .pos-autocomplete-menu {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 14px;
+            box-shadow: 0 0.5rem 1.25rem rgba(0,0,0,.12);
+            overflow: hidden;
+            max-height: 360px;
+            overflow-y: auto;
+        }
+
+        .pos-autocomplete-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: #fff;
+            border: 0;
+            border-bottom: 1px solid #f1f3f5;
+            padding: 12px 14px;
+            cursor: pointer;
+            transition: background-color .12s ease, box-shadow .12s ease;
+        }
+
+            .pos-autocomplete-item:last-child {
+                border-bottom: 0;
+            }
+
+            .pos-autocomplete-item:hover {
+                background: #f8fbff;
+            }
+
+            .pos-autocomplete-item.active {
+                background: #eef5ff;
+                box-shadow: inset 3px 0 0 #0d6efd;
+            }
+
+        .pos-autocomplete-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 12px;
+        }
+
+        .pos-autocomplete-main {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .pos-autocomplete-title {
+            font-size: .98rem;
+            font-weight: 800;
+            color: #212529;
+            line-height: 1.25;
+            margin-bottom: 6px;
+            word-break: break-word;
+        }
+
+            .pos-autocomplete-title mark {
+                background: #fff3cd;
+                color: #212529;
+                padding: 0 2px;
+                border-radius: 4px;
+            }
+
+        .pos-autocomplete-right {
+            flex: 0 0 auto;
+            text-align: right;
+            min-width: 90px;
+        }
+
+        .pos-autocomplete-price {
+            font-size: .98rem;
+            font-weight: 800;
+            color: #0d6efd;
+            white-space: nowrap;
+        }
+
+        .pos-autocomplete-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .pos-meta-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 3px 8px;
+            font-size: .76rem;
+            font-weight: 700;
+            line-height: 1.2;
+            background: #f1f3f5;
+            color: #495057;
+            max-width: 100%;
+        }
+
+            .pos-meta-badge.sku {
+                background: #eef5ff;
+                color: #0d6efd;
+            }
+
+            .pos-meta-badge.barcode {
+                background: #f8f9fa;
+                color: #6c757d;
+            }
+
+        .pos-meta-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 220px;
+        }
+
+        /* =========================================================
+                   4. BẢNG DÒNG HÀNG
+                ========================================================= */
+        .pos-table-wrap {
+            border: 1px solid #edf0f2;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .pos-line-table {
+            margin-bottom: 0;
+        }
+
+            .pos-line-table thead th {
+                background: #f8f9fa;
+                font-size: .86rem;
+                font-weight: 800;
+                color: #495057;
+                border-bottom-width: 1px;
+                white-space: nowrap;
+            }
+
+            .pos-line-table td,
+            .pos-line-table th {
+                vertical-align: middle;
+            }
+
+        .pos-line-name {
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .pos-line-meta {
+            font-size: .82rem;
+            color: #6c757d;
+            margin-top: 4px;
+        }
+
+        .pos-line-name-wrap {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .pos-line-name-main {
+            min-width: 0;
+            flex: 1 1 auto;
+            padding-right: 4px;
+        }
+
+        .pos-line-name {
+            font-weight: 700;
+            color: #212529;
+            line-height: 1.35;
+            word-break: normal;
+            overflow-wrap: break-word;
+        }
+
+        .pos-line-info-btn {
+            width: 28px;
+            height: 28px;
+            min-width: 28px;
+            border-radius: 999px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            flex: 0 0 auto;
+            margin-top: 2px;
+        }
+
+  
+
+        .pos-line-submeta {
+            font-size: .84rem;
+            color: #6c757d;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        .pos-line-info-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 999px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .popover {
+            max-width: 380px;
+            border-radius: 14px;
+            border: 1px solid #e9ecef;
+            box-shadow: 0 0.5rem 1.25rem rgba(0,0,0,.12);
+        }
+
+        .popover-header {
+            font-weight: 800;
+            font-size: .9rem;
+            background: #f8f9fa;
+            border-bottom: 1px solid #edf0f2;
+            border-top-left-radius: 14px;
+            border-top-right-radius: 14px;
+        }
+
+        .popover-body {
+            font-size: .88rem;
+            line-height: 1.55;
+            color: #495057;
+        }
+
+        .pos-line-discount-btn {
+            min-width: 82px;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+
+        .qty-box {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+            .qty-box input {
+                width: 70px;
+                text-align: center;
+                border-radius: 10px;
+            }
+
+        .qty-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 10px;
+            padding: 0;
+            font-weight: 700;
+        }
+
+        .pos-qty-cell {
+            text-align: center;
+        }
+
+            .pos-qty-cell .qty-box {
+                justify-content: center;
+            }
+
+        .pos-qty-summary {
+            font-size: .84rem;
+            color: #6c757d;
+            margin-top: 6px;
+            text-align: center;
+            line-height: 1.35;
+        }
+
+        .pos-qty-summary {
+            font-size: .84rem;
+            color: #6c757d;
+            margin-top: 6px;
+            text-align: center;
+            line-height: 1.35;
+            word-break: keep-all;
+        }
+        .pos-col-product {
+    width: auto;
+}
+
+.pos-line-name-cell {
+    min-width: 260px;
+    width: auto;
+}
+
+
+        /* =========================================================
+                   5. THÔNG TIN BÊN PHẢI
+                ========================================================= */
+        .pos-customer-box {
+            border: 1px dashed #d9e2f2;
+            background: #f8fbff;
+            border-radius: 14px;
+            padding: 12px 14px;
+        }
+
+        .pos-customer-name {
+            font-weight: 800;
+            color: #0d3b7a;
+        }
+
+        .pos-customer-phone {
+            color: #5b6773;
+            font-size: .9rem;
+        }
+
+        .pos-customer-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .pos-kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .pos-summary-box {
+            border-radius: 14px;
+            padding: 14px 14px;
+            background: #f8f9fa;
+            border: 1px solid #edf0f2;
+        }
+
+        .pos-summary-label {
+            font-size: .85rem;
+            color: #6c757d;
+            margin-bottom: 6px;
+        }
+
+        .pos-summary-value {
+            font-size: 1.18rem;
+            font-weight: 800;
+            color: #212529;
+            line-height: 1.2;
+        }
+
+        .pos-action-btn {
+            min-height: 52px;
+            font-weight: 800;
+            border-radius: 12px;
+        }
+
+        .pos-action-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .shortcut-badge {
+            font-size: .72rem;
+            margin-left: 6px;
+        }
+
+        /* =========================================================
+                   6. DANH SÁCH ĐƠN GIỮ
+                ========================================================= */
+        .pos-list-item {
+            border: 1px solid #e9ecef;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all .15s ease;
+            background: #fff;
+        }
+
+            .pos-list-item:hover {
+                border-color: #0d6efd;
+                box-shadow: 0 0 0 2px rgba(13,110,253,.06);
+            }
+
+        .pos-list-meta {
+            font-size: .84rem;
+            color: #6c757d;
+        }
+
+        .pos-empty {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        /* =========================================================
+                   7. MODAL / POPUP
+                ========================================================= */
+        .pos-modal-title {
+            font-weight: 800;
+        }
+
+        .pos-modal-subtitle {
+            color: #6c757d;
+            font-size: .9rem;
+        }
+
+        .pos-customer-search-list {
+            max-height: 360px;
+            overflow-y: auto;
+            border: 1px solid #edf0f2;
+            border-radius: 14px;
+        }
+
+        .pos-customer-search-item {
+            border: 0;
+            border-bottom: 1px solid #edf0f2;
+            padding: 12px 14px;
+            width: 100%;
+            background: #fff;
+            text-align: left;
+        }
+
+            .pos-customer-search-item:last-child {
+                border-bottom: 0;
+            }
+
+            .pos-customer-search-item:hover {
+                background: #f8fbff;
+            }
+
+        .pos-modal-danger-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff1f2;
+            color: #dc3545;
+            font-size: 1.6rem;
+            font-weight: 900;
+        }
+
+        .pos-note-box {
+            background: #f8f9fa;
+            border: 1px solid #edf0f2;
+            border-radius: 14px;
+            padding: 12px 14px;
+        }
+
+        /* =========================================================
+                   8. PAYMENT MODAL - NÚT THANH TOÁN NHANH
+                ========================================================= */
+        .pay-quick-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .pay-quick-btn,
+        .pay-plus-btn {
+            font-weight: 700;
+            border-radius: 10px;
+        }
+
+        .pay-preview-box {
+            background: #f8f9fa;
+            border: 1px solid #edf0f2;
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .pay-preview-label {
+            color: #6c757d;
+            font-size: .82rem;
+        }
+
+        .pay-preview-value {
+            font-weight: 800;
+        }
+
+        /* =========================================================
+                   9. RESPONSIVE
+                ========================================================= */
+        @@media (max-width: 991.98px) {
+            .sticky-right {
+                position: static;
+                top: unset;
+            }
+
+            .pos-kpi-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @@media (max-width: 575.98px) {
+            .pos-kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .pos-autocomplete-row {
+                flex-direction: column;
+            }
+
+            .pos-autocomplete-right {
+                min-width: auto;
+                text-align: left;
+            }
+
+            .pay-quick-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .pos-line-meta-strong {
+            font-size: .82rem;
+            color: #495057;
+            margin-top: 4px;
+            font-weight: 700;
+        }
+    </style>
+}
+
+@section header {
+    <div class="py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-0 fw-bold">POS Bán hàng</h3>
+            <div class="text-muted">Màn hình thu ngân thao tác nhanh, rõ ràng, dễ dùng</div>
+        </div>
+        <div>
+            <span id="lblCurrentOrder" class="badge bg-secondary pos-current-badge">Chưa có giỏ</span>
+        </div>
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+
+<div class="pos-shell">
+    @Html.AntiForgeryToken()
+
+    <div class="row g-3">
+        <!-- =========================================================
+             CỘT TRÁI: QUÉT HÀNG + GIỎ HIỆN TẠI + DANH SÁCH PAYMENT ĐÃ GHI NHẬN
+        ========================================================= -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card pos-card pos-toolbar-card mb-3">
+                <div class="card-body">
+                    <div class="row g-2 align-items-start">
+                        <div class="col-md-8">
+                            <div class="pos-inline-label">Quét barcode / tìm nhanh sản phẩm</div>
+                            <div class="pos-barcode-wrap">
+                                <input id="txtBarcode"
+                                       class="form-control pos-barcode-input"
+                                       placeholder="Quét barcode hoặc gõ tên / SKU / barcode"
+                                       autocomplete="off" />
+                                <div id="barcodeAutocomplete" class="pos-autocomplete-menu" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-2 d-grid">
+                            <div class="pos-inline-label">&nbsp;</div>
+                            <button id="btnScan" class="btn btn-primary pos-toolbar-btn" type="button">Thêm hàng</button>
+                        </div>
+
+                        <div class="col-md-2 d-grid">
+                            <div class="pos-inline-label">&nbsp;</div>
+                            <button id="btnFocusBarcode" class="btn btn-outline-secondary pos-toolbar-btn" type="button">Focus</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card pos-card">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="pos-section-title mb-1">Giỏ hiện tại</div>
+                        <div id="currentCartInfo" class="pos-subtext">Đang tải...</div>
+                    </div>
+
+                    <div class="pos-table-wrap">
+                        <div class="table-responsive">
+                            <table class="table align-middle pos-line-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:56px;">#</th>
+                                        <th class="pos-col-product">Sản phẩm</th>
+                                        <th style="width:170px;">SL</th>
+                                        <th style="width:110px;">Đơn giá</th>
+                                        <th style="width:110px;">Giảm giá</th>
+                                        <th style="width:120px;">Thành tiền</th>
+                                        <th style="width:80px;">Xóa</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="currentDraftBody">
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted py-4">Đang tải dữ liệu...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="paymentListBox" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- =========================================================
+             CỘT PHẢI: KHÁCH HÀNG + GHI CHÚ + GIẢM GIÁ ĐƠN + TỔNG KẾT + ACTION + ĐƠN GIỮ
+        ========================================================= -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="sticky-right">
+                <!-- Khách hàng -->
+                <div class="card pos-card mb-3">
+                    <div class="card-body">
+                        <div class="pos-section-title">Khách hàng</div>
+                        <div id="customerInfoBox" class="pos-customer-box">
+                            <div class="text-muted">Khách lẻ</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ghi chú đơn -->
+                <div class="card pos-card mb-3">
+                    <div class="card-body">
+                        <div class="pos-section-title">Ghi chú đơn</div>
+
+                        <div class="mb-2">
+                            <textarea id="txtOrderNote"
+                                      class="form-control"
+                                      rows="3"
+                                      placeholder="Nhập ghi chú cho đơn hiện tại..."></textarea>
+                        </div>
+
+                        <div class="d-grid">
+                            <button id="btnSaveOrderNote" type="button" class="btn btn-outline-primary">
+                                Lưu ghi chú
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Giảm giá đơn -->
+                <div class="card pos-card mb-3">
+                    <div class="card-body">
+                        <div class="pos-section-title">Giảm giá đơn</div>
+
+                        <div class="mb-2">
+                            <label class="form-label fw-semibold">Số tiền giảm</label>
+                            <input id="txtOrderDiscount"
+                                   type="number"
+                                   step="0.01"
+                                   min="0"
+                                   class="form-control"
+                                   placeholder="Nhập số tiền giảm giá" />
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button id="btnSaveOrderDiscount" type="button" class="btn btn-outline-primary">
+                                Lưu giảm giá
+                            </button>
+                            <button id="btnClearOrderDiscount" type="button" class="btn btn-outline-secondary">
+                                Xóa giảm giá
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tổng kết đơn -->
+                <div class="card pos-card mb-3">
+                    <div class="card-body">
+                        <div class="pos-section-title">Tổng kết đơn</div>
+
+                        <div class="pos-kpi-grid">
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Tạm tính</div>
+                                <div id="sumSubtotal" class="pos-summary-value">0</div>
+                            </div>
+
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Tổng giảm giá</div>
+                                <div id="sumDiscount" class="pos-summary-value">0</div>
+                            </div>
+
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Thành tiền</div>
+                                <div id="sumGrandTotal" class="pos-summary-value">0</div>
+                            </div>
+
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Đã thanh toán</div>
+                                <div id="sumPaid" class="pos-summary-value">0</div>
+                            </div>
+
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Còn thiếu</div>
+                                <div id="sumBalance" class="pos-summary-value">0</div>
+                            </div>
+
+                            <div class="pos-summary-box">
+                                <div class="pos-summary-label">Tiền thừa</div>
+                                <div id="sumChange" class="pos-summary-value">0</div>
+                            </div>
+                        </div>
+
+                        <div class="pos-action-grid mt-3">
+                            <button id="btnNewCart" class="btn btn-outline-primary pos-action-btn" type="button">
+                                Tạo giỏ mới <span class="badge bg-light text-dark shortcut-badge">F6</span>
+                            </button>
+
+                            <button id="btnHoldCart" class="btn btn-warning pos-action-btn" type="button">
+                                Giữ đơn <span class="badge bg-light text-dark shortcut-badge">F2</span>
+                            </button>
+
+                            <button id="btnOpenPayment" class="btn btn-info text-white pos-action-btn" type="button">
+                                Thanh toán <span class="badge bg-light text-dark shortcut-badge">F3</span>
+                            </button>
+
+                            <button id="btnFinalizeCart" class="btn btn-success pos-action-btn" type="button">
+                                Chốt đơn <span class="badge bg-light text-dark shortcut-badge">F4</span>
+                            </button>
+
+                            <button id="btnCancelCart" class="btn btn-outline-danger pos-action-btn" type="button">
+                                Hủy giỏ
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Đơn đang giữ -->
+                <div class="card pos-card">
+                    <div class="card-body">
+                        <div class="pos-section-title">Danh sách đơn đang giữ</div>
+                        <div id="heldList">
+                            <div class="pos-empty">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     PAYMENT MODAL - BƯỚC 16 + 17
+     - Tổng kết thanh toán
+     - Thêm payment
+     - Nút thu đủ / mệnh giá nhanh / cộng thêm
+     - Preview còn thiếu / tiền thừa
+========================================================= -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Thanh toán giỏ hiện tại</h5>
+                    <div class="pos-modal-subtitle">Thêm khoản thanh toán và chốt đơn khi đã đủ tiền</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-lg-5">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body">
+                                <div class="fw-bold mb-3">Tổng kết thanh toán</div>
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Tạm tính</span>
+                                    <strong id="paySumSubtotal">0</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Tổng giảm giá</span>
+                                    <strong id="paySumDiscount">0</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Thành tiền</span>
+                                    <strong id="paySumGrandTotal">0</strong>
+                                </div>
+
+                                <hr />
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Đã thanh toán</span>
+                                    <strong id="paySumPaid">0</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">Còn thiếu</span>
+                                    <strong id="paySumBalance">0</strong>
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-muted">Tiền thừa</span>
+                                    <strong id="paySumChange">0</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-7">
+                        <form id="paymentForm" onsubmit="return false;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Phương thức</label>
+                                <select id="payMethod" class="form-select">
+                                    <option value="0">Tiền mặt</option>
+                                    <option value="1">Chuyển khoản</option>
+                                    <option value="2">Thẻ</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Số tiền</label>
+                                <input id="payAmount" type="number" step="0.01" class="form-control" placeholder="Nhập số tiền" />
+                            </div>
+
+                            <!-- Thanh toán nhanh - bước 17 -->
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Chọn nhanh số tiền</label>
+
+                                <div class="d-grid gap-2">
+                                    <button id="btnPayExact" type="button" class="btn btn-outline-success">
+                                        Thu đủ
+                                    </button>
+
+                                    <div class="pay-quick-grid">
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="10000">10k</button>
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="20000">20k</button>
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="50000">50k</button>
+
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="100000">100k</button>
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="200000">200k</button>
+                                        <button type="button" class="btn btn-outline-secondary pay-quick-btn" data-pay-amount="500000">500k</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Bù thêm nhanh</label>
+                                <div class="pay-quick-grid">
+                                    <button type="button" class="btn btn-outline-warning pay-plus-btn" data-pay-plus="10000">+10k</button>
+                                    <button type="button" class="btn btn-outline-warning pay-plus-btn" data-pay-plus="20000">+20k</button>
+                                    <button type="button" class="btn btn-outline-warning pay-plus-btn" data-pay-plus="50000">+50k</button>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="pay-preview-box">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="pay-preview-label">Còn thiếu hiện tại</span>
+                                        <span id="payPreviewBalance" class="pay-preview-value">0</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mt-1">
+                                        <span class="pay-preview-label">Tiền thừa dự kiến</span>
+                                        <span id="payPreviewChange" class="pay-preview-value">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Mã tham chiếu</label>
+                                <input id="payReference" class="form-control" placeholder="Ví dụ mã giao dịch" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nhà cung cấp</label>
+                                <input id="payProvider" class="form-control" placeholder="Ví dụ ACB, VietQR..." />
+                            </div>
+
+                            <div class="d-grid">
+                                <button id="btnAddPayment" type="button" class="btn btn-primary">
+                                    Thêm thanh toán
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="fw-bold mb-2">Danh sách thanh toán đã ghi nhận</div>
+                    <div id="paymentModalListBox" class="border rounded-3 p-2 bg-light-subtle">
+                        <div class="text-muted">Chưa có thanh toán.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnFinalizeFromPaymentModal" type="button" class="btn btn-success">
+                    Chốt đơn
+                </button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     CUSTOMER MODAL
+========================================================= -->
+<div class="modal fade" id="customerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Chọn khách hàng</h5>
+                    <div class="pos-modal-subtitle">Tìm theo tên hoặc số điện thoại</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div class="small text-muted">Tìm theo tên hoặc số điện thoại</div>
+                    <button id="btnOpenQuickCreateCustomer" type="button" class="btn btn-sm btn-outline-success">
+                        + Tạo nhanh khách hàng
+                    </button>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-9">
+                        <input id="txtCustomerKeyword" class="form-control" placeholder="Nhập tên khách hàng hoặc số điện thoại..." autocomplete="off" />
+                    </div>
+                    <div class="col-md-3 d-grid">
+                        <button id="btnSearchCustomer" type="button" class="btn btn-primary">Tìm khách hàng</button>
+                    </div>
+                </div>
+
+                <div id="customerSearchResult" class="pos-customer-search-list">
+                    <div class="p-3 text-muted">Nhập từ khóa để tìm khách hàng.</div>
+                </div>
+            </div>
+
+            <div class="modal-footer justify-content-between">
+                <button id="btnClearCustomer" type="button" class="btn btn-outline-danger">Bỏ khách hiện tại</button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     QUICK CREATE CUSTOMER MODAL
+========================================================= -->
+<div class="modal fade" id="quickCreateCustomerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Tạo nhanh khách hàng</h5>
+                    <div class="pos-modal-subtitle">Tạo khách mới và gán ngay vào giỏ hiện tại</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Tên khách hàng <span class="text-danger">*</span></label>
+                    <input id="qcCustomerName" class="form-control" placeholder="Nhập tên khách hàng" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Số điện thoại</label>
+                    <input id="qcCustomerPhone" class="form-control" placeholder="Nhập số điện thoại" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Địa chỉ</label>
+                    <input id="qcCustomerAddress" class="form-control" placeholder="Nhập địa chỉ" />
+                </div>
+
+                <div class="mb-0">
+                    <label class="form-label fw-semibold">Ghi chú</label>
+                    <textarea id="qcCustomerNote" class="form-control" rows="3" placeholder="Ghi chú thêm nếu cần"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnSubmitQuickCreateCustomer" type="button" class="btn btn-success">
+                    Lưu và chọn khách
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     HOLD MODAL
+========================================================= -->
+<div class="modal fade" id="holdModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Giữ đơn hiện tại</h5>
+                    <div class="pos-modal-subtitle">Đơn sẽ được đưa vào danh sách giữ để lấy lại sau</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <label class="form-label fw-semibold">Ghi chú giữ đơn</label>
+                <textarea id="txtHoldNote" class="form-control" rows="3" placeholder="Ví dụ: Khách đi lấy thêm hàng, chờ chuyển khoản..."></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnConfirmHold" type="button" class="btn btn-warning">Xác nhận giữ đơn</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     CONFIRM MODAL
+========================================================= -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-body text-center p-4">
+                <div class="pos-modal-danger-icon mx-auto mb-3">!</div>
+                <h5 id="confirmTitle" class="fw-bold mb-2">Xác nhận thao tác</h5>
+                <div id="confirmMessage" class="text-muted mb-3">Bạn có chắc chắn muốn thực hiện thao tác này?</div>
+                <div id="confirmNoteBox" class="pos-note-box text-start mb-3" style="display:none;">
+                    <label id="confirmNoteLabel" class="form-label fw-semibold">Nội dung</label>
+                    <textarea id="confirmNoteInput" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Đóng</button>
+                    <button id="btnConfirmAction" type="button" class="btn btn-danger px-4">Xác nhận</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     LINE DISCOUNT MODAL
+========================================================= -->
+<div class="modal fade" id="lineDiscountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Giảm giá dòng hàng</h5>
+                    <div id="lineDiscountItemName" class="pos-modal-subtitle">Sản phẩm</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="lineDiscountLineId" />
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Số tiền giảm giá</label>
+                    <input id="lineDiscountAmount"
+                           type="number"
+                           step="0.01"
+                           min="0"
+                           class="form-control"
+                           placeholder="Nhập số tiền giảm" />
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnClearLineDiscount" type="button" class="btn btn-outline-secondary">Xóa giảm giá</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnSaveLineDiscount" type="button" class="btn btn-warning">Lưu giảm giá</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        /* =========================================================
+           A. STATE TOÀN MÀN HÌNH POS
+           - Lưu trạng thái hiện tại của màn hình
+           - Dùng để kiểm soát modal, giỏ hiện tại, order hiện tại
+        ========================================================= */
+        const posState = {
+            screen: null,
+            currentDraft: null,
+            currentOrderId: null,
+
+            paymentModalOpen: false,
+            customerModalOpen: false,
+            quickCreateCustomerModalOpen: false,
+            lineDiscountModalOpen: false,
+            holdModalOpen: false,
+            confirmModalOpen: false,
+
+            pendingConfirmAction: null
+        };
+
+        /* =========================================================
+           B. DOM CHUNG
+        ========================================================= */
+        const txtBarcode = document.getElementById('txtBarcode');
+        const btnScan = document.getElementById('btnScan');
+        const btnFocusBarcode = document.getElementById('btnFocusBarcode');
+
+        const btnNewCart = document.getElementById('btnNewCart');
+        const btnHoldCart = document.getElementById('btnHoldCart');
+        const btnOpenPayment = document.getElementById('btnOpenPayment');
+        const btnFinalizeCart = document.getElementById('btnFinalizeCart');
+        const btnCancelCart = document.getElementById('btnCancelCart');
+
+        const currentDraftBody = document.getElementById('currentDraftBody');
+        const currentCartInfo = document.getElementById('currentCartInfo');
+        const lblCurrentOrder = document.getElementById('lblCurrentOrder');
+        const heldList = document.getElementById('heldList');
+        const paymentListBox = document.getElementById('paymentListBox');
+
+        const customerInfoBox = document.getElementById('customerInfoBox');
+
+        const txtOrderNote = document.getElementById('txtOrderNote');
+        const btnSaveOrderNote = document.getElementById('btnSaveOrderNote');
+
+        const txtOrderDiscount = document.getElementById('txtOrderDiscount');
+        const btnSaveOrderDiscount = document.getElementById('btnSaveOrderDiscount');
+        const btnClearOrderDiscount = document.getElementById('btnClearOrderDiscount');
+
+        const sumSubtotal = document.getElementById('sumSubtotal');
+        const sumDiscount = document.getElementById('sumDiscount');
+        const sumGrandTotal = document.getElementById('sumGrandTotal');
+        const sumPaid = document.getElementById('sumPaid');
+        const sumBalance = document.getElementById('sumBalance');
+        const sumChange = document.getElementById('sumChange');
+
+        const barcodeAutocomplete = document.getElementById('barcodeAutocomplete');
+
+        /* =========================================================
+           C. DOM - CUSTOMER MODAL
+        ========================================================= */
+        const txtCustomerKeyword = document.getElementById('txtCustomerKeyword');
+        const btnSearchCustomer = document.getElementById('btnSearchCustomer');
+        const customerSearchResult = document.getElementById('customerSearchResult');
+        const btnClearCustomer = document.getElementById('btnClearCustomer');
+
+        const btnOpenQuickCreateCustomer = document.getElementById('btnOpenQuickCreateCustomer');
+        const qcCustomerName = document.getElementById('qcCustomerName');
+        const qcCustomerPhone = document.getElementById('qcCustomerPhone');
+        const qcCustomerAddress = document.getElementById('qcCustomerAddress');
+        const qcCustomerNote = document.getElementById('qcCustomerNote');
+        const btnSubmitQuickCreateCustomer = document.getElementById('btnSubmitQuickCreateCustomer');
+
+        /* =========================================================
+           D. DOM - PAYMENT MODAL
+        ========================================================= */
+        const payMethod = document.getElementById('payMethod');
+        const payAmount = document.getElementById('payAmount');
+        const payReference = document.getElementById('payReference');
+        const payProvider = document.getElementById('payProvider');
+
+        const btnAddPayment = document.getElementById('btnAddPayment');
+        const btnFinalizeFromPaymentModal = document.getElementById('btnFinalizeFromPaymentModal');
+        const btnPayExact = document.getElementById('btnPayExact');
+
+        const paymentModalListBox = document.getElementById('paymentModalListBox');
+
+        const paySumSubtotal = document.getElementById('paySumSubtotal');
+        const paySumDiscount = document.getElementById('paySumDiscount');
+        const paySumGrandTotal = document.getElementById('paySumGrandTotal');
+        const paySumPaid = document.getElementById('paySumPaid');
+        const paySumBalance = document.getElementById('paySumBalance');
+        const paySumChange = document.getElementById('paySumChange');
+
+        const payPreviewBalance = document.getElementById('payPreviewBalance');
+        const payPreviewChange = document.getElementById('payPreviewChange');
+
+        /* =========================================================
+           E. DOM - LINE DISCOUNT / HOLD / CONFIRM
+        ========================================================= */
+        const txtHoldNote = document.getElementById('txtHoldNote');
+        const btnConfirmHold = document.getElementById('btnConfirmHold');
+
+        const lineDiscountLineId = document.getElementById('lineDiscountLineId');
+        const lineDiscountAmount = document.getElementById('lineDiscountAmount');
+        const lineDiscountItemName = document.getElementById('lineDiscountItemName');
+        const btnSaveLineDiscount = document.getElementById('btnSaveLineDiscount');
+        const btnClearLineDiscount = document.getElementById('btnClearLineDiscount');
+
+        const confirmTitle = document.getElementById('confirmTitle');
+        const confirmMessage = document.getElementById('confirmMessage');
+        const confirmNoteBox = document.getElementById('confirmNoteBox');
+        const confirmNoteLabel = document.getElementById('confirmNoteLabel');
+        const confirmNoteInput = document.getElementById('confirmNoteInput');
+        const btnConfirmAction = document.getElementById('btnConfirmAction');
+
+        /* =========================================================
+           F. MODAL BOOTSTRAP
+        ========================================================= */
+        const paymentModalEl = document.getElementById('paymentModal');
+        const paymentModal = new bootstrap.Modal(paymentModalEl);
+
+        const customerModalEl = document.getElementById('customerModal');
+        const customerModal = new bootstrap.Modal(customerModalEl);
+
+        const quickCreateCustomerModalEl = document.getElementById('quickCreateCustomerModal');
+        const quickCreateCustomerModal = new bootstrap.Modal(quickCreateCustomerModalEl);
+
+        const holdModalEl = document.getElementById('holdModal');
+        const holdModal = new bootstrap.Modal(holdModalEl);
+
+        const confirmModalEl = document.getElementById('confirmModal');
+        const confirmModal = new bootstrap.Modal(confirmModalEl);
+
+        const lineDiscountModalEl = document.getElementById('lineDiscountModal');
+        const lineDiscountModal = new bootstrap.Modal(lineDiscountModalEl);
+
+        /* =========================================================
+           G. STATE CHO AUTOCOMPLETE SẢN PHẨM
+        ========================================================= */
+        const barcodeSearchState = {
+            items: [],
+            activeIndex: -1,
+            debounceTimer: null,
+            keyword: ''
+        };
+
+        /* =========================================================
+           H. HÀM DÙNG CHUNG
+        ========================================================= */
+
+        // Lấy AntiForgeryToken để gọi API POST/PATCH/DELETE
+        function getToken() {
+            const el = document.querySelector('input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        // Format tiền theo chuẩn Việt Nam
+        function formatMoney(value) {
+            const n = Number(value || 0);
+            return n.toLocaleString('vi-VN');
+        }
+
+        // Toastr thành công
+        function showSuccess(msg) {
+            if (window.toastr) toastr.success(msg);
+        }
+
+        // Toastr lỗi
+        function showError(msg) {
+            if (window.toastr) toastr.error(msg || 'Có lỗi xảy ra');
+        }
+
+        // Escape HTML để tránh lỗi XSS khi render dữ liệu động
+        function escapeHtml(str) {
+            return (str || '')
+                .toString()
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        // Ghép tên hiển thị theo format:
+        // Tên sản phẩm - Tên biến thể
+    function buildVariantDisplayName(productName, productVariantName) {
+    const pName = (productName || '').trim();
+    const vName = (productVariantName || '').trim();
+
+    if (!pName && !vName) return '';
+    if (!vName) return pName;
+    if (!pName) return vName;
+
+    const pLower = pName.toLowerCase();
+    const vLower = vName.toLowerCase();
+
+    if (pLower === vLower) {
+        return pName;
+    }
+
+    // Nếu tên biến thể đã chứa luôn tên sản phẩm thì chỉ hiện biến thể
+    if (vLower.includes(pLower)) {
+        return vName;
+    }
+
+    return `${pName} - ${vName}`;
+}
+
+        // Chuyển enum / source barcode thành text dễ hiểu
+        function getBarcodeSourceText(source) {
+            if (source === null || source === undefined) return '';
+
+            const raw = typeof source === 'string' ? source : String(source);
+
+            switch (raw) {
+                case 'UnitBarcode':
+                case '1':
+                    return 'Barcode đơn vị';
+
+                case 'VariantBarcode':
+                case '2':
+                    return 'Barcode variant';
+
+                case 'BarcodeHistory':
+                case '3':
+                    return 'Barcode lịch sử';
+
+                case 'ManualVariant':
+                case '4':
+                    return 'Chọn thủ công';
+
+                default:
+                    return '';
+            }
+        }
+
+        // Meta ngắn hiển thị ngay dưới tên dòng hàng
+        function buildCompactLineMeta(line) {
+            const parts = [];
+
+            
+
+            if (line?.sku) {
+                parts.push(`SKU: ${line.sku}`);
+            }
+
+            const sellingUnit = line?.sellingUnitName || line?.unitName || '';
+            const baseUnit = line?.baseUnitName || '';
+            const multiplier = Number(line?.multiplier || 1);
+
+            if (sellingUnit) {
+                if (baseUnit && multiplier > 1) {
+                    parts.push(`1 ${sellingUnit} = ${formatMoney(multiplier)} ${baseUnit}`);
+                } else {
+                    parts.push(sellingUnit);
+                }
+            }
+
+            return parts.map(x => escapeHtml(x)).join(' | ');
+        }
+
+        // Build nội dung chi tiết cho popover info
+        function buildLineDetailHtml(line) {
+            const details = [];
+            const sourceText = getBarcodeSourceText(line?.barcodeSource);
+
+            const fullName = buildVariantDisplayName(
+                line?.productName || line?.itemName || '',
+                line?.productVariantName || ''
+            );
+
+            if (fullName) {
+                details.push(`<div><strong>Tên hiển thị:</strong> ${escapeHtml(fullName)}</div>`);
+            }
+
+            if (line?.productVariantName) {
+                details.push(`<div><strong>Tên biến thể:</strong> ${escapeHtml(line.productVariantName)}</div>`);
+            }
+
+            if (line?.sku) {
+                details.push(`<div><strong>SKU:</strong> ${escapeHtml(line.sku)}</div>`);
+            }
+
+            if (line?.scannedBarcode) {
+                details.push(`<div><strong>Barcode quét:</strong> ${escapeHtml(line.scannedBarcode)}</div>`);
+            } else if (line?.barcode) {
+                details.push(`<div><strong>Barcode:</strong> ${escapeHtml(line.barcode)}</div>`);
+            }
+
+            if (line?.sellingUnitName) {
+                details.push(`<div><strong>ĐVT bán:</strong> ${escapeHtml(line.sellingUnitName)}</div>`);
+            }
+
+            if (line?.baseUnitName) {
+                details.push(`<div><strong>ĐVT gốc:</strong> ${escapeHtml(line.baseUnitName)}</div>`);
+            }
+
+            if (Number(line?.multiplier || 1) > 1 && line?.sellingUnitName && line?.baseUnitName) {
+                details.push(
+                    `<div><strong>Quy đổi:</strong> 1 ${escapeHtml(line.sellingUnitName)} = ${formatMoney(Number(line.multiplier || 1))} ${escapeHtml(line.baseUnitName)}</div>`
+                );
+            }
+
+            if (sourceText) {
+                details.push(`<div><strong>Nguồn:</strong> ${escapeHtml(sourceText)}</div>`);
+            }
+
+            return details.join('');
+        }
+
+        // Khởi tạo popover cho nút info từng dòng hàng
+        function initLineInfoPopovers() {
+            document.querySelectorAll('.pos-line-info-btn').forEach(btn => {
+                const html = decodeURIComponent(btn.getAttribute('data-line-detail-html') || '');
+
+                const existed = bootstrap.Popover.getInstance(btn);
+                if (existed) {
+                    existed.dispose();
+                }
+
+                new bootstrap.Popover(btn, {
+                    trigger: 'hover focus',
+                    placement: 'top',
+                    html: true,
+                    sanitize: false,
+                    title: 'Chi tiết dòng hàng',
+                    content: html
+                });
+            });
+        }
+
+        // Highlight từ khóa trong autocomplete
+        function highlightMatch(text, keyword) {
+            const safeText = escapeHtml(text || '');
+            const rawKeyword = (keyword || '').trim();
+
+            if (!rawKeyword) return safeText;
+
+            const escapedKeyword = rawKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(${escapedKeyword})`, 'ig');
+
+            return safeText.replace(regex, '<mark>$1</mark>');
+        }
+
+        // Focus lại ô barcode để thu ngân thao tác nhanh
+        function focusBarcodeInput() {
+            setTimeout(() => {
+                txtBarcode.focus();
+                txtBarcode.select();
+            }, 80);
+        }
+
+        // Mở cửa sổ in hóa đơn
+        function openReceiptPrint(orderId, size = "80", autoPrint = true) {
+            if (!orderId) return;
+            const url = `/admin/pos/orders/${orderId}/print?size=${encodeURIComponent(size)}&autoPrint=${autoPrint}`;
+            window.open(url, "_blank", "width=420,height=760,noopener,noreferrer");
+        }
+
+        // Hàm fetch JSON dùng chung
+        async function fetchJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type') || '';
+
+            let jsonData = null;
+            let textData = '';
+
+            try {
+                if (contentType.includes('application/json')) {
+                    jsonData = await res.json();
+                } else {
+                    textData = await res.text();
+                }
+            } catch { }
+
+            if (!res.ok) {
+                const msg =
+                    jsonData?.message ||
+                    jsonData?.title ||
+                    jsonData?.error ||
+                    textData ||
+                    `Yêu cầu thất bại (${res.status})`;
+
+                throw new Error(msg);
+            }
+
+            return jsonData ?? textData ?? null;
+        }
+
+        // POST JSON có AntiForgeryToken
+        async function postJson(url, data) {
+            return await fetchJson(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': getToken()
+                },
+                body: JSON.stringify(data || {})
+            });
+        }
+
+        // DELETE có token
+        async function deleteWithToken(url) {
+            return await fetchJson(url, {
+                method: 'DELETE',
+                headers: {
+                    'RequestVerificationToken': getToken()
+                }
+            });
+        }
+
+        // PATCH có token
+        async function patchWithToken(url) {
+            return await fetchJson(url, {
+                method: 'PATCH',
+                headers: {
+                    'RequestVerificationToken': getToken()
+                }
+            });
+        }
+
+        // Hiển thị loading tạm trên button
+        async function withButtonLoading(button, action) {
+            if (!button) return await action();
+            if (button.disabled) return;
+
+            const oldHtml = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Đang xử lý`;
+
+            try {
+                return await action();
+            } finally {
+                button.disabled = false;
+                button.innerHTML = oldHtml;
+            }
+        }
+
+        /* =========================================================
+           I. AUTOCOMPLETE SẢN PHẨM
+        ========================================================= */
+
+        // Ẩn autocomplete và reset state
+        function hideBarcodeAutocomplete() {
+            barcodeAutocomplete.style.display = 'none';
+            barcodeAutocomplete.innerHTML = '';
+            barcodeSearchState.items = [];
+            barcodeSearchState.activeIndex = -1;
+            barcodeSearchState.keyword = '';
+        }
+
+        // Set item active khi dùng phím lên/xuống
+        function setAutocompleteActive(index) {
+            const buttons = barcodeAutocomplete.querySelectorAll('[data-autocomplete-index]');
+            buttons.forEach(x => x.classList.remove('active'));
+
+            if (!buttons.length) {
+                barcodeSearchState.activeIndex = -1;
+                return;
+            }
+
+            if (index < 0) index = 0;
+            if (index >= buttons.length) index = buttons.length - 1;
+
+            barcodeSearchState.activeIndex = index;
+            buttons[index].classList.add('active');
+            buttons[index].scrollIntoView({ block: 'nearest' });
+        }
+
+        // Render danh sách autocomplete sản phẩm
+        function renderBarcodeAutocomplete(items) {
+            barcodeSearchState.items = items || [];
+            barcodeSearchState.activeIndex = -1;
+
+            if (!items || !items.length) {
+                hideBarcodeAutocomplete();
+                return;
+            }
+
+            const keyword = barcodeSearchState.keyword || '';
+
+            barcodeAutocomplete.innerHTML = items.map((x, index) => {
+                const fullName = buildVariantDisplayName(
+                    x.productName || x.displayName || '',
+                    x.productVariantName || ''
+                );
+
+                const titleHtml = highlightMatch(fullName, keyword);
+                const skuText = x.sku ? escapeHtml(x.sku) : '-';
+                const barcodeText = x.barcode ? escapeHtml(x.barcode) : '-';
+                const priceText = `${formatMoney(x.price)} đ`;
+
+                return `
+                    <button type="button"
+                            class="pos-autocomplete-item"
+                            data-autocomplete-index="${index}"
+                            data-variant-id="${x.variantId}">
+                        <div class="pos-autocomplete-row">
+                            <div class="pos-autocomplete-main">
+                                <div class="pos-autocomplete-title">${titleHtml}</div>
+                                <div class="pos-autocomplete-meta">
+                                    <span class="pos-meta-badge sku">
+                                        SKU:&nbsp;<span class="pos-meta-text">${skuText}</span>
+                                    </span>
+                                    <span class="pos-meta-badge barcode">
+                                        Barcode:&nbsp;<span class="pos-meta-text">${barcodeText}</span>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="pos-autocomplete-right">
+                                <div class="pos-autocomplete-price">${priceText}</div>
+                            </div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            barcodeAutocomplete.style.display = '';
+            setAutocompleteActive(0);
+        }
+
+        // Gọi API tìm nhanh sản phẩm
+        async function searchBarcodeAutocomplete(keyword) {
+            keyword = (keyword || '').trim();
+            barcodeSearchState.keyword = keyword;
+
+            if (keyword.length < 2) {
+                hideBarcodeAutocomplete();
+                return;
+            }
+
+            try {
+                const items = await fetchJson(`/admin/pos/products/search?keyword=${encodeURIComponent(keyword)}&take=10`);
+                renderBarcodeAutocomplete(items || []);
+            } catch {
+                hideBarcodeAutocomplete();
+            }
+        }
+
+        /* =========================================================
+           J. RENDER UI CHÍNH
+        ========================================================= */
+
+        // Render badge giỏ hiện tại trên header
+        function renderCurrentBadge(currentCart, currentDraft) {
+            const orderId = currentCart && currentCart.currentOrderId ? currentCart.currentOrderId : null;
+
+            if (!orderId) {
+                lblCurrentOrder.textContent = 'Chưa có giỏ';
+                lblCurrentOrder.className = 'badge bg-secondary pos-current-badge';
+                currentCartInfo.textContent = 'Chưa có dữ liệu giỏ hiện tại';
+                return;
+            }
+
+            lblCurrentOrder.textContent = `Giỏ hiện tại #${orderId}`;
+            lblCurrentOrder.className = 'badge bg-primary pos-current-badge';
+
+            if (currentDraft) {
+                currentCartInfo.textContent = `Đơn #${currentDraft.orderId} | ${(currentDraft.lines || []).length} dòng hàng`;
+            } else {
+                currentCartInfo.textContent = `Đơn #${orderId}`;
+            }
+        }
+
+        // Render box khách hàng
+        function renderCustomerInfo(draft) {
+            if (!draft || !draft.customerId) {
+                customerInfoBox.innerHTML = `
+                    <div class="text-muted">Khách lẻ</div>
+                    <div class="pos-customer-actions">
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCustomerModal()">
+                            Chọn khách hàng
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            customerInfoBox.innerHTML = `
+                <div class="pos-customer-name">${escapeHtml(draft.customerName || 'Khách hàng')}</div>
+                <div class="pos-customer-phone">${escapeHtml(draft.customerPhone || '')}</div>
+                <div class="pos-customer-actions">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCustomerModal()">
+                        Đổi khách
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearCustomerFromCurrentCart()">
+                        Bỏ khách
+                    </button>
+                </div>
+            `;
+        }
+
+        // Render danh sách payment ở ngoài main card
+        function renderPayments(payments) {
+            if (!payments || !payments.length) {
+                paymentListBox.innerHTML = '';
+                return;
+            }
+
+            paymentListBox.innerHTML = `
+                <div class="card border-0 bg-light mt-2">
+                    <div class="card-body py-3">
+                        <div class="fw-bold mb-2">Thanh toán đã ghi nhận</div>
+                        ${payments.map(x => `
+                            <div class="d-flex justify-content-between align-items-start border-top pt-2 mt-2">
+                                <div>
+                                    <div class="fw-semibold">${escapeHtml(x.method || '')}</div>
+                                    <div class="small text-muted">
+                                        ${x.reference ? `Mã: ${escapeHtml(x.reference)} | ` : ''}
+                                        ${x.createdAt ? new Date(x.createdAt).toLocaleString('vi-VN') : ''}
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="fw-bold text-success">${formatMoney(x.amount)}</div>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger mt-1"
+                                            data-remove-payment-id="${x.paymentId}">
+                                        Xóa
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render danh sách đơn đang giữ
+        function renderHeldList(items) {
+            if (!items.length) {
+                heldList.innerHTML = `<div class="pos-empty">Không có đơn đang giữ.</div>`;
+                return;
+            }
+
+            heldList.innerHTML = items.map(x => `
+                <div class="pos-list-item" data-resume-order-id="${x.orderId}">
+                    <div class="d-flex justify-content-between align-items-center gap-2">
+                        <div class="fw-bold">${escapeHtml(x.holdCode || ('Hold #' + x.orderId))}</div>
+                        <button type="button" class="btn btn-sm btn-warning" data-resume-btn-id="${x.orderId}">Lấy lại</button>
+                    </div>
+                    <div class="pos-list-meta mt-1">
+                        ${x.lineCount} dòng | SL ${x.totalQuantity} | Tổng ${formatMoney(x.subtotal)}
+                    </div>
+                    ${x.holdNote ? `<div class="small mt-1">${escapeHtml(x.holdNote)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Render draft hiện tại
+        function renderCurrentDraft(draft) {
+            posState.currentDraft = draft;
+
+            if (!draft) {
+                currentDraftBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">Chưa có giỏ hiện tại.</td>
+                    </tr>`;
+                paymentListBox.innerHTML = '';
+
+                sumSubtotal.textContent = '0';
+                sumDiscount.textContent = '0';
+                sumGrandTotal.textContent = '0';
+                sumPaid.textContent = '0';
+                sumBalance.textContent = '0';
+                sumChange.textContent = '0';
+
+                if (txtOrderNote) txtOrderNote.value = '';
+                if (txtOrderDiscount) txtOrderDiscount.value = '';
+
+                return;
+            }
+
+            const lines = draft.lines || [];
+
+            if (!lines.length) {
+                currentDraftBody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">Giỏ hiện tại chưa có sản phẩm.</td>
+                    </tr>`;
+            } else {
+                currentDraftBody.innerHTML = lines.map((x, index) => 
+                `
+                    <tr>
+                        <td>${index + 1}</td>
+
+                        <td class="pos-line-name-cell">
+                            <div class="pos-line-name-wrap">
+                                <div class="pos-line-name-main">
+                              <div class="pos-line-name">
+    ${escapeHtml(
+        x.productVariantName && x.productVariantName.trim()
+            ? x.productVariantName
+            : (x.itemName || '')
+    )}
+</div>
+                                </div>
+
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary pos-line-info-btn"
+                                        data-line-detail-html="${encodeURIComponent(buildLineDetailHtml(x))}">
+                                    <i class="bx bx-info-circle"></i>
+                                </button>
+                            </div>
+
+                            <div class="pos-line-submeta">
+                                ${buildCompactLineMeta(x)}
+                            </div>
+                        </td>
+
+                        <td class="pos-qty-cell">
+                            <div class="qty-box">
+                                <button type="button" class="btn btn-sm btn-outline-secondary qty-btn" data-dec-line-id="${x.lineId}">-</button>
+                                <input type="number"
+                                       class="form-control form-control-sm"
+                                       value="${x.quantity}"
+                                       min="1"
+                                       step="1"
+                                       data-qty-line-id="${x.lineId}" />
+                                <button type="button" class="btn btn-sm btn-outline-secondary qty-btn" data-inc-line-id="${x.lineId}">+</button>
+                            </div>
+
+                            <div class="pos-qty-summary">
+                                ${x.sellingUnitName ? `${formatMoney(Number(x.quantity || 0))} ${escapeHtml(x.sellingUnitName)}` : ''}
+                                ${Number(x.multiplier || 1) > 1 && x.baseUnitName
+                                    ? ` (${formatMoney(Number(x.baseQuantity || 0))} ${escapeHtml(x.baseUnitName)})`
+                                    : ''
+                                }
+                            </div>
+                        </td>
+
+                        <td>${formatMoney(x.unitPrice)}</td>
+
+                        <td>
+                            <div class="d-grid gap-1">
+                                <div class="fw-semibold text-danger">${formatMoney(x.lineDiscount || 0)}</div>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-warning pos-line-discount-btn"
+                                        data-line-discount-id="${x.lineId}"
+                                        data-line-discount-amount="${x.lineDiscount || 0}"
+                                        data-line-name="${escapeHtml(buildVariantDisplayName(
+                                            x.productName || x.itemName || '',
+                                            x.productVariantName || ''
+                                        ))}">
+                                    Giảm giá
+                                </button>
+                            </div>
+                        </td>
+
+                        <td class="fw-bold">${formatMoney(x.lineTotal)}</td>
+
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-remove-line-id="${x.lineId}">
+                                Xóa
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+
+                initLineInfoPopovers();
+            }
+
+            renderPayments(draft.payments || []);
+
+            sumSubtotal.textContent = formatMoney(draft.subtotal || 0);
+            sumDiscount.textContent = formatMoney(draft.discountTotal || 0);
+            sumGrandTotal.textContent = formatMoney(draft.grandTotal || 0);
+            sumPaid.textContent = formatMoney(draft.paidTotal || 0);
+            sumBalance.textContent = formatMoney(draft.balanceDue || 0);
+            sumChange.textContent = formatMoney(draft.changeDue || 0);
+
+            if (txtOrderNote) txtOrderNote.value = draft.note || '';
+            if (txtOrderDiscount) txtOrderDiscount.value = draft.orderDiscount || 0;
+        }
+
+        // Render toàn bộ màn hình POS
+        function renderScreen(screen) {
+            renderCurrentBadge(screen.currentCart, screen.currentDraft);
+            renderCurrentDraft(screen.currentDraft);
+            renderCustomerInfo(screen.currentDraft);
+            renderHeldList(screen.heldOrders || []);
+        }
+
+        /* =========================================================
+           K. RENDER PAYMENT MODAL
+        ========================================================= */
+
+        // Render dữ liệu vào payment modal
+        function renderPaymentModalDraft(draft) {
+            if (!draft) {
+                paySumSubtotal.textContent = '0';
+                paySumDiscount.textContent = '0';
+                paySumGrandTotal.textContent = '0';
+                paySumPaid.textContent = '0';
+                paySumBalance.textContent = '0';
+                paySumChange.textContent = '0';
+                paymentModalListBox.innerHTML = `<div class="text-muted">Chưa có dữ liệu giỏ hiện tại.</div>`;
+                btnFinalizeFromPaymentModal.disabled = true;
+                return;
+            }
+
+            paySumSubtotal.textContent = formatMoney(draft.subtotal || 0);
+            paySumDiscount.textContent = formatMoney(draft.discountTotal || 0);
+            paySumGrandTotal.textContent = formatMoney(draft.grandTotal || 0);
+            paySumPaid.textContent = formatMoney(draft.paidTotal || 0);
+            paySumBalance.textContent = formatMoney(draft.balanceDue || 0);
+            paySumChange.textContent = formatMoney(draft.changeDue || 0);
+
+            const payments = draft.payments || [];
+
+            if (!payments.length) {
+                paymentModalListBox.innerHTML = `<div class="text-muted">Chưa có thanh toán.</div>`;
+            } else {
+                paymentModalListBox.innerHTML = payments.map(x => `
+                    <div class="d-flex justify-content-between align-items-start border-bottom py-2">
+                        <div>
+                            <div class="fw-semibold">${escapeHtml(x.method || '')}</div>
+                            <div class="small text-muted">
+                                ${x.reference ? `Mã: ${escapeHtml(x.reference)} | ` : ''}
+                                ${x.createdAt ? new Date(x.createdAt).toLocaleString('vi-VN') : ''}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold text-success">${formatMoney(x.amount)}</div>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger mt-1"
+                                    data-remove-payment-id="${x.paymentId}">
+                                Xóa
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            btnFinalizeFromPaymentModal.disabled = (draft.balanceDue || 0) > 0;
+        }
+
+        /* =========================================================
+           L. PAYMENT NHANH
+        ========================================================= */
+
+        // Đổ đúng số tiền còn thiếu vào ô thanh toán
+        function setPayAmountExact() {
+            const draft = posState.currentDraft;
+
+            if (!draft) {
+                payAmount.value = '';
+                renderPaymentPreview();
+                return;
+            }
+
+            const balance = Number(draft.balanceDue || 0);
+            payAmount.value = balance > 0 ? balance : 0;
+            renderPaymentPreview();
+        }
+
+        // Chọn nhanh mệnh giá
+        function setPayAmountQuick(amount) {
+            payAmount.value = Number(amount || 0);
+            payAmount.focus();
+            payAmount.select();
+            renderPaymentPreview();
+        }
+
+        // Cộng thêm tiền vào ô hiện tại
+        function increasePayAmount(amount) {
+            const current = Number(payAmount.value || 0);
+            payAmount.value = current + Number(amount || 0);
+            payAmount.focus();
+            payAmount.select();
+            renderPaymentPreview();
+        }
+
+        // Preview còn thiếu / tiền thừa
+        function renderPaymentPreview() {
+            const draft = posState.currentDraft;
+            const currentInput = Number(payAmount.value || 0);
+
+            if (!draft) {
+                payPreviewBalance.textContent = '0';
+                payPreviewChange.textContent = '0';
+                return;
+            }
+
+            const balanceDue = Number(draft.balanceDue || 0);
+            const expectedChange = Math.max(currentInput - balanceDue, 0);
+
+            payPreviewBalance.textContent = formatMoney(balanceDue);
+            payPreviewChange.textContent = formatMoney(expectedChange);
+        }
+
+        // Khi đổi phương thức thanh toán
+        function onPayMethodChanged() {
+            const method = parseInt(payMethod.value || '0');
+
+            if (method === 0) {
+                if (!payAmount.value) {
+                    setPayAmountExact();
+                } else {
+                    renderPaymentPreview();
+                }
+                return;
+            }
+
+            setPayAmountExact();
+        }
+
+        /* =========================================================
+           M. LOAD / ACTION CHÍNH
+        ========================================================= */
+
+        // Load toàn bộ màn hình POS
+        async function loadScreen() {
+            try {
+                const screen = await fetchJson('/admin/pos/screen');
+
+                posState.screen = screen;
+                posState.currentDraft = screen.currentDraft;
+                posState.currentOrderId = screen.currentCart ? screen.currentCart.currentOrderId : null;
+
+                renderScreen(screen);
+                focusBarcodeInput();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Quét / nhập barcode để thêm hàng
+        async function scanCurrentCart() {
+            const barcode = (txtBarcode.value || '').trim();
+            if (!barcode) {
+                focusBarcodeInput();
+                return;
+            }
+
+            try {
+                const draft = await postJson('/admin/pos/cart/current/scan', {
+                    barcode: barcode,
+                    quantity: 1
+                });
+
+                renderCurrentDraft(draft);
+                renderCustomerInfo(draft);
+                txtBarcode.value = '';
+                hideBarcodeAutocomplete();
+                showSuccess('Đã thêm sản phẩm vào giỏ');
+                focusBarcodeInput();
+            } catch (err) {
+                if (!barcodeSearchState.items || !barcodeSearchState.items.length) {
+                    showError(err.message);
+                }
+                focusBarcodeInput();
+            }
+        }
+
+        // Thêm trực tiếp variant từ autocomplete vào giỏ
+        async function addVariantToCurrentCart(variantId) {
+            try {
+                const currentOrderId = posState.currentDraft?.orderId || posState.currentOrderId;
+
+                if (!currentOrderId) {
+                    showError('Không có giỏ hiện tại.');
+                    return;
+                }
+
+                const draft = await postJson(`/admin/pos/${currentOrderId}/items?variantId=${variantId}&qty=1`, {});
+                renderCurrentDraft(draft);
+                renderCustomerInfo(draft);
+
+                txtBarcode.value = '';
+                hideBarcodeAutocomplete();
+
+                showSuccess('Đã thêm sản phẩm vào giỏ');
+                focusBarcodeInput();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Tạo giỏ mới
+        async function createNewCart() {
+            await withButtonLoading(btnNewCart, async () => {
+                try {
+                    const result = await postJson('/admin/pos/cart/current/new', {
+                        customerId: null,
+                        note: null
+                    });
+
+                    showSuccess(result?.message || 'Đã sẵn sàng giỏ mới');
+                    await loadScreen();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Mở modal giữ đơn
+        function openHoldModal() {
+            txtHoldNote.value = '';
+            holdModal.show();
+        }
+
+        // Xác nhận giữ đơn hiện tại
+        async function holdCurrentCart() {
+            await withButtonLoading(btnConfirmHold, async () => {
+                try {
+                    await postJson('/admin/pos/cart/current/hold', {
+                        holdNote: (txtHoldNote.value || '').trim() || null
+                    });
+
+                    holdModal.hide();
+                    showSuccess('Đã giữ đơn');
+                    await loadScreen();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Mở modal confirm dùng chung
+        function openConfirmModal(options) {
+            confirmTitle.textContent = options?.title || 'Xác nhận thao tác';
+            confirmMessage.textContent = options?.message || 'Bạn có chắc chắn muốn thực hiện thao tác này?';
+            btnConfirmAction.className = `btn ${options?.confirmClass || 'btn-danger'} px-4`;
+            btnConfirmAction.textContent = options?.confirmText || 'Xác nhận';
+
+            if (options?.showNote) {
+                confirmNoteBox.style.display = '';
+                confirmNoteLabel.textContent = options.noteLabel || 'Nội dung';
+                confirmNoteInput.value = options.noteValue || '';
+                confirmNoteInput.placeholder = options.notePlaceholder || '';
+            } else {
+                confirmNoteBox.style.display = 'none';
+                confirmNoteInput.value = '';
+            }
+
+            posState.pendingConfirmAction = options?.onConfirm || null;
+            confirmModal.show();
+
+            if (options?.showNote) {
+                setTimeout(() => confirmNoteInput.focus(), 150);
+            }
+        }
+
+        // Chốt đơn hiện tại
+        async function finalizeCurrentCart() {
+            openConfirmModal({
+                title: 'Chốt đơn hiện tại',
+                message: 'Xác nhận chốt đơn và in hóa đơn cho giỏ hiện tại?',
+                confirmText: 'Chốt đơn',
+                confirmClass: 'btn-success',
+                onConfirm: async () => {
+                    await withButtonLoading(btnConfirmAction, async () => {
+                        try {
+                            const result = await postJson('/admin/pos/cart/current/finalize', {});
+                            confirmModal.hide();
+                            showSuccess(result?.message || 'Đã chốt đơn');
+
+                            if (result?.orderId) {
+                                openReceiptPrint(result.orderId, '80', true);
+                            }
+
+                            await loadScreen();
+                        } catch (err) {
+                            showError(err.message);
+                        }
+                    });
+                }
+            });
+        }
+
+        // Hủy giỏ hiện tại
+        async function cancelCurrentCart() {
+            openConfirmModal({
+                title: 'Hủy giỏ hiện tại',
+                message: 'Giỏ hiện tại sẽ bị hủy. Bạn có chắc chắn muốn tiếp tục?',
+                confirmText: 'Hủy giỏ',
+                confirmClass: 'btn-danger',
+                showNote: true,
+                noteLabel: 'Lý do hủy',
+                notePlaceholder: 'Nhập lý do hủy nếu cần...',
+                onConfirm: async () => {
+                    await withButtonLoading(btnConfirmAction, async () => {
+                        try {
+                            const reason = (confirmNoteInput.value || '').trim() || null;
+
+                            await postJson('/admin/pos/cart/current/cancel', {
+                                reason: reason
+                            });
+
+                            confirmModal.hide();
+                            showSuccess('Đã hủy giỏ');
+                            await loadScreen();
+                        } catch (err) {
+                            showError(err.message);
+                        }
+                    });
+                }
+            });
+        }
+
+        // Lấy lại đơn đang giữ
+        async function resumeHeld(orderId) {
+            try {
+                await postJson(`/admin/pos/orders/${orderId}/resume`, {});
+                showSuccess(`Đã lấy lại đơn #${orderId}`);
+                await loadScreen();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        /* =========================================================
+           N. PAYMENT ACTION
+        ========================================================= */
+
+        // Mở payment modal
+        function openPaymentModal() {
+            if (!posState.currentDraft) {
+                showError('Chưa có giỏ hiện tại.');
+                return;
+            }
+
+            payMethod.value = '0';
+            payReference.value = '';
+            payProvider.value = '';
+
+            renderPaymentModalDraft(posState.currentDraft);
+            setPayAmountExact();
+
+            paymentModal.show();
+
+            setTimeout(() => {
+                payAmount.focus();
+                payAmount.select();
+            }, 180);
+        }
+
+        // Reset form payment
+        function resetPaymentForm() {
+            payMethod.value = '0';
+            payAmount.value = '';
+            payReference.value = '';
+            payProvider.value = '';
+            renderPaymentPreview();
+        }
+
+        // Thêm payment vào giỏ hiện tại
+        async function addPayment() {
+            const amount = parseFloat(payAmount.value || '0');
+
+            await withButtonLoading(btnAddPayment, async () => {
+                try {
+                    const draft = await postJson('/admin/pos/cart/current/payments', {
+                        method: parseInt(payMethod.value || '0'),
+                        amount: amount,
+                        referenceCode: payReference.value || null,
+                        provider: payProvider.value || null
+                    });
+
+                    renderCurrentDraft(draft);
+                    renderCustomerInfo(draft);
+                    renderPaymentModalDraft(draft);
+
+                    payAmount.value = draft.balanceDue || 0;
+                    payReference.value = '';
+                    payProvider.value = '';
+                    renderPaymentPreview();
+
+                    showSuccess('Đã thêm thanh toán');
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Chốt đơn từ payment modal
+        async function finalizeFromPaymentModal() {
+            await withButtonLoading(btnFinalizeFromPaymentModal, async () => {
+                try {
+                    const result = await postJson('/admin/pos/cart/current/finalize', {});
+
+                    paymentModal.hide();
+                    showSuccess(result?.message || 'Đã chốt đơn');
+
+                    if (result?.orderId) {
+                        window.open(`/admin/pos/orders/${result.orderId}/print?size=80&autoPrint=false`, '_blank');
+                    }
+
+                    await loadScreen();
+                    focusBarcodeInput();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Xóa payment
+        async function removePayment(paymentId) {
+            openConfirmModal({
+                title: 'Xóa thanh toán',
+                message: 'Bạn có chắc chắn muốn xóa khoản thanh toán này?',
+                confirmText: 'Xóa thanh toán',
+                confirmClass: 'btn-danger',
+                onConfirm: async () => {
+                    await withButtonLoading(btnConfirmAction, async () => {
+                        try {
+                            const draft = await deleteWithToken(`/admin/pos/payments/${paymentId}`);
+                            confirmModal.hide();
+
+                            renderCurrentDraft(draft);
+                            renderCustomerInfo(draft);
+                            renderPaymentModalDraft(draft);
+                            renderPaymentPreview();
+
+                            showSuccess('Đã xóa thanh toán');
+                        } catch (err) {
+                            showError(err.message);
+                        }
+                    });
+                }
+            });
+        }
+
+        /* =========================================================
+           O. CUSTOMER ACTION
+        ========================================================= */
+
+        // Mở modal chọn khách hàng
+        function openCustomerModal() {
+            customerSearchResult.innerHTML = `<div class="p-3 text-muted">Nhập từ khóa để tìm khách hàng.</div>`;
+            txtCustomerKeyword.value = '';
+            customerModal.show();
+            setTimeout(() => txtCustomerKeyword.focus(), 180);
+        }
+
+        // Tìm khách hàng theo tên / số điện thoại
+        async function searchCustomers() {
+            const keyword = (txtCustomerKeyword.value || '').trim();
+
+            if (!keyword) {
+                customerSearchResult.innerHTML = `<div class="p-3 text-muted">Vui lòng nhập tên hoặc số điện thoại khách hàng.</div>`;
+                return;
+            }
+
+            try {
+                const items = await fetchJson(`/admin/pos/customers/search?keyword=${encodeURIComponent(keyword)}&take=20`);
+
+                if (!Array.isArray(items) || items.length === 0) {
+                    customerSearchResult.innerHTML = `<div class="p-3 text-muted">Không tìm thấy khách hàng phù hợp.</div>`;
+                    return;
+                }
+
+                customerSearchResult.innerHTML = items.map(x => `
+                    <button type="button"
+                            class="pos-customer-search-item"
+                            data-customer-id="${x.customerId}">
+                        <div class="fw-bold">${escapeHtml(x.name || '')}</div>
+                        <div class="small text-muted mt-1">
+                            ${x.phone ? `SĐT: ${escapeHtml(x.phone)}` : 'Chưa có số điện thoại'}
+                            ${x.address ? ` | Địa chỉ: ${escapeHtml(x.address)}` : ''}
+                        </div>
+                    </button>
+                `).join('');
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Gán khách hàng vào giỏ hiện tại
+        async function setCustomerToCurrentCart(customerId) {
+            try {
+                const draft = await postJson(`/admin/pos/cart/current/customer/${customerId}`, {});
+                customerModal.hide();
+                renderCurrentDraft(draft);
+                renderCustomerInfo(draft);
+                renderCurrentBadge({ currentOrderId: draft.orderId }, draft);
+                showSuccess('Đã chọn khách hàng cho giỏ hiện tại');
+                focusBarcodeInput();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Bỏ khách hàng khỏi giỏ hiện tại
+        async function clearCustomerFromCurrentCart() {
+            try {
+                const draft = await deleteWithToken('/admin/pos/cart/current/customer');
+                renderCurrentDraft(draft);
+                renderCustomerInfo(draft);
+                showSuccess('Đã bỏ khách hàng khỏi giỏ');
+                focusBarcodeInput();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Mở modal tạo nhanh khách hàng
+        function openQuickCreateCustomerModal() {
+            qcCustomerName.value = '';
+            qcCustomerPhone.value = '';
+            qcCustomerAddress.value = '';
+            qcCustomerNote.value = '';
+
+            quickCreateCustomerModal.show();
+
+            setTimeout(() => {
+                qcCustomerName.focus();
+            }, 180);
+        }
+
+        // Tạo nhanh khách hàng và gán vào giỏ
+        async function submitQuickCreateCustomer() {
+            const payload = {
+                name: (qcCustomerName.value || '').trim(),
+                phone: (qcCustomerPhone.value || '').trim() || null,
+                address: (qcCustomerAddress.value || '').trim() || null,
+                note: (qcCustomerNote.value || '').trim() || null
+            };
+
+            await withButtonLoading(btnSubmitQuickCreateCustomer, async () => {
+                try {
+                    const draft = await postJson('/admin/pos/customers/quick-create', payload);
+
+                    quickCreateCustomerModal.hide();
+                    customerModal.hide();
+
+                    renderCurrentDraft(draft);
+                    renderCustomerInfo(draft);
+                    renderCurrentBadge({ currentOrderId: draft.orderId }, draft);
+
+                    showSuccess('Đã tạo và chọn khách hàng mới');
+                    focusBarcodeInput();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        /* =========================================================
+           P. NOTE / ORDER DISCOUNT / LINE DISCOUNT
+        ========================================================= */
+
+        // Lưu ghi chú đơn hiện tại
+        async function saveCurrentCartNote() {
+            await withButtonLoading(btnSaveOrderNote, async () => {
+                try {
+                    const draft = await postJson('/admin/pos/cart/current/note', {
+                        note: (txtOrderNote.value || '').trim() || null
+                    });
+
+                    renderCurrentDraft(draft);
+                    renderCustomerInfo(draft);
+                    showSuccess('Đã lưu ghi chú đơn');
+                    focusBarcodeInput();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Lưu giảm giá đơn hiện tại
+        async function saveCurrentCartDiscount() {
+            await withButtonLoading(btnSaveOrderDiscount, async () => {
+                try {
+                    const discountAmount = parseFloat(txtOrderDiscount.value || '0');
+
+                    const draft = await postJson('/admin/pos/cart/current/discount', {
+                        discountAmount: discountAmount
+                    });
+
+                    renderCurrentDraft(draft);
+                    renderCustomerInfo(draft);
+                    showSuccess('Đã cập nhật giảm giá đơn');
+                    focusBarcodeInput();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Xóa giảm giá đơn
+        async function clearCurrentCartDiscount() {
+            txtOrderDiscount.value = 0;
+            await saveCurrentCartDiscount();
+        }
+
+        // Mở modal giảm giá dòng
+        function openLineDiscountModal(lineId, itemName, discountAmount) {
+            lineDiscountLineId.value = lineId || '';
+            lineDiscountItemName.textContent = itemName || 'Sản phẩm';
+            lineDiscountAmount.value = discountAmount || 0;
+
+            lineDiscountModal.show();
+
+            setTimeout(() => {
+                lineDiscountAmount.focus();
+                lineDiscountAmount.select();
+            }, 180);
+        }
+
+        // Lưu giảm giá dòng
+        async function saveLineDiscount() {
+            const lineId = parseInt(lineDiscountLineId.value || '0');
+            const discountAmount = parseFloat(lineDiscountAmount.value || '0');
+
+            if (!lineId) {
+                showError('Không xác định được dòng hàng.');
+                return;
+            }
+
+            await withButtonLoading(btnSaveLineDiscount, async () => {
+                try {
+                    const draft = await postJson(`/admin/pos/lines/${lineId}/discount`, {
+                        discountAmount: discountAmount
+                    });
+
+                    lineDiscountModal.hide();
+                    renderCurrentDraft(draft);
+                    renderCustomerInfo(draft);
+                    showSuccess('Đã cập nhật giảm giá dòng');
+                    focusBarcodeInput();
+                } catch (err) {
+                    showError(err.message);
+                }
+            });
+        }
+
+        // Xóa giảm giá dòng
+        async function clearLineDiscount() {
+            lineDiscountAmount.value = 0;
+            await saveLineDiscount();
+        }
+
+        /* =========================================================
+           Q. CẬP NHẬT SỐ LƯỢNG / XÓA DÒNG
+        ========================================================= */
+
+        // Cập nhật số lượng dòng hàng
+        async function updateLineQty(lineId, qty) {
+            try {
+                const draft = await patchWithToken(`/admin/pos/lines/${lineId}?qty=${encodeURIComponent(qty)}`);
+                renderCurrentDraft(draft);
+                renderCustomerInfo(draft);
+                focusBarcodeInput();
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        // Xóa dòng hàng khỏi giỏ
+        async function removeLine(lineId) {
+            openConfirmModal({
+                title: 'Xóa dòng hàng',
+                message: 'Bạn có chắc chắn muốn xóa dòng hàng này khỏi giỏ?',
+                confirmText: 'Xóa dòng',
+                confirmClass: 'btn-danger',
+                onConfirm: async () => {
+                    await withButtonLoading(btnConfirmAction, async () => {
+                        try {
+                            const draft = await deleteWithToken(`/admin/pos/lines/${lineId}`);
+                            confirmModal.hide();
+                            renderCurrentDraft(draft);
+                            renderCustomerInfo(draft);
+                            focusBarcodeInput();
+                        } catch (err) {
+                            showError(err.message);
+                        }
+                    });
+                }
+            });
+        }
+
+        /* =========================================================
+           R. BIND EVENT - BUTTON / INPUT / CLICK
+        ========================================================= */
+
+        btnScan.addEventListener('click', scanCurrentCart);
+        btnFocusBarcode.addEventListener('click', focusBarcodeInput);
+
+        btnNewCart.addEventListener('click', createNewCart);
+        btnHoldCart.addEventListener('click', openHoldModal);
+        btnOpenPayment.addEventListener('click', openPaymentModal);
+        btnFinalizeCart.addEventListener('click', finalizeCurrentCart);
+        btnCancelCart.addEventListener('click', cancelCurrentCart);
+
+        btnSaveOrderNote?.addEventListener('click', saveCurrentCartNote);
+        btnSaveOrderDiscount?.addEventListener('click', saveCurrentCartDiscount);
+        btnClearOrderDiscount?.addEventListener('click', clearCurrentCartDiscount);
+
+        btnSearchCustomer.addEventListener('click', searchCustomers);
+        btnClearCustomer.addEventListener('click', clearCustomerFromCurrentCart);
+        btnOpenQuickCreateCustomer.addEventListener('click', openQuickCreateCustomerModal);
+        btnSubmitQuickCreateCustomer.addEventListener('click', submitQuickCreateCustomer);
+
+        btnConfirmHold.addEventListener('click', holdCurrentCart);
+        btnConfirmAction.addEventListener('click', async function () {
+            if (typeof posState.pendingConfirmAction === 'function') {
+                await posState.pendingConfirmAction();
+            }
+        });
+
+        btnAddPayment?.addEventListener('click', addPayment);
+        btnFinalizeFromPaymentModal?.addEventListener('click', finalizeFromPaymentModal);
+        btnPayExact?.addEventListener('click', setPayAmountExact);
+        payMethod?.addEventListener('change', onPayMethodChanged);
+        payAmount?.addEventListener('input', renderPaymentPreview);
+
+        btnSaveLineDiscount?.addEventListener('click', saveLineDiscount);
+        btnClearLineDiscount?.addEventListener('click', clearLineDiscount);
+
+        txtCustomerKeyword.addEventListener('keydown', async function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await searchCustomers();
+            }
+        });
+
+        document.addEventListener('keydown', async function (e) {
+            const isNoteFocused = document.activeElement === txtOrderNote;
+            if (isNoteFocused && e.ctrlKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                await saveCurrentCartNote();
+            }
+        });
+
+        lineDiscountAmount?.addEventListener('keydown', async function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await saveLineDiscount();
+            }
+        });
+
+        payAmount?.addEventListener('keydown', async function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await addPayment();
+            }
+        });
+
+        /* =========================================================
+           S. KEYBOARD CHO BARCODE INPUT
+        ========================================================= */
+        txtBarcode.addEventListener('keydown', async function (e) {
+            const hasAutocomplete = barcodeSearchState.items && barcodeSearchState.items.length > 0;
+
+            if (e.key === 'ArrowDown') {
+                if (!hasAutocomplete) return;
+                e.preventDefault();
+                setAutocompleteActive(barcodeSearchState.activeIndex + 1);
+                return;
+            }
+
+            if (e.key === 'ArrowUp') {
+                if (!hasAutocomplete) return;
+                e.preventDefault();
+                setAutocompleteActive(barcodeSearchState.activeIndex - 1);
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                hideBarcodeAutocomplete();
+                return;
+            }
+
+            if (e.key === 'Enter') {
+                e.preventDefault();
+
+                if (hasAutocomplete && barcodeSearchState.activeIndex >= 0) {
+                    const selected = barcodeSearchState.items[barcodeSearchState.activeIndex];
+                    if (selected?.variantId) {
+                        await addVariantToCurrentCart(selected.variantId);
+                        return;
+                    }
+                }
+
+                if (hasAutocomplete && barcodeSearchState.items.length === 1) {
+                    const selected = barcodeSearchState.items[0];
+                    if (selected?.variantId) {
+                        await addVariantToCurrentCart(selected.variantId);
+                        return;
+                    }
+                }
+
+                await scanCurrentCart();
+            }
+        });
+
+        txtBarcode.addEventListener('input', function () {
+            const keyword = (txtBarcode.value || '').trim();
+
+            if (barcodeSearchState.debounceTimer) {
+                clearTimeout(barcodeSearchState.debounceTimer);
+            }
+
+            if (!keyword) {
+                hideBarcodeAutocomplete();
+                return;
+            }
+
+            barcodeSearchState.debounceTimer = setTimeout(() => {
+                searchBarcodeAutocomplete(keyword);
+            }, 250);
+        });
+
+        /* =========================================================
+           T. CLICK DELEGATION
+        ========================================================= */
+
+        barcodeAutocomplete.addEventListener('click', async function (e) {
+            const item = e.target.closest('[data-variant-id]');
+            if (!item) return;
+
+            const variantId = parseInt(item.getAttribute('data-variant-id'));
+            if (!variantId) return;
+
+            await addVariantToCurrentCart(variantId);
+        });
+
+        customerSearchResult.addEventListener('click', async function (e) {
+            const item = e.target.closest('[data-customer-id]');
+            if (!item) return;
+
+            const customerId = parseInt(item.getAttribute('data-customer-id'));
+            if (!customerId) return;
+
+            await setCustomerToCurrentCart(customerId);
+        });
+
+        currentDraftBody.addEventListener('click', function (e) {
+            const decBtn = e.target.closest('[data-dec-line-id]');
+            if (decBtn) {
+                const lineId = parseInt(decBtn.getAttribute('data-dec-line-id'));
+                const input = currentDraftBody.querySelector(`[data-qty-line-id="${lineId}"]`);
+                const currentQty = parseFloat(input.value || '1');
+                const nextQty = Math.max(1, currentQty - 1);
+                input.value = nextQty;
+                updateLineQty(lineId, nextQty);
+                return;
+            }
+
+            const incBtn = e.target.closest('[data-inc-line-id]');
+            if (incBtn) {
+                const lineId = parseInt(incBtn.getAttribute('data-inc-line-id'));
+                const input = currentDraftBody.querySelector(`[data-qty-line-id="${lineId}"]`);
+                const currentQty = parseFloat(input.value || '1');
+                const nextQty = currentQty + 1;
+                input.value = nextQty;
+                updateLineQty(lineId, nextQty);
+                return;
+            }
+
+            const discountBtn = e.target.closest('[data-line-discount-id]');
+            if (discountBtn) {
+                const lineId = parseInt(discountBtn.getAttribute('data-line-discount-id'));
+                const discountAmount = parseFloat(discountBtn.getAttribute('data-line-discount-amount') || '0');
+                const itemName = discountBtn.getAttribute('data-line-name') || '';
+
+                openLineDiscountModal(lineId, itemName, discountAmount);
+                return;
+            }
+
+            const removeBtn = e.target.closest('[data-remove-line-id]');
+            if (removeBtn) {
+                const lineId = parseInt(removeBtn.getAttribute('data-remove-line-id'));
+                removeLine(lineId);
+                return;
+            }
+        });
+
+        currentDraftBody.addEventListener('change', function (e) {
+            const qtyInput = e.target.closest('[data-qty-line-id]');
+            if (!qtyInput) return;
+
+            const lineId = parseInt(qtyInput.getAttribute('data-qty-line-id'));
+            let qty = parseFloat(qtyInput.value || '1');
+
+            if (qty <= 0) qty = 1;
+
+            qtyInput.value = qty;
+            updateLineQty(lineId, qty);
+        });
+
+        paymentListBox.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-remove-payment-id]');
+            if (!btn) return;
+
+            const paymentId = parseInt(btn.getAttribute('data-remove-payment-id'));
+            if (!paymentId) return;
+
+            removePayment(paymentId);
+        });
+
+        heldList.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-resume-btn-id]');
+            const item = e.target.closest('[data-resume-order-id]');
+
+            const orderId = btn
+                ? parseInt(btn.getAttribute('data-resume-btn-id'))
+                : item
+                    ? parseInt(item.getAttribute('data-resume-order-id'))
+                    : 0;
+
+            if (!orderId) return;
+
+            resumeHeld(orderId);
+        });
+
+        paymentModalEl.addEventListener('click', function (e) {
+            const quickBtn = e.target.closest('[data-pay-amount]');
+            if (quickBtn) {
+                const amount = parseFloat(quickBtn.getAttribute('data-pay-amount') || '0');
+                setPayAmountQuick(amount);
+                return;
+            }
+
+            const plusBtn = e.target.closest('[data-pay-plus]');
+            if (plusBtn) {
+                const amount = parseFloat(plusBtn.getAttribute('data-pay-plus') || '0');
+                increasePayAmount(amount);
+                return;
+            }
+
+            const removeBtn = e.target.closest('[data-remove-payment-id]');
+            if (removeBtn) {
+                const paymentId = parseInt(removeBtn.getAttribute('data-remove-payment-id') || '0');
+                if (!paymentId) return;
+                removePayment(paymentId);
+                return;
+            }
+        });
+
+        document.addEventListener('click', function (e) {
+            const insideInput = e.target.closest('#txtBarcode');
+            const insideAutocomplete = e.target.closest('#barcodeAutocomplete');
+
+            if (!insideInput && !insideAutocomplete) {
+                hideBarcodeAutocomplete();
+            }
+        });
+
+        /* =========================================================
+           U. MODAL EVENT
+        ========================================================= */
+
+        paymentModalEl.addEventListener('shown.bs.modal', function () {
+            posState.paymentModalOpen = true;
+        });
+
+        paymentModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.paymentModalOpen = false;
+            resetPaymentForm();
+            focusBarcodeInput();
+        });
+
+        customerModalEl.addEventListener('shown.bs.modal', function () {
+            posState.customerModalOpen = true;
+        });
+
+        customerModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.customerModalOpen = false;
+            focusBarcodeInput();
+        });
+
+        quickCreateCustomerModalEl.addEventListener('shown.bs.modal', function () {
+            posState.quickCreateCustomerModalOpen = true;
+        });
+
+        quickCreateCustomerModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.quickCreateCustomerModalOpen = false;
+        });
+
+        holdModalEl.addEventListener('shown.bs.modal', function () {
+            posState.holdModalOpen = true;
+        });
+
+        holdModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.holdModalOpen = false;
+            txtHoldNote.value = '';
+            focusBarcodeInput();
+        });
+
+        confirmModalEl.addEventListener('shown.bs.modal', function () {
+            posState.confirmModalOpen = true;
+        });
+
+        confirmModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.confirmModalOpen = false;
+            posState.pendingConfirmAction = null;
+            confirmNoteInput.value = '';
+            focusBarcodeInput();
+        });
+
+        lineDiscountModalEl.addEventListener('shown.bs.modal', function () {
+            posState.lineDiscountModalOpen = true;
+        });
+
+        lineDiscountModalEl.addEventListener('hidden.bs.modal', function () {
+            posState.lineDiscountModalOpen = false;
+            lineDiscountLineId.value = '';
+            lineDiscountAmount.value = '';
+            lineDiscountItemName.textContent = 'Sản phẩm';
+            focusBarcodeInput();
+        });
+
+        /* =========================================================
+           V. PHÍM TẮT TOÀN MÀN HÌNH
+        ========================================================= */
+        document.addEventListener('keydown', function (e) {
+            const tag = (document.activeElement?.tagName || '').toLowerCase();
+            const isTypingInTextarea = tag === 'textarea';
+
+            if (isTypingInTextarea) return;
+
+            if (e.key === 'F2') {
+                e.preventDefault();
+                if (!posState.paymentModalOpen && !posState.customerModalOpen && !posState.quickCreateCustomerModalOpen && !posState.confirmModalOpen) {
+                    openHoldModal();
+                }
+            }
+
+            if (e.key === 'F3') {
+                e.preventDefault();
+                if (!posState.customerModalOpen && !posState.quickCreateCustomerModalOpen && !posState.confirmModalOpen) {
+                    openPaymentModal();
+                }
+            }
+
+            if (e.key === 'F4') {
+                e.preventDefault();
+                if (!posState.paymentModalOpen && !posState.customerModalOpen && !posState.quickCreateCustomerModalOpen && !posState.confirmModalOpen) {
+                    finalizeCurrentCart();
+                }
+            }
+
+            if (e.key === 'F6') {
+                e.preventDefault();
+                if (!posState.paymentModalOpen && !posState.customerModalOpen && !posState.quickCreateCustomerModalOpen && !posState.confirmModalOpen) {
+                    createNewCart();
+                }
+            }
+
+            if (e.key === 'F7') {
+                e.preventDefault();
+                if (!posState.paymentModalOpen && !posState.quickCreateCustomerModalOpen && !posState.confirmModalOpen) {
+                    openCustomerModal();
+                }
+            }
+
+            if (e.key === 'F8') {
+                e.preventDefault();
+                focusBarcodeInput();
+            }
+
+            if (e.key === 'Escape') {
+                if (posState.lineDiscountModalOpen) {
+                    lineDiscountModal.hide();
+                    return;
+                }
+
+                if (posState.quickCreateCustomerModalOpen) {
+                    quickCreateCustomerModal.hide();
+                    return;
+                }
+
+                if (posState.confirmModalOpen) {
+                    confirmModal.hide();
+                    return;
+                }
+
+                if (posState.holdModalOpen) {
+                    holdModal.hide();
+                    return;
+                }
+
+                if (posState.customerModalOpen) {
+                    customerModal.hide();
+                    return;
+                }
+
+                if (posState.paymentModalOpen) {
+                    paymentModal.hide();
+                    return;
+                }
+
+                if (document.activeElement === txtBarcode) {
+                    txtBarcode.value = '';
+                    hideBarcodeAutocomplete();
+                }
+            }
+        });
+
+        /* =========================================================
+           W. KHỞI TẠO BAN ĐẦU
+        ========================================================= */
+        document.addEventListener('DOMContentLoaded', function () {
+            loadScreen();
+        });
+
+        // Expose ra window để dùng cho onclick trong HTML động
+        window.openCustomerModal = openCustomerModal;
+        window.clearCustomerFromCurrentCart = clearCustomerFromCurrentCart;
+    </script>
+}

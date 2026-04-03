@@ -1,0 +1,359 @@
+﻿@{
+    ViewData["Title"] = "Tra cứu tồn kho";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <style>
+        .iq-page {
+            min-height: calc(100vh - 140px);
+        }
+
+        .iq-card {
+            border: 0;
+            border-radius: 20px;
+            box-shadow: 0 0.125rem 0.9rem rgba(0,0,0,.08);
+            overflow: hidden;
+        }
+
+            .iq-card .card-header {
+                background: #fff;
+                border-bottom: 1px solid #eef0f4;
+                font-weight: 800;
+                padding: 1rem 1.25rem;
+            }
+
+        .iq-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .iq-toolbar-left h4 {
+            margin-bottom: .25rem;
+            font-weight: 800;
+        }
+
+        .iq-toolbar-left .text-muted {
+            font-size: .95rem;
+        }
+
+        .iq-summary-box {
+            border-radius: 18px;
+            padding: 16px 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+            border: 1px solid #eef0f4;
+            height: 100%;
+        }
+
+        .iq-summary-title {
+            font-size: .86rem;
+            color: #6c757d;
+            margin-bottom: .35rem;
+            font-weight: 600;
+        }
+
+        .iq-summary-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: #212529;
+            line-height: 1.2;
+        }
+
+        .iq-summary-sub {
+            margin-top: .35rem;
+            font-size: .82rem;
+            color: #6c757d;
+        }
+
+        .iq-filter-label {
+            font-weight: 700;
+            margin-bottom: .45rem;
+            font-size: .9rem;
+        }
+
+        .iq-filter-note {
+            font-size: .8rem;
+            color: #6c757d;
+            margin-top: .25rem;
+        }
+
+        .iq-table-wrap {
+            overflow-x: auto;
+        }
+
+        .iq-table {
+            min-width: 1150px;
+        }
+
+            .iq-table td,
+            .iq-table th {
+                vertical-align: middle;
+                white-space: nowrap;
+            }
+
+            .iq-table th {
+                font-size: .84rem;
+                text-transform: uppercase;
+                letter-spacing: .02em;
+                color: #6c757d;
+                background: #fbfcfd;
+            }
+
+        .iq-empty {
+            text-align: center;
+            color: #6c757d;
+            padding: 24px 0;
+        }
+
+        .iq-product-name {
+            font-weight: 700;
+            white-space: normal;
+            min-width: 300px;
+            color: #212529;
+        }
+
+        .iq-product-sub {
+            display: block;
+            margin-top: .2rem;
+            color: #6c757d;
+            font-size: .82rem;
+            font-weight: 500;
+        }
+
+        .iq-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: .28rem .7rem;
+            font-size: .78rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .iq-badge-normal {
+            background: #e8f7ec;
+            color: #067647;
+        }
+
+        .iq-badge-negative {
+            background: #ffe5e5;
+            color: #b42318;
+        }
+
+        .iq-qty-negative {
+            color: #b42318;
+            font-weight: 800;
+        }
+
+        .iq-qty-positive {
+            color: #067647;
+            font-weight: 800;
+        }
+
+        .iq-qty-neutral {
+            color: #212529;
+            font-weight: 700;
+        }
+
+        .iq-paging-info {
+            color: #6c757d;
+            font-weight: 600;
+        }
+
+        .iq-mini-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .65rem;
+            border-radius: 999px;
+            background: #f3f4f6;
+            color: #495057;
+            font-size: .8rem;
+            font-weight: 600;
+        }
+    </style>
+}
+
+<div class="container-xxl flex-grow-1 container-p-y iq-page">
+    <div class="iq-toolbar">
+        <div class="iq-toolbar-left">
+            <h4>Tra cứu tồn kho</h4>
+            <div class="text-muted">
+                Xem tồn thực tế, đang giữ và khả dụng theo từng kho, từng sản phẩm.
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="btnReloadBalances">
+                <i class="bx bx-refresh me-1"></i> Tải lại
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="iq-summary-box">
+                <div class="iq-summary-title">Tổng số dòng</div>
+                <div class="iq-summary-value" id="sumTotalItems">0</div>
+                <div class="iq-summary-sub">Sau khi áp dụng bộ lọc</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="iq-summary-box">
+                <div class="iq-summary-title">Đang âm kho</div>
+                <div class="iq-summary-value" id="sumNegativeItems">0</div>
+                <div class="iq-summary-sub">Số dòng âm trong trang hiện tại</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="iq-summary-box">
+                <div class="iq-summary-title">Còn tồn dương</div>
+                <div class="iq-summary-value" id="sumPositiveItems">0</div>
+                <div class="iq-summary-sub">Số dòng có tồn > 0</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="iq-summary-box">
+                <div class="iq-summary-title">Trang hiện tại</div>
+                <div class="iq-summary-value" id="sumCurrentPage">1</div>
+                <div class="iq-summary-sub">Theo kết quả phân trang</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card iq-card mb-4">
+        <div class="card-header">Bộ lọc tra cứu</div>
+        <div class="card-body">
+            <form id="inventoryInquiryFilterForm" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label iq-filter-label" for="WarehouseId">Kho</label>
+                    <select id="WarehouseId" class="form-select">
+                        <option value="">-- Tất cả kho --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label iq-filter-label" for="ProductVariantId">Mã Variant</label>
+                    <input type="number"
+                           id="ProductVariantId"
+                           class="form-control"
+                           min="1"
+                           placeholder="Ví dụ: 125" />
+                    <div class="iq-filter-note">Nhập khi cần soi đúng một variant cụ thể.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label iq-filter-label" for="SortBy">Sắp xếp theo</label>
+                    <select id="SortBy" class="form-select">
+                        <option value="ProductName">Tên sản phẩm</option>
+                        <option value="Sku">SKU</option>
+                        <option value="Warehouse">Kho</option>
+                        <option value="OnHandQty">Tồn thực tế</option>
+                        <option value="ReservedQty">Đang giữ</option>
+                        <option value="AvailableQty">Khả dụng</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label iq-filter-label" for="SortDirection">Chiều sắp xếp</label>
+                    <select id="SortDirection" class="form-select">
+                        <option value="asc">Tăng dần</option>
+                        <option value="desc">Giảm dần</option>
+                    </select>
+                </div>
+
+                <div class="col-md-8">
+                    <label class="form-label iq-filter-label" for="Keyword">Từ khóa</label>
+                    <input type="text"
+                           id="Keyword"
+                           class="form-control"
+                           placeholder="Tên sản phẩm / SKU / barcode variant / barcode đơn vị..." />
+                </div>
+
+                <div class="col-md-4 d-flex flex-wrap gap-3 align-items-end">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="OnlyNegative" />
+                        <label class="form-check-label" for="OnlyNegative">
+                            Chỉ xem hàng âm
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="OnlyPositive" />
+                        <label class="form-check-label" for="OnlyPositive">
+                            Chỉ xem hàng còn tồn dương
+                        </label>
+                    </div>
+                </div>
+
+                <div class="col-12 d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bx bx-search me-1"></i> Tìm kiếm
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnResetFilter">
+                        Làm mới bộ lọc
+                    </button>
+
+                    <span class="iq-mini-chip">
+                        <i class="bx bx-info-circle"></i>
+                        Nếu cùng bật âm và dương thì kết quả có thể rỗng.
+                    </span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card iq-card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="fw-bold">Danh sách tồn kho hiện tại</div>
+            <div class="iq-paging-info" id="pagingInfo">Trang 1 / 1</div>
+        </div>
+
+        <div class="card-body">
+            <div class="iq-table-wrap">
+                <table class="table table-hover iq-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Kho</th>
+                            <th>Sản phẩm</th>
+                            <th>SKU</th>
+                            <th>Barcode</th>
+                            <th class="text-end">Tồn thực tế</th>
+                            <th class="text-end">Đang giữ</th>
+                            <th class="text-end">Khả dụng</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryInquiryTableBody">
+                        <tr>
+                            <td colspan="8" class="iq-empty">Đang tải dữ liệu...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mt-4">
+                <div class="text-muted" id="resultInfo">
+                    Chưa có dữ liệu.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="btnPrevPage">
+                        <i class="bx bx-chevron-left"></i> Trang trước
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnNextPage">
+                        Trang sau <i class="bx bx-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-inquiry.js"></script>
+}

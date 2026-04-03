@@ -1,0 +1,65 @@
+﻿@model GaoApp.Application.DTOs.Products.ProductDetailDto
+@{
+    ViewData["Title"] = "Chi tiết sản phẩm";
+    Layout = "_ContentNavbarLayout";
+}
+
+<div class="row g-4">
+    <!-- Gallery -->
+    <div class="col-md-5">
+        <div class="p-main mb-3">
+            @if (!string.IsNullOrWhiteSpace(Model.PrimaryImageUrl))
+            {
+                <img id="imgMain"
+                     src="@Model.PrimaryImageUrl"
+                     class="p-main-img"
+                     data-bs-toggle="modal"
+                     data-bs-target="#imgModal" />
+            }
+            else
+            {
+                <div class="p-main-empty">Chưa có ảnh</div>
+            }
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var img in Model.Images)
+            {
+                <button type="button"
+                        class="p-thumb-btn @(img.Url == Model.PrimaryImageUrl ? "active" : "")"
+                        onclick="setMain('@img.Url', this)">
+                    <img src="@img.Url" class="p-thumb-img" />
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Info -->
+    <div class="col-md-7">
+        <h4 class="fw-bold mb-1">@Model.Name</h4>
+        <div class="text-muted">Alias: @Model.Alias</div>
+    </div>
+</div>
+
+<!-- Modal view large -->
+<div class="modal fade" id="imgModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-body p-0">
+                <img id="imgModalView" src="@Model.PrimaryImageUrl" class="p-modal-img" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        function setMain(url, btn) {
+            document.getElementById('imgMain')?.setAttribute('src', url);
+            document.getElementById('imgModalView')?.setAttribute('src', url);
+
+            document.querySelectorAll('.p-thumb-btn').forEach(x => x.classList.remove('active'));
+            btn.classList.add('active');
+        }
+    </script>
+}

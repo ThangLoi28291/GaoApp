@@ -1,0 +1,12 @@
+﻿namespace GaoApp.Application.DTOs.Units;
+
+public sealed class UpdateUnitRequest
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = default!;
+    public string Name { get; set; } = default!;
+    public bool Status { get; set; }
+    public bool IsBase { get; set; }
+    public int SortOrder { get; set; }
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+}

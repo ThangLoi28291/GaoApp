@@ -1,0 +1,2164 @@
+﻿@model GaoApp.Application.DTOs.POS.OrderReceiptDto
+
+@{
+    ViewData["Title"] = "Chi tiết đơn POS";
+    Layout = "_ContentNavbarLayout";
+
+    var cleanUserNote = GetCleanUserNote(Model.Note);
+    var operationLogCount = CountOperationLogLines(Model.Note);
+    var hasAfterSaleHistory =
+        string.Equals(Model.Status, "Refunded", StringComparison.OrdinalIgnoreCase)
+        || Model.RefundedTotal > 0;
+
+    var paymentCount = Model.Payments?.Count ?? 0;
+    var lineCount = Model.Lines?.Count ?? 0;
+
+    var canRefund = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase);
+    var canVoid = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase) && Model.RefundedTotal <= 0;
+    var canReturn = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Model.Status, "Refunded", StringComparison.OrdinalIgnoreCase);
+}
+
+@functions {
+    public string GetStatusBadgeClass(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status)) return "ord-badge-muted";
+
+        var s = status.Trim().ToLowerInvariant();
+
+        return s switch
+        {
+            "completed" => "ord-badge-success",
+            "draft" => "ord-badge-muted",
+            "cancelled" => "ord-badge-danger",
+            "onhold" => "ord-badge-warning",
+            "voided" => "ord-badge-dark",
+            "refunded" => "ord-badge-info",
+            _ => "ord-badge-muted"
+        };
+    }
+
+    public string GetPaymentBadgeClass(string? paymentStatus)
+    {
+        if (string.IsNullOrWhiteSpace(paymentStatus)) return "ord-badge-muted";
+
+        var s = paymentStatus.Trim().ToLowerInvariant();
+
+        if (s.Contains("paid")) return "ord-badge-success";
+        if (s.Contains("partial")) return "ord-badge-warning";
+        if (s.Contains("unpaid")) return "ord-badge-danger";
+        if (s.Contains("refund")) return "ord-badge-info";
+
+        return "ord-badge-muted";
+    }
+
+    public string GetStatusTextVi(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status)) return "-";
+
+        var s = status.Trim().ToLowerInvariant();
+
+        return s switch
+        {
+            "completed" => "Đã chốt",
+            "draft" => "Nháp",
+            "cancelled" => "Đã hủy",
+            "onhold" => "Đang giữ",
+            "voided" => "Hủy sau chốt",
+            "refunded" => "Đã hoàn tiền",
+            _ => status!
+        };
+    }
+
+    public string GetPaymentStatusTextVi(string? paymentStatus)
+    {
+        if (string.IsNullOrWhiteSpace(paymentStatus)) return "-";
+
+        var s = paymentStatus.Trim().ToLowerInvariant();
+
+        if (s.Contains("refunded")) return "Đã hoàn tiền";
+        if (s.Contains("paid")) return "Đã thanh toán";
+        if (s.Contains("partial")) return "Thanh toán một phần";
+        if (s.Contains("unpaid")) return "Chưa thanh toán";
+
+        return paymentStatus!;
+    }
+
+    public string GetCleanUserNote(string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note)) return string.Empty;
+
+        var lines = note
+            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(x =>
+                !x!.StartsWith("[RETURN/REFUND", StringComparison.OrdinalIgnoreCase) &&
+                !x.StartsWith("[HỦY SAU KHI CHỐT", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    public int CountOperationLogLines(string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note)) return 0;
+
+        return note
+            .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+            .Count(x =>
+                !string.IsNullOrWhiteSpace(x) &&
+                (x.Contains("[RETURN/REFUND", StringComparison.OrdinalIgnoreCase) ||
+                 x.Contains("[HỦY SAU KHI CHỐT", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public string DisplayCustomerName()
+    {
+        return string.IsNullOrWhiteSpace(Model.CustomerName) ? "Khách lẻ" : Model.CustomerName!;
+    }
+
+    public string DisplayCustomerPhone()
+    {
+        return string.IsNullOrWhiteSpace(Model.CustomerPhone) ? "-" : Model.CustomerPhone!;
+    }
+
+    public string DisplayCashierName()
+    {
+        return string.IsNullOrWhiteSpace(Model.CashierName) ? "-" : Model.CashierName!;
+    }
+}
+
+@section VendorStyles {
+    <style>
+        :root {
+            --ord-primary: #3b5bfd;
+            --ord-primary-2: #2d4ef5;
+            --ord-primary-soft: rgba(59,91,253,.08);
+            --ord-success: #159a62;
+            --ord-success-soft: rgba(21,154,98,.10);
+            --ord-warning: #f59e0b;
+            --ord-warning-soft: rgba(245,158,11,.12);
+            --ord-danger: #e11d48;
+            --ord-danger-soft: rgba(225,29,72,.10);
+            --ord-info: #0ea5e9;
+            --ord-info-soft: rgba(14,165,233,.10);
+            --ord-dark: #0f172a;
+            --ord-text: #1e293b;
+            --ord-muted: #667085;
+            --ord-border: #e6edf5;
+            --ord-bg: #f8fafc;
+            --ord-card: #fff;
+            --ord-shadow: 0 18px 40px rgba(15,23,42,.06);
+            --ord-shadow-soft: 0 10px 24px rgba(15,23,42,.05);
+            --ord-radius-xl: 24px;
+            --ord-radius-lg: 20px;
+            --ord-radius-md: 16px;
+        }
+
+        .order-page {
+            min-height: calc(100vh - 140px);
+        }
+
+        .order-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .order-title {
+            margin: 0;
+            font-size: 1.85rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+            line-height: 1.15;
+            letter-spacing: -.02em;
+        }
+
+        .order-subtitle {
+            margin-top: 8px;
+            color: var(--ord-muted);
+            font-size: .97rem;
+            font-weight: 600;
+        }
+
+        .order-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .btn-ord {
+            min-height: 46px;
+            padding: 10px 18px;
+            border-radius: 16px;
+            font-weight: 800;
+            border: 1px solid transparent;
+            box-shadow: none !important;
+            transition: all .18s ease;
+        }
+
+        .btn-ord:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-ord-primary {
+            background: linear-gradient(180deg, #4b67ff 0%, #3556f5 100%);
+            color: #fff;
+        }
+
+        .btn-ord-primary:hover {
+            color: #fff;
+        }
+
+        .btn-ord-soft {
+            background: #fff;
+            color: #344054;
+            border-color: #d8e1ec;
+        }
+
+        .btn-ord-soft:hover {
+            background: #f8fbff;
+            color: #1f2937;
+        }
+
+        .btn-ord-warning {
+            background: linear-gradient(180deg, #ffb548 0%, #f59e0b 100%);
+            color: #fff;
+        }
+
+        .btn-ord-warning:hover {
+            color: #fff;
+        }
+
+        .btn-ord-info {
+            background: linear-gradient(180deg, #37b7f6 0%, #1594d7 100%);
+            color: #fff;
+        }
+
+        .btn-ord-info:hover {
+            color: #fff;
+        }
+
+        .btn-ord-danger {
+            background: linear-gradient(180deg, #fb7185 0%, #e11d48 100%);
+            color: #fff;
+        }
+
+        .btn-ord-danger:hover {
+            color: #fff;
+        }
+
+        .ord-overview {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0,1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .ord-stat {
+            border: 1px solid var(--ord-border);
+            border-radius: 20px;
+            background: #fff;
+            box-shadow: var(--ord-shadow-soft);
+            padding: 16px;
+            min-height: 104px;
+        }
+
+        .ord-stat.primary {
+            background: linear-gradient(135deg, #eef4ff 0%, #f8fbff 100%);
+            border-color: #dbe6ff;
+        }
+
+        .ord-stat.success {
+            background: linear-gradient(135deg, #effcf4 0%, #f9fffb 100%);
+            border-color: #d8f4e2;
+        }
+
+        .ord-stat.info {
+            background: linear-gradient(135deg, #eefaff 0%, #f9feff 100%);
+            border-color: #d5f0fb;
+        }
+
+        .ord-stat.warning {
+            background: linear-gradient(135deg, #fff8e9 0%, #fffdf7 100%);
+            border-color: #fde5a7;
+        }
+
+        .ord-stat.danger {
+            background: linear-gradient(135deg, #fff1f3 0%, #fff9fa 100%);
+            border-color: #fecdd3;
+        }
+
+        .ord-stat-label {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--ord-muted);
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .ord-stat-value {
+            font-size: 1.22rem;
+            line-height: 1.2;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ord-stat.primary .ord-stat-value { color: #2458b8; }
+        .ord-stat.success .ord-stat-value { color: var(--ord-success); }
+        .ord-stat.info .ord-stat-value { color: #147db1; }
+        .ord-stat.warning .ord-stat-value { color: #b45309; }
+        .ord-stat.danger .ord-stat-value { color: var(--ord-danger); }
+
+        .ord-layout {
+            display: grid;
+            grid-template-columns: 340px minmax(0, 1fr);
+            gap: 16px;
+        }
+
+        .ord-card {
+            border: 1px solid var(--ord-border);
+            border-radius: var(--ord-radius-xl);
+            background: var(--ord-card);
+            box-shadow: var(--ord-shadow);
+            overflow: hidden;
+        }
+
+        .ord-card-head {
+            padding: 18px 20px 16px;
+            border-bottom: 1px solid var(--ord-border);
+            background: linear-gradient(180deg, #fff 0%, #f9fbfe 100%);
+        }
+
+        .ord-card-title {
+            margin: 0;
+            font-size: 1.08rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ord-card-subtitle {
+            margin-top: 6px;
+            color: var(--ord-muted);
+            font-size: .92rem;
+            font-weight: 600;
+        }
+
+        .ord-card-body {
+            padding: 18px 20px;
+        }
+
+        .ord-side-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .ord-info {
+            border: 1px solid var(--ord-border);
+            border-radius: 18px;
+            background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+            padding: 14px 16px;
+        }
+
+        .ord-info-label {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--ord-muted);
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .ord-info-value {
+            font-size: 1rem;
+            line-height: 1.45;
+            font-weight: 900;
+            color: var(--ord-dark);
+            word-break: break-word;
+        }
+
+        .ord-info-sub {
+            margin-top: 6px;
+            color: #667085;
+            font-size: .9rem;
+            font-weight: 600;
+        }
+
+        .ord-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .ord-badge {
+            min-height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: .82rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .ord-badge-success { background: #eafaf0; color: #18794e; }
+        .ord-badge-warning { background: #fff4d6; color: #b45309; }
+        .ord-badge-danger { background: #fff1f3; color: #c01048; }
+        .ord-badge-info { background: #eaf7ff; color: #147db1; }
+        .ord-badge-muted { background: #f2f4f7; color: #475467; }
+        .ord-badge-dark { background: #e4e7ec; color: #1f2937; }
+
+        .ord-section + .ord-section {
+            margin-top: 18px;
+        }
+
+        .ord-section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .ord-section-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ord-link-btn {
+            border: 0;
+            background: #eef4ff;
+            color: #2957c8;
+            font-weight: 800;
+            padding: 8px 12px;
+            border-radius: 999px;
+            transition: all .18s ease;
+        }
+
+        .ord-link-btn:hover {
+            background: #dfeaff;
+        }
+
+        .ord-table-wrap,
+        .ord-box,
+        .ord-popup-table-wrap,
+        .ret-box {
+            border: 1px solid var(--ord-border);
+            border-radius: 20px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .ord-table,
+        .ret-table {
+            margin-bottom: 0;
+        }
+
+        .ord-table thead th,
+        .ret-table thead th {
+            background: #f8fafc;
+            color: #475467;
+            font-size: .8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            border-bottom: 1px solid var(--ord-border);
+            white-space: nowrap;
+            padding: 14px 16px;
+        }
+
+        .ord-table tbody td,
+        .ret-table tbody td {
+            padding: 16px;
+            vertical-align: middle;
+            border-top: 1px solid #edf2f7;
+        }
+
+        .ord-index {
+            width: 34px;
+            height: 34px;
+            border-radius: 12px;
+            background: #edf4ff;
+            color: #4463f7;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: .9rem;
+        }
+
+        .ord-product-name {
+            font-size: 1.02rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+            line-height: 1.35;
+        }
+
+        .ord-product-meta {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: .92rem;
+            font-weight: 600;
+            line-height: 1.5;
+        }
+
+        .ord-cell-main {
+            font-weight: 900;
+            font-size: 1.05rem;
+            color: var(--ord-dark);
+        }
+
+        .ord-empty {
+            text-align: center;
+            padding: 28px 16px;
+            color: var(--ord-muted);
+        }
+
+        .ord-empty-title {
+            margin-top: 8px;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ord-empty-desc {
+            margin-top: 4px;
+            font-size: .92rem;
+            font-weight: 600;
+            color: var(--ord-muted);
+        }
+
+        .ord-payment-section {
+            margin-top: 20px;
+        }
+
+        .ord-payment-card {
+            border: 1px solid var(--ord-border);
+            border-radius: 20px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+            padding: 16px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .ord-payment-title {
+            font-size: 1rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ord-payment-subtitle {
+            margin-top: 4px;
+            color: var(--ord-muted);
+            font-size: .9rem;
+            font-weight: 600;
+        }
+
+        .ord-payment-btn {
+            min-height: 42px;
+            padding: 10px 16px;
+        }
+
+        .modal-clean .modal-dialog {
+            max-width: 1180px;
+        }
+
+        .modal-clean .modal-content {
+            border: 0;
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow: 0 26px 64px rgba(15,23,42,.18);
+        }
+
+        .modal-clean .modal-header {
+            padding: 18px 22px 16px;
+            border-bottom: 1px solid var(--ord-border);
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        }
+
+        .modal-clean .modal-title {
+            font-size: 1.35rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+            letter-spacing: -.02em;
+        }
+
+        .modal-clean .modal-body {
+            padding: 16px 20px;
+            max-height: calc(100vh - 220px);
+            overflow-y: auto;
+            background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+        }
+
+        .modal-clean .modal-footer {
+            padding: 14px 20px 18px;
+            border-top: 1px solid var(--ord-border);
+            gap: 10px;
+            background: #fff;
+        }
+
+        .modal-clean .btn-close {
+            opacity: 1;
+        }
+
+        .ord-popup-callout {
+            border: 1px solid #d9e6ff;
+            background: linear-gradient(135deg, #eef4ff 0%, #f8fbff 100%);
+            color: #2957c8;
+            border-radius: 18px;
+            padding: 12px 14px;
+            font-size: .92rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .ord-popup-hero,
+        .ret-summary,
+        .ret-summary-modern {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .ord-popup-hero,
+        .ret-summary {
+            grid-template-columns: repeat(4, minmax(0,1fr));
+        }
+
+        .ret-summary-modern {
+            grid-template-columns: 1.15fr .85fr;
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .ord-popup-stat,
+        .ret-stat,
+        .ret-mini-stat {
+            border: 1px solid var(--ord-border);
+            border-radius: 18px;
+            background: #fff;
+            padding: 14px 16px;
+            box-shadow: 0 8px 18px rgba(15,23,42,.04);
+        }
+
+        .ord-popup-stat-label,
+        .ret-stat-label,
+        .ret-mini-label,
+        .ret-hero-label,
+        .ret-amount-label,
+        .ret-reason-label {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--ord-muted);
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        .ord-popup-stat-value,
+        .ret-stat-value,
+        .ret-mini-value {
+            font-size: 1.05rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ret-hero-main {
+            border: 1px solid #dbe7ff;
+            border-radius: 22px;
+            background: linear-gradient(135deg, #eef4ff 0%, #f8fbff 100%);
+            padding: 18px;
+        }
+
+        .ret-hero-value {
+            font-size: 1.7rem;
+            font-weight: 900;
+            color: #1d4ed8;
+            line-height: 1.1;
+        }
+
+        .ret-hero-sub {
+            margin-top: 8px;
+            color: #5b6b8c;
+            font-size: .92rem;
+            font-weight: 600;
+        }
+
+        .ret-hero-stats {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0,1fr));
+            gap: 12px;
+        }
+
+        .ret-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .ret-history-item {
+            border: 1px solid var(--ord-border);
+            border-radius: 22px;
+            background: #fff;
+            padding: 18px;
+            box-shadow: 0 10px 24px rgba(15,23,42,.04);
+        }
+
+        .ret-history-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .ret-code {
+            font-size: 1.05rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+            line-height: 1.25;
+        }
+
+        .ret-meta-line {
+            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .ret-meta-text {
+            color: var(--ord-muted);
+            font-size: .88rem;
+            font-weight: 700;
+        }
+
+        .ret-amount-box {
+            min-width: 160px;
+            text-align: right;
+        }
+
+        .ret-amount-value {
+            margin-top: 4px;
+            font-size: 1.2rem;
+            font-weight: 900;
+            color: var(--ord-danger);
+        }
+
+        .ret-amount-sub {
+            margin-top: 4px;
+            color: var(--ord-muted);
+            font-size: .85rem;
+            font-weight: 700;
+        }
+
+        .ret-reason-box {
+            margin-top: 14px;
+            border-radius: 16px;
+            background: #f8fafc;
+            border: 1px solid #e8eef5;
+            padding: 12px 14px;
+        }
+
+        .ret-reason-value {
+            color: var(--ord-dark);
+            font-size: .95rem;
+            font-weight: 700;
+        }
+
+        .ret-action-row {
+            margin-top: 14px;
+            display: flex;
+            justify-content: flex-start;
+        }
+
+        .ret-detail-shell {
+            margin-top: 14px;
+            border-top: 1px dashed #dbe4ef;
+            padding-top: 14px;
+        }
+
+        .ret-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+
+        .ret-panel {
+            border: 1px solid var(--ord-border);
+            border-radius: 18px;
+            background: #fff;
+            overflow: hidden;
+        }
+
+        .ret-panel-head {
+            padding: 12px 14px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--ord-border);
+            font-size: .95rem;
+            font-weight: 900;
+            color: var(--ord-dark);
+        }
+
+        .ret-empty-box {
+            padding: 16px;
+            color: var(--ord-muted);
+            font-size: .9rem;
+            font-weight: 600;
+        }
+
+        .return-refund-form .alert {
+            border-radius: 18px;
+            background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+        }
+
+        .return-refund-form .form-control,
+        .return-refund-form .form-select {
+            min-height: 44px;
+            border-radius: 14px;
+            border-color: #d8e1ec;
+        }
+
+        .return-refund-form .table > :not(caption) > * > * {
+            padding: 14px 12px;
+        }
+
+        .return-refund-form .table thead th {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: #667085;
+            white-space: nowrap;
+        }
+
+        .return-refund-form .js-line-total {
+            color: var(--ord-dark);
+        }
+
+        .ord-top-actions-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+
+        .ord-top-actions-note {
+            color: var(--ord-muted);
+            font-size: .9rem;
+            font-weight: 600;
+        }
+
+        @@media (max-width: 1399.98px) {
+            .ord-overview {
+                grid-template-columns: repeat(3, minmax(0,1fr));
+            }
+        }
+
+        @@media (max-width: 1199.98px) {
+            .ord-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 991.98px) {
+            .ord-overview,
+            .ord-popup-hero,
+            .ret-summary {
+                grid-template-columns: repeat(2, minmax(0,1fr));
+            }
+
+            .ret-summary-modern {
+                grid-template-columns: 1fr;
+            }
+
+            .ret-history-header {
+                grid-template-columns: 1fr;
+            }
+
+            .ret-amount-box {
+                text-align: left;
+                min-width: 0;
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .ord-overview,
+            .ord-popup-hero,
+            .ret-summary,
+            .ret-hero-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .ord-card-body,
+            .ord-card-head {
+                padding: 16px;
+            }
+
+            .order-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .order-actions > * {
+                flex: 1 1 calc(50% - 8px);
+            }
+
+            .return-refund-form .table-responsive {
+                border-radius: 16px;
+            }
+        }
+    </style>
+}
+
+@section header {
+    <div class="order-head">
+        <div>
+            <h3 class="order-title">Chi tiết đơn POS</h3>
+            <div class="order-subtitle">
+                Theo dõi đơn hàng, hậu mãi và thanh toán trên một màn hình gọn, dễ hiểu
+            </div>
+        </div>
+
+        <div class="order-actions">
+            <a href="/admin/pos/orders-page" class="btn btn-ord btn-ord-soft">Quay lại</a>
+
+            <a href="/admin/pos/orders/@Model.OrderId/print?size=80&autoPrint=false"
+               target="_blank"
+               class="btn btn-ord btn-ord-primary">
+                In lại hóa đơn
+            </a>
+
+            @if (canVoid)
+            {
+                <button type="button"
+                        class="btn btn-ord btn-ord-danger"
+                        onclick="openOrderActionModal('void', @Model.OrderId)">
+                    Void
+                </button>
+            }
+
+            @if (canRefund)
+            {
+                <button type="button"
+                        class="btn btn-ord btn-ord-warning"
+                        onclick="openOrderActionModal('refund', @Model.OrderId)">
+                    Refund
+                </button>
+            }
+
+            @if (canReturn)
+            {
+                <button type="button"
+                        class="btn btn-ord btn-ord-info"
+                        onclick="openReturnRefundModal(@Model.OrderId)">
+                    Trả hàng / hoàn tiền
+                </button>
+
+                <button type="button"
+                        class="btn btn-ord btn-ord-soft"
+                        onclick="openReturnHistoryModal(@Model.OrderId)">
+                    Lịch sử trả hàng
+                </button>
+            }
+        </div>
+    </div>
+}
+
+<div class="order-page">
+    @Html.AntiForgeryToken()
+
+    <div class="ord-overview">
+        <div class="ord-stat primary">
+            <div class="ord-stat-label">Tổng tiền đơn</div>
+            <div class="ord-stat-value">@Model.GrandTotal.ToString("N0") đ</div>
+        </div>
+
+        <div class="ord-stat success">
+            <div class="ord-stat-label">Đã thanh toán</div>
+            <div class="ord-stat-value">@Model.PaidTotal.ToString("N0") đ</div>
+        </div>
+
+        <div class="ord-stat info">
+            <div class="ord-stat-label">Đã hoàn</div>
+            <div class="ord-stat-value">@Model.RefundedTotal.ToString("N0") đ</div>
+        </div>
+
+        <div class="ord-stat warning">
+            <div class="ord-stat-label">Còn có thể hoàn</div>
+            <div class="ord-stat-value">@Model.RefundableRemaining.ToString("N0") đ</div>
+        </div>
+
+        <div class="ord-stat info">
+            <div class="ord-stat-label">Số thanh toán</div>
+            <div class="ord-stat-value">@paymentCount</div>
+        </div>
+
+        <div class="ord-stat danger">
+            <div class="ord-stat-label">Hậu mãi</div>
+            <div class="ord-stat-value">@(hasAfterSaleHistory ? "Có phát sinh" : "Chưa có")</div>
+        </div>
+    </div>
+
+    <div class="ord-layout">
+        <div class="ord-card">
+            <div class="ord-card-head">
+                <h5 class="ord-card-title">Thông tin đơn hàng</h5>
+                <div class="ord-card-subtitle">Giữ phần chính thật gọn để dễ xem, dễ thao tác tại quầy</div>
+            </div>
+
+            <div class="ord-card-body">
+                <div class="ord-side-grid">
+                    <div class="ord-info">
+                        <div class="ord-info-label">Mã đơn</div>
+                        <div class="ord-info-value">@Model.OrderNumber</div>
+                        <div class="ord-info-sub">ID: @Model.OrderId</div>
+                    </div>
+
+                    <div class="ord-info">
+                        <div class="ord-info-label">Trạng thái</div>
+                        <div class="ord-badges">
+                            <span class="ord-badge @GetStatusBadgeClass(Model.Status)">
+                                @GetStatusTextVi(Model.Status)
+                            </span>
+                            <span class="ord-badge @GetPaymentBadgeClass(Model.PaymentStatus)">
+                                @GetPaymentStatusTextVi(Model.PaymentStatus)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="ord-info">
+                        <div class="ord-info-label">Khách hàng</div>
+                        <div class="ord-info-value">@DisplayCustomerName()</div>
+                        <div class="ord-info-sub">SĐT: @DisplayCustomerPhone()</div>
+                    </div>
+
+                    <div class="ord-info">
+                        <div class="ord-info-label">Nhân viên / Ca POS</div>
+                        <div class="ord-info-value">@DisplayCashierName()</div>
+                        <div class="ord-info-sub">@(string.IsNullOrWhiteSpace(Model.ShiftCode) ? "-" : Model.ShiftCode)</div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(cleanUserNote))
+                    {
+                        <div class="ord-info">
+                            <div class="ord-info-label">Ghi chú</div>
+                            <div class="ord-info-value" style="font-size:.96rem; font-weight:700; white-space:pre-line;">
+                                @cleanUserNote
+                            </div>
+                        </div>
+                    }
+
+                    @if (hasAfterSaleHistory)
+                    {
+                        <div class="ord-info">
+                            <div class="ord-info-label">Hậu mãi / hoàn trả</div>
+                            <div class="ord-info-value">Đơn này đã phát sinh thao tác hoàn / trả.</div>
+                            <div class="ord-info-sub">
+                                Đã hoàn: <strong>@Model.RefundedTotal.ToString("N0") đ</strong>
+                                <button type="button"
+                                        class="btn btn-link btn-sm p-0 ms-1"
+                                        onclick="openReturnHistoryModal(@Model.OrderId)">
+                                    Xem lịch sử
+                                </button>
+                            </div>
+                        </div>
+                    }
+
+                    @if (operationLogCount > 0)
+                    {
+                        <div class="ord-info">
+                            <div class="ord-info-label">Số lần thao tác hậu mãi</div>
+                            <div class="ord-info-value">@operationLogCount lần</div>
+                            <div class="ord-info-sub">Theo log ghi trong ghi chú nghiệp vụ</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="ord-card">
+                <div class="ord-card-head">
+                    <h5 class="ord-card-title">Danh sách hàng hóa</h5>
+                    <div class="ord-card-subtitle">Thông tin chính được làm nổi bật để nhìn nhanh hơn</div>
+                </div>
+
+                <div class="ord-card-body">
+                    <div class="ord-table-wrap">
+                        <div class="table-responsive">
+                            <table class="table ord-table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th style="width:68px;">#</th>
+                                        <th>Sản phẩm</th>
+                                        <th class="text-end">SL</th>
+                                        <th class="text-end">Đơn giá</th>
+                                        <th class="text-end">Thành tiền</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.Lines == null || !Model.Lines.Any())
+                                    {
+                                        <tr>
+                                            <td colspan="5">
+                                                <div class="ord-empty">
+                                                    <div class="ord-empty-title">Chưa có sản phẩm</div>
+                                                    <div class="ord-empty-desc">Đơn hàng này hiện chưa có dữ liệu dòng bán.</div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                    else
+                                    {
+                                        var index = 1;
+                                        foreach (var line in Model.Lines)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <span class="ord-index">@index</span>
+                                                </td>
+                                                <td>
+                                                    <div class="ord-product-name">@line.ItemName</div>
+                                                    <div class="ord-product-meta">
+                                                        @(line.SellingUnitName ?? line.UnitName)
+                                                        @if (!string.IsNullOrWhiteSpace(line.Sku))
+                                                        {
+                                                            <span> | SKU: @line.Sku</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(line.Barcode))
+                                                        {
+                                                            <span> | Barcode: @line.Barcode</span>
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td class="text-end">
+                                                    <div class="ord-cell-main">@line.Quantity</div>
+                                                </td>
+                                                <td class="text-end">
+                                                    <div class="ord-cell-main">@line.UnitPrice.ToString("N0")</div>
+                                                </td>
+                                                <td class="text-end">
+                                                    <div class="ord-cell-main">@line.LineTotal.ToString("N0")</div>
+                                                </td>
+                                            </tr>
+                                            index++;
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="ord-section ord-payment-section">
+                        <div class="ord-payment-card">
+                            <div>
+                                <div class="ord-payment-title">Lịch sử thanh toán</div>
+                                <div class="ord-payment-subtitle">
+                                    Xem đầy đủ các lần thanh toán của đơn trong popup riêng để màn hình chính gọn hơn
+                                </div>
+                            </div>
+
+                            <button type="button" class="ord-link-btn ord-payment-btn" onclick="openPaymentHistoryModal()">
+                                Xem lịch sử thanh toán
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade modal-clean" id="orderActionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:620px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Xử lý đơn hàng</h5>
+                    <div class="small text-muted mt-1" id="orderActionSubtitle">Refund / Void đơn hàng đã chốt</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="orderActionType" />
+                <input type="hidden" id="orderActionOrderId" />
+
+                <div class="ord-popup-callout mb-3" id="orderActionCallout">
+                    Xác nhận thao tác trên đơn đã chốt. Hãy nhập lý do rõ ràng để dễ audit về sau.
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Lý do</label>
+                    <textarea id="orderActionReason"
+                              class="form-control"
+                              rows="4"
+                              placeholder="Nhập lý do..."></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-ord btn-ord-soft" data-bs-dismiss="modal">Đóng</button>
+                <button class="btn btn-ord btn-ord-primary" id="btnConfirmOrderAction">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade modal-clean" id="paymentHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Lịch sử thanh toán</h5>
+                    <div class="small text-muted mt-1">Xem toàn bộ các lần thanh toán của đơn #@Model.OrderId</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="ord-popup-callout">
+                    Theo dõi đầy đủ các lần thanh toán của đơn này theo thời gian, mã tham chiếu và số tiền.
+                </div>
+
+                <div class="ord-popup-hero">
+                    <div class="ord-popup-stat">
+                        <div class="ord-popup-stat-label">Tổng tiền đơn</div>
+                        <div class="ord-popup-stat-value">@Model.GrandTotal.ToString("N0") đ</div>
+                    </div>
+                    <div class="ord-popup-stat">
+                        <div class="ord-popup-stat-label">Đã thanh toán</div>
+                        <div class="ord-popup-stat-value">@Model.PaidTotal.ToString("N0") đ</div>
+                    </div>
+                    <div class="ord-popup-stat">
+                        <div class="ord-popup-stat-label">Số lần thanh toán</div>
+                        <div class="ord-popup-stat-value">@paymentCount</div>
+                    </div>
+                    <div class="ord-popup-stat">
+                        <div class="ord-popup-stat-label">Còn thiếu</div>
+                        <div class="ord-popup-stat-value">@Model.BalanceDue.ToString("N0") đ</div>
+                    </div>
+                </div>
+
+                <div class="ord-popup-table-wrap">
+                    <div class="table-responsive">
+                        <table class="table ord-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Phương thức</th>
+                                    <th>Mã tham chiếu</th>
+                                    <th>Thời gian</th>
+                                    <th class="text-end">Số tiền</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.Payments == null || !Model.Payments.Any())
+                                {
+                                    <tr>
+                                        <td colspan="4">
+                                            <div class="ord-empty">
+                                                <div class="ord-empty-title">Chưa có thanh toán</div>
+                                                <div class="ord-empty-desc">Đơn này chưa có dữ liệu payment.</div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    foreach (var p in Model.Payments)
+                                    {
+                                        <tr>
+                                            <td><strong>@p.Method</strong></td>
+                                            <td>@(string.IsNullOrWhiteSpace(p.Reference) ? "-" : p.Reference)</td>
+                                            <td>@p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td class="text-end fw-bold">@p.Amount.ToString("N0") đ</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ord btn-ord-soft" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade modal-clean" id="returnRefundModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Trả hàng / hoàn tiền</h5>
+                    <div class="small text-muted mt-1">Nhập nhanh số lượng trả, tiền hoàn và lưu thành phiếu</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="returnRefundModalBody">
+                    <div class="text-center py-5 text-muted">Đang tải dữ liệu...</div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ord btn-ord-soft" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-ord btn-ord-primary" id="btnSubmitReturnRefund">Lưu phiếu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade modal-clean" id="returnHistoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Lịch sử trả hàng / hoàn tiền</h5>
+                    <div class="small text-muted mt-1">Các lần xử lý hậu mãi của đơn #@Model.OrderId</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="returnHistoryModalBody">
+                    <div class="text-center py-5 text-muted">Đang tải lịch sử...</div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ord btn-ord-soft" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        const orderActionModal = new bootstrap.Modal(document.getElementById('orderActionModal'));
+        const paymentHistoryModal = new bootstrap.Modal(document.getElementById('paymentHistoryModal'));
+        const returnRefundModal = new bootstrap.Modal(document.getElementById('returnRefundModal'));
+        const returnHistoryModal = new bootstrap.Modal(document.getElementById('returnHistoryModal'));
+
+        const btnConfirmOrderAction = document.getElementById('btnConfirmOrderAction');
+        const btnSubmitReturnRefund = document.getElementById('btnSubmitReturnRefund');
+        const returnRefundModalBody = document.getElementById('returnRefundModalBody');
+        const returnHistoryModalBody = document.getElementById('returnHistoryModalBody');
+
+        const returnState = {
+            orderId: 0,
+            eligibility: null
+        };
+
+        function getAntiForgeryToken() {
+            const el = document.querySelector('input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        function notifySuccess(msg) {
+            if (window.toastr) toastr.success(msg);
+            else alert(msg || 'Thành công');
+        }
+
+        function notifyError(msg) {
+            if (window.toastr) toastr.error(msg);
+            else alert(msg || 'Có lỗi xảy ra');
+        }
+
+        async function fetchJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type') || '';
+
+            let jsonData = null;
+            let textData = '';
+
+            try {
+                if (contentType.includes('application/json')) {
+                    jsonData = await res.json();
+                } else {
+                    textData = await res.text();
+                }
+            } catch { }
+
+            if (!res.ok) {
+                const msg =
+                    jsonData?.message ||
+                    jsonData?.title ||
+                    jsonData?.error ||
+                    textData ||
+                    `Yêu cầu thất bại (${res.status})`;
+
+                throw new Error(msg);
+            }
+
+            return jsonData ?? textData ?? null;
+        }
+
+        function formatMoney(value) {
+            const n = Number(value || 0);
+            return `${n.toLocaleString('vi-VN')} đ`;
+        }
+
+        function formatNumber(value) {
+            return formatMoney(value).replace(' đ', '');
+        }
+
+        function formatDateTime(value) {
+            if (!value) return '-';
+            return new Date(value).toLocaleString('vi-VN');
+        }
+
+        async function refreshOrderDetail(orderId) {
+            if (typeof loadOrderDetail === 'function') {
+                await loadOrderDetail(orderId);
+                return;
+            }
+
+            window.location.reload();
+        }
+
+        function openPaymentHistoryModal() {
+            paymentHistoryModal.show();
+        }
+
+        function openOrderActionModal(type, orderId) {
+            document.getElementById('orderActionType').value = type || '';
+            document.getElementById('orderActionOrderId').value = orderId || 0;
+            document.getElementById('orderActionReason').value = '';
+
+            const subtitle = document.getElementById('orderActionSubtitle');
+            const callout = document.getElementById('orderActionCallout');
+
+            if (type === 'void') {
+                subtitle.textContent = 'Hủy sau khi chốt cho đơn vừa hoàn thành';
+                callout.textContent = 'Void dùng khi hóa đơn vừa chốt nhưng cần hủy ngay. Hãy nhập lý do rõ ràng để audit và truy vết.';
+            } else {
+                subtitle.textContent = 'Refund toàn phần theo flow cũ';
+                callout.textContent = 'Refund dùng cho nghiệp vụ hoàn tiền theo flow cũ. Hãy nhập lý do rõ ràng để audit về sau.';
+            }
+
+            orderActionModal.show();
+        }
+
+        async function submitOrderAction() {
+            const type = document.getElementById('orderActionType').value;
+            const orderId = parseInt(document.getElementById('orderActionOrderId').value || '0');
+            const reason = (document.getElementById('orderActionReason').value || '').trim();
+            const antiForgeryToken = getAntiForgeryToken();
+
+            if (!orderId) {
+                notifyError('Không xác định được đơn hàng.');
+                return;
+            }
+
+            if (!reason) {
+                notifyError('Vui lòng nhập lý do.');
+                return;
+            }
+
+            const endpoint = type === 'refund'
+                ? `/admin/pos/orders/${orderId}/refund`
+                : `/admin/pos/orders/${orderId}/void`;
+
+            try {
+                btnConfirmOrderAction.disabled = true;
+
+                const result = await fetchJson(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(antiForgeryToken ? { 'RequestVerificationToken': antiForgeryToken } : {})
+                    },
+                    body: JSON.stringify({ reason })
+                });
+
+                orderActionModal.hide();
+                notifySuccess(result?.message || 'Xử lý thành công.');
+                await refreshOrderDetail(orderId);
+            } catch (err) {
+                notifyError(err.message || 'Không thể xử lý đơn.');
+            } finally {
+                btnConfirmOrderAction.disabled = false;
+            }
+        }
+
+        async function openReturnRefundModal(orderId) {
+            if (!orderId) {
+                notifyError('Không xác định được đơn hàng.');
+                return;
+            }
+
+            try {
+                returnState.orderId = orderId;
+                returnRefundModalBody.innerHTML = `<div class="text-center py-5 text-muted">Đang tải dữ liệu...</div>`;
+                returnRefundModal.show();
+
+                const data = await fetchJson(`/admin/pos/returns/order/${orderId}/eligibility`);
+                returnState.eligibility = data;
+                returnRefundModalBody.innerHTML = renderReturnRefundForm(data);
+                bindReturnRefundEvents();
+            } catch (err) {
+                notifyError(err.message || 'Không tải được dữ liệu trả hàng / hoàn tiền.');
+            }
+        }
+
+        function renderReturnRefundForm(data) {
+            const lines = data?.lines || [];
+
+            const refundMethodOptions = `
+                <option value="0">Tiền mặt</option>
+                <option value="1">Chuyển khoản</option>
+                <option value="2">Thẻ</option>
+                <option value="3">Ví điện tử</option>
+                <option value="99">Khác</option>
+            `;
+
+            const lineRows = lines.length === 0
+                ? `
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">Không có dòng hàng nào để xử lý.</td>
+                    </tr>
+                `
+               : lines.map((line, index) => {
+    const maxQty = Number(line.returnableQuantity || 0);
+    const soldQty = Number(
+        line.quantity ??
+        line.soldQuantity ??
+        line.originalQuantity ??
+        line.orderedQuantity ??
+        0
+    );
+    const multiplier = Number(line.multiplier || 1);
+    const unitPrice = Number(line.unitPrice || 0);
+    const defaultRefundUnit = Number(line.refundUnitAmount ?? unitPrice);
+
+    return `
+        <tr class="align-middle" data-order-line-id="${line.orderLineId}">
+            <td class="text-center">${index + 1}</td>
+            <td>
+                <div class="fw-semibold">${line.itemName || ''}</div>
+                <div class="small text-muted">
+                    SKU: ${line.sku || '-'}
+                    ${line.unitName ? ` - ĐVT: ${line.unitName}` : ''}
+                </div>
+            </td>
+            <td class="text-end">${formatNumber(soldQty)}</td>
+            <td class="text-end text-primary fw-semibold">${formatNumber(maxQty)}</td>
+            <td style="width: 120px;">
+                <input type="number"
+                       class="form-control text-end js-return-qty"
+                       data-order-line-id="${line.orderLineId}"
+                       data-max="${maxQty}"
+                       data-multiplier="${multiplier}"
+                       min="0"
+                       max="${maxQty}"
+                       step="1"
+                       value="0">
+            </td>
+            <td style="width: 140px;">
+                <input type="number"
+                       class="form-control text-end js-refund-unit"
+                       data-order-line-id="${line.orderLineId}"
+                       min="0"
+                       step="100"
+                       value="${defaultRefundUnit}">
+            </td>
+            <td class="text-center" style="width: 110px;">
+                <div class="form-check d-inline-flex align-items-center gap-2 m-0">
+                    <input type="checkbox"
+                           class="form-check-input js-restock"
+                           data-order-line-id="${line.orderLineId}"
+                           checked>
+                    <label class="form-check-label small text-muted">Nhập kho</label>
+                </div>
+            </td>
+            <td>
+                <input type="text"
+                       class="form-control js-line-reason"
+                       data-order-line-id="${line.orderLineId}"
+                       placeholder="Lý do dòng này (nếu có)">
+            </td>
+            <td class="text-end fw-semibold js-line-total"
+                data-order-line-id="${line.orderLineId}">
+                ${formatMoney(0)}
+            </td>
+        </tr>
+    `;
+}).join('');
+
+            return `
+                <div class="return-refund-form">
+                    <div class="ord-popup-callout">
+                        Mặc định <strong>Nhập kho</strong> đang bật. Nếu hàng lỗi / không muốn nhập lại kho, hãy <strong>bỏ chọn</strong> ở đúng dòng hàng.
+                    </div>
+
+                    <div class="ret-summary">
+                        <div class="ret-stat">
+                            <div class="ret-stat-label">Đơn hàng</div>
+                            <div class="ret-stat-value">${data?.orderNumber || '-'}</div>
+                        </div>
+                        <div class="ret-stat">
+                            <div class="ret-stat-label">Khách hàng</div>
+                            <div class="ret-stat-value">${data?.customerName || 'Khách lẻ'}</div>
+                        </div>
+                        <div class="ret-stat">
+                            <div class="ret-stat-label">Tổng thanh toán</div>
+                            <div class="ret-stat-value">${formatMoney(data?.grandTotal || 0)}</div>
+                        </div>
+                        <div class="ret-stat">
+                            <div class="ret-stat-label">Đã hoàn trước đó</div>
+                            <div class="ret-stat-value text-danger">${formatMoney(data?.alreadyRefunded || 0)}</div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Loại xử lý</label>
+                            <select class="form-select" id="returnType">
+                                <option value="3" selected>Trả hàng + hoàn tiền</option>
+                                <option value="2">Chỉ trả hàng</option>
+                                <option value="1">Chỉ hoàn tiền</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Lý do chung</label>
+                            <input type="text" class="form-control" id="returnReason" placeholder="Nhập lý do chung">
+                        </div>
+                    </div>
+
+                    <div class="ord-box mb-3">
+                        <div class="table-responsive">
+                            <table class="table ord-table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-center" style="width: 60px;">#</th>
+                                        <th>Sản phẩm</th>
+                                        <th class="text-end" style="width: 100px;">Đã bán</th>
+                                        <th class="text-end" style="width: 120px;">Còn trả được</th>
+                                        <th class="text-end" style="width: 120px;">SL trả</th>
+                                        <th class="text-end" style="width: 140px;">Đơn giá hoàn</th>
+                                        <th class="text-center" style="width: 110px;">Nhập kho</th>
+                                        <th style="width: 220px;">Lý do dòng</th>
+                                        <th class="text-end" style="width: 140px;">Thành tiền</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="returnLinesBody">
+                                    ${lineRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Phương thức hoàn</label>
+                            <select class="form-select" id="refundMethod">
+                                ${refundMethodOptions}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Số tiền hoàn</label>
+                            <input type="number" class="form-control" id="refundAmount" min="0" step="100" value="0">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Mã tham chiếu</label>
+                            <input type="text" class="form-control" id="refundReference" placeholder="Nếu có">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Tổng tiền hàng trả</label>
+                            <input type="text" class="form-control fw-bold" id="returnSubtotalDisplay" value="0 đ" readonly>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function bindReturnRefundEvents() {
+            document.querySelectorAll('.js-return-qty, .js-refund-unit').forEach(el => {
+                el.addEventListener('input', recalcReturnRefundSubtotal);
+            });
+
+            const returnType = document.getElementById('returnType');
+            const refundAmount = document.getElementById('refundAmount');
+
+            function applyReturnTypeUi() {
+                const type = parseInt(returnType?.value || '3');
+
+                const qtyInputs = document.querySelectorAll('.js-return-qty');
+                const refundUnitInputs = document.querySelectorAll('.js-refund-unit');
+                const restockInputs = document.querySelectorAll('.js-restock');
+                const lineReasonInputs = document.querySelectorAll('.js-line-reason');
+
+                if (type === 1) {
+                    qtyInputs.forEach(x => {
+                        x.value = '0';
+                        x.setAttribute('readonly', 'readonly');
+                    });
+
+                    refundUnitInputs.forEach(x => {
+                        x.setAttribute('readonly', 'readonly');
+                    });
+
+                    restockInputs.forEach(x => {
+                        x.checked = false;
+                        x.setAttribute('disabled', 'disabled');
+                    });
+
+                    lineReasonInputs.forEach(x => {
+                        x.value = '';
+                        x.setAttribute('readonly', 'readonly');
+                    });
+
+                    refundAmount.removeAttribute('readonly');
+                }
+                else if (type === 2) {
+                    qtyInputs.forEach(x => x.removeAttribute('readonly'));
+                    refundUnitInputs.forEach(x => x.removeAttribute('readonly'));
+                    restockInputs.forEach(x => x.removeAttribute('disabled'));
+                    lineReasonInputs.forEach(x => x.removeAttribute('readonly'));
+
+                    refundAmount.value = '0';
+                    refundAmount.setAttribute('readonly', 'readonly');
+                }
+                else {
+                    qtyInputs.forEach(x => x.removeAttribute('readonly'));
+                    refundUnitInputs.forEach(x => x.removeAttribute('readonly'));
+                    restockInputs.forEach(x => x.removeAttribute('disabled'));
+                    lineReasonInputs.forEach(x => x.removeAttribute('readonly'));
+
+                    refundAmount.removeAttribute('readonly');
+                }
+
+                recalcReturnRefundSubtotal();
+            }
+
+            if (returnType) {
+                returnType.addEventListener('change', applyReturnTypeUi);
+            }
+
+            applyReturnTypeUi();
+        }
+
+        function recalcReturnRefundSubtotal() {
+            let subtotal = 0;
+
+            document.querySelectorAll('.js-return-qty').forEach(qtyInput => {
+                const row = qtyInput.closest('tr');
+                if (!row) return;
+
+                const max = parseFloat(qtyInput.dataset.max || '0');
+                let qty = parseFloat(qtyInput.value || '0');
+
+                if (qty < 0) qty = 0;
+                if (qty > max) {
+                    qty = max;
+                    qtyInput.value = max;
+                }
+
+                const priceInput = row.querySelector('.js-refund-unit');
+                const lineTotalEl = row.querySelector('.js-line-total');
+                const price = parseFloat(priceInput?.value || '0');
+
+                const lineTotal = qty * price;
+                subtotal += lineTotal;
+
+                if (lineTotalEl) {
+                    lineTotalEl.textContent = formatMoney(lineTotal);
+                }
+            });
+
+            const subtotalDisplay = document.getElementById('returnSubtotalDisplay');
+            if (subtotalDisplay) {
+                subtotalDisplay.value = formatMoney(subtotal);
+            }
+        }
+
+        function buildReturnRefundRequest() {
+            const orderId = returnState.orderId;
+            const type = parseInt(document.getElementById('returnType')?.value || '3');
+            const reason = (document.getElementById('returnReason')?.value || '').trim();
+            const refundAmount = parseFloat(document.getElementById('refundAmount')?.value || '0');
+            const refundMethod = parseInt(document.getElementById('refundMethod')?.value || '0');
+            const refundReference = (document.getElementById('refundReference')?.value || '').trim();
+
+            const lines = [];
+
+            if (type === 2 || type === 3) {
+                document.querySelectorAll('.js-return-qty').forEach(qtyInput => {
+                    const qty = parseFloat(qtyInput.value || '0');
+                    if (qty <= 0) return;
+
+                    const row = qtyInput.closest('tr');
+                    if (!row) return;
+
+                    const orderLineId = parseInt(qtyInput.dataset.orderLineId || '0');
+                    const multiplier = parseFloat(qtyInput.dataset.multiplier || '1');
+
+                    const refundUnitInput = row.querySelector('.js-refund-unit');
+                    const restockInput = row.querySelector('.js-restock');
+                    const lineReasonInput = row.querySelector('.js-line-reason');
+
+                    const refundUnitAmount = parseFloat(refundUnitInput?.value || '0');
+                    const restock = !!restockInput?.checked;
+                    const lineReason = (lineReasonInput?.value || '').trim();
+
+                    lines.push({
+                        orderLineId,
+                        returnQuantity: qty,
+                        returnBaseQuantity: qty * multiplier,
+                        refundUnitAmount,
+                        action: restock ? 1 : 0,
+                        reason: lineReason || null
+                    });
+                });
+            }
+
+            const payments = [];
+
+            if ((type === 1 || type === 3) && refundAmount > 0) {
+                payments.push({
+                    method: refundMethod,
+                    amount: refundAmount,
+                    referenceCode: refundReference
+                });
+            }
+
+            return {
+                orderId,
+                posShiftId: 0,
+                type,
+                reason,
+                lines,
+                payments
+            };
+        }
+
+        async function submitReturnRefund() {
+            try {
+                const payload = buildReturnRefundRequest();
+
+                if (!payload.orderId) {
+                    notifyError('Không xác định được đơn hàng.');
+                    return;
+                }
+
+                if (!payload.reason) {
+                    notifyError('Vui lòng nhập lý do.');
+                    return;
+                }
+
+                if ((payload.type === 2 || payload.type === 3) && payload.lines.length === 0) {
+                    notifyError('Vui lòng nhập ít nhất một dòng hàng trả.');
+                    return;
+                }
+
+                if ((payload.type === 1 || payload.type === 3) && payload.payments.length === 0) {
+                    notifyError('Vui lòng nhập số tiền hoàn.');
+                    return;
+                }
+
+                btnSubmitReturnRefund.disabled = true;
+
+                const result = await fetchJson(`/admin/pos/returns`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': getAntiForgeryToken()
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                returnRefundModal.hide();
+                notifySuccess(result?.message || 'Đã tạo phiếu trả hàng / hoàn tiền thành công.');
+
+                if (returnState.orderId) {
+                    await refreshOrderDetail(returnState.orderId);
+                }
+            } catch (error) {
+                notifyError(error?.message || 'Không thể tạo phiếu trả hàng / hoàn tiền.');
+            } finally {
+                btnSubmitReturnRefund.disabled = false;
+            }
+        }
+
+        async function openReturnHistoryModal(orderId) {
+            if (!orderId) {
+                notifyError('Không xác định được đơn hàng.');
+                return;
+            }
+
+            try {
+                returnHistoryModalBody.innerHTML = `<div class="text-center py-5 text-muted">Đang tải lịch sử...</div>`;
+                returnHistoryModal.show();
+
+                const data = await fetchJson(`/admin/pos/returns/order/${orderId}/history`);
+                returnHistoryModalBody.innerHTML = renderReturnHistory(data);
+            } catch (err) {
+                notifyError(err.message || 'Không tải được lịch sử return.');
+            }
+        }
+
+        function renderReturnHistory(items) {
+            if (!items || items.length === 0) {
+                return `
+                    <div class="ord-empty">
+                        <div class="ord-empty-title">Chưa có lịch sử trả hàng / hoàn tiền</div>
+                        <div class="ord-empty-desc">Đơn này hiện chưa phát sinh nghiệp vụ hậu mãi.</div>
+                    </div>
+                `;
+            }
+
+            const totalRefund = items.reduce((sum, x) => sum + Number(x.refundTotal || 0), 0);
+            const totalCount = items.length;
+
+            return `
+                <div class="ord-popup-callout">
+                    Đây là toàn bộ các phiếu hậu mãi phát sinh trên đơn này. Mỗi phiếu có thể chứa hàng trả, payment hoàn và thông tin nhập kho.
+                </div>
+
+                <div class="ret-summary-modern">
+                    <div class="ret-hero-main">
+                        <div class="ret-hero-label">Tổng tiền đã hoàn</div>
+                        <div class="ret-hero-value">${formatMoney(totalRefund)}</div>
+                        <div class="ret-hero-sub">
+                            Tính từ toàn bộ phiếu return/refund đã ghi nhận trên đơn này.
+                        </div>
+                    </div>
+
+                    <div class="ret-hero-stats">
+                        <div class="ret-mini-stat">
+                            <div class="ret-mini-label">Số phiếu hậu mãi</div>
+                            <div class="ret-mini-value">${totalCount}</div>
+                        </div>
+                        <div class="ret-mini-stat">
+                            <div class="ret-mini-label">Tổng tiền đơn</div>
+                            <div class="ret-mini-value">${formatMoney(@Model.GrandTotal)}</div>
+                        </div>
+                        <div class="ret-mini-stat">
+                            <div class="ret-mini-label">Đã thanh toán</div>
+                            <div class="ret-mini-value">${formatMoney(@Model.PaidTotal)}</div>
+                        </div>
+                        <div class="ret-mini-stat">
+                            <div class="ret-mini-label">Còn có thể hoàn</div>
+                            <div class="ret-mini-value">${formatMoney(@Model.RefundableRemaining)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ret-list">
+                    ${items.map(x => {
+                        const typeText = getReturnTypeText(x.type);
+                        const statusText = getReturnStatusText(x.status);
+                        const lineCount = x.lines?.length || 0;
+                        const paymentCount = x.payments?.length || 0;
+
+                        return `
+                            <div class="ret-history-item">
+                                <div class="ret-history-header">
+                                    <div>
+                                        <div class="ret-code">${x.returnNumber}</div>
+
+                                        <div class="ret-meta-line">
+                                            <span class="ord-badge ord-badge-info">${typeText}</span>
+                                            <span class="ord-badge ord-badge-success">${statusText}</span>
+                                            <span class="ret-meta-text">${formatDateTime(x.createdAtUtc)}</span>
+                                        </div>
+
+                                        <div class="ret-meta-line">
+                                            <span class="ret-meta-text">${lineCount} dòng hàng trả</span>
+                                            <span class="ret-meta-text">•</span>
+                                            <span class="ret-meta-text">${paymentCount} payment hoàn</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="ret-amount-box">
+                                        <div class="ret-amount-label">Hoàn tiền</div>
+                                        <div class="ret-amount-value">${formatMoney(x.refundTotal)}</div>
+                                        <div class="ret-amount-sub">Tổng giá trị phiếu</div>
+                                    </div>
+                                </div>
+
+                                <div class="ret-reason-box">
+                                    <div class="ret-reason-label">Lý do</div>
+                                    <div class="ret-reason-value">${x.reason || '-'}</div>
+                                </div>
+
+                                <div class="ret-action-row">
+                                    <button type="button"
+                                            class="btn btn-sm btn-ord btn-ord-soft"
+                                            onclick="toggleReturnHistoryDetail(${x.id})">
+                                        Xem chi tiết phiếu
+                                    </button>
+                                </div>
+
+                                <div id="return-history-detail-${x.id}" class="ret-detail-shell" style="display:none;">
+                                    ${renderReturnHistoryDetail(x)}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function renderReturnHistoryDetail(item) {
+            const lines = item.lines || [];
+            const payments = item.payments || [];
+
+            const linesHtml = lines.length === 0
+                ? `<div class="ret-empty-box">Không có dòng hàng trả.</div>`
+                : `
+                    <div class="ret-panel">
+                        <div class="ret-panel-head">Dòng hàng trả</div>
+                        <div class="ret-panel-body">
+                            <div class="table-responsive">
+                                <table class="table ret-table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Sản phẩm</th>
+                                            <th class="text-end">SL trả</th>
+                                            <th class="text-end">SL quy đổi</th>
+                                            <th class="text-end">Đơn giá hoàn</th>
+                                            <th class="text-end">Thành tiền</th>
+                                            <th class="text-center">Nhập kho</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${lines.map(l => `
+                                            <tr>
+                                                <td><strong>${l.itemName}</strong></td>
+                                                <td class="text-end">${l.returnQuantity}</td>
+                                                <td class="text-end">${l.returnBaseQuantity}</td>
+                                                <td class="text-end">${formatMoney(l.refundUnitAmount)}</td>
+                                                <td class="text-end fw-bold">${formatMoney(l.refundLineTotal)}</td>
+                                                <td class="text-center">${getRestockText(l.action)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>`;
+
+            const paymentsHtml = payments.length === 0
+                ? `<div class="ret-empty-box">Không có payment hoàn tiền.</div>`
+                : `
+                    <div class="ret-panel">
+                        <div class="ret-panel-head">Payment hoàn tiền</div>
+                        <div class="ret-panel-body">
+                            <div class="table-responsive">
+                                <table class="table ret-table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Phương thức</th>
+                                            <th>Mã tham chiếu</th>
+                                            <th>Provider</th>
+                                            <th>Thời gian</th>
+                                            <th class="text-end">Số tiền</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${payments.map(p => `
+                                            <tr>
+                                                <td><strong>${p.method}</strong></td>
+                                                <td>${p.referenceCode || '-'}</td>
+                                                <td>${p.provider || '-'}</td>
+                                                <td>${formatDateTime(p.paidAtUtc)}</td>
+                                                <td class="text-end fw-bold">${formatMoney(p.amount)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>`;
+
+            return `
+                <div class="ret-detail-grid">
+                    ${linesHtml}
+                    ${paymentsHtml}
+                </div>
+            `;
+        }
+
+        function toggleReturnHistoryDetail(id) {
+            const el = document.getElementById(`return-history-detail-${id}`);
+            if (!el) return;
+            el.style.display = el.style.display === 'none' ? '' : 'none';
+        }
+
+        function getReturnTypeText(type) {
+            const value = (type || '').toString();
+            switch (value) {
+                case '1':
+                case 'RefundOnly':
+                    return 'Chỉ hoàn tiền';
+                case '2':
+                case 'ReturnOnly':
+                    return 'Chỉ trả hàng';
+                case '3':
+                case 'ReturnAndRefund':
+                    return 'Trả hàng + hoàn tiền';
+                case '4':
+                case 'Exchange':
+                    return 'Đổi hàng';
+                default:
+                    return value;
+            }
+        }
+
+        function getReturnStatusText(status) {
+            const value = (status || '').toString();
+            switch (value) {
+                case '0':
+                case 'Draft':
+                    return 'Nháp';
+                case '1':
+                case 'Completed':
+                    return 'Hoàn tất';
+                case '2':
+                case 'Cancelled':
+                    return 'Đã hủy';
+                default:
+                    return value;
+            }
+        }
+
+        function getRestockText(action) {
+            const value = (action || '').toString();
+            switch (value) {
+                case '1':
+                case 'Restock':
+                    return 'Có';
+                case '0':
+                case 'NoRestock':
+                    return 'Không';
+                default:
+                    return '-';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            btnConfirmOrderAction?.addEventListener('click', submitOrderAction);
+            btnSubmitReturnRefund?.addEventListener('click', submitReturnRefund);
+        });
+    </script>
+}

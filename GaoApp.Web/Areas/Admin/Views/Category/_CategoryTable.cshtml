@@ -1,0 +1,139 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Categories
+@model CategoryIndexVM
+
+@{
+    var items = Model.Paged.Items;
+    var totalItems = Model.Paged.TotalItems;
+    var pageSize = Model.PageSize;
+    var currentPage = Model.Page;
+
+    var totalPages = (int)Math.Ceiling((double)totalItems / (pageSize <= 0 ? 1 : pageSize));
+
+    var canUpdate = (bool?)(ViewData["CanUpdateCategory"]) ?? false;
+    var canDelete = (bool?)(ViewData["CanDeleteCategory"]) ?? false;
+    var showActionColumn = canUpdate || canDelete;
+}
+
+<div class="table-responsive">
+    <table class="table align-middle table-hover">
+        <thead class="table-light">
+            <tr>
+                <th style="width:90px">ID</th>
+                <th style="width:160px">Mã</th>
+                <th>Tên</th>
+                <th>Danh mục cha</th>
+                <th style="width:120px">Sort</th>
+                <th style="width:170px">Trạng thái</th>
+                @if (showActionColumn)
+                {
+                    <th style="width:180px">Thao tác</th>
+                }
+            </tr>
+        </thead>
+
+        <tbody class="table-border-bottom-0">
+            @if (items == null || !items.Any())
+            {
+                <tr>
+                    <td colspan="@(showActionColumn ? 7 : 6)" class="text-center text-muted py-4">
+                        Chưa có danh mục
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var x in items)
+                {
+                    <tr>
+                        <td class="fw-semibold text-primary">@x.Id</td>
+                        <td>@(x.Code ?? "")</td>
+                        <td class="fw-semibold">@x.Name</td>
+                        <td>@(x.ParentName ?? "")</td>
+                        <td>@x.SortOrder</td>
+
+                        <td>
+                            @if (canUpdate)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm @(x.IsActive ? "btn-success" : "btn-label-danger") js-toggle-status"
+                                        data-id="@x.Id"
+                                        title="Bấm để Khóa/Mở khóa"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top">
+                                    @(x.IsActive ? "Đang hoạt động" : "Ngưng giao dịch")
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="badge @(x.IsActive ? "bg-success" : "bg-secondary")">
+                                    @(x.IsActive ? "Đang hoạt động" : "Ngưng giao dịch")
+                                </span>
+                            }
+                        </td>
+
+                        @if (showActionColumn)
+                        {
+                            <td>
+                                @if (canUpdate)
+                                {
+                                    <a asp-area="Admin"
+                                           asp-controller="Category"
+                                           asp-action="Edit"
+                                           asp-route-id="@x.Id"
+                                           class="btn btn-sm btn-warning me-1">
+                                        Sửa
+                                    </a>
+                                }
+
+                                @if (canDelete)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger js-delete"
+                                            data-id="@x.Id"
+                                            data-name="@x.Name">
+                                        Xóa
+                                    </button>
+                                }
+                            </td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="text-muted">
+            Tổng: <b>@totalItems</b>
+        </div>
+
+        <nav>
+            <ul class="pagination mb-0">
+                @{
+                    var start = Math.Max(1, currentPage - 3);
+                    var end = Math.Min(totalPages, start + 6);
+                    start = Math.Max(1, end - 6);
+                }
+
+                @for (int p = start; p <= end; p++)
+                {
+                    <li class="page-item @(p == currentPage ? "active" : "")">
+                        <a href="#" class="page-link js-page-link" data-page="@p">@p</a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    </div>
+}
+
+<script>
+    (function () {
+        if (!window.bootstrap) return;
+        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+            try { new bootstrap.Tooltip(el); } catch (e) { }
+        });
+    })();
+</script>

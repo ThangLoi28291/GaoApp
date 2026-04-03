@@ -1,0 +1,137 @@
+﻿@using GaoApp.Application.Common
+@using GaoApp.Application.Common.Security
+@using GaoApp.Application.DTOs.Categories
+@using GaoApp.Application.Interfaces.Services.Security
+@using GaoApp.Web.Common.Security
+@inject ICurrentStorePermissionService PermissionService
+@inject ITenantContext TenantContext
+@model CategoryEditDto
+
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Thêm danh mục" : "Cập nhật danh mục";
+    Layout = "_ContentNavbarLayout";
+    var parents = (List<(int Id, string Name)>)(ViewBag.ParentOptions ?? new List<(int, string)>());
+
+    // Form tạo mới cần quyền Create.
+    var canCreate = await ViewPermissionHelper.HasPermissionAsync(
+        PermissionService,
+        TenantContext,
+        User,
+        PermissionCodes.Catalog.Category.Create);
+
+    // Form cập nhật cần quyền Update.
+    var canUpdate = await ViewPermissionHelper.HasPermissionAsync(
+        PermissionService,
+        TenantContext,
+        User,
+        PermissionCodes.Catalog.Category.Update);
+
+    // Nếu Id == 0 => đang tạo mới.
+    // Nếu Id > 0 => đang chỉnh sửa.
+    var canSave = Model.Id == 0 ? canCreate : canUpdate;
+}
+
+@section Header {
+    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
+        <h4 class="fw-bold mb-0">
+            <a asp-area="Admin" asp-controller="Category" asp-action="Index" class="text-muted fw-light">
+                Danh mục /
+            </a>
+            @ViewData["Title"]
+        </h4>
+    </div>
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-10 col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Thông tin chi tiết</h5>
+                <small class="text-muted float-end">* là bắt buộc</small>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <form asp-area="Admin"
+                      asp-controller="Category"
+                      asp-action="@(Model.Id == 0 ? "Create" : "Edit")"
+                      method="post">
+
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" asp-for="Id" />
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Mã</label>
+                            @if (Model.Id == 0)
+                            {
+                                <input asp-for="Code" class="form-control text-uppercase" placeholder="(Tự sinh nếu để trống)" />
+                            }
+                            else
+                            {
+                                <input asp-for="Code" class="form-control text-uppercase" readonly />
+                            }
+                            <span asp-validation-for="Code" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label">Tên</label> <span class="text-danger">*</span>
+                            <input asp-for="Name" class="form-control" placeholder="Nhập tên danh mục..." autofocus />
+                            <span asp-validation-for="Name" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Danh mục cha</label>
+                            <select class="form-select" asp-for="ParentId">
+                                <option value="">-- Không chọn --</option>
+                                @foreach (var p in parents)
+                                {
+                                    <option value="@p.Id" selected="@(Model.ParentId == p.Id)">@p.Name</option>
+                                }
+                            </select>
+                            <span asp-validation-for="ParentId" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Thứ tự (Sort)</label>
+                            <input asp-for="SortOrder" type="number" class="form-control" />
+                            <span asp-validation-for="SortOrder" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" asp-for="IsActive" />
+                            <label class="form-check-label" asp-for="IsActive">Đang hoạt động</label>
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <a asp-area="Admin"
+                               asp-controller="Category"
+                               asp-action="Index"
+                               class="btn btn-label-secondary me-2">
+                            Hủy bỏ
+                        </a>
+
+                        @if (canSave)
+                        {
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bx bx-save me-1"></i> Lưu thông tin
+                            </button>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

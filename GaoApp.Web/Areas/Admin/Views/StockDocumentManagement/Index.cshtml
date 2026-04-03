@@ -1,0 +1,195 @@
+﻿@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
+@{
+    ViewData["Title"] = "Phiếu nhập kho";
+    Layout = "_ContentNavbarLayout";
+}
+
+<div class="container-xxl flex-grow-1 container-p-y">
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">Phiếu nhập kho</h5>
+                <small class="text-muted">Quản lý phiếu nhập theo trạng thái xử lý</small>
+            </div>
+       
+            @if ((await AuthorizationService.AuthorizeAsync(User, null, AppPermissions.InventoryStockDocumentCreate)).Succeeded)
+            {
+                <button class="btn btn-primary" id="btnCreateReceipt">
+                    <i class="bx bx-plus"></i> Tạo phiếu nhập
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <ul class="nav nav-tabs mb-3" id="receiptTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active"
+                            id="tab-working-btn"
+                            data-bs-toggle="tab"
+                            data-bs-target="#tab-working"
+                            type="button"
+                            role="tab">
+                        Đang làm
+                    </button>
+                </li>
+
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link"
+                            id="tab-pending-btn"
+                            data-bs-toggle="tab"
+                            data-bs-target="#tab-pending"
+                            type="button"
+                            role="tab">
+                        Chờ duyệt
+                    </button>
+                </li>
+
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link"
+                            id="tab-confirmed-btn"
+                            data-bs-toggle="tab"
+                            data-bs-target="#tab-confirmed"
+                            type="button"
+                            role="tab">
+                        Đã duyệt
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="tab-working" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Mã phiếu</th>
+                                    <th>Ngày phiếu</th>
+                                    <th>Kho</th>
+                                    <th>Nhà cung cấp</th>
+                                    <th>Trạng thái</th>
+                                    <th class="text-end">Tổng tiền</th>
+                                    <th style="width:120px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyWorking">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="tab-pending" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Mã phiếu</th>
+                                    <th>Ngày phiếu</th>
+                                    <th>Kho</th>
+                                    <th>Nhà cung cấp</th>
+                                    <th>Gửi duyệt lúc</th>
+                                    <th class="text-end">Tổng tiền</th>
+                                    <th style="width:120px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyPending">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="tab-confirmed" role="tabpanel">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Mã phiếu</th>
+                                    <th>Ngày phiếu</th>
+                                    <th>Kho</th>
+                                    <th>Nhà cung cấp</th>
+                                    <th>Duyệt lúc</th>
+                                    <th class="text-end">Tổng tiền</th>
+                                    <th style="width:120px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyConfirmed">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createReceiptModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tạo phiếu nhập kho</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Kho <span class="text-danger">*</span></label>
+                    <select class="form-select" id="createWarehouseId">
+                        <option value="">-- Chọn kho --</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Nhà cung cấp</label>
+                    <input type="text"
+                           class="form-control"
+                           id="createSupplierKeyword"
+                           placeholder="Gõ tên nhà cung cấp..." />
+
+                    <div class="list-group mt-2" id="supplierLookupList"></div>
+                    <input type="hidden" id="createSupplierId" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Ngày phiếu</label>
+                    <input type="datetime-local" class="form-control" id="createDocumentDate" />
+                </div>
+
+                <div class="mb-0">
+                    <label class="form-label">Ghi chú</label>
+                    <textarea class="form-control" id="createNote" rows="3"></textarea>
+                </div>
+
+                <div class="form-text mt-2 text-danger" id="createReceiptMessage"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+                <button type="button" class="btn btn-primary" id="btnSubmitCreateReceipt">
+                    Tạo phiếu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        window.stockDocumentPage = {
+            mode: 'index'
+        };
+    </script>
+    <script src="~/admin/js/stock-document-management.js"></script>
+}

@@ -1,0 +1,1209 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Orders.InventoryIssueDetailVm
+@using GaoApp.Domain.Enums
+
+@{
+    ViewData["Title"] = "Chi tiết case tồn âm";
+
+    var unresolvedLines = Model.Lines.Where(x => !x.IsResolved).ToList();
+    var resolvedPercent = Model.TotalLines > 0
+        ? Math.Round((decimal)Model.ResolvedLines * 100 / Model.TotalLines, 0)
+        : 0;
+}
+
+<div class="container-fluid py-3 inventory-issue-detail-page">
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success rounded-4 shadow-sm border-0">@TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger rounded-4 shadow-sm border-0">@TempData["Error"]</div>
+    }
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4 issue-hero">
+        <div class="card-body p-4 p-xl-5">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-4">
+                <div>
+                    <div class="text-uppercase text-muted small fw-semibold mb-2">Inventory Issue</div>
+                    <h2 class="fw-bold mb-2">@Model.Code</h2>
+                    <div class="text-muted mb-2">
+                        Đơn bán:
+                        <a asp-action="Detail"
+                           asp-controller="OrderManagement"
+                           asp-route-id="@Model.OrderId"
+                           class="text-decoration-none fw-semibold">
+                            @Model.OrderCode
+                        </a>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <span class="badge rounded-pill @GetStatusClass(Model.Status) px-3 py-2">@GetStatusText(Model.Status)</span>
+                        <span class="badge rounded-pill @GetSeverityClass(Model.Severity) px-3 py-2">@GetSeverityText(Model.Severity)</span>
+                        <span class="badge rounded-pill @(Model.IsOverdue ? "bg-danger-subtle text-danger-emphasis" : "bg-success-subtle text-success-emphasis") px-3 py-2">
+                            @(Model.IsOverdue ? "Quá hạn" : "Trong hạn")
+                        </span>
+                    </div>
+                </div>
+
+                <div class="row g-3 stats-grid">
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card">
+                            <div class="stat-label">Tổng line</div>
+                            <div class="stat-value">@Model.TotalLines</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card success">
+                            <div class="stat-label">Đã xử lý</div>
+                            <div class="stat-value">@Model.ResolvedLines</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card warning">
+                            <div class="stat-label">Chưa xử lý</div>
+                            <div class="stat-value">@Model.UnresolvedLines</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="stat-card danger">
+                            <div class="stat-label">Deadline</div>
+                            <div class="stat-value small-value">@Model.DueAtUtc.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="progress-wrap mt-4">
+                <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
+                    <span>Tiến độ xử lý</span>
+                    <span>@resolvedPercent%</span>
+                </div>
+                <div class="progress issue-progress">
+                    <div class="progress-bar" style="width:@resolvedPercent%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (Model.Status == InventoryResolutionStatus.PendingResolution)
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-4 status-banner pending">
+            <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <div class="banner-title">Hệ thống đang tự đối soát</div>
+                    <div class="banner-subtitle">
+                        Chưa đủ điều kiện duyệt. Khi đủ số lượng và giá vốn, case sẽ tự chuyển sang chờ duyệt.
+                    </div>
+                </div>
+                <div class="banner-pill">Đang xử lý nền</div>
+            </div>
+        </div>
+    }
+    else if (Model.Status == InventoryResolutionStatus.ReadyForApproval)
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-4 status-banner ready">
+            <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <div class="banner-title">Đã đủ điều kiện duyệt</div>
+                    <div class="banner-subtitle">
+                        Quản lý chỉ cần kiểm tra nhanh và bấm duyệt.
+                    </div>
+                </div>
+                <div class="banner-pill">Sẵn sàng duyệt</div>
+            </div>
+        </div>
+    }
+
+    <div class="row g-4">
+        <div class="col-12 col-xl-8">
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0 fw-bold">Tổng quan case</h5>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-primary rounded-3"
+                                data-bs-toggle="modal"
+                                data-bs-target="#timelineModal">
+                            Xem timeline
+                        </button>
+
+                        @if (!string.IsNullOrWhiteSpace(Model.InternalNote))
+                        {
+                            <button class="btn btn-outline-secondary rounded-3"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#internalNoteModal">
+                                Ghi chú nội bộ
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="card-body px-4 pb-4">
+                    <div class="row g-3">
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Nguyên nhân</div>
+                                <div class="value">@Model.ReasonType</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Mở case</div>
+                                <div class="value">@Model.OpenedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Deadline</div>
+                                <div class="value">@Model.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Sẵn sàng duyệt</div>
+                                <div class="value">@(Model.ReadyForApprovalAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Đã duyệt</div>
+                                <div class="value">@(Model.ApprovedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 col-lg-4">
+                            <div class="info-box">
+                                <div class="label">Đã từ chối</div>
+                                <div class="value">@(Model.RejectedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (unresolvedLines.Any())
+            {
+                <div class="card border-0 shadow-sm rounded-4 mb-4 unresolved-focus-card">
+                    <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h5 class="mb-1 fw-bold text-danger">Line cần xử lý</h5>
+                            <div class="small text-muted">Các line này đang chặn case chuyển sang duyệt.</div>
+                        </div>
+                        <span class="badge bg-danger-subtle text-danger-emphasis rounded-pill px-3 py-2">
+                            @unresolvedLines.Count line
+                        </span>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            @foreach (var line in unresolvedLines)
+                            {
+                                <div class="col-12">
+                                    <div class="quick-unresolved-item">
+                                        <div>
+                                            <div class="fw-semibold">@line.ProductName</div>
+                                            <div class="small text-muted">
+                                                Barcode: @(GetDisplayBarcode(line) ?? "-")
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="small text-danger fw-semibold">Âm: @line.NegativeQty</div>
+                                            <div class="small text-muted">@GetSimpleReason(line)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="card border-0 shadow-sm rounded-4 mb-4">
+                <div class="card-header bg-white border-0 p-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0 fw-bold">Danh sách issue line</h5>
+                    <span class="text-muted small">Bấm “Xem nhanh” để xem thông tin ngắn gọn</span>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table issue-lines-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Sản phẩm</th>
+                                    <th class="text-end">Phần âm</th>
+                                    <th class="text-end">Đã bù</th>
+                                    <th class="text-center">Giá vốn</th>
+                                    <th class="text-center">Trạng thái</th>
+                                    <th class="text-center">Tác vụ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.Lines.Any())
+                                {
+                                    foreach (var line in Model.Lines)
+                                    {
+                                        var modalId = $"lineDetailModal_{line.Id}";
+                                        var rowClass = line.IsResolved ? "issue-line-row resolved" : "issue-line-row unresolved";
+
+                                        var provisionalAmount = line.ProvisionalCostAmount ?? 0m;
+                                        var revaluationAmount = line.RevaluationAmount ?? 0m;
+                                        var finalCostAmount = provisionalAmount + revaluationAmount;
+
+                                        var displayUnitCost = line.NegativeQty > 0
+                                            ? Math.Round(finalCostAmount / line.NegativeQty, 4, MidpointRounding.AwayFromZero)
+                                            : 0m;
+
+                                        var costLabel = line.CostResolved ? "Giá vốn cuối" : "Giá vốn tạm";
+                                        var displayBarcode = GetDisplayBarcode(line);
+
+                                        <tr class="@rowClass">
+                                            <td>
+                                                <div class="d-flex align-items-start gap-3">
+                                                    <div class="line-state-dot @(line.IsResolved ? "ok" : "pending")"></div>
+                                                    <div>
+                                                        <div class="fw-semibold">@line.ProductName</div>
+                                                        <div class="text-muted small">
+                                                            Barcode: @(displayBarcode ?? "-")
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td class="text-end fw-bold text-danger">@line.NegativeQty</td>
+
+                                            <td class="text-end">
+                                                <div class="fw-semibold @(line.QuantityResolved ? "text-success" : "text-danger")">
+                                                    @line.AutoDetectedInboundQty / @line.NegativeQty
+                                                </div>
+                                            </td>
+
+                                            <td class="text-center">
+                                                <div class="cost-chip @(line.CostResolved ? "final" : "temp")">
+                                                    <div class="cost-chip-label">@costLabel</div>
+                                                    <div class="cost-chip-value">@displayUnitCost.ToString("N2")</div>
+                                                </div>
+                                            </td>
+
+                                            <td class="text-center">
+                                                @if (line.IsResolved)
+                                                {
+                                                    <div class="badge bg-success-subtle text-success-emphasis rounded-pill px-3 py-2">
+                                                        Đã resolve
+                                                    </div>
+                                                    <div class="text-muted small mt-1">
+                                                        @(line.ResolvedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "")
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="badge bg-danger-subtle text-danger-emphasis rounded-pill px-3 py-2">
+                                                        Chưa resolve
+                                                    </div>
+                                                    <div class="small text-danger mt-1 fw-semibold">
+                                                        @GetSimpleReason(line)
+                                                    </div>
+                                                }
+                                            </td>
+
+                                            <td class="text-center">
+                                                <button class="btn btn-outline-primary btn-sm rounded-3"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#@modalId">
+                                                    Xem nhanh
+                                                </button>
+                                            </td>
+                                        </tr>
+
+                                        <div class="modal fade" id="@modalId" tabindex="-1" aria-hidden="true">
+                                            <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+                                                <div class="modal-content rounded-4 border-0 shadow-lg">
+                                                    <div class="modal-header border-0 pb-0 px-4 pt-4">
+                                                        <div>
+                                                            <h5 class="modal-title fw-bold mb-1">@line.ProductName</h5>
+                                                            <div class="text-muted small">
+                                                                Barcode: @(displayBarcode ?? "-")
+                                                            </div>
+                                                        </div>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+
+                                                    <div class="modal-body px-4 pt-3 pb-4">
+                                                        <div class="row g-3 mb-4">
+                                                            <div class="col-md-4">
+                                                                <div class="metric-box">
+                                                                    <div class="metric-label">Số lượng bán</div>
+                                                                    <div class="metric-value">@line.OrderedQty</div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <div class="metric-box danger">
+                                                                    <div class="metric-label">Phần âm phát sinh</div>
+                                                                    <div class="metric-value text-danger">@line.NegativeQty</div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <div class="metric-box">
+                                                                    <div class="metric-label">Đã bù</div>
+                                                                    <div class="metric-value @(line.QuantityResolved ? "text-success" : "text-danger")">
+                                                                        @line.AutoDetectedInboundQty / @line.NegativeQty
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="row g-3 mb-4">
+                                                            <div class="col-md-6">
+                                                                <div class="simple-status-card @(line.QuantityResolved ? "ok" : "not-ok")">
+                                                                    <div class="simple-status-title">Số lượng</div>
+                                                                    <div class="simple-status-value">
+                                                                        @(line.QuantityResolved ? "Đã đủ" : "Chưa đủ")
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-md-6">
+                                                                <div class="simple-status-card @(line.CostResolved ? "ok" : "not-ok")">
+                                                                    <div class="simple-status-title">Giá vốn</div>
+                                                                    <div class="simple-status-value">
+                                                                        @(line.CostResolved ? "Đã chốt" : "Tạm tính")
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="row g-3 mb-4">
+                                                            <div class="col-md-6">
+                                                                <div class="info-box highlight-box">
+                                                                    <div class="label">Giá vốn hiển thị</div>
+                                                                    <div class="value large @(line.CostResolved ? "text-success" : "text-warning-emphasis")">
+                                                                        @displayUnitCost.ToString("N2")
+                                                                    </div>
+                                                                    <div class="small text-muted mt-2">
+                                                                        @(line.CostResolved
+                                                                            ? "Đây là giá vốn cuối đã chốt."
+                                                                            : "Đây là giá vốn tạm để tham khảo.")
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-md-6">
+                                                                <div class="info-box">
+                                                                    <div class="label">Kết quả xử lý</div>
+                                                                    <div class="value">
+                                                                        @if (line.IsResolved)
+                                                                        {
+                                                                            <span class="text-success fw-semibold">Line đã đủ điều kiện</span>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="text-danger fw-semibold">@GetSimpleReason(line)</span>
+                                                                        }
+                                                                    </div>
+                                                                    <div class="small text-muted mt-2">
+                                                                        Available hiện tại: @line.CurrentAvailableQty
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div class="row g-3">
+                                                            <div class="col-md-4">
+                                                                <div class="info-box">
+                                                                    <div class="label">Tồn lúc bán</div>
+                                                                    <div class="value">@line.StockBefore / @line.StockAfter</div>
+                                                                    <div class="small text-muted mt-2">Trước / Sau</div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-md-4">
+                                                                <div class="info-box">
+                                                                    <div class="label">Giá vốn tạm</div>
+                                                                    <div class="value">@(line.ProvisionalUnitCost?.ToString("N2") ?? "-")</div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-md-4">
+                                                                <div class="info-box">
+                                                                    <div class="label">Điều chỉnh giá vốn</div>
+                                                                    <div class="value">@(line.RevaluationAmount?.ToString("N0") ?? "0")</div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-5">Không có dòng issue.</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-4">
+            <div class="card shadow-sm border-0 rounded-4 mb-4 sticky-xl-top issue-sidebar">
+                <div class="card-header bg-white border-0 p-4">
+                    <h5 class="mb-0 fw-bold">Thao tác case</h5>
+                </div>
+                <div class="card-body px-4 pb-4">
+                    <div class="case-status-box status-@Model.Status">
+                        <div class="case-status-label">Trạng thái xử lý</div>
+                        <div class="case-status-title">@GetStatusText(Model.Status)</div>
+                        <div class="case-status-subtitle">
+                            @if (Model.Status == InventoryResolutionStatus.PendingResolution)
+                            {
+                                @:Hệ thống sẽ tự chuyển sang chờ duyệt khi tất cả line đủ điều kiện.
+                            }
+                            else if (Model.Status == InventoryResolutionStatus.ReadyForApproval)
+                            {
+                                @:Case đã đủ điều kiện. Bạn có thể duyệt ngay.
+                            }
+                            else if (Model.Status == InventoryResolutionStatus.Approved)
+                            {
+                                @:Case đã hoàn tất.
+                            }
+                            else if (Model.Status == InventoryResolutionStatus.Rejected)
+                            {
+                                @:Case đã bị từ chối.
+                            }
+                        </div>
+                    </div>
+
+                    <form asp-area="Admin" asp-controller="InventoryIssueManagement" asp-action="AddNote" method="post" class="mb-4 action-box">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IssueId" value="@Model.Id" />
+                        <label class="form-label fw-semibold">Thêm ghi chú</label>
+                        <textarea name="Note" class="form-control rounded-3" rows="3" placeholder="Nhập ghi chú xử lý..."></textarea>
+                        <button type="submit" class="btn btn-outline-dark rounded-3 w-100 mt-3">Thêm ghi chú</button>
+                    </form>
+
+                    <form asp-area="Admin" asp-controller="InventoryIssueManagement" asp-action="Approve" method="post" class="mb-4 action-box">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IssueId" value="@Model.Id" />
+                        <label class="form-label fw-semibold">Ghi chú duyệt</label>
+                        <textarea name="Note" class="form-control rounded-3" rows="2" placeholder="Đã kiểm tra đủ điều kiện..."></textarea>
+                        <button type="submit" class="btn btn-success rounded-3 w-100 mt-3"
+                                @(Model.Status != InventoryResolutionStatus.ReadyForApproval ? "disabled" : null)>
+                            Duyệt case
+                        </button>
+                    </form>
+
+                    <form asp-area="Admin" asp-controller="InventoryIssueManagement" asp-action="Reject" method="post" class="mb-4 action-box">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IssueId" value="@Model.Id" />
+                        <label class="form-label fw-semibold">Lý do từ chối</label>
+                        <textarea name="Note" class="form-control rounded-3" rows="3" placeholder="Nhập lý do..." required></textarea>
+                        <button type="submit" class="btn btn-danger rounded-3 w-100 mt-3"
+                                @(Model.Status == InventoryResolutionStatus.Approved ? "disabled" : null)>
+                            Từ chối
+                        </button>
+                    </form>
+
+                    <form asp-area="Admin" asp-controller="InventoryIssueManagement" asp-action="Escalate" method="post" class="mb-4 action-box">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IssueId" value="@Model.Id" />
+                        <label class="form-label fw-semibold">Escalate</label>
+                        <textarea name="Note" class="form-control rounded-3" rows="2" placeholder="Lý do escalate..." required></textarea>
+                        <button type="submit" class="btn btn-outline-warning rounded-3 w-100 mt-3">Escalate</button>
+                    </form>
+
+                    <form asp-area="Admin" asp-controller="InventoryIssueManagement" asp-action="Reopen" method="post" class="action-box">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="IssueId" value="@Model.Id" />
+                        <label class="form-label fw-semibold">Mở lại case</label>
+                        <textarea name="Note" class="form-control rounded-3" rows="2" placeholder="Lý do mở lại..." required></textarea>
+                        <button type="submit" class="btn btn-outline-secondary rounded-3 w-100 mt-3">Reopen</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="timelineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0 px-4 pt-4">
+                <div>
+                    <h5 class="modal-title fw-bold mb-1">Timeline xử lý</h5>
+                    <div class="text-muted small">Lịch sử xử lý đầy đủ của case</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body px-4 pt-3 pb-4">
+                @if (Model.Actions.Any())
+                {
+                    <div class="timeline">
+                        @foreach (var item in Model.Actions.OrderByDescending(x => x.ActionAtUtc))
+                        {
+                            var collapseId = $"timelineCollapse_{item.Id}";
+                            var shortNote = string.IsNullOrWhiteSpace(item.Note)
+                                ? "Không có ghi chú."
+                                : (item.Note.Length > 120 ? item.Note.Substring(0, 120) + "..." : item.Note);
+
+                            <div class="timeline-item">
+                                <div class="timeline-dot @GetActionDotClass(item.ActionType)"></div>
+
+                                <div class="timeline-content compact">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                                        <div>
+                                            <div class="fw-semibold timeline-title">@GetActionText(item.ActionType)</div>
+                                            <div class="small text-muted">
+                                                Người thực hiện:
+                                                @(string.IsNullOrWhiteSpace(item.ActorName) ? "-" : item.ActorName)
+                                            </div>
+                                        </div>
+
+                                        <div class="small text-muted">
+                                            @item.ActionAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                        </div>
+                                    </div>
+
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        @if (item.ReferenceType != InventoryIssueReferenceType.None)
+                                        {
+                                            <span class="badge bg-light text-dark border">@item.ReferenceType</span>
+                                        }
+                                        @if (item.ReferenceId.HasValue)
+                                        {
+                                            <span class="badge bg-light text-dark border">RefId: @item.ReferenceId</span>
+                                        }
+                                        @if (item.OrderInventoryIssueLineId.HasValue)
+                                        {
+                                            <span class="badge bg-light text-dark border">IssueLineId: @item.OrderInventoryIssueLineId</span>
+                                        }
+                                    </div>
+
+                                    <div class="timeline-preview-box">
+                                        <div class="d-flex justify-content-between align-items-start gap-3">
+                                            <div class="small text-muted timeline-preview-text flex-grow-1">
+                                                @shortNote
+                                            </div>
+
+                                            <button class="btn btn-sm btn-outline-secondary rounded-3 flex-shrink-0"
+                                                    type="button"
+                                                    data-bs-toggle="collapse"
+                                                    data-bs-target="#@collapseId"
+                                                    aria-expanded="false"
+                                                    aria-controls="@collapseId">
+                                                Xem
+                                            </button>
+                                        </div>
+
+                                        <div class="collapse mt-3" id="@collapseId">
+                                            <div class="timeline-expand-box">
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-md-4">
+                                                        <div class="info-box">
+                                                            <div class="label">Người thực hiện</div>
+                                                            <div class="value">@(string.IsNullOrWhiteSpace(item.ActorName) ? "-" : item.ActorName)</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="col-md-4">
+                                                        <div class="info-box">
+                                                            <div class="label">Loại tham chiếu</div>
+                                                            <div class="value">@item.ReferenceType</div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="col-md-4">
+                                                        <div class="info-box">
+                                                            <div class="label">RefId</div>
+                                                            <div class="value">@(item.ReferenceId?.ToString() ?? "-")</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                @if (item.OrderInventoryIssueLineId.HasValue)
+                                                {
+                                                    <div class="mb-3">
+                                                        <span class="badge bg-light text-dark border">
+                                                            IssueLineId: @item.OrderInventoryIssueLineId
+                                                        </span>
+                                                    </div>
+                                                }
+
+                                                <div class="timeline-note-full-box">
+                                                    <div class="timeline-note-title">Chi tiết</div>
+                                                    <div class="timeline-note-full">
+                                                        @(string.IsNullOrWhiteSpace(item.Note) ? "Không có ghi chú." : item.Note)
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted">Chưa có timeline.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.InternalNote))
+{
+    <div class="modal fade" id="internalNoteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content rounded-4 border-0 shadow">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">Ghi chú nội bộ</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="timeline-note-full">@Model.InternalNote</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .issue-hero {
+        background: linear-gradient(135deg, #ffffff 0%, #f6f8fc 100%);
+    }
+
+    .stats-grid { min-width: 340px; }
+
+    .progress-wrap {
+        max-width: 760px;
+    }
+
+    .issue-progress {
+        height: 12px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+    }
+
+    .issue-progress .progress-bar {
+        background: linear-gradient(90deg, #2563eb 0%, #16a34a 100%);
+        border-radius: 999px;
+    }
+
+    .status-banner.pending {
+        background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
+    }
+
+    .status-banner.ready {
+        background: linear-gradient(135deg, #ecfeff 0%, #eff6ff 100%);
+    }
+
+    .banner-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 6px;
+    }
+
+    .banner-subtitle {
+        color: #6b7280;
+        line-height: 1.65;
+        max-width: 760px;
+    }
+
+    .banner-pill {
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: rgba(255,255,255,.7);
+        border: 1px solid rgba(148,163,184,.25);
+        font-weight: 700;
+        color: #0f172a;
+        white-space: nowrap;
+    }
+
+    .stat-card {
+        background: #fff;
+        border: 1px solid #edf1f7;
+        border-radius: 20px;
+        padding: 16px;
+        min-height: 96px;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+    }
+
+    .stat-card.success { border-color: #d1fae5; }
+    .stat-card.warning { border-color: #fde68a; }
+    .stat-card.danger { border-color: #fecaca; }
+
+    .stat-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #111827;
+        line-height: 1.1;
+    }
+
+    .small-value { font-size: 18px; }
+
+    .info-box {
+        background: #f8fafc;
+        border: 1px solid #e9eef5;
+        border-radius: 18px;
+        padding: 16px 18px;
+        height: 100%;
+    }
+
+    .info-box .label {
+        color: #6b7280;
+        font-size: 13px;
+        margin-bottom: 6px;
+    }
+
+    .info-box .value {
+        font-weight: 600;
+        font-size: 15px;
+        color: #111827;
+    }
+
+    .info-box .value.large {
+        font-size: 30px;
+        line-height: 1.15;
+    }
+
+    .highlight-box {
+        background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+        border-width: 2px;
+    }
+
+    .unresolved-focus-card {
+        border: 1px solid #fecaca !important;
+        background: linear-gradient(135deg, #fff 0%, #fff7f7 100%);
+    }
+
+    .quick-unresolved-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        border: 1px solid #fee2e2;
+        background: #fff;
+        border-radius: 18px;
+        padding: 14px 16px;
+    }
+
+    .issue-lines-table th {
+        background: #f8fafc;
+        border-bottom: 1px solid #e9eef5;
+        white-space: nowrap;
+        font-size: 13px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: .3px;
+    }
+
+    .issue-lines-table td,
+    .issue-lines-table th {
+        padding: 16px 18px;
+        vertical-align: top;
+    }
+
+    .issue-line-row.unresolved {
+        background: #fff7f7;
+        box-shadow: inset 4px 0 0 #ef4444;
+    }
+
+    .issue-line-row.resolved {
+        background: #fcfffd;
+    }
+
+    .line-state-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        margin-top: 6px;
+        flex: 0 0 auto;
+    }
+
+    .line-state-dot.ok {
+        background: #16a34a;
+        box-shadow: 0 0 0 4px rgba(22, 163, 74, .12);
+    }
+
+    .line-state-dot.pending {
+        background: #ef4444;
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, .12);
+    }
+
+    .cost-chip {
+        min-width: 110px;
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        padding: 10px 14px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+    }
+
+    .cost-chip.final {
+        background: #ecfdf5;
+        border-color: #bbf7d0;
+    }
+
+    .cost-chip.temp {
+        background: #fff7ed;
+        border-color: #fed7aa;
+    }
+
+    .cost-chip-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 4px;
+    }
+
+    .cost-chip-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .simple-status-card {
+        border-radius: 18px;
+        padding: 16px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        height: 100%;
+    }
+
+    .simple-status-card.ok {
+        background: #ecfdf5;
+        border-color: #bbf7d0;
+    }
+
+    .simple-status-card.not-ok {
+        background: #fef2f2;
+        border-color: #fecaca;
+    }
+
+    .simple-status-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 8px;
+    }
+
+    .simple-status-value {
+        font-size: 22px;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .action-box {
+        background: #fbfcfe;
+        border: 1px solid #edf1f7;
+        border-radius: 18px;
+        padding: 16px;
+    }
+
+    .case-status-box {
+        border-radius: 20px;
+        padding: 18px;
+        margin-bottom: 18px;
+        border: 1px solid #e5e7eb;
+    }
+
+    .case-status-box.status-PendingResolution {
+        background: linear-gradient(135deg, #fff7ed 0%, #fff 100%);
+        border-color: #fed7aa;
+    }
+
+    .case-status-box.status-ReadyForApproval {
+        background: linear-gradient(135deg, #eff6ff 0%, #fff 100%);
+        border-color: #bfdbfe;
+    }
+
+    .case-status-box.status-Approved {
+        background: linear-gradient(135deg, #ecfdf5 0%, #fff 100%);
+        border-color: #bbf7d0;
+    }
+
+    .case-status-box.status-Rejected {
+        background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+        border-color: #fecaca;
+    }
+
+    .case-status-label {
+        font-size: 12px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+        margin-bottom: 8px;
+    }
+
+    .case-status-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 8px;
+    }
+
+    .case-status-subtitle {
+        color: #6b7280;
+        line-height: 1.6;
+        font-size: 14px;
+    }
+
+    .timeline {
+        position: relative;
+        margin-left: 8px;
+    }
+
+    .timeline:before {
+        content: "";
+        position: absolute;
+        left: 10px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #e5e7eb;
+    }
+
+    .timeline-item {
+        position: relative;
+        padding-left: 40px;
+        margin-bottom: 22px;
+    }
+
+    .timeline-dot {
+        position: absolute;
+        left: 0;
+        top: 6px;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        border: 4px solid #fff;
+        box-shadow: 0 0 0 1px #dbe3ef;
+        z-index: 1;
+        background: #2563eb;
+    }
+
+    .timeline-dot.success { background: #16a34a; }
+    .timeline-dot.danger { background: #dc2626; }
+    .timeline-dot.warning { background: #d97706; }
+    .timeline-dot.secondary { background: #64748b; }
+
+    .timeline-content.compact {
+        background: #fff;
+        border: 1px solid #edf1f7;
+        border-radius: 18px;
+        padding: 16px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+    }
+
+    .timeline-title {
+        font-size: 16px;
+        color: #374151;
+    }
+
+    .timeline-preview-box {
+        border: 1px solid #edf1f7;
+        background: #f8fafc;
+        border-radius: 14px;
+        padding: 12px 14px;
+    }
+
+    .timeline-preview-text {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.6;
+    }
+
+    .timeline-note-full-box {
+        border: 1px solid #e5e7eb;
+        background: #f9fafb;
+        border-radius: 16px;
+        padding: 16px;
+    }
+
+    .timeline-note-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+    }
+
+    .timeline-note-full {
+        white-space: pre-wrap;
+        color: #111827;
+        line-height: 1.7;
+    }
+
+    .metric-box {
+        background: #f8fafc;
+        border: 1px solid #edf1f7;
+        border-radius: 18px;
+        padding: 18px;
+        min-height: 96px;
+    }
+
+    .metric-box.danger {
+        border-color: #fecaca;
+    }
+
+    .metric-label {
+        color: #6b7280;
+        font-size: 13px;
+        margin-bottom: 8px;
+    }
+
+    .metric-value {
+        font-weight: 700;
+        font-size: 30px;
+        color: #111827;
+        line-height: 1.15;
+    }
+
+    @@media (min-width: 1200px) {
+        .issue-sidebar { top: 20px; }
+    }
+    .timeline-expand-box {
+    border-top: 1px dashed #dbe3ef;
+    padding-top: 14px;
+}
+
+.timeline-preview-box .btn[aria-expanded="true"] {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #3730a3;
+}
+</style>
+
+@functions {
+    private string GetDisplayBarcode(GaoApp.Web.Areas.Admin.ViewModels.Orders.InventoryIssueDetailLineVm line)
+    {
+        // Ưu tiên Barcode nếu ViewModel đã có.
+        var barcodeProp = line.GetType().GetProperty("Barcode");
+        if (barcodeProp != null)
+        {
+            var value = barcodeProp.GetValue(line)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        // fallback nếu ViewModel có mã khác
+        var scannedBarcodeProp = line.GetType().GetProperty("ScannedBarcode");
+        if (scannedBarcodeProp != null)
+        {
+            var value = scannedBarcodeProp.GetValue(line)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return string.Empty;
+    }
+
+    private string GetStatusClass(InventoryResolutionStatus status)
+    {
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "bg-warning-subtle text-warning-emphasis",
+            InventoryResolutionStatus.ReadyForApproval => "bg-info-subtle text-info-emphasis",
+            InventoryResolutionStatus.Approved => "bg-success-subtle text-success-emphasis",
+            InventoryResolutionStatus.Rejected => "bg-danger-subtle text-danger-emphasis",
+            _ => "bg-secondary-subtle text-secondary-emphasis"
+        };
+    }
+
+    private string GetSeverityClass(InventoryIssueSeverity severity)
+    {
+        return severity switch
+        {
+            InventoryIssueSeverity.Critical => "bg-danger-subtle text-danger-emphasis",
+            InventoryIssueSeverity.Overdue => "bg-warning-subtle text-warning-emphasis",
+            InventoryIssueSeverity.Warning => "bg-info-subtle text-info-emphasis",
+            InventoryIssueSeverity.Normal => "bg-primary-subtle text-primary-emphasis",
+            _ => "bg-secondary-subtle text-secondary-emphasis"
+        };
+    }
+
+    private string GetStatusText(InventoryResolutionStatus status)
+    {
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "Đang chờ hệ thống đối soát",
+            InventoryResolutionStatus.ReadyForApproval => "Đã đủ điều kiện duyệt",
+            InventoryResolutionStatus.Approved => "Đã duyệt hoàn tất",
+            InventoryResolutionStatus.Rejected => "Đã từ chối",
+            _ => "Đang xử lý"
+        };
+    }
+
+    private string GetSeverityText(InventoryIssueSeverity severity)
+    {
+        return severity switch
+        {
+            InventoryIssueSeverity.Normal => "Bình thường",
+            InventoryIssueSeverity.Warning => "Cảnh báo",
+            InventoryIssueSeverity.Overdue => "Quá hạn",
+            InventoryIssueSeverity.Critical => "Nghiêm trọng",
+            _ => severity.ToString()
+        };
+    }
+
+    private string GetActionDotClass(InventoryIssueActionType actionType)
+    {
+        return actionType switch
+        {
+            InventoryIssueActionType.Approved => "success",
+            InventoryIssueActionType.Rejected => "danger",
+            InventoryIssueActionType.Escalated => "warning",
+            InventoryIssueActionType.Reopened => "secondary",
+            _ => ""
+        };
+    }
+
+    private string GetActionText(InventoryIssueActionType actionType)
+    {
+        return actionType switch
+        {
+            InventoryIssueActionType.CaseCreated => "Tạo case",
+            InventoryIssueActionType.NegativeDetected => "Phát hiện âm kho",
+            InventoryIssueActionType.MarkedReadyForApproval => "Sẵn sàng duyệt",
+            InventoryIssueActionType.Approved => "Duyệt case",
+            InventoryIssueActionType.Rejected => "Từ chối case",
+            InventoryIssueActionType.Reopened => "Mở lại case",
+            InventoryIssueActionType.Escalated => "Escalate case",
+            InventoryIssueActionType.NoteAdded => "Thêm ghi chú",
+            InventoryIssueActionType.LinkedReceipt => "Gắn phiếu nhập",
+            InventoryIssueActionType.LinkedAdjustment => "Gắn phiếu điều chỉnh",
+            _ => actionType.ToString()
+        };
+    }
+
+    private string GetSimpleReason(GaoApp.Web.Areas.Admin.ViewModels.Orders.InventoryIssueDetailLineVm line)
+    {
+        if (!line.QuantityResolved)
+            return "Chưa đủ số lượng bù";
+
+        if (!line.DocumentResolved)
+            return "Chưa phát hiện inbound";
+
+        if (!line.CostResolved)
+            return "Chưa chốt giá vốn";
+
+        return "Đã đủ điều kiện";
+    }
+}

@@ -1,0 +1,232 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Categories
+@model CategoryIndexVM
+
+@{
+    ViewData["Title"] = "Danh mục";
+    Layout = "_ContentNavbarLayout";
+
+    var canCreate = (bool?)(ViewData["CanCreateCategory"]) ?? false;
+    var canUpdate = (bool?)(ViewData["CanUpdateCategory"]) ?? false;
+    var canDelete = (bool?)(ViewData["CanDeleteCategory"]) ?? false;
+}
+
+@section header {
+    <div class="py-2">
+        <h3 class="mb-0 fw-bold">Danh sách danh mục</h3>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+
+        <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-5">
+                <label class="form-label">Tìm kiếm</label>
+
+                <div class="position-relative">
+                    <input id="txtSearch"
+                           class="form-control pe-5"
+                           placeholder="Tên / mã..."
+                           autocomplete="off"
+                           value="@Model.SearchString" />
+
+                    <button type="button"
+                            id="btnClearSearch"
+                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
+                            title="Xóa tìm kiếm"
+                            aria-label="Xóa tìm kiếm"
+                            style="border:0; background:transparent;">
+                        <i class="bx bx-x fs-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Kích thước trang</label>
+                <select id="ddlPageSize" class="form-select">
+                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
+                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                    <option value="200" selected="@(Model.PageSize == 200)">200</option>
+                </select>
+            </div>
+
+            <div class="col-md-4 text-md-end">
+                @if (canCreate)
+                {
+                    <a asp-area="Admin"
+                           asp-controller="Category"
+                           asp-action="Create"
+                           class="btn btn-primary">
+                        <i class="bx bx-plus me-1"></i> Thêm danh mục
+                    </a>
+                }
+            </div>
+        </div>
+
+        <form id="antiForgeryForm" method="post">
+            @Html.AntiForgeryToken()
+        </form>
+
+        <div id="categoryTableWrapper">
+            @await Html.PartialAsync("_CategoryTable", Model, new ViewDataDictionary(ViewData))
+        </div>
+
+    </div>
+</div>
+
+@if (canDelete)
+{
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Xác nhận xóa</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    Bạn chắc chắn muốn xóa danh mục: <b id="deleteName"></b> ?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmDelete">Xóa</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const wrapper = document.getElementById('categoryTableWrapper');
+            const txtSearch = document.getElementById('txtSearch');
+            const btnClearSearch = document.getElementById('btnClearSearch');
+            const ddlPageSize = document.getElementById('ddlPageSize');
+
+            let typingTimer = null;
+            let deleteId = 0;
+
+            const canUpdate = @canUpdate.ToString().ToLowerInvariant();
+            const canDelete = @canDelete.ToString().ToLowerInvariant();
+
+            function getToken() {
+                return document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value || '';
+            }
+
+            function updateClearButtonVisibility() {
+                if (!txtSearch.value || txtSearch.value.trim() === '') btnClearSearch.classList.add('d-none');
+                else btnClearSearch.classList.remove('d-none');
+            }
+
+            function loadCategories(page) {
+                const qs = new URLSearchParams();
+                qs.set('searchString', txtSearch.value || '');
+                qs.set('page', page || 1);
+                qs.set('pageSize', ddlPageSize.value || '20');
+
+                fetch('@Url.Action("Search", "Category", new { area = "Admin" })' + '?' + qs.toString(),
+                    { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(r => r.text())
+                    .then(html => {
+                        wrapper.innerHTML = html;
+                        bindAllTableEvents();
+                    });
+            }
+
+            function debounceLoad() {
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(() => loadCategories(1), 300);
+            }
+
+            function bindPaginationEvents() {
+                wrapper.querySelectorAll('.js-page-link').forEach(a => {
+                    a.onclick = function (e) {
+                        e.preventDefault();
+                        const p = this.getAttribute('data-page');
+                        if (p) loadCategories(parseInt(p));
+                    };
+                });
+            }
+
+            function bindToggleStatusEvents() {
+                if (!canUpdate) return;
+
+                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
+                    btn.onclick = async function () {
+                        const id = this.getAttribute('data-id');
+                        const token = getToken();
+                        if (!id || !token) return;
+
+                        const res = await fetch('@Url.Action("ToggleStatus", "Category", new { area = "Admin" })', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                        });
+
+                        const data = await res.json();
+                        (window.toastr ? toastr[data.success ? "success" : "error"](data.message) : alert(data.message));
+
+                        if (data.success) loadCategories(1);
+                    };
+                });
+            }
+
+            function bindDeleteEvents() {
+                if (!canDelete) return;
+
+                wrapper.querySelectorAll('.js-delete').forEach(btn => {
+                    btn.onclick = function () {
+                        deleteId = parseInt(this.dataset.id);
+                        document.getElementById('deleteName').textContent = this.dataset.name || '';
+                        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+                    };
+                });
+            }
+
+            function bindAllTableEvents() {
+                bindPaginationEvents();
+                bindToggleStatusEvents();
+                bindDeleteEvents();
+            }
+
+            if (canDelete) {
+                document.getElementById('btnConfirmDelete')?.addEventListener('click', async function () {
+                    if (!deleteId) return;
+
+                    const res = await fetch('@Url.Action("DeleteAjax", "Category", new { area = "Admin" })', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                        body: `id=${encodeURIComponent(deleteId)}&__RequestVerificationToken=${encodeURIComponent(getToken())}`
+                    });
+
+                    const data = await res.json();
+                    (window.toastr ? toastr[data.success ? "success" : "error"](data.message) : alert(data.message));
+                    if (!data.success) return;
+
+                    bootstrap.Modal.getInstance(document.getElementById('deleteModal'))?.hide();
+                    loadCategories(1);
+                    deleteId = 0;
+                });
+            }
+
+            txtSearch.addEventListener('input', function () {
+                updateClearButtonVisibility();
+                debounceLoad();
+            });
+
+            btnClearSearch.addEventListener('click', function () {
+                txtSearch.value = '';
+                updateClearButtonVisibility();
+                loadCategories(1);
+                txtSearch.focus();
+            });
+
+            ddlPageSize.addEventListener('change', () => loadCategories(1));
+
+            updateClearButtonVisibility();
+            bindAllTableEvents();
+        });
+    </script>
+}

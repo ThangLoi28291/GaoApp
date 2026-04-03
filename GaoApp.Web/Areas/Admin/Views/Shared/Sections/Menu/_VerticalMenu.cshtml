@@ -1,0 +1,268 @@
+﻿@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@{
+    TempData.Keep();
+
+    string currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    string currentPage = ViewContext.HttpContext.Request.Path.ToString();
+
+    var canViewDashboard = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.AdminDashboardView)).Succeeded;
+
+    var canViewProduct = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.CatalogProductView)).Succeeded;
+
+    var canManageCategory = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.CatalogCategoryManage)).Succeeded;
+
+    var canManageUnit = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.CatalogUnitManage)).Succeeded;
+
+    var canManageSupplier = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.CatalogSupplierManage)).Succeeded;
+
+    var canViewStockDocument = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.InventoryStockDocumentView)).Succeeded;
+
+    var canViewStockTransfer = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.InventoryStockTransferView)).Succeeded;
+
+    var canViewStockCount = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.InventoryStockCountView)).Succeeded;
+
+    var canViewWarehouse = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.InventoryWarehouseView)).Succeeded;
+
+    var canSellPos = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.PosSell)).Succeeded;
+
+    var canManageSecurityRole = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.SecurityRoleManage)).Succeeded;
+
+    var canManageSecurityEmployee = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.SecurityEmployeeManage)).Succeeded;
+
+    var hasCatalogMenu =
+        canViewProduct ||
+        canManageCategory ||
+        canManageUnit ||
+        canManageSupplier;
+
+    var hasInventoryMenu =
+        canViewWarehouse ||
+        canViewStockDocument ||
+        canViewStockTransfer ||
+        canViewStockCount;
+
+    var hasSecurityMenu =
+        canManageSecurityRole ||
+        canManageSecurityEmployee;
+}
+
+<!-- Menu -->
+<aside id="layout-menu"
+       class="layout-menu menu-vertical menu bg-menu-theme"
+       data-bg-class="bg-menu-theme">
+
+    <!-- Brand -->
+    <div class='app-brand demo @((@ViewData["navbarFull"] != null && Convert.ToBoolean(@ViewData["navbarFull"])) ? "d-xl-none" : "")'>
+        <a asp-controller="Home" asp-action="Index" class="app-brand-link">
+            <span class="app-brand-logo demo">
+                @await Html.PartialAsync("../_Partials/_Macros")
+            </span>
+            <span class="app-brand-text demo menu-text fw-bold ms-2">@TempData.Peek("appName")</span>
+        </a>
+
+        <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto">
+            <i class="icon-base bx bx-chevron-left d-block d-xl-none align-middle"></i>
+        </a>
+    </div>
+
+    <div class="menu-divider mt-0"></div>
+    <div class="menu-inner-shadow"></div>
+
+    <ul class="menu-inner py-1">
+
+        @if (canViewDashboard)
+        {
+            <li class="menu-item @(currentController == "Home" ? "active" : "")">
+                <a asp-controller="Home" asp-action="Index" class="menu-link">
+                    <i class="menu-icon icon-base bx bx-home-smile"></i>
+                    <div class="text-truncate">Trang chủ</div>
+                </a>
+            </li>
+        }
+
+        @if (hasCatalogMenu)
+        {
+            <li class="menu-item @((currentController == "Product"
+                                                                  || currentController == "Category"
+                                                                  || currentController == "Unit"
+                                                                  || currentController == "Supplier"
+                                                                  || currentController == "ProductAttribute"
+                                                                  || currentController == "AttributeValue")
+                                                                  ? "active open" : "")">
+                <a href="javascript:void(0);" class="menu-link menu-toggle">
+                    <i class="menu-icon icon-base bx bx-box"></i>
+                    <div class="text-truncate">Danh mục</div>
+                </a>
+
+                <ul class="menu-sub">
+
+                    @if (canViewProduct)
+                    {
+                        <li class="menu-item @(currentController == "Product" ? "active" : "")">
+                            <a asp-controller="Product" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Sản phẩm</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canManageCategory)
+                    {
+                        <li class="menu-item @(currentController == "Category" ? "active" : "")">
+                            <a asp-controller="Category" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Loại sản phẩm</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canManageUnit)
+                    {
+                        <li class="menu-item @(currentController == "Unit" ? "active" : "")">
+                            <a asp-controller="Unit" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Đơn vị tính</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canManageSupplier)
+                    {
+                        <li class="menu-item @(currentController == "Supplier" ? "active" : "")">
+                            <a asp-controller="Supplier" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Nhà cung cấp</div>
+                            </a>
+                        </li>
+                    }
+
+                    @* Các mục này hiện chưa gắn permission riêng trong AppPermissions,
+                       tạm thời để theo quyền quản lý catalog/product.
+                       Sau này nếu cần có thể tách permission riêng. *@
+                    @if (canViewProduct)
+                    {
+                        <li class="menu-item @(currentController == "ProductAttribute" ? "active" : "")">
+                            <a asp-controller="ProductAttribute" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Thuộc tính</div>
+                            </a>
+                        </li>
+
+                        <li class="menu-item @(currentController == "AttributeValue" ? "active" : "")">
+                            <a asp-controller="AttributeValue" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">GT thuộc tính</div>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            </li>
+        }
+
+        @if (hasInventoryMenu)
+        {
+            <li class="menu-item @((currentController == "StockDocumentManagement"
+                                                                  || currentController == "StockTransfer"
+                                                                  || currentController == "StockCount"
+                                                                  || currentController == "Warehouse")
+                                                                  ? "active open" : "")">
+                <a href="javascript:void(0);" class="menu-link menu-toggle">
+                    <i class="menu-icon icon-base bx bx-buildings"></i>
+                    <div class="text-truncate">Kho</div>
+                </a>
+
+                <ul class="menu-sub">
+
+                    @if (canViewWarehouse)
+                    {
+                        <li class="menu-item @(currentController == "Warehouse" ? "active" : "")">
+                            <a asp-controller="Warehouse" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Kho hàng</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canViewStockDocument)
+                    {
+                        <li class="menu-item @(currentController == "StockDocumentManagement" ? "active" : "")">
+                            <a asp-controller="StockDocumentManagement" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Phiếu nhập kho</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canViewStockTransfer)
+                    {
+                        <li class="menu-item @(currentController == "StockTransfer" ? "active" : "")">
+                            <a asp-controller="StockTransfer" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Chuyển kho</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canViewStockCount)
+                    {
+                        <li class="menu-item @(currentController == "StockCount" ? "active" : "")">
+                            <a asp-controller="StockCount" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Kiểm kê kho</div>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            </li>
+        }
+
+        @if (canSellPos)
+        {
+            <li class="menu-item @(currentController == "POS" ? "active" : "")">
+                <a asp-controller="POS" asp-action="Index" class="menu-link">
+                    <i class="menu-icon icon-base bx bx-cart"></i>
+                    <div class="text-truncate">Bán hàng POS</div>
+                </a>
+            </li>
+        }
+
+        @if (hasSecurityMenu)
+        {
+            <li class="menu-item @((currentController == "Roles"
+                                                                  || currentController == "StoreEmployees")
+                                                                  ? "active open" : "")">
+                <a href="javascript:void(0);" class="menu-link menu-toggle">
+                    <i class="menu-icon icon-base bx bx-shield-quarter"></i>
+                    <div class="text-truncate">Bảo mật & nhân sự</div>
+                </a>
+
+                <ul class="menu-sub">
+                    @if (canManageSecurityRole)
+                    {
+                        <li class="menu-item @(currentController == "Roles" ? "active" : "")">
+                            <a asp-controller="Roles" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Vai trò</div>
+                            </a>
+                        </li>
+                    }
+
+                    @if (canManageSecurityEmployee)
+                    {
+                        <li class="menu-item @(currentController == "StoreEmployees" ? "active" : "")">
+                            <a asp-controller="StoreEmployees" asp-action="Index" class="menu-link">
+                                <div class="text-truncate">Nhân viên</div>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            </li>
+        }
+
+    </ul>
+</aside>
+<!-- / Menu -->

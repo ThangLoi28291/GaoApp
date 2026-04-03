@@ -1,0 +1,19 @@
+﻿using GaoApp.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace GaoApp.Infrastructure.Data.Configurations;
+
+public sealed class ProductAttributeConfiguration : IEntityTypeConfiguration<ProductAttribute>
+{
+    public void Configure(EntityTypeBuilder<ProductAttribute> b)
+    {
+        b.Property(x => x.Code).HasMaxLength(30).IsRequired();
+        b.Property(x => x.Name).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Status).HasDefaultValue(true);
+
+        // Unique per store
+        b.HasIndex(x => new { x.StoreId, x.Code }).IsUnique();
+        b.HasIndex(x => new { x.StoreId, x.Name }).IsUnique();
+    }
+}

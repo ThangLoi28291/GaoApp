@@ -1,0 +1,1041 @@
+﻿@model GaoApp.Application.DTOs.Products.ProductCreateDto
+@using Microsoft.AspNetCore.Mvc.Rendering
+
+@{
+    ViewData["Title"] = "Tạo sản phẩm";
+    Layout = "_ContentNavbarLayout";
+
+    var categories = (List<SelectListItem>)ViewBag.Categories;
+    var suppliers = (List<SelectListItem>)ViewBag.Suppliers;
+    var brands = (List<SelectListItem>)ViewBag.Brands;
+    var taxes = (List<SelectListItem>)ViewBag.Taxes;
+    var units = (List<SelectListItem>)ViewBag.Units;
+}
+
+@section VendorStyles {
+    <!-- Nếu layout đã có select2 thì bỏ 2 dòng CDN này -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <link href="https://unpkg.com/filepond/dist/filepond.min.css" rel="stylesheet" />
+    <link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css" rel="stylesheet" />
+
+    <style>
+        .req::after {
+            content: " *";
+            color: #dc3545;
+        }
+
+        .help {
+            font-size: .875rem;
+            color: #6c757d;
+            margin-top: .25rem;
+        }
+
+        .gm-page {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .gm-card {
+            border-radius: 16px;
+            border: 1px solid rgba(0,0,0,.06);
+            box-shadow: 0 6px 18px rgba(0,0,0,.04);
+            overflow: hidden;
+        }
+
+            .gm-card .card-header {
+                background: #f8f9fa;
+                font-weight: 800;
+            }
+
+            .gm-card .card-body {
+                padding: 18px;
+            }
+
+        .gm-section-title {
+            font-weight: 800;
+            font-size: 1rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+            .gm-section-title .dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 999px;
+                background: #0d6efd;
+                display: inline-block;
+            }
+
+        .select2-container--bootstrap-5 .select2-selection {
+            min-height: 40px;
+        }
+
+        .select2-container {
+            z-index: 9999 !important;
+        }
+
+        .select2-dropdown {
+            z-index: 99999 !important;
+        }
+
+        .gm-sticky {
+            position: sticky;
+            top: 92px;
+        }
+        @@media (max-width: 991px) {
+            .gm-sticky
+
+        {
+            position: static;
+            top: auto;
+        }
+
+        }
+
+        .gm-summary {
+            border-radius: 16px;
+            border: 1px dashed rgba(13,110,253,.35);
+            background: rgba(13,110,253,.04);
+            padding: 14px 14px 10px;
+        }
+
+            .gm-summary h6 {
+                font-weight: 900;
+                margin-bottom: 10px;
+            }
+
+            .gm-summary .rowline {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 6px 0;
+                border-bottom: 1px dashed rgba(0,0,0,.08);
+            }
+
+                .gm-summary .rowline:last-child {
+                    border-bottom: 0;
+                }
+
+            .gm-summary .k {
+                color: #6c757d;
+                font-size: .875rem;
+            }
+
+            .gm-summary .v {
+                font-weight: 800;
+                text-align: right;
+            }
+
+        .gm-banner {
+            border-radius: 16px;
+            border: 1px solid rgba(25,135,84,.18);
+            background: rgba(25,135,84,.06);
+            padding: 14px 16px;
+        }
+
+            .gm-banner b {
+                font-weight: 900;
+            }
+
+        .gm-actions {
+            position: sticky;
+            bottom: 12px;
+            z-index: 10;
+        }
+
+            .gm-actions .gm-actions-inner {
+                background: rgba(255,255,255,.92);
+                backdrop-filter: blur(6px);
+                border: 1px solid rgba(0,0,0,.06);
+                border-radius: 16px;
+                padding: 12px;
+                box-shadow: 0 8px 22px rgba(0,0,0,.06);
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                align-items: center;
+            }
+        @@media (max-width: 991px) {
+            .gm-actions
+
+        {
+            position: static;
+        }
+
+        }
+
+        /* ===== FilePond: chỉ giữ Dropzone, ẩn list preview dọc ===== */
+        .gm-pond-wrap .filepond--list-scroller {
+            display: none !important;
+        }
+
+        .gm-pond-wrap .filepond--items {
+            display: none !important;
+        }
+
+        .gm-pond-wrap .filepond--panel-root {
+            border-radius: 14px;
+        }
+
+        .gm-pond-wrap .filepond--drop-label {
+            min-height: 120px;
+        }
+
+        .gm-pond-wrap .filepond--root {
+            margin-bottom: 0;
+        }
+
+        /* ===== Main preview (1 ảnh) ===== */
+        /* Preview lớn – tỉ lệ 16:9, thấp gọn */
+        .gm-main-preview {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9; /* 🔥 KEY */
+            max-height: 150px; /* giới hạn tối đa cho màn nhỏ */
+            border-radius: 14px;
+            border: 1px solid rgba(0,0,0,.08);
+            background: #fff;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+            .gm-main-preview img {
+                width: 100%;
+                height: 100%;
+                object-fit: contain; /* thấy trọn ảnh */
+                background: #fff;
+            }
+
+
+        .gm-main-empty {
+            color: #6c757d;
+            font-size: .9rem;
+            padding: 10px 12px;
+            text-align: center;
+        }
+
+        .gm-main-badge {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(13,110,253,.92);
+            color: #fff;
+            font-weight: 900;
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+
+        .gm-main-tip {
+            margin-top: 8px;
+            font-size: .85rem;
+            color: #6c757d;
+        }
+
+        /* ===== Thumb strip ngang ===== */
+        .gm-thumbbar-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .gm-thumbstrip {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 8px;
+            border-radius: 14px;
+            border: 1px dashed rgba(13,110,253,.30);
+            background: rgba(13,110,253,.03);
+        }
+
+            .gm-thumbstrip::-webkit-scrollbar {
+                height: 10px;
+            }
+
+            .gm-thumbstrip::-webkit-scrollbar-thumb {
+                background: rgba(0,0,0,.15);
+                border-radius: 999px;
+            }
+
+            .gm-thumbstrip::-webkit-scrollbar-track {
+                background: rgba(0,0,0,.05);
+                border-radius: 999px;
+            }
+
+        .gm-thumb {
+            width: 92px;
+            min-width: 92px;
+            height: 68px;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid rgba(0,0,0,.08);
+            background: #fff;
+            cursor: pointer;
+        }
+
+            .gm-thumb img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+
+            .gm-thumb.is-active {
+                outline: 2px solid rgba(13,110,253,.45);
+            }
+
+            .gm-thumb.is-primary {
+                outline: 2px solid rgba(13,110,253,.75);
+            }
+
+            .gm-thumb .gm-remove {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                width: 20px;
+                height: 20px;
+                border-radius: 999px;
+                border: 0;
+                background: rgba(0,0,0,.55);
+                color: #fff;
+                font-weight: 900;
+                line-height: 20px;
+                text-align: center;
+                cursor: pointer;
+            }
+
+                .gm-thumb .gm-remove:hover {
+                    background: rgba(220,53,69,.85);
+                }
+
+            .gm-thumb .gm-primary-badge {
+                position: absolute;
+                left: 6px;
+                bottom: 6px;
+                padding: 3px 7px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 900;
+                background: rgba(13,110,253,.92);
+                color: #fff;
+                display: none;
+            }
+
+            .gm-thumb.is-primary .gm-primary-badge {
+                display: inline-block;
+            }
+        /* ✅ Dropzone gọn hơn */
+        .gm-pond-wrap .filepond--drop-label {
+            min-height: 72px !important; /* 🔽 giảm thêm */
+            padding: 8px 10px !important;
+            font-size: .9rem;
+        }
+
+        .gm-pond-wrap .filepond--panel-root {
+            border-radius: 12px;
+        }
+
+        .gm-pond-wrap .filepond--label-action {
+            text-decoration: none;
+            font-weight: 800;
+        }
+
+        /* (tuỳ chọn) giảm padding tổng của filepond */
+        .gm-pond-wrap .filepond--root {
+            margin-bottom: 0;
+        }
+        /* ✅ Drag & drop vào main preview không mở tab mới + có viền đẹp */
+        .gm-main-preview.is-drag {
+            outline: 2px dashed rgba(13,110,253,.6);
+            outline-offset: 4px;
+            background: rgba(13,110,253,.04);
+        }
+
+    </style>
+}
+
+@section header {
+    <div class="py-2">
+        <h3 class="mb-0 fw-bold">Tạo sản phẩm</h3>
+        <div class="text-muted mt-1">Điền theo thứ tự từ trên xuống. Mục có dấu <span class="text-danger">*</span> là bắt buộc.</div>
+    </div>
+}
+
+<div class="gm-page">
+    <div class="gm-banner mb-3">
+        <div><b>Mẹo nhập nhanh:</b> Gõ tên → Alias tự sinh. Nhấn <b>Ctrl + Enter</b> để lưu.</div>
+        <div class="text-muted">Tồn kho sẽ nhập ở <b>Phiếu nhập</b> (không nhập ở màn này).</div>
+    </div>
+
+    <form asp-area="Admin" asp-controller="Product" asp-action="Create" method="post" novalidate>
+        @Html.AntiForgeryToken()
+
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger mb-3"></div>
+
+        <div class="row g-3">
+            <!-- LEFT -->
+            <div class="col-lg-8">
+                <div class="card gm-card mb-3">
+                    <div class="card-header">1) Thông tin chung</div>
+                    <div class="card-body">
+
+                        <div class="gm-section-title"><span class="dot"></span> Thông tin cơ bản</div>
+
+                        <div class="row g-3">
+                            <div class="col-md-7">
+                                <label class="form-label req" for="txtName">Tên sản phẩm</label>
+                                <input asp-for="Name" class="form-control" autocomplete="off" id="txtName" placeholder="VD: Nước Lavie 500ml" />
+                                <div class="help">Tên hiển thị cho khách hàng.</div>
+                                <span asp-validation-for="Name" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-5">
+                                <label class="form-label" for="txtAlias">Mã hiển thị (Alias)</label>
+                                <div class="input-group">
+                                    <input asp-for="Alias" class="form-control" id="txtAlias" readonly tabindex="-1" placeholder="Tự động tạo" />
+                                    <button class="btn btn-outline-secondary" type="button" id="btnRegenAlias" title="Tạo lại alias theo tên">⟳</button>
+                                </div>
+                                <div class="help">Tự sinh theo tên. Nếu trùng sẽ tự thêm -1, -2…</div>
+                                <span asp-validation-for="Alias" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Danh mục</label>
+                                <select asp-for="CategoryId" class="form-select select2" id="ddlCategory" data-placeholder="Chọn danh mục...">
+                                    <option value=""></option>
+                                    @foreach (var x in categories)
+                                    {
+                                        <option value="@x.Value">@x.Text</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="CategoryId" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Nhà cung cấp</label>
+                                <select asp-for="SupplierId" class="form-select select2" id="ddlSupplier" data-placeholder="Chọn nhà cung cấp...">
+                                    <option value=""></option>
+                                    @foreach (var x in suppliers)
+                                    {
+                                        <option value="@x.Value">@x.Text</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="SupplierId" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Đơn vị cơ bản</label>
+                                <select asp-for="BaseUnitId" class="form-select select2" id="ddlUnit" data-placeholder="Chọn đơn vị...">
+                                    <option value=""></option>
+                                    @foreach (var x in units)
+                                    {
+                                        <option value="@x.Value">@x.Text</option>
+                                    }
+                                </select>
+                                <span asp-validation-for="BaseUnitId" class="text-danger"></span>
+                            </div>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <div class="gm-section-title"><span class="dot"></span> Giá & tuỳ chọn</div>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Giá cơ bản</label>
+                                <input asp-for="BasePrice" class="form-control" id="txtBasePrice" type="number" min="0" step="1000" placeholder="VD: 12000" />
+                                <div class="help">Nếu biến thể không có giá riêng sẽ dùng giá này.</div>
+                                <span asp-validation-for="BasePrice" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Thương hiệu</label>
+                                <select asp-for="BrandId" class="form-select select2" id="ddlBrand" data-placeholder="(Không bắt buộc)">
+                                    <option value=""></option>
+                                    @foreach (var x in brands)
+                                    {
+                                        <option value="@x.Value">@x.Text</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Thuế</label>
+                                <select asp-for="TaxId" class="form-select select2" id="ddlTax" data-placeholder="(Không bắt buộc)">
+                                    <option value=""></option>
+                                    @foreach (var x in taxes)
+                                    {
+                                        <option value="@x.Value">@x.Text</option>
+                                    }
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Mô tả ngắn</label>
+                                <input asp-for="Description" class="form-control" id="txtDesc" placeholder="VD: Chai 500ml, nước khoáng thiên nhiên..." />
+                                <div class="help">Hiển thị nhanh ở danh sách/hoá đơn.</div>
+                                <span asp-validation-for="Description" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Nội dung chi tiết</label>
+                                <textarea asp-for="Content" class="form-control" rows="7" placeholder="Thông tin chi tiết cho sản phẩm..."></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT -->
+            <div class="col-lg-4">
+                <div class="gm-sticky">
+
+                    <div class="card gm-card mb-3">
+                        <div class="card-header">2) Hình ảnh</div>
+                        <div class="card-body">
+
+                            <div class="gm-pond-wrap">
+                                <input type="file" id="productImages" name="file" multiple />
+                            </div>
+
+                            <!-- Preview lớn: chỉ 1 ảnh -->
+                            <div class="gm-main-preview mt-3" id="mainPreview">
+                                <div class="gm-main-empty">Chưa chọn ảnh. Kéo thả hoặc bấm Browse để thêm ảnh.</div>
+                                <img id="mainPreviewImg" alt="preview" style="display:none;" />
+                                <div class="gm-main-badge" id="mainBadge" style="display:none;">ẢNH CHÍNH</div>
+                            </div>
+                            <div class="gm-main-tip">Click để xem • Nhấp 2 lần: đặt ảnh chính</div>
+
+
+                            <!-- Thumbnail strip -->
+                            <div class="gm-thumbbar mt-3">
+                                <div class="gm-thumbbar-title">
+                                    <div class="fw-bold">Ảnh đã chọn</div>
+                                    <div class="small text-muted">Kéo ngang để xem thêm</div>
+                                </div>
+                                <div id="thumbStrip" class="gm-thumbstrip"></div>
+                            </div>
+
+                            <div class="help mt-2">Bạn có thể xóa ảnh bằng nút × trên thumbnail.</div>
+
+                            <input type="hidden" id="TempImageTokensJson" name="TempImageTokensJson" />
+                            <input type="hidden" id="PrimaryTempToken" name="PrimaryTempToken" />
+                        </div>
+                    </div>
+
+                    <div class="gm-summary">
+                        <h6>🧾 Tóm tắt bạn đang tạo</h6>
+
+                        <div class="rowline"><div class="k">Tên</div><div class="v" id="sumName">—</div></div>
+                        <div class="rowline"><div class="k">Danh mục</div><div class="v" id="sumCategory">—</div></div>
+                        <div class="rowline"><div class="k">Nhà cung cấp</div><div class="v" id="sumSupplier">—</div></div>
+                        <div class="rowline"><div class="k">Đơn vị</div><div class="v" id="sumUnit">—</div></div>
+                        <div class="rowline"><div class="k">Thương hiệu</div><div class="v" id="sumBrand">—</div></div>
+                        <div class="rowline"><div class="k">Thuế</div><div class="v" id="sumTax">—</div></div>
+                        <div class="rowline"><div class="k">Giá</div><div class="v" id="sumPrice">—</div></div>
+                        <div class="rowline"><div class="k">Ảnh đã chọn</div><div class="v" id="sumImages">0</div></div>
+
+                        <div class="help mt-2">Nếu thấy “—” nghĩa là bạn chưa chọn mục đó.</div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTION BAR -->
+        <div class="gm-actions mt-3">
+            <div class="gm-actions-inner">
+                <div class="text-muted">
+                    <div class="fw-bold">Lưu ý</div>
+                    <div class="small">Nhấn <b>Ctrl + Enter</b> để lưu nhanh.</div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-lg" type="submit">Lưu sản phẩm</button>
+                    <a class="btn btn-light btn-lg" asp-area="Admin" asp-controller="Product" asp-action="Index">Quay lại</a>
+                </div>
+            </div>
+        </div>
+
+    </form>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <script src="https://unpkg.com/filepond/dist/filepond.min.js"></script>
+    <script src="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.js"></script>
+}
+
+@section PageScripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        /* =========================
+           0) Select2
+        ========================== */
+        function initSelect2(ctx) {
+            if (!window.jQuery || !$.fn.select2) return;
+
+            $(ctx).find('select.select2').each(function () {
+                const $el = $(this);
+                if ($el.data('select2')) return;
+
+                $el.select2({
+                    theme: 'bootstrap-5',
+                    width: '100%',
+                    allowClear: true,
+                    placeholder: $el.data('placeholder') || 'Chọn...',
+                    dropdownParent: $('body'),
+                    closeOnSelect: true,
+                    selectOnClose: false
+                });
+            });
+        }
+
+        $(document).on('keydown', '.select2-selection', function (e) {
+            const k = e.key || e.which || e.keyCode;
+            const isDown = (k === 'ArrowDown' || k === 40);
+            const isEnter = (k === 'Enter' || k === 13);
+            if (!isDown && !isEnter) return;
+
+            e.preventDefault();
+            const $select = $(this).closest('.select2-container').prev('select');
+            if ($select.length) $select.select2('open');
+        });
+
+        $(document).on('select2:open', function () {
+            setTimeout(() => {
+                const f = document.querySelector('.select2-container--open .select2-search__field');
+                if (f) f.focus();
+            }, 0);
+        });
+
+        /* =========================
+           1) FLOW: Enter -> Next
+        ========================== */
+        const FLOW = [
+            '#txtName',
+            '#ddlCategory',
+            '#ddlSupplier',
+            '#ddlUnit',
+            '#ddlBrand',
+            '#ddlTax',
+            '#txtBasePrice',
+            '#txtDesc'
+        ];
+
+        function isSelect2(elOrSelector) {
+            const $el = $(elOrSelector);
+            return $el.is('select') && $el.hasClass('select2') && $el.data('select2');
+        }
+
+        function focusField(selector) {
+            const $el = $(selector);
+            if (!$el.length) return;
+
+            if (isSelect2($el)) {
+                $el.select2('open');
+                return;
+            }
+
+            $el.focus();
+            if ($el.is('input, textarea')) {
+                try { $el.select(); } catch { }
+            }
+        }
+
+        function nextField(currentSelector) {
+            const idx = FLOW.indexOf(currentSelector);
+            if (idx < 0) return null;
+
+            for (let i = idx + 1; i < FLOW.length; i++) {
+                if ($(FLOW[i]).length) return FLOW[i];
+            }
+            return null;
+        }
+
+        $(document).on('keydown', FLOW.join(','), function (e) {
+            if (e.key !== 'Enter') return;
+            if ($(this).is('textarea')) return;
+
+            e.preventDefault();
+            const sel = '#' + (this.id || '');
+            const nxt = nextField(sel);
+            if (nxt) focusField(nxt);
+        });
+
+        $(document).on('select2:close', '#ddlCategory, #ddlSupplier, #ddlUnit, #ddlBrand, #ddlTax', function () {
+            const cur = '#' + this.id;
+            const nxt = nextField(cur);
+            if (nxt) setTimeout(() => focusField(nxt), 0);
+        });
+
+        /* =========================
+           2) Alias unique (an toàn null)
+        ========================== */
+        let aliasTimer = null;
+        const $name = document.getElementById('txtName');
+        const $alias = document.getElementById('txtAlias');
+
+        async function refreshAlias() {
+            if (!$name || !$alias) return;
+
+            const input = ($name.value || '').trim();
+            if (!input) { $alias.value = ''; return; }
+
+            const url = '@Url.Action("GetUniqueAlias", "Product", new { area = "Admin" })'
+                + '?input=' + encodeURIComponent(input);
+
+            try {
+                const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!res.ok) return;
+                const data = await res.json();
+                $alias.value = data.alias || '';
+            } catch { }
+        }
+
+        if ($name) {
+            $name.addEventListener('input', function () {
+                clearTimeout(aliasTimer);
+                aliasTimer = setTimeout(refreshAlias, 250);
+                syncSummary();
+            });
+        }
+
+        document.getElementById('btnRegenAlias')?.addEventListener('click', function () {
+            refreshAlias();
+        });
+
+        /* =========================
+           3) Ctrl + Enter = Lưu
+        ========================== */
+        document.addEventListener('keydown', function (e) {
+            if (!(e.ctrlKey && e.key === 'Enter')) return;
+
+            const form = document.querySelector('form');
+            if (!form) return;
+
+            e.preventDefault();
+            try { $('.select2').select2('close'); } catch { }
+
+            form.requestSubmit ? form.requestSubmit() : form.submit();
+        });
+
+        /* =========================
+           4) Summary + FilePond + Main preview + Thumbs
+        ========================== */
+        function getCsrf() {
+            const el = document.querySelector('input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        let pond = null;
+        let primaryToken = '';
+        let activePondId = '';
+        let mainBlobUrl = '';
+                function ensurePrimaryAfterProcess(item) {
+            if (!item || !item.serverId) return;
+
+            if (!primaryToken) {
+                primaryToken = item.serverId;
+                $('#PrimaryTempToken').val(primaryToken);
+            }
+
+            const tokens = pond ? pond.getFiles().map(f => f.serverId).filter(Boolean) : [];
+            if (primaryToken && tokens.length && !tokens.includes(primaryToken)) {
+                primaryToken = tokens[0];
+                $('#PrimaryTempToken').val(primaryToken);
+            }
+        }
+
+        function syncSummary(imagesCountOverride) {
+            const name = ($('#txtName').val() || '').toString().trim();
+            $('#sumName').text(name || '—');
+
+            const cat = $('#ddlCategory option:selected').text();
+            $('#sumCategory').text($('#ddlCategory').val() ? cat : '—');
+
+            const sup = $('#ddlSupplier option:selected').text();
+            $('#sumSupplier').text($('#ddlSupplier').val() ? sup : '—');
+
+            const unit = $('#ddlUnit option:selected').text();
+            $('#sumUnit').text($('#ddlUnit').val() ? unit : '—');
+
+            const brand = $('#ddlBrand option:selected').text();
+            $('#sumBrand').text($('#ddlBrand').val() ? brand : '—');
+
+            const tax = $('#ddlTax option:selected').text();
+            $('#sumTax').text($('#ddlTax').val() ? tax : '—');
+
+            const priceVal = ($('#txtBasePrice').val() || '').toString().trim();
+            $('#sumPrice').text(priceVal ? priceVal : '—');
+
+            if (typeof imagesCountOverride === 'number') {
+                $('#sumImages').text(imagesCountOverride);
+                return;
+            }
+            if (pond) $('#sumImages').text(pond.getFiles().length);
+        }
+
+        function clearMainBlob() {
+            if (mainBlobUrl) {
+                try { URL.revokeObjectURL(mainBlobUrl); } catch { }
+                mainBlobUrl = '';
+            }
+        }
+
+        function setMainPreviewFromItem(item) {
+            const img = document.getElementById('mainPreviewImg');
+            const empty = document.querySelector('#mainPreview .gm-main-empty');
+            const badge = document.getElementById('mainBadge');
+
+            if (!img || !badge) return;
+
+            if (!item) {
+                clearMainBlob();
+                img.style.display = 'none';
+                badge.style.display = 'none';
+                if (empty) empty.style.display = 'block';
+                activePondId = '';
+                return;
+            }
+
+            if (empty) empty.style.display = 'none';
+            img.style.display = 'block';
+
+            clearMainBlob();
+            mainBlobUrl = URL.createObjectURL(item.file);
+            img.src = mainBlobUrl;
+
+            activePondId = item.id;
+
+            const token = item.serverId || '';
+            badge.style.display = (token && token === primaryToken) ? 'block' : 'none';
+        }
+
+        function rebuildThumbStrip() {
+            const strip = document.getElementById('thumbStrip');
+            if (!strip) return;
+
+            strip.innerHTML = '';
+            if (!pond) return;
+
+            const files = pond.getFiles();
+
+            if (!activePondId && files.length) activePondId = files[0].id;
+
+            // nếu chưa có primary, ưu tiên file đầu có serverId
+            if (!primaryToken) {
+                const firstWithToken = files.find(x => x.serverId);
+                if (firstWithToken) {
+                    primaryToken = firstWithToken.serverId;
+                    $('#PrimaryTempToken').val(primaryToken);
+                }
+            }
+
+            files.forEach((item) => {
+                const token = item.serverId || '';
+
+                const thumb = document.createElement('div');
+                thumb.className = 'gm-thumb';
+                thumb.dataset.pondId = item.id;
+                thumb.dataset.token = token;
+
+                if (item.id === activePondId) thumb.classList.add('is-active');
+                if (token && token === primaryToken) thumb.classList.add('is-primary');
+
+                const img = document.createElement('img');
+                const blob = URL.createObjectURL(item.file);
+                img.src = blob;
+                img.onload = () => { try { URL.revokeObjectURL(blob); } catch { } };
+
+                const btnRemove = document.createElement('button');
+                btnRemove.type = 'button';
+                btnRemove.className = 'gm-remove';
+                btnRemove.innerHTML = '&times;';
+
+                const badge = document.createElement('span');
+                badge.className = 'gm-primary-badge';
+                badge.textContent = 'CHÍNH';
+
+                thumb.addEventListener('click', function () {
+                    const pondId = this.dataset.pondId;
+                    const f = pond.getFiles().find(x => x.id === pondId);
+                    if (!f) return;
+
+                    activePondId = f.id;
+                    document.querySelectorAll('.gm-thumb').forEach(x => x.classList.remove('is-active'));
+                    this.classList.add('is-active');
+                    setMainPreviewFromItem(f);
+                });
+
+                thumb.addEventListener('dblclick', function (e) {
+                    e.preventDefault();
+                    const t = this.dataset.token || '';
+                    if (!t) return; // chưa upload xong thì chưa set primary
+
+                    primaryToken = t;
+                    $('#PrimaryTempToken').val(primaryToken);
+
+                    document.querySelectorAll('.gm-thumb').forEach(x => x.classList.remove('is-primary'));
+                    this.classList.add('is-primary');
+
+                    const current = pond.getFiles().find(x => x.id === activePondId);
+                    setMainPreviewFromItem(current);
+                });
+
+                btnRemove.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const pondId = thumb.dataset.pondId;
+                    pond.removeFile(pondId);
+                });
+
+                thumb.appendChild(img);
+                thumb.appendChild(btnRemove);
+                thumb.appendChild(badge);
+                strip.appendChild(thumb);
+            });
+
+            const current = pond.getFiles().find(x => x.id === activePondId) || pond.getFiles()[0];
+            setMainPreviewFromItem(current);
+
+            syncSummary(files.length);
+        }
+
+        function updateHiddenTokensBeforeSubmit() {
+            const tokens = pond ? pond.getFiles().map(f => f.serverId).filter(x => x) : [];
+            $('#TempImageTokensJson').val(JSON.stringify(tokens));
+
+            if (tokens.length) {
+                if (!primaryToken || !tokens.includes(primaryToken)) primaryToken = tokens[0];
+                $('#PrimaryTempToken').val(primaryToken);
+            } else {
+                primaryToken = '';
+                $('#PrimaryTempToken').val('');
+            }
+        }
+
+        // ✅ KÉO THẢ VÀO MAIN PREVIEW: chặn open tab mới + add vào FilePond
+        function bindMainPreviewDrop() {
+            const preview = document.getElementById('mainPreview');
+            if (!preview) return;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                preview.addEventListener(evt, function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, true);
+            });
+
+            preview.addEventListener('dragenter', () => preview.classList.add('is-drag'), true);
+            preview.addEventListener('dragleave', () => preview.classList.remove('is-drag'), true);
+
+            preview.addEventListener('drop', function (e) {
+                preview.classList.remove('is-drag');
+                if (!pond) return;
+
+                const dt = e.dataTransfer;
+                if (!dt) return;
+
+                const files = Array.from(dt.files || []);
+                if (!files.length) return;
+
+                for (const f of files) {
+                    if (!f.type || !f.type.startsWith('image/')) continue;
+                    pond.addFile(f);
+                }
+            }, true);
+        }
+
+        $(function () {
+            initSelect2(document);
+            setTimeout(() => focusField('#txtName'), 120);
+
+            refreshAlias();
+            syncSummary(0);
+
+            $(document).on('change input', '#ddlCategory, #ddlSupplier, #ddlUnit, #ddlBrand, #ddlTax, #txtBasePrice, #txtDesc', syncSummary);
+            $(document).on('select2:select select2:clear', '#ddlCategory, #ddlSupplier, #ddlUnit, #ddlBrand, #ddlTax', syncSummary);
+
+            if (window.FilePondPluginImagePreview) {
+                FilePond.registerPlugin(FilePondPluginImagePreview);
+            }
+
+            const input = document.querySelector('#productImages');
+            if (input && window.FilePond) {
+                pond = FilePond.create(input, {
+                    allowMultiple: true,
+                    name: 'file',
+                    allowImagePreview: false,
+                    labelIdle: 'Kéo thả ảnh hoặc <span class="filepond--label-action">Chọn ảnh</span>',
+                    server: {
+                        process: {
+                            url: '/admin/media/temp',
+                            method: 'POST',
+                            headers: { 'RequestVerificationToken': getCsrf() }
+                        },
+                        revert: {
+                            url: '/admin/media/temp',
+                            method: 'DELETE',
+                            headers: { 'RequestVerificationToken': getCsrf() }
+                        }
+                    }
+                });
+
+                pond.on('addfile', () => rebuildThumbStrip());
+                       pond.on('processfile', (error, file) => {
+            if (!error) ensurePrimaryAfterProcess(file);
+            rebuildThumbStrip();
+        });
+
+                      pond.on('removefile', () => {
+
+            // 🔴 BƯỚC 1: nếu ảnh bị xóa là ảnh chính → chọn ảnh còn lại làm primary
+            const tokens = pond.getFiles()
+                .map(f => f.serverId)
+                .filter(Boolean);
+
+            if (primaryToken && tokens.length && !tokens.includes(primaryToken)) {
+                primaryToken = tokens[0]; // lấy ảnh đầu còn lại
+                $('#PrimaryTempToken').val(primaryToken);
+            }
+
+            // 🔴 BƯỚC 2: cập nhật active preview
+            const left = pond.getFiles();
+            activePondId = left.length ? left[0].id : '';
+
+            // 🔴 BƯỚC 3: rebuild UI
+            rebuildThumbStrip();
+        });
+
+
+                rebuildThumbStrip();
+                syncSummary(pond.getFiles().length);
+
+                // ✅ bind drop vào preview sau khi pond có rồi
+                bindMainPreviewDrop();
+            } else {
+                setMainPreviewFromItem(null);
+                syncSummary(0);
+            }
+
+            $('form').on('submit', function () {
+                updateHiddenTokensBeforeSubmit();
+            });
+        });
+    </script>
+}
+

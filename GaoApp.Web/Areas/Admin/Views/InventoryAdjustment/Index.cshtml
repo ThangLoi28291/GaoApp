@@ -1,0 +1,479 @@
+﻿@{
+    ViewData["Title"] = "Điều chỉnh kho";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <style>
+        .inv-adj-page {
+            min-height: calc(100vh - 140px);
+        }
+
+        .inv-card {
+            border: 0;
+            border-radius: 18px;
+            box-shadow: 0 0.125rem 0.75rem rgba(0,0,0,.08);
+        }
+
+            .inv-card .card-header {
+                background: #fff;
+                border-bottom: 1px solid #eef0f4;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
+                font-weight: 700;
+            }
+
+        .inv-form-label {
+            font-weight: 600;
+            margin-bottom: .45rem;
+        }
+
+        .inv-summary-box {
+            border-radius: 16px;
+            padding: 16px 18px;
+            background: #f8f9fa;
+            height: 100%;
+        }
+
+        .inv-summary-title {
+            font-size: .9rem;
+            color: #6c757d;
+            margin-bottom: .35rem;
+        }
+
+        .inv-summary-value {
+            font-size: 1.55rem;
+            font-weight: 800;
+            color: #212529;
+        }
+
+        .inv-table-wrap {
+            overflow-x: auto;
+        }
+
+        .inv-empty {
+            text-align: center;
+            color: #6c757d;
+            padding: 18px 0;
+        }
+
+        .inv-badge-negative {
+            background: #ffe5e5;
+            color: #b42318;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .inv-badge-increase {
+            background: #e8f7ec;
+            color: #067647;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .inv-badge-decrease {
+            background: #fff1e6;
+            color: #b54708;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .inv-section-note {
+            color: #6c757d;
+            font-size: .9rem;
+        }
+
+        .inv-table td,
+        .inv-table th {
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .inv-product-name {
+            font-weight: 600;
+            white-space: normal;
+            min-width: 240px;
+        }
+
+        .inv-info-box {
+            border: 1px solid #e9ecef;
+            border-radius: 14px;
+            padding: 14px 16px;
+            background: #fafbfc;
+        }
+
+        .inv-info-title {
+            font-weight: 700;
+            margin-bottom: .75rem;
+        }
+
+        .inv-info-row {
+            margin-bottom: .35rem;
+            color: #495057;
+        }
+
+        .select2-result-title {
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .select2-result-meta {
+            font-size: .85rem;
+            color: #6c757d;
+            margin-top: .15rem;
+            white-space: normal;
+        }
+
+        #AdjustmentPreviewBox.text-danger-soft {
+            border: 1px solid #f5c2c7;
+            background: #fff5f5;
+        }
+
+        #AdjustmentPreviewBox.text-warning-soft {
+            border: 1px solid #ffe69c;
+            background: #fffaf0;
+        }
+
+        #AdjustmentPreviewBox.text-success-soft {
+            border: 1px solid #badbcc;
+            background: #f3fff8;
+        }
+
+        .inv-cost-box {
+            border: 1px dashed #d0d7de;
+            border-radius: 14px;
+            padding: 14px 16px;
+            background: #fcfcfd;
+        }
+
+        .inv-cost-box-title {
+            font-weight: 700;
+            margin-bottom: .35rem;
+        }
+
+        .inv-cost-box-note {
+            font-size: .86rem;
+            color: #6c757d;
+            margin-bottom: .85rem;
+        }
+
+        .d-none-soft {
+            display: none;
+        }
+    </style>
+}
+
+<div class="container-xxl flex-grow-1 container-p-y inv-adj-page">
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-4">
+        <div>
+            <h4 class="mb-1">Điều chỉnh kho</h4>
+            <div class="inv-section-note">
+                Quản lý điều chỉnh tồn kho thủ công, hỗ trợ barcode, quy đổi đơn vị và theo dõi âm kho.
+            </div>
+        </div>
+        <div>
+            <button type="button" class="btn btn-outline-secondary" id="btnReloadAll">
+                <i class="bx bx-refresh me-1"></i> Tải lại dữ liệu
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-5">
+            <div class="card inv-card">
+                <div class="card-header">
+                    Tạo điều chỉnh kho
+                </div>
+                <div class="card-body">
+                    <form id="inventoryAdjustmentForm" novalidate>
+                        <div class="mb-3">
+                            <label class="form-label inv-form-label" for="WarehouseId">Kho</label>
+                            <select class="form-select" id="WarehouseId" required>
+                                <option value="">-- Chọn kho --</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label inv-form-label" for="AdjustmentLookupInput">Sản phẩm / đơn vị</label>
+                            <select id="AdjustmentLookupInput" class="form-select"></select>
+                            <div class="form-text">
+                                Gõ tên sản phẩm, SKU hoặc quét barcode trực tiếp trong ô này rồi nhấn Enter để chọn nhanh đúng variant và đúng đơn vị.
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="SelectedProductVariantId" />
+                        <input type="hidden" id="SelectedUnitId" />
+                        <input type="hidden" id="SelectedFactor" />
+                        <input type="hidden" id="SelectedUnitName" />
+
+                        <div class="mb-3">
+                            <label class="form-label inv-form-label" for="AdjustmentType">Loại điều chỉnh</label>
+                            <select class="form-select" id="AdjustmentType" required>
+                                <option value="30">Điều chỉnh tăng</option>
+                                <option value="31">Điều chỉnh giảm</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label inv-form-label" for="Quantity">Số lượng</label>
+                            <input type="number"
+                                   class="form-control"
+                                   id="Quantity"
+                                   min="0.001"
+                                   step="0.001"
+                                   placeholder="Nhập số lượng theo đơn vị đang chọn"
+                                   required />
+                        </div>
+
+                        <!--
+                            Phase 5.15:
+                            - AdjustmentIncrease bắt buộc phải nhập UnitCost > 0
+                            - AdjustmentDecrease có thể dùng ProvisionalUnitCost nếu muốn gắn giá tạm
+                            View cũ chưa có 2 field này nên backend luôn nhận null và chặn.
+                        -->
+                        <div class="inv-cost-box mb-3" id="IncreaseCostBox">
+                            <div class="inv-cost-box-title">Giá vốn cho điều chỉnh tăng</div>
+                            <div class="inv-cost-box-note">
+                                Điều chỉnh tăng sẽ tạo inbound layer mới, vì vậy bắt buộc phải có giá vốn thực tế.
+                            </div>
+
+                            <label class="form-label inv-form-label" for="UnitCost">Giá vốn thực tế</label>
+                            <input type="number"
+                                   class="form-control"
+                                   id="UnitCost"
+                                   min="0.001"
+                                   step="0.001"
+                                   placeholder="Ví dụ: 15000" />
+                            <div class="form-text">
+                                Áp dụng khi chọn <strong>Điều chỉnh tăng</strong>.
+                            </div>
+                        </div>
+
+                        <div class="inv-cost-box mb-3 d-none-soft" id="DecreaseCostBox">
+                            <div class="inv-cost-box-title">Giá vốn tạm cho điều chỉnh giảm</div>
+                            <div class="inv-cost-box-note">
+                                Chỉ dùng khi bạn muốn ghi nhận giá tạm cho outbound adjustment. Có thể để trống nếu flow của bạn không cần.
+                            </div>
+
+                            <label class="form-label inv-form-label" for="ProvisionalUnitCost">Giá vốn tạm</label>
+                            <input type="number"
+                                   class="form-control"
+                                   id="ProvisionalUnitCost"
+                                   min="0.001"
+                                   step="0.001"
+                                   placeholder="Ví dụ: 12000" />
+                            <div class="form-text">
+                                Áp dụng khi chọn <strong>Điều chỉnh giảm</strong>.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label inv-form-label" for="Note">Ghi chú</label>
+                            <textarea class="form-control"
+                                      id="Note"
+                                      rows="3"
+                                      placeholder="Ví dụ: Hao hụt, cộng bù tồn, điều chỉnh thực tế..."></textarea>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary" id="btnSubmitAdjustment">
+                                <i class="bx bx-save me-1"></i> Lưu điều chỉnh
+                            </button>
+
+                            <button type="button" class="btn btn-outline-secondary" id="btnResetForm">
+                                Làm mới
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-7">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="inv-summary-box">
+                        <div class="inv-summary-title">Sản phẩm đang âm</div>
+                        <div class="inv-summary-value" id="sumNegativeBalances">0</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="inv-summary-box">
+                        <div class="inv-summary-title">Lịch sử điều chỉnh</div>
+                        <div class="inv-summary-value" id="sumAdjustmentHistory">0</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="inv-summary-box">
+                        <div class="inv-summary-title">Log âm kho</div>
+                        <div class="inv-summary-value" id="sumNegativeLogs">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inv-info-box mt-4">
+                <div class="inv-info-title">Thông tin tồn hiện tại</div>
+
+                <div class="row g-2">
+                    <div class="col-12">
+                        <div class="inv-info-row"><strong>Sản phẩm:</strong> <span id="CurrentProductName">-</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>Tồn thực tế:</strong> <span id="CurrentOnHandQty">0</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>Đang giữ:</strong> <span id="CurrentReservedQty">0</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>Khả dụng:</strong> <span id="CurrentAvailableQty">0</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>Đơn vị chọn:</strong> <span id="CurrentSelectedUnitName">-</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>Factor:</strong> <span id="CurrentSelectedFactor">1</span></div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="inv-info-row"><strong>SL gốc quy đổi:</strong> <span id="CurrentBaseQuantityPreview">0</span></div>
+                    </div>
+                    <div class="col-12">
+                        <div class="inv-info-row"><strong>Cho âm kho:</strong> <span id="CurrentAllowNegative">-</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="inv-info-box mt-3" id="AdjustmentPreviewBox">
+                <div class="inv-info-title">Kết quả sau điều chỉnh</div>
+                <div class="inv-info-row"><strong>Tồn sau điều chỉnh:</strong> <span id="PreviewAfterQty">0</span></div>
+                <div class="mt-2 text-muted" id="PreviewWarning">Chưa có dữ liệu để tính.</div>
+            </div>
+
+            <div class="card inv-card mt-4">
+                <div class="card-header">
+                    Hướng dẫn nhanh
+                </div>
+                <div class="card-body">
+                    <div class="mb-2"><strong>Điều chỉnh tăng</strong>: dùng khi cộng bù tồn, nhập thiếu, tìm lại được hàng.</div>
+                    <div class="mb-2"><strong>Điều chỉnh giảm</strong>: dùng khi hao hụt, bể vỡ, hư hỏng, thất thoát.</div>
+                    <div class="mb-2"><strong>Factor</strong>: hệ số quy đổi từ đơn vị đang chọn về đơn vị gốc.</div>
+                    <div class="mb-2"><strong>SL gốc quy đổi</strong>: số lượng thật hệ thống sẽ cộng/trừ vào tồn kho.</div>
+                    <div class="mb-2"><strong>Giá vốn thực tế</strong>: bắt buộc khi điều chỉnh tăng vì hệ thống cần tạo cost layer inbound.</div>
+                    <div class="mb-0"><strong>Tồn âm</strong>: chỉ phát sinh nếu kho đang cho phép âm tồn (<code>AllowNegativeInventory = true</code>).</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card inv-card">
+        <div class="card-header pb-0">
+            <ul class="nav nav-tabs card-header-tabs" id="inventoryTabs" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="tab-negative-balances" data-bs-toggle="tab" data-bs-target="#pane-negative-balances" type="button" role="tab">
+                        Tồn âm hiện tại
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="tab-adjustment-history" data-bs-toggle="tab" data-bs-target="#pane-adjustment-history" type="button" role="tab">
+                        Lịch sử điều chỉnh
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="tab-negative-logs" data-bs-toggle="tab" data-bs-target="#pane-negative-logs" type="button" role="tab">
+                        Log âm kho
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <div class="tab-content px-0 pb-0">
+                <div class="tab-pane fade show active" id="pane-negative-balances" role="tabpanel">
+                    <div class="inv-table-wrap">
+                        <table class="table table-hover inv-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Kho</th>
+                                    <th>Sản phẩm</th>
+                                    <th class="text-end">Tồn thực tế</th>
+                                    <th class="text-end">Đang giữ</th>
+                                    <th class="text-end">Khả dụng</th>
+                                </tr>
+                            </thead>
+                            <tbody id="negativeBalancesBody">
+                                <tr>
+                                    <td colspan="5" class="inv-empty">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="pane-adjustment-history" role="tabpanel">
+                    <div class="inv-table-wrap">
+                        <table class="table table-hover inv-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Thời gian</th>
+                                    <th>Kho</th>
+                                    <th>Sản phẩm</th>
+                                    <th>Loại</th>
+                                    <th>Đơn vị</th>
+                                    <th class="text-end">Trước</th>
+                                    <th class="text-end">Thay đổi</th>
+                                    <th class="text-end">Sau</th>
+                                    <th>Ghi chú</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adjustmentHistoryBody">
+                                <tr>
+                                    <td colspan="9" class="inv-empty">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="pane-negative-logs" role="tabpanel">
+                    <div class="inv-table-wrap">
+                        <table class="table table-hover inv-table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Thời gian</th>
+                                    <th>Kho</th>
+                                    <th>Sản phẩm</th>
+                                    <th>Loại GD</th>
+                                    <th class="text-end">Trước</th>
+                                    <th class="text-end">Thay đổi</th>
+                                    <th class="text-end">Sau</th>
+                                    <th>Ghi chú</th>
+                                </tr>
+                            </thead>
+                            <tbody id="negativeLogsBody">
+                                <tr>
+                                    <td colspan="8" class="inv-empty">Đang tải dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-adjustment.js"></script>
+}

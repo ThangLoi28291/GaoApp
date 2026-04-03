@@ -1,0 +1,125 @@
+﻿@{
+    ViewData["Title"] = "Audit log";
+}
+
+<div class="container-fluid py-3">
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h5 class="mb-0">Tra cứu audit log</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-2 mb-3">
+                <div class="col-md-2">
+                    <label class="form-label">Từ ngày (UTC)</label>
+                    <input type="datetime-local" class="form-control" id="fromUtc" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Đến ngày (UTC)</label>
+                    <input type="datetime-local" class="form-control" id="toUtc" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">User ID</label>
+                    <input type="number" class="form-control" id="actorUserId" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Entity</label>
+                    <input type="text" class="form-control" id="entityName" placeholder="Order, ProductVariant..." />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Entity ID</label>
+                    <input type="text" class="form-control" id="entityId" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Từ khóa</label>
+                    <input type="text" class="form-control" id="keyword" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <button class="btn btn-primary" id="btnSearch">Tìm</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle" id="auditLogTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 160px;">Thời gian UTC</th>
+                            <th style="width: 160px;">User</th>
+                            <th style="width: 120px;">Module</th>
+                            <th style="width: 120px;">Action</th>
+                            <th style="width: 150px;">Entity</th>
+                            <th style="width: 100px;">Entity ID</th>
+                            <th>Summary</th>
+                            <th style="width: 90px;">KQ</th>
+                            <th style="width: 90px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="mt-3 d-flex justify-content-between">
+                <button class="btn btn-outline-secondary" id="btnPrev">Trang trước</button>
+                <div id="pagingInfo" class="align-self-center"></div>
+                <button class="btn btn-outline-secondary" id="btnNext">Trang sau</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="auditLogDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết audit log</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row">
+                    <dt class="col-sm-2">Thời gian</dt>
+                    <dd class="col-sm-10" id="detailCreatedAt"></dd>
+
+                    <dt class="col-sm-2">User</dt>
+                    <dd class="col-sm-10" id="detailUser"></dd>
+
+                    <dt class="col-sm-2">Module</dt>
+                    <dd class="col-sm-10" id="detailModule"></dd>
+
+                    <dt class="col-sm-2">Action</dt>
+                    <dd class="col-sm-10" id="detailAction"></dd>
+
+                    <dt class="col-sm-2">Entity</dt>
+                    <dd class="col-sm-10" id="detailEntity"></dd>
+
+                    <dt class="col-sm-2">Summary</dt>
+                    <dd class="col-sm-10" id="detailSummary"></dd>
+
+                    <dt class="col-sm-2">Path</dt>
+                    <dd class="col-sm-10" id="detailPath"></dd>
+
+                    <dt class="col-sm-2">IP</dt>
+                    <dd class="col-sm-10" id="detailIp"></dd>
+
+                    <dt class="col-sm-2">TraceId</dt>
+                    <dd class="col-sm-10" id="detailTraceId"></dd>
+
+                    <dt class="col-sm-2">Changed</dt>
+                    <dd class="col-sm-10"><pre id="detailChanged" class="bg-light p-2 border rounded small"></pre></dd>
+
+                    <dt class="col-sm-2">Old</dt>
+                    <dd class="col-sm-10"><pre id="detailOld" class="bg-light p-2 border rounded small"></pre></dd>
+
+                    <dt class="col-sm-2">New</dt>
+                    <dd class="col-sm-10"><pre id="detailNew" class="bg-light p-2 border rounded small"></pre></dd>
+
+                    <dt class="col-sm-2">Error</dt>
+                    <dd class="col-sm-10"><pre id="detailError" class="bg-light p-2 border rounded small"></pre></dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/admin/js/audit-log-index.js"></script>
+}

@@ -1,0 +1,94 @@
+﻿@model GaoApp.Web.Areas.Admin.Models.Inventory.StockDocumentLinesTableViewModel
+
+@{
+    var canEdit = Model.CanEdit;
+    var lines = Model.Lines ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>();
+}
+
+<div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle mb-0">
+        <thead>
+            <tr>
+                <th style="width:70px;">Line</th>
+                <th style="min-width:240px;">Sản phẩm</th>
+                <th style="min-width:140px;">Barcode</th>
+                <th style="width:120px;">Đơn vị</th>
+                <th class="text-end" style="width:90px;">Factor</th>
+                <th class="text-end" style="width:110px;">SL nhập</th>
+                <th class="text-end" style="width:110px;">SL gốc</th>
+                <th class="text-end" style="width:120px;">Đơn giá</th>
+                <th class="text-end" style="width:130px;">Thành tiền</th>
+                <th style="min-width:180px;">Ghi chú</th>
+                @if (canEdit)
+                {
+                    <th style="width:150px;" class="text-center text-nowrap">Thao tác</th>
+                }
+            </tr>
+        </thead>
+        <tbody id="stockLineTableBody">
+            @if (!lines.Any())
+            {
+                <tr>
+                    <td colspan="@(canEdit ? 11 : 10)" class="text-center text-muted py-4">
+                        Chưa có dòng chi tiết
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var line in lines)
+                {
+                    <tr>
+                        <td class="text-center">@line.LineNo</td>
+
+                        <td>
+                            <div class="fw-semibold">@line.ProductNameSnapshot</div>
+                            @if (!string.IsNullOrWhiteSpace(line.SkuSnapshot))
+                            {
+                                <small class="text-muted">SKU: @line.SkuSnapshot</small>
+                            }
+                        </td>
+
+                        <td class="text-break">@line.BarcodeSnapshot</td>
+
+                        <td>@line.UnitName</td>
+
+                        <td class="text-end">@line.Factor.ToString("0.###")</td>
+
+                        <td class="text-end">@line.Quantity.ToString("0.###")</td>
+
+                        <td class="text-end">@line.BaseQuantity.ToString("0.###")</td>
+
+                        <td class="text-end">@line.UnitCost.ToString("N0")</td>
+
+                        <td class="text-end fw-semibold">@line.LineTotal.ToString("N0")</td>
+
+                        <td class="text-break">@line.Note</td>
+
+                        @if (canEdit)
+                        {
+                            <td class="text-center text-nowrap">
+                                <button type="button"
+                                        class="btn btn-sm btn-warning btn-edit-line"
+                                        data-line-id="@line.Id"
+                                        data-variant-id="@line.ProductVariantId"
+                                        data-unit-id="@line.UnitId"
+                                        data-quantity="@line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-unit-cost="@line.UnitCost.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-note="@line.Note">
+                                    Sửa
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-sm btn-danger btn-delete-line"
+                                        data-line-id="@line.Id">
+                                    Xóa
+                                </button>
+                            </td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

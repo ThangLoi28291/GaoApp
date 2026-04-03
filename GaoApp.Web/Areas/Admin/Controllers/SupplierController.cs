@@ -1,0 +1,212 @@
+﻿using GaoApp.Application.Common;
+using GaoApp.Application.DTOs.Suppliers;
+using GaoApp.Application.Interfaces.Services.Suppliers;
+using GaoApp.Infrastructure.Tenant;
+using GaoApp.Web.Areas.Admin.ViewModels.Suppliers;
+using GaoApp.Web.Common.Extensions;
+using GaoApp.Web.Extensions;
+using Microsoft.AspNetCore.Mvc;
+
+namespace GaoApp.Web.Areas.Admin.Controllers;
+
+public class SupplierController : BaseAdminController
+{
+    private readonly ISupplierService _service;
+    private readonly ITenantContext _tenant;
+
+    public SupplierController(ISupplierService service, ITenantContext tenant)
+    {
+        _service = service;
+        _tenant = tenant;
+    }
+
+    private int CurrentStoreId()
+    {
+        if (_tenant.StoreId is null)
+            throw new InvalidOperationException("Không xác định StoreId (Tenant).");
+
+        return _tenant.StoreId.Value;
+    }
+
+    private static void NormalizePagination(ref int page, ref int pageSize)
+    {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 200) pageSize = 200;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Index(
+        string? search = "",
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        NormalizePagination(ref page, ref pageSize);
+
+        var storeId = CurrentStoreId();
+        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+
+        return View(new SupplierIndexVM
+        {
+            SearchString = search,
+            Page = page,
+            PageSize = pageSize,
+            Paged = paged
+        });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Search(
+        string? search = "",
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        NormalizePagination(ref page, ref pageSize);
+
+        var storeId = CurrentStoreId();
+        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+
+        return PartialView("_SupplierTable", new SupplierIndexVM
+        {
+            SearchString = search,
+            Page = page,
+            PageSize = pageSize,
+            Paged = paged
+        });
+    }
+
+    [HttpGet]
+    public IActionResult Create()
+        => View("Edit", new SupplierEditViewModel { Status = true });
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Create(SupplierEditViewModel vm, CancellationToken ct = default)
+    {
+        if (!ModelState.IsValid)
+            return View("Edit", vm);
+
+        var storeId = CurrentStoreId();
+
+        var dto = new CreateSupplierRequest
+        {
+            Code = vm.Code,
+            Name = vm.Name,
+            Phone = vm.Phone,
+            Email = vm.Email,
+            Address = vm.Address,
+            ContactName = vm.ContactName,
+            TaxCode = vm.TaxCode,
+            Note = vm.Note,
+            Status = vm.Status
+        };
+
+        var result = await _service.CreateAsync(storeId, dto, userId: null, ct);
+
+        if (result.IsFailure)
+        {
+            ModelState.AddResultErrors(result);
+            return View("Edit", vm);
+        }
+
+        TempData["ToastSuccess"] = "Đã tạo nhà cung cấp.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
+    {
+        var storeId = CurrentStoreId();
+        var result = await _service.GetForEditAsync(storeId, id, ct);
+
+        if (result.IsFailure)
+            return NotFound();
+
+        var dto = result.Value;
+
+        var vm = new SupplierEditViewModel
+        {
+            Id = dto.Id,
+            Code = dto.Code,
+            Name = dto.Name,
+            Phone = dto.Phone,
+            Email = dto.Email,
+            Address = dto.Address,
+            ContactName = dto.ContactName,
+            TaxCode = dto.TaxCode,
+            Note = dto.Note,
+            Status = dto.Status,
+            RowVersion = dto.RowVersion
+        };
+
+        return View(vm);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Edit(SupplierEditViewModel vm, CancellationToken ct = default)
+    {
+        if (!ModelState.IsValid)
+            return View(vm);
+
+        var storeId = CurrentStoreId();
+
+        var dto = new UpdateSupplierRequest
+        {
+            Id = vm.Id,
+            Code = vm.Code,
+            Name = vm.Name,
+            Phone = vm.Phone,
+            Email = vm.Email,
+            Address = vm.Address,
+            ContactName = vm.ContactName,
+            TaxCode = vm.TaxCode,
+            Note = vm.Note,
+            Status = vm.Status,
+            RowVersion = vm.RowVersion
+        };
+
+        var result = await _service.UpdateAsync(storeId, dto, userId: null, ct);
+
+        if (result.IsFailure)
+        {
+           // ModelState.AddResultErrors(result);
+            return View(vm);
+        }
+
+        TempData["ToastSuccess"] = "Đã cập nhật nhà cung cấp.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
+    {
+        var storeId = CurrentStoreId();
+        var result = await _service.ToggleStatusAsync(storeId, id, userId: null, ct);
+
+        return Json(new
+        {
+            message = result.IsSuccess
+    ? "Đã cập nhật trạng thái."
+    : result.Error.Message
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
+    {
+        var storeId = CurrentStoreId();
+        var result = await _service.SoftDeleteAsync(storeId, id, userId: null, ct);
+
+        return Json(new
+        {
+            message = result.IsSuccess
+    ? "Đã xóa nhà cung cấp."
+    : result.Error.Message
+        });
+    }
+}

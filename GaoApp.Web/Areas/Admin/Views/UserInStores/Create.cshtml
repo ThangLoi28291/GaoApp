@@ -1,0 +1,175 @@
+﻿@model GaoApp.Application.DTOs.Security.UserInStores.CreateUserInStoreRequest
+@using Microsoft.AspNetCore.Mvc.Rendering
+
+@{
+    ViewData["Title"] = "Thêm người dùng vào store";
+    var roleOptions = ViewBag.RoleOptions as List<SelectListItem> ?? new();
+    var userOptions = ViewBag.UserOptions as List<SelectListItem> ?? new();
+}
+
+<div class="container-fluid create-userinstore-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="mb-1">Thêm người dùng vào store</h3>
+            <div class="text-muted">Gán một người dùng vào cửa hàng hiện tại với vai trò cụ thể.</div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="UserInStores"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Quay lại
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    <form asp-area="Admin"
+          asp-controller="UserInStores"
+          asp-action="Create"
+          method="post">
+        @Html.AntiForgeryToken()
+
+        <div class="card shadow-sm border-0 form-card">
+            <div class="card-header bg-white border-0 pb-0">
+                <h5 class="mb-1">Thông tin gán người dùng</h5>
+                <div class="text-muted small">Chọn user và vai trò phù hợp cho cửa hàng hiện tại.</div>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <label class="form-label fw-semibold">Tìm user</label>
+                        <input type="text"
+                               id="userKeyword"
+                               class="form-control mb-2"
+                               placeholder="Nhập username, họ tên, email..." />
+
+                        <label asp-for="UserId" class="form-label fw-semibold">Người dùng</label>
+                        <select asp-for="UserId" class="form-select" id="userSelect">
+                            <option value="">-- Chọn người dùng --</option>
+                            @foreach (var item in userOptions)
+                            {
+                                if (item.Selected)
+                                {
+                                    <option value="@item.Value" selected>@item.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }
+                            }
+                        </select>
+                        <span asp-validation-for="UserId" class="text-danger small"></span>
+
+                        <div class="form-text">
+                            Gõ từ khóa để nạp nhanh danh sách user phù hợp.
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <label asp-for="RoleId" class="form-label fw-semibold">Vai trò</label>
+                        <select asp-for="RoleId" class="form-select">
+                            <option value="">-- Chọn vai trò --</option>
+                            @foreach (var item in roleOptions)
+                            {
+                                if (item.Selected)
+                                {
+                                    <option value="@item.Value" selected>@item.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }
+                            }
+                        </select>
+                        <span asp-validation-for="RoleId" class="text-danger small"></span>
+
+                        <div class="form-check form-switch mt-4">
+                            <input asp-for="IsActive" class="form-check-input" />
+                            <label asp-for="IsActive" class="form-check-label fw-semibold">Kích hoạt ngay sau khi gán</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i> Lưu
+            </button>
+
+            <a asp-area="Admin"
+                   asp-controller="UserInStores"
+                   asp-action="Index"
+                   class="btn btn-light border">
+                Hủy
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .create-userinstore-page .form-card {
+        border-radius: 18px;
+    }
+</style>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+            const keywordInput = document.getElementById('userKeyword');
+            const userSelect = document.getElementById('userSelect');
+            let timer = null;
+
+            function rebuildUserOptions(items) {
+                const currentValue = userSelect.value;
+                userSelect.innerHTML = '<option value="">-- Chọn người dùng --</option>';
+
+                items.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.id;
+                    option.textContent = item.text;
+                    if (String(item.id) === String(currentValue)) {
+                        option.selected = true;
+                    }
+                    userSelect.appendChild(option);
+                });
+            }
+
+            async function loadUsers(keyword) {
+                const url = '@Url.Action("SearchUsers", "UserInStores", new { area = "Admin" })' + '?keyword=' + encodeURIComponent(keyword || '');
+                const response = await fetch(url, { method: 'GET' });
+                if (!response.ok) return;
+
+                const data = await response.json();
+                rebuildUserOptions(data);
+            }
+
+            keywordInput?.addEventListener('input', function () {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    loadUsers(keywordInput.value);
+                }, 300);
+            });
+        })();
+    </script>
+}

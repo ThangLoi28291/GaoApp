@@ -1,0 +1,49 @@
+﻿@using System.Text.Encodings.Web
+
+@{
+    var toastSuccess = TempData["ToastSuccess"]?.ToString();
+    var toastError = TempData["ToastError"]?.ToString();
+    var toastWarning = TempData["ToastWarning"]?.ToString();
+    var toastInfo = TempData["ToastInfo"]?.ToString();
+
+    TempData.Remove("ToastSuccess");
+    TempData.Remove("ToastError");
+    TempData.Remove("ToastWarning");
+    TempData.Remove("ToastInfo");
+}
+
+@if (!string.IsNullOrWhiteSpace(toastSuccess))
+{
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            toastr.success('@Html.Raw(JavaScriptEncoder.Default.Encode(toastSuccess))');
+        });
+    </script>
+}
+
+@if (!string.IsNullOrWhiteSpace(toastError))
+{
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            toastr.error('@Html.Raw(JavaScriptEncoder.Default.Encode(toastError))');
+        });
+    </script>
+}
+
+@if (!string.IsNullOrWhiteSpace(toastWarning))
+{
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            toastr.warning('@Html.Raw(JavaScriptEncoder.Default.Encode(toastWarning))');
+        });
+    </script>
+}
+
+@if (!string.IsNullOrWhiteSpace(toastInfo))
+{
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            toastr.info('@Html.Raw(JavaScriptEncoder.Default.Encode(toastInfo))');
+        });
+    </script>
+}

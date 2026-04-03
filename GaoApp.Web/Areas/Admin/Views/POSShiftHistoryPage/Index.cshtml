@@ -1,0 +1,1419 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@{
+    ViewData["Title"] = "Lịch sử ca POS";
+    Layout = "_ContentNavbarLayout";
+    var posCtx = ViewBag.POSHeaderContext as POSHeaderContextViewModel ?? new POSHeaderContextViewModel();
+}
+
+@section VendorStyles {
+    <style>
+        .shift-history-shell {
+            min-height: calc(100vh - 140px);
+        }
+
+        .shift-history-card {
+            border: 1px solid #e7edf5;
+            border-radius: 24px;
+            background: #fff;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+            overflow: hidden;
+        }
+
+            .shift-history-card .card-body {
+                padding: 20px;
+            }
+
+        .shift-section-head {
+            margin-bottom: 16px;
+        }
+
+        .shift-section-title {
+            margin: 0;
+            font-size: 1.12rem;
+            font-weight: 900;
+            color: #101828;
+            line-height: 1.25;
+        }
+
+        .shift-section-sub {
+            margin-top: 6px;
+            color: #667085;
+            font-size: .94rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+
+        .filter-shell {
+            border: 1px solid #e7edf5;
+            border-radius: 22px;
+            background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+        }
+
+            .filter-shell .card-body {
+                padding: 20px;
+            }
+
+        .filter-label {
+            font-size: .88rem;
+            font-weight: 800;
+            color: #344054;
+            margin-bottom: 8px;
+        }
+
+        .filter-shell .form-control,
+        .filter-shell .form-select {
+            min-height: 50px;
+            border-radius: 16px;
+            border: 1px solid #d7dee8;
+            box-shadow: none !important;
+        }
+
+            .filter-shell .form-control:focus,
+            .filter-shell .form-select:focus {
+                border-color: #86b7fe;
+            }
+
+        .quick-filter-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .quick-filter-btn {
+            min-height: 40px;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-weight: 800;
+            font-size: .86rem;
+        }
+
+        .search-btn {
+            min-height: 50px;
+            border-radius: 16px;
+            font-weight: 900;
+        }
+
+        .history-table-wrap {
+            border: 1px solid #edf1f5;
+            border-radius: 18px;
+            overflow: hidden;
+            background: #fff;
+        }
+
+        .history-table {
+            margin-bottom: 0;
+        }
+
+            .history-table thead th {
+                background: #f8fafc;
+                font-size: .82rem;
+                font-weight: 900;
+                color: #475467;
+                border-bottom: 1px solid #e9eef5;
+                white-space: nowrap;
+                text-transform: uppercase;
+                letter-spacing: .04em;
+                padding: 14px 16px;
+            }
+
+            .history-table td,
+            .history-table th {
+                vertical-align: middle;
+            }
+
+            .history-table tbody td {
+                padding: 15px 16px;
+                border-top: 1px solid #edf2f7;
+            }
+
+        .history-row {
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+
+            .history-row:hover {
+                background: #f8fbff;
+            }
+
+            .history-row.active {
+                background: #eef4ff;
+            }
+
+        .history-main {
+            font-weight: 900;
+            color: #101828;
+            line-height: 1.3;
+        }
+
+        .history-sub {
+            margin-top: 3px;
+            font-size: .82rem;
+            color: #667085;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        .history-money {
+            font-weight: 900;
+            color: #101828;
+        }
+
+            .history-money.primary {
+                color: #2458b8;
+            }
+
+            .history-money.success {
+                color: #067647;
+            }
+
+            .history-money.muted {
+                color: #475467;
+            }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 110px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: .82rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+            .status-badge.open {
+                background: #ecfdf3;
+                color: #067647;
+            }
+
+            .status-badge.closed {
+                background: #f2f4f7;
+                color: #344054;
+            }
+
+        .paging-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .paging-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .paging-info {
+            color: #667085;
+            font-size: .9rem;
+            font-weight: 700;
+        }
+
+        .paging-page-size {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+            .paging-page-size label {
+                font-size: .88rem;
+                font-weight: 800;
+                color: #475467;
+                margin: 0;
+            }
+
+            .paging-page-size .form-select {
+                min-height: 40px;
+                border-radius: 12px;
+                font-weight: 800;
+                min-width: 88px;
+            }
+
+        .paging-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .paging-btn {
+            min-height: 40px;
+            border-radius: 12px;
+            font-weight: 800;
+        }
+
+        .summary-empty {
+            border: 1px dashed #d7dee8;
+            border-radius: 18px;
+            background: #fafcff;
+            color: #667085;
+            padding: 18px;
+            font-weight: 700;
+        }
+
+        .summary-selected-head {
+            border: 1px solid #e9eef5;
+            border-radius: 20px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .summary-selected-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0,1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        .summary-selected-item {
+            border: 1px solid #edf1f5;
+            border-radius: 16px;
+            padding: 12px 14px;
+            background: #fff;
+        }
+
+        .summary-selected-label {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            font-weight: 800;
+            color: #667085;
+            margin-bottom: 6px;
+        }
+
+        .summary-selected-value {
+            font-size: 1rem;
+            font-weight: 900;
+            color: #101828;
+            line-height: 1.35;
+        }
+
+        .summary-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .summary-stat-box {
+            border-radius: 18px;
+            padding: 16px;
+            border: 1px solid #e9eef5;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            min-height: 100px;
+        }
+
+            .summary-stat-box.accent {
+                background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
+                border-color: #d7e5ff;
+            }
+
+        .summary-stat-label {
+            font-size: .8rem;
+            color: #667085;
+            margin-bottom: 8px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .summary-stat-value {
+            font-size: 1.35rem;
+            font-weight: 900;
+            color: #101828;
+            line-height: 1.2;
+        }
+
+            .summary-stat-value.primary {
+                color: #2458b8;
+            }
+
+        .summary-action-grid {
+            display: grid;
+            gap: 14px;
+            margin-top: 16px;
+        }
+
+        .summary-action-card {
+            border: 1px solid #edf1f5;
+            border-radius: 20px;
+            background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+            padding: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .summary-action-title {
+            font-size: 1rem;
+            font-weight: 900;
+            color: #101828;
+            margin-bottom: 4px;
+        }
+
+        .summary-action-sub {
+            font-size: .88rem;
+            font-weight: 700;
+            color: #667085;
+            line-height: 1.45;
+        }
+
+        .summary-action-meta {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+
+        .summary-action-number {
+            min-width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: #eef4ff;
+            color: #2458b8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 900;
+        }
+
+        .summary-action-btn {
+            min-height: 44px;
+            border-radius: 14px;
+            font-weight: 900;
+            padding: 0 16px;
+        }
+
+        .cash-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 118px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: .8rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+            .cash-badge.in {
+                background: #eafaf0;
+                color: #18794e;
+            }
+
+            .cash-badge.out {
+                background: #fff1f3;
+                color: #c01048;
+            }
+
+        .order-status-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 110px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-size: .8rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+            .order-status-badge.draft {
+                background: #f2f4f7;
+                color: #344054;
+            }
+
+            .order-status-badge.onhold {
+                background: #fff7e6;
+                color: #b54708;
+            }
+
+            .order-status-badge.completed {
+                background: #ecfdf3;
+                color: #067647;
+            }
+
+            .order-status-badge.cancelled,
+            .order-status-badge.voided {
+                background: #fff1f3;
+                color: #c01048;
+            }
+
+            .order-status-badge.refunded {
+                background: #eef4ff;
+                color: #2458b8;
+            }
+
+        .summary-muted-empty {
+            text-align: center;
+            color: #98a2b3;
+            font-weight: 700;
+            padding: 18px !important;
+        }
+
+        .shift-history-modal .modal-content {
+            border: 0;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
+        }
+
+        .shift-history-modal .modal-header {
+            border-bottom: 1px solid #edf1f5;
+            padding: 16px 18px;
+        }
+
+        .shift-history-modal .modal-title {
+            font-weight: 900;
+            color: #101828;
+        }
+
+        .shift-history-modal .modal-body {
+            padding: 18px;
+        }
+
+        .shift-history-modal .modal-footer {
+            border-top: 1px solid #edf1f5;
+            padding: 14px 18px 18px;
+        }
+
+        .modal-paging-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .modal-paging-info {
+            color: #667085;
+            font-size: .9rem;
+            font-weight: 700;
+        }
+
+        .modal-paging-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-paging-btn {
+            min-height: 40px;
+            border-radius: 12px;
+            font-weight: 800;
+        }
+
+        @@media (max-width: 1199.98px) {
+            .summary-stat-grid,
+            .summary-selected-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .filter-shell .card-body,
+            .shift-history-card .card-body {
+                padding: 16px;
+            }
+
+            .paging-bar,
+            .modal-paging-bar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .paging-actions,
+            .modal-paging-actions {
+                width: 100%;
+            }
+
+            .paging-btn,
+            .modal-paging-btn {
+                flex: 1;
+            }
+
+            .summary-action-card {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .summary-action-meta {
+                justify-content: space-between;
+            }
+        }
+    </style>
+}
+
+@section header {
+    <div class="py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h3 class="mb-1 fw-bold">Lịch sử ca POS</h3>
+            <div class="text-muted">Tra cứu ca theo thời gian, trạng thái và xem nhanh kết quả vận hành của từng ca</div>
+        </div>
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+<partial name="~/Areas/Admin/Views/Shared/_POSWorkContextBar.cshtml" model="posCtx" />
+
+<div class="shift-history-shell">
+    @Html.AntiForgeryToken()
+
+    <div class="card filter-shell mb-3">
+        <div class="card-body">
+            <div class="shift-section-head">
+                <h4 class="shift-section-title">Bộ lọc lịch sử ca</h4>
+                <div class="shift-section-sub">Chọn khoảng thời gian và trạng thái để tìm đúng ca cần xem</div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="filter-label">Trạng thái</label>
+                    <select id="filterStatus" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="1">Đang mở</option>
+                        <option value="2">Đã đóng</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="filter-label">Từ ngày</label>
+                    <input id="filterFrom" type="date" class="form-control" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="filter-label">Đến ngày</label>
+                    <input id="filterTo" type="date" class="form-control" />
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end">
+                    <button id="btnSearch" class="btn btn-primary w-100 search-btn">
+                        Tìm kiếm
+                    </button>
+                </div>
+            </div>
+
+            <div class="quick-filter-group">
+                <button id="btnToday" type="button" class="btn btn-outline-secondary quick-filter-btn">Hôm nay</button>
+                <button id="btnLast7Days" type="button" class="btn btn-outline-secondary quick-filter-btn">7 ngày gần đây</button>
+                <button id="btnLast30Days" type="button" class="btn btn-outline-secondary quick-filter-btn">30 ngày gần đây</button>
+                <button id="btnClearDate" type="button" class="btn btn-outline-danger quick-filter-btn">Xóa lọc ngày</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-xl-7 col-lg-7">
+            <div class="card shift-history-card">
+                <div class="card-body">
+                    <div class="shift-section-head">
+                        <h4 class="shift-section-title">Danh sách ca</h4>
+                        <div class="shift-section-sub">Chọn một ca để xem tổng quan chi tiết ở khung bên phải</div>
+                    </div>
+
+                    <div class="history-table-wrap">
+                        <div class="table-responsive">
+                            <table class="table align-middle history-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:150px;">Ca</th>
+                                        <th style="width:130px;">Trạng thái</th>
+                                        <th style="width:180px;">Mở lúc</th>
+                                        <th style="width:180px;">Đóng lúc</th>
+                                        <th style="width:150px;">Tiền đầu ca</th>
+                                        <th style="width:150px;">DT tiền mặt</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-4">Đang tải...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="paging-bar">
+                        <div class="paging-left">
+                            <div id="historyPagingInfo" class="paging-info">-</div>
+
+                            <div class="paging-page-size">
+                                <label for="pageSizeSelect">Hiển thị</label>
+                                <select id="pageSizeSelect" class="form-select">
+                                    <option value="10">10</option>
+                                    <option value="20" selected>20</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="paging-actions">
+                            <button id="btnPrevPage" class="btn btn-outline-secondary paging-btn">Trang trước</button>
+                            <button id="btnNextPage" class="btn btn-outline-secondary paging-btn">Trang sau</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-5 col-lg-5">
+            <div class="card shift-history-card">
+                <div class="card-body">
+                    <div class="shift-section-head">
+                        <h4 class="shift-section-title">Tổng quan ca được chọn</h4>
+                        <div class="shift-section-sub">Tóm tắt nhanh đơn hàng, doanh thu và thu chi tiền mặt của ca</div>
+                    </div>
+
+                    <div id="summaryEmpty" class="summary-empty">
+                        Chọn một ca ở danh sách bên trái để xem chi tiết.
+                    </div>
+
+                    <div id="summaryContent" style="display:none;">
+                        <div class="summary-selected-head">
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                <div>
+                                    <div id="selectedShiftCode" class="summary-stat-value" style="font-size:1.15rem;">-</div>
+                                    <div class="shift-section-sub mt-1">Thông tin ca đang được chọn</div>
+                                </div>
+                                <div id="selectedShiftStatus"></div>
+                            </div>
+
+                            <div class="summary-selected-grid">
+                                <div class="summary-selected-item">
+                                    <div class="summary-selected-label">Mở lúc</div>
+                                    <div id="selectedOpenedAt" class="summary-selected-value">-</div>
+                                </div>
+                                <div class="summary-selected-item">
+                                    <div class="summary-selected-label">Đóng lúc</div>
+                                    <div id="selectedClosedAt" class="summary-selected-value">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="summary-stat-grid">
+                            <div class="summary-stat-box">
+                                <div class="summary-stat-label">Tổng đơn</div>
+                                <div id="sumTotalOrders" class="summary-stat-value">0</div>
+                            </div>
+
+                            <div class="summary-stat-box">
+                                <div class="summary-stat-label">Đơn hoàn tất</div>
+                                <div id="sumCompletedOrders" class="summary-stat-value">0</div>
+                            </div>
+
+                            <div class="summary-stat-box">
+                                <div class="summary-stat-label">Đơn nháp</div>
+                                <div id="sumDraftOrders" class="summary-stat-value">0</div>
+                            </div>
+
+                            <div class="summary-stat-box">
+                                <div class="summary-stat-label">Đơn đã hủy</div>
+                                <div id="sumCancelledOrders" class="summary-stat-value">0</div>
+                            </div>
+
+                            <div class="summary-stat-box accent" style="grid-column: 1 / -1;">
+                                <div class="summary-stat-label">Tổng bán hoàn tất</div>
+                                <div id="sumCompletedSalesTotal" class="summary-stat-value primary">0</div>
+                            </div>
+                        </div>
+
+                        <div class="summary-action-grid">
+                            <div class="summary-action-card">
+                                <div>
+                                    <div class="summary-action-title">Danh sách đơn</div>
+                                    <div class="summary-action-sub">Xem toàn bộ đơn thuộc ca đang chọn</div>
+                                </div>
+                                <div class="summary-action-meta">
+                                    <div class="summary-action-number" id="ordersCountText">0</div>
+                                    <button id="btnOpenOrdersModal" type="button" class="btn btn-primary summary-action-btn">
+                                        Xem đơn
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="summary-action-card">
+                                <div>
+                                    <div class="summary-action-title">Thu / chi tiền mặt</div>
+                                    <div class="summary-action-sub">Xem các giao dịch tiền mặt phát sinh trong ca</div>
+                                </div>
+                                <div class="summary-action-meta">
+                                    <div class="summary-action-number" id="cashTxnsCountText">0</div>
+                                    <button id="btnOpenCashTxnsModal" type="button" class="btn btn-outline-primary summary-action-btn">
+                                        Xem thu / chi
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade shift-history-modal" id="ordersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Danh sách đơn trong ca</h5>
+                    <div class="shift-section-sub mt-1">Xem chi tiết các đơn thuộc ca đang chọn</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="history-table-wrap">
+                    <div class="table-responsive">
+                        <table class="table align-middle history-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width:80px;">ID</th>
+                                    <th style="width:180px;">Mã đơn</th>
+                                    <th style="width:140px;">Trạng thái</th>
+                                    <th style="width:150px;">Tổng tiền</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ordersModalBody">
+                                <tr>
+                                    <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-paging-bar">
+                    <div id="ordersModalPagingInfo" class="modal-paging-info">0 đơn</div>
+                    <div class="modal-paging-actions">
+                        <button id="btnOrdersModalPrev" type="button" class="btn btn-outline-secondary modal-paging-btn">Trang trước</button>
+                        <button id="btnOrdersModalNext" type="button" class="btn btn-outline-secondary modal-paging-btn">Trang sau</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light modal-paging-btn" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade shift-history-modal" id="cashTxnsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Thu / chi tiền mặt trong ca</h5>
+                    <div class="shift-section-sub mt-1">Xem chi tiết các giao dịch tiền mặt phát sinh</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="history-table-wrap">
+                    <div class="table-responsive">
+                        <table class="table align-middle history-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width:140px;">Loại</th>
+                                    <th style="width:150px;">Số tiền</th>
+                                    <th style="width:180px;">Lý do</th>
+                                    <th>Ghi chú</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cashTxnsModalBody">
+                                <tr>
+                                    <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-paging-bar">
+                    <div id="cashTxnsModalPagingInfo" class="modal-paging-info">0 giao dịch</div>
+                    <div class="modal-paging-actions">
+                        <button id="btnCashTxnsModalPrev" type="button" class="btn btn-outline-secondary modal-paging-btn">Trang trước</button>
+                        <button id="btnCashTxnsModalNext" type="button" class="btn btn-outline-secondary modal-paging-btn">Trang sau</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light modal-paging-btn" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        const filterStatus = document.getElementById('filterStatus');
+        const filterFrom = document.getElementById('filterFrom');
+        const filterTo = document.getElementById('filterTo');
+        const btnSearch = document.getElementById('btnSearch');
+
+        const historyBody = document.getElementById('historyBody');
+        const historyPagingInfo = document.getElementById('historyPagingInfo');
+        const btnPrevPage = document.getElementById('btnPrevPage');
+        const btnNextPage = document.getElementById('btnNextPage');
+        const pageSizeSelect = document.getElementById('pageSizeSelect');
+
+        const summaryEmpty = document.getElementById('summaryEmpty');
+        const summaryContent = document.getElementById('summaryContent');
+
+        const selectedShiftCode = document.getElementById('selectedShiftCode');
+        const selectedShiftStatus = document.getElementById('selectedShiftStatus');
+        const selectedOpenedAt = document.getElementById('selectedOpenedAt');
+        const selectedClosedAt = document.getElementById('selectedClosedAt');
+
+        const sumTotalOrders = document.getElementById('sumTotalOrders');
+        const sumCompletedOrders = document.getElementById('sumCompletedOrders');
+        const sumDraftOrders = document.getElementById('sumDraftOrders');
+        const sumCancelledOrders = document.getElementById('sumCancelledOrders');
+        const sumCompletedSalesTotal = document.getElementById('sumCompletedSalesTotal');
+
+        const ordersCountText = document.getElementById('ordersCountText');
+        const cashTxnsCountText = document.getElementById('cashTxnsCountText');
+
+        const btnOpenOrdersModal = document.getElementById('btnOpenOrdersModal');
+        const btnOpenCashTxnsModal = document.getElementById('btnOpenCashTxnsModal');
+
+        const btnToday = document.getElementById('btnToday');
+        const btnLast7Days = document.getElementById('btnLast7Days');
+        const btnLast30Days = document.getElementById('btnLast30Days');
+        const btnClearDate = document.getElementById('btnClearDate');
+
+        const ordersModal = new bootstrap.Modal(document.getElementById('ordersModal'));
+        const cashTxnsModal = new bootstrap.Modal(document.getElementById('cashTxnsModal'));
+
+        const ordersModalBody = document.getElementById('ordersModalBody');
+        const cashTxnsModalBody = document.getElementById('cashTxnsModalBody');
+
+        const ordersModalPagingInfo = document.getElementById('ordersModalPagingInfo');
+        const cashTxnsModalPagingInfo = document.getElementById('cashTxnsModalPagingInfo');
+
+        const btnOrdersModalPrev = document.getElementById('btnOrdersModalPrev');
+        const btnOrdersModalNext = document.getElementById('btnOrdersModalNext');
+        const btnCashTxnsModalPrev = document.getElementById('btnCashTxnsModalPrev');
+        const btnCashTxnsModalNext = document.getElementById('btnCashTxnsModalNext');
+
+        const pageState = {
+            page: 1,
+            pageSize: 20,
+            totalPages: 1,
+            selectedShiftId: null,
+            selectedShiftRow: null,
+            currentItems: []
+        };
+
+        const ordersModalState = {
+            page: 1,
+            pageSize: 8,
+            items: []
+        };
+
+        const cashTxnsModalState = {
+            page: 1,
+            pageSize: 8,
+            items: []
+        };
+
+        function formatMoney(value) {
+            const n = Number(value || 0);
+            return n.toLocaleString('vi-VN');
+        }
+
+        function formatDateTime(value) {
+            if (!value) return '-';
+            const d = new Date(value);
+            return d.toLocaleString('vi-VN');
+        }
+
+        function showError(msg) {
+            if (window.toastr) toastr.error(msg || 'Có lỗi xảy ra');
+        }
+
+        function toDateInputValue(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        async function fetchJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type') || '';
+
+            let jsonData = null;
+            let textData = '';
+
+            try {
+                if (contentType.includes('application/json')) {
+                    jsonData = await res.json();
+                } else {
+                    textData = await res.text();
+                }
+            } catch { }
+
+            if (!res.ok) {
+                const msg =
+                    jsonData?.message ||
+                    jsonData?.title ||
+                    jsonData?.error ||
+                    textData ||
+                    `Yêu cầu thất bại (${res.status})`;
+
+                throw new Error(msg);
+            }
+
+            return jsonData ?? textData ?? null;
+        }
+
+        function buildHistoryUrl() {
+            const params = new URLSearchParams();
+
+            if (filterStatus.value !== '') params.append('status', filterStatus.value);
+            if (filterFrom.value) params.append('fromUtc', new Date(filterFrom.value).toISOString());
+
+            if (filterTo.value) {
+                const d = new Date(filterTo.value);
+                d.setDate(d.getDate() + 1);
+                params.append('toUtcExclusive', d.toISOString());
+            }
+
+            params.append('page', pageState.page);
+            params.append('pageSize', pageState.pageSize);
+
+            return `/admin/pos/shift/history?${params.toString()}`;
+        }
+
+        function getShiftStatusMeta(status) {
+            const raw = (status ?? '').toString().trim().toLowerCase();
+
+            if (raw === '1') {
+                return { text: 'Đang mở', css: 'open' };
+            }
+
+            if (raw === '2') {
+                return { text: 'Đã đóng', css: 'closed' };
+            }
+
+            if (raw.includes('open')) {
+                return { text: 'Đang mở', css: 'open' };
+            }
+
+            if (raw.includes('closed')) {
+                return { text: 'Đã đóng', css: 'closed' };
+            }
+
+            return {
+                text: status || '-',
+                css: 'closed'
+            };
+        }
+
+        function getStatusBadge(status) {
+            const meta = getShiftStatusMeta(status);
+            return `<span class="status-badge ${meta.css}">${meta.text}</span>`;
+        }
+
+        function getOrderStatusMeta(status) {
+            const raw = (status ?? '').toString().trim().toLowerCase();
+
+            if (raw === '0' || raw.includes('draft')) {
+                return { text: 'Nháp', css: 'draft' };
+            }
+
+            if (raw === '1' || raw.includes('onhold')) {
+                return { text: 'Đang giữ', css: 'onhold' };
+            }
+
+            if (raw === '2' || raw.includes('completed')) {
+                return { text: 'Hoàn tất', css: 'completed' };
+            }
+
+            if (raw === '3' || raw.includes('cancelled')) {
+                return { text: 'Đã hủy', css: 'cancelled' };
+            }
+
+            if (raw === '4' || raw.includes('voided')) {
+                return { text: 'Void', css: 'voided' };
+            }
+
+            if (raw === '5' || raw.includes('refunded')) {
+                return { text: 'Hoàn tiền', css: 'refunded' };
+            }
+
+            return { text: status || '-', css: 'draft' };
+        }
+
+        function getOrderStatusBadge(status) {
+            const meta = getOrderStatusMeta(status);
+            return `<span class="order-status-badge ${meta.css}">${meta.text}</span>`;
+        }
+
+        function getCashTxnTypeBadge(type) {
+            const val = (type || '').toString().toLowerCase();
+
+            if (val.includes('cashin') || val === '1' || val === 'in') {
+                return `<span class="cash-badge in">Thu tiền mặt</span>`;
+            }
+
+            if (val.includes('cashout') || val === '2' || val === 'out') {
+                return `<span class="cash-badge out">Chi tiền mặt</span>`;
+            }
+
+            return `<span class="cash-badge">${type || '-'}</span>`;
+        }
+
+        function paginateItems(items, page, pageSize) {
+            const total = items.length;
+            const totalPages = Math.max(1, Math.ceil(total / pageSize));
+            const currentPage = Math.min(Math.max(1, page), totalPages);
+            const start = (currentPage - 1) * pageSize;
+            const pageItems = items.slice(start, start + pageSize);
+
+            return {
+                total,
+                totalPages,
+                currentPage,
+                start,
+                pageItems
+            };
+        }
+
+        function renderHistory(items) {
+            pageState.currentItems = items || [];
+
+            if (!items || !items.length) {
+                historyBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">Không có dữ liệu.</td>
+                    </tr>`;
+                return;
+            }
+
+            historyBody.innerHTML = items.map(x => `
+                <tr class="history-row ${pageState.selectedShiftId === x.id ? 'active' : ''}" data-shift-id="${x.id}">
+                    <td>
+                        <div class="history-main">#${x.id}</div>
+                        <div class="history-sub">${x.shiftCode || '-'}</div>
+                    </td>
+                    <td>${getStatusBadge(x.status)}</td>
+                    <td>
+                        <div class="history-main">${formatDateTime(x.openedAtUtc)}</div>
+                    </td>
+                    <td>
+                        <div class="history-main">${formatDateTime(x.closedAtUtc)}</div>
+                    </td>
+                    <td>
+                        <div class="history-money primary">${formatMoney(x.openingCash)}</div>
+                    </td>
+                    <td>
+                        <div class="history-money success">${formatMoney(x.cashSalesTotal)}</div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadHistory() {
+            try {
+                const result = await fetchJson(buildHistoryUrl());
+
+                pageState.totalPages = result.totalPages || 1;
+                renderHistory(result.items || []);
+                historyPagingInfo.textContent =
+                    `Trang ${result.page || 1}/${result.totalPages || 1} - Tổng ${result.totalItems || 0} ca`;
+            } catch (err) {
+                renderHistory([]);
+                showError(err.message);
+            }
+        }
+
+        function renderSummaryHeader(shiftRow) {
+            if (!shiftRow) {
+                selectedShiftCode.textContent = '-';
+                selectedShiftStatus.innerHTML = '';
+                selectedOpenedAt.textContent = '-';
+                selectedClosedAt.textContent = '-';
+                return;
+            }
+
+            selectedShiftCode.textContent = shiftRow.shiftCode || `Ca #${shiftRow.id}`;
+            selectedShiftStatus.innerHTML = getStatusBadge(shiftRow.status);
+            selectedOpenedAt.textContent = formatDateTime(shiftRow.openedAtUtc);
+            selectedClosedAt.textContent = formatDateTime(shiftRow.closedAtUtc);
+        }
+
+        function renderSummary(summary) {
+            if (!summary) {
+                summaryEmpty.style.display = '';
+                summaryContent.style.display = 'none';
+                renderSummaryHeader(null);
+                ordersModalState.items = [];
+                cashTxnsModalState.items = [];
+                ordersCountText.textContent = 0;
+                cashTxnsCountText.textContent = 0;
+                return;
+            }
+
+            summaryEmpty.style.display = 'none';
+            summaryContent.style.display = '';
+
+            renderSummaryHeader(pageState.selectedShiftRow);
+
+            sumTotalOrders.textContent = summary.totalOrders || 0;
+            sumCompletedOrders.textContent = summary.completedOrders || 0;
+            sumDraftOrders.textContent = summary.draftOrders || 0;
+            sumCancelledOrders.textContent = summary.cancelledOrders || 0;
+            sumCompletedSalesTotal.textContent = formatMoney(summary.completedSalesTotal);
+
+            const orders = summary.orders || [];
+            const txns = summary.cashTransactions || [];
+
+            ordersModalState.items = orders;
+            ordersModalState.page = 1;
+
+            cashTxnsModalState.items = txns;
+            cashTxnsModalState.page = 1;
+
+            ordersCountText.textContent = orders.length;
+            cashTxnsCountText.textContent = txns.length;
+        }
+
+        async function loadSummary(shiftId) {
+            try {
+                const summary = await fetchJson(`/admin/pos/shift/summary?shiftId=${shiftId}`);
+                renderSummary(summary);
+            } catch (err) {
+                renderSummary(null);
+                showError(err.message);
+            }
+        }
+
+        function renderOrdersModalPage() {
+            const { total, totalPages, currentPage, start, pageItems } =
+                paginateItems(ordersModalState.items, ordersModalState.page, ordersModalState.pageSize);
+
+            ordersModalState.page = currentPage;
+
+            if (!pageItems.length) {
+                ordersModalBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                    </tr>`;
+            } else {
+                ordersModalBody.innerHTML = pageItems.map(x => `
+                    <tr>
+                        <td>${x.id}</td>
+                        <td><div class="history-main">${x.orderNumber || '-'}</div></td>
+                        <td>${getOrderStatusBadge(x.status)}</td>
+                        <td>${formatMoney(x.grandTotal)}</td>
+                    </tr>
+                `).join('');
+            }
+
+            if (total === 0) {
+                ordersModalPagingInfo.textContent = '0 đơn';
+            } else {
+                const from = start + 1;
+                const to = Math.min(start + ordersModalState.pageSize, total);
+                ordersModalPagingInfo.textContent = `${from}-${to} / ${total} đơn`;
+            }
+
+            btnOrdersModalPrev.disabled = currentPage <= 1;
+            btnOrdersModalNext.disabled = currentPage >= totalPages;
+        }
+
+        function renderCashTxnsModalPage() {
+            const { total, totalPages, currentPage, start, pageItems } =
+                paginateItems(cashTxnsModalState.items, cashTxnsModalState.page, cashTxnsModalState.pageSize);
+
+            cashTxnsModalState.page = currentPage;
+
+            if (!pageItems.length) {
+                cashTxnsModalBody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                    </tr>`;
+            } else {
+                cashTxnsModalBody.innerHTML = pageItems.map(x => `
+                    <tr>
+                        <td>${getCashTxnTypeBadge(x.type)}</td>
+                        <td>${formatMoney(x.amount)}</td>
+                        <td>${x.reason || '-'}</td>
+                        <td>${x.note || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+            if (total === 0) {
+                cashTxnsModalPagingInfo.textContent = '0 giao dịch';
+            } else {
+                const from = start + 1;
+                const to = Math.min(start + cashTxnsModalState.pageSize, total);
+                cashTxnsModalPagingInfo.textContent = `${from}-${to} / ${total} giao dịch`;
+            }
+
+            btnCashTxnsModalPrev.disabled = currentPage <= 1;
+            btnCashTxnsModalNext.disabled = currentPage >= totalPages;
+        }
+
+        btnSearch.addEventListener('click', async function () {
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnPrevPage.addEventListener('click', async function () {
+            if (pageState.page <= 1) return;
+            pageState.page--;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnNextPage.addEventListener('click', async function () {
+            if (pageState.page >= pageState.totalPages) return;
+            pageState.page++;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        pageSizeSelect.addEventListener('change', async function () {
+            pageState.pageSize = parseInt(this.value || '20');
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        historyBody.addEventListener('click', async function (e) {
+            const row = e.target.closest('[data-shift-id]');
+            if (!row) return;
+
+            const shiftId = parseInt(row.getAttribute('data-shift-id'));
+            if (!shiftId) return;
+
+            const shiftRow = (pageState.currentItems || []).find(x => x.id === shiftId) || null;
+
+            pageState.selectedShiftId = shiftId;
+            pageState.selectedShiftRow = shiftRow;
+
+            renderHistory(pageState.currentItems || []);
+            await loadSummary(shiftId);
+        });
+
+        btnToday.addEventListener('click', async function () {
+            const now = new Date();
+            const today = toDateInputValue(now);
+
+            filterFrom.value = today;
+            filterTo.value = today;
+
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnLast7Days.addEventListener('click', async function () {
+            const now = new Date();
+            const from = new Date();
+            from.setDate(now.getDate() - 6);
+
+            filterFrom.value = toDateInputValue(from);
+            filterTo.value = toDateInputValue(now);
+
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnLast30Days.addEventListener('click', async function () {
+            const now = new Date();
+            const from = new Date();
+            from.setDate(now.getDate() - 29);
+
+            filterFrom.value = toDateInputValue(from);
+            filterTo.value = toDateInputValue(now);
+
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnClearDate.addEventListener('click', async function () {
+            filterFrom.value = '';
+            filterTo.value = '';
+
+            pageState.page = 1;
+            pageState.selectedShiftId = null;
+            pageState.selectedShiftRow = null;
+            await loadHistory();
+            renderSummary(null);
+        });
+
+        btnOpenOrdersModal.addEventListener('click', function () {
+            renderOrdersModalPage();
+            ordersModal.show();
+        });
+
+        btnOpenCashTxnsModal.addEventListener('click', function () {
+            renderCashTxnsModalPage();
+            cashTxnsModal.show();
+        });
+
+        btnOrdersModalPrev.addEventListener('click', function () {
+            if (ordersModalState.page <= 1) return;
+            ordersModalState.page--;
+            renderOrdersModalPage();
+        });
+
+        btnOrdersModalNext.addEventListener('click', function () {
+            const totalPages = Math.max(1, Math.ceil(ordersModalState.items.length / ordersModalState.pageSize));
+            if (ordersModalState.page >= totalPages) return;
+            ordersModalState.page++;
+            renderOrdersModalPage();
+        });
+
+        btnCashTxnsModalPrev.addEventListener('click', function () {
+            if (cashTxnsModalState.page <= 1) return;
+            cashTxnsModalState.page--;
+            renderCashTxnsModalPage();
+        });
+
+        btnCashTxnsModalNext.addEventListener('click', function () {
+            const totalPages = Math.max(1, Math.ceil(cashTxnsModalState.items.length / cashTxnsModalState.pageSize));
+            if (cashTxnsModalState.page >= totalPages) return;
+            cashTxnsModalState.page++;
+            renderCashTxnsModalPage();
+        });
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            pageState.pageSize = parseInt(pageSizeSelect.value || '20');
+            await loadHistory();
+        });
+    </script>
+}

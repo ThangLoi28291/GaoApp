@@ -1,0 +1,312 @@
+﻿@{
+    ViewData["Title"] = "Chi tiết phiếu chuyển kho";
+    Layout = "_ContentNavbarLayout";
+    var stockTransferDocumentId = ViewBag.StockTransferId;
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <style>
+        .std-page {
+            min-height: calc(100vh - 140px);
+        }
+
+        .std-card {
+            border: 0;
+            border-radius: 18px;
+            box-shadow: 0 0.125rem 0.75rem rgba(0,0,0,.08);
+        }
+
+            .std-card .card-header {
+                background: #fff;
+                border-bottom: 1px solid #eef0f4;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
+                font-weight: 700;
+            }
+
+        .std-status-draft {
+            background: #e7f1ff;
+            color: #0d6efd;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .std-status-pending {
+            background: #fff4db;
+            color: #b54708;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .std-status-confirmed {
+            background: #e8f7ec;
+            color: #067647;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .std-status-rejected {
+            background: #ffe5e5;
+            color: #b42318;
+            border-radius: 999px;
+            padding: .25rem .65rem;
+            font-weight: 700;
+            font-size: .78rem;
+        }
+
+        .std-summary-box {
+            border-radius: 16px;
+            padding: 16px 18px;
+            background: #f8f9fa;
+            height: 100%;
+        }
+
+        .std-summary-title {
+            font-size: .9rem;
+            color: #6c757d;
+            margin-bottom: .35rem;
+        }
+
+        .std-summary-value {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #212529;
+        }
+
+        .select2-result-title {
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .select2-result-meta {
+            font-size: .85rem;
+            color: #6c757d;
+            margin-top: .15rem;
+            white-space: normal;
+        }
+    </style>
+}
+
+<div class="container-xxl flex-grow-1 container-p-y std-page">
+    <input type="hidden" id="StockTransferDocumentId" value="@stockTransferDocumentId" />
+
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-4">
+        <div>
+            <h4 class="mb-1">Chi tiết phiếu chuyển kho</h4>
+            <div class="text-muted">
+                Chọn sản phẩm, đơn vị, số lượng rồi submit / confirm phiếu chuyển kho.
+            </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="/admin/stock-transfers" class="btn btn-outline-secondary">
+                <i class="bx bx-arrow-back me-1"></i> Quay lại
+            </a>
+            <button type="button" class="btn btn-warning" id="btnSubmitStockTransfer">
+                <i class="bx bx-send me-1"></i> Submit
+            </button>
+            <button type="button" class="btn btn-success" id="btnConfirmStockTransfer">
+                <i class="bx bx-check-circle me-1"></i> Confirm
+            </button>
+            <button type="button" class="btn btn-danger" id="btnRejectStockTransfer">
+                <i class="bx bx-x-circle me-1"></i> Reject
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="std-summary-box">
+                <div class="std-summary-title">Tổng số dòng</div>
+                <div class="std-summary-value" id="sumTransferTotalLines">0</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="std-summary-box">
+                <div class="std-summary-title">Số phiếu</div>
+                <div class="std-summary-value" id="sumTransferDocumentNo">---</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="std-summary-box">
+                <div class="std-summary-title">Trạng thái</div>
+                <div class="pt-1" id="TransferStatusBadge"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card std-card mb-4">
+        <div class="card-header">
+            Thông tin phiếu chuyển kho
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Số phiếu</label>
+                    <input type="text" class="form-control" id="TransferDocumentNo" readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Ngày phiếu</label>
+                    <input type="datetime-local" class="form-control" id="TransferDocumentDate" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Kho nguồn</label>
+                    <select id="TransferFromWarehouseId" class="form-select"></select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Kho đích</label>
+                    <select id="TransferToWarehouseId" class="form-select"></select>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Ghi chú</label>
+                    <textarea class="form-control" id="TransferDocumentNote" rows="2"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card std-card mb-4">
+        <div class="card-header">
+            Thêm nhanh dòng chuyển kho
+        </div>
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label">Sản phẩm / đơn vị</label>
+                    <select id="QuickTransferLookupInput" class="form-select"></select>
+                    <div class="form-text">
+                        Gõ tên sản phẩm, SKU hoặc quét barcode. Nếu chỉ có 1 kết quả thì Enter sẽ tự chọn.
+                    </div>
+
+                    <input type="hidden" id="SelectedTransferProductVariantId" />
+                    <input type="hidden" id="SelectedTransferUnitId" />
+                    <input type="hidden" id="SelectedTransferFactor" />
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Số lượng</label>
+                    <input type="number" class="form-control" id="QuickTransferQty" min="0.001" step="0.001" value="1" />
+                </div>
+
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary w-100" id="btnQuickAddTransferLine">
+                        <i class="bx bx-plus"></i> Thêm
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card std-card">
+        <div class="card-header">
+            Dòng chuyển kho
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Sản phẩm</th>
+                            <th>Barcode</th>
+                            <th>Đơn vị</th>
+                            <th class="text-end">Factor</th>
+                            <th class="text-end">SL</th>
+                            <th class="text-end">SL gốc</th>
+                            <th>Ghi chú</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="stockTransferLineTableBody">
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">Đang tải dữ liệu...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editStockTransferLineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Sửa dòng chuyển kho</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="EditTransferLineId" />
+                <input type="hidden" id="EditTransferVariantId" />
+
+                <div class="mb-3">
+                    <label class="form-label">Đơn vị</label>
+                    <select id="EditTransferLineUnitId" class="form-select"></select>
+                    <div class="form-text" id="EditTransferUnitInfo"></div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Số lượng</label>
+                    <input type="number" id="EditTransferQty" class="form-control" min="0.001" step="0.001" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Ghi chú</label>
+                    <textarea id="EditTransferLineNote" class="form-control" rows="3"></textarea>
+                </div>
+
+                <div class="text-danger small" id="EditTransferLineMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btnSaveEditTransferLine">Lưu</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="rejectStockTransferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Từ chối phiếu chuyển kho</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Lý do từ chối</label>
+                <textarea id="RejectTransferReason" class="form-control" rows="3"></textarea>
+                <div class="text-danger small mt-2" id="RejectTransferMessage"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmRejectTransfer">Reject</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+}
+
+@section PageScripts {
+    <script>
+        window.stockTransferPage = {
+            mode: 'detail',
+            stockTransferDocumentId: @stockTransferDocumentId
+        };
+    </script>
+    <script src="~/Admin/js/stock-transfer.js" asp-append-version="true"></script>
+}

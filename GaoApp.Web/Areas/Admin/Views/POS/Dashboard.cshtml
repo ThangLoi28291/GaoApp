@@ -1,0 +1,813 @@
+﻿@{
+    ViewData["Title"] = "Dashboard ca POS";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <style>
+        :root {
+            --shift-primary: #2563eb;
+            --shift-primary-soft: rgba(37, 99, 235, 0.08);
+            --shift-success: #16a34a;
+            --shift-success-soft: rgba(22, 163, 74, 0.10);
+            --shift-warning: #d97706;
+            --shift-warning-soft: rgba(245, 158, 11, 0.12);
+            --shift-danger: #dc2626;
+            --shift-danger-soft: rgba(239, 68, 68, 0.10);
+            --shift-info: #0891b2;
+            --shift-info-soft: rgba(6, 182, 212, 0.10);
+            --shift-dark: #0f172a;
+            --shift-text: #1e293b;
+            --shift-muted: #64748b;
+            --shift-border: #e2e8f0;
+            --shift-bg: #f8fafc;
+            --shift-card: #ffffff;
+            --shift-radius-xl: 24px;
+            --shift-radius-lg: 18px;
+            --shift-radius-md: 14px;
+            --shift-shadow: 0 20px 45px rgba(15, 23, 42, 0.06);
+            --shift-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.05);
+        }
+
+        .pos-dashboard-shell {
+            min-height: calc(100vh - 140px);
+            background:
+                radial-gradient(circle at top right, rgba(37,99,235,.06), transparent 24%),
+                radial-gradient(circle at top left, rgba(6,182,212,.05), transparent 20%);
+        }
+
+        .shift-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .shift-header-title {
+            margin: 0;
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -.02em;
+            color: var(--shift-dark);
+        }
+
+        .shift-header-subtitle {
+            margin-top: .25rem;
+            color: var(--shift-muted);
+            font-size: .95rem;
+        }
+
+        .shift-live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .55rem;
+            padding: .7rem 1rem;
+            border-radius: 999px;
+            background: #fff;
+            border: 1px solid var(--shift-border);
+            box-shadow: var(--shift-shadow-soft);
+            color: var(--shift-text);
+            font-weight: 700;
+            font-size: .88rem;
+        }
+
+        .shift-live-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 0 4px rgba(34,197,94,.14);
+            animation: pulseLive 1.8s infinite;
+        }
+
+        @@keyframes pulseLive {
+            0% { transform: scale(1); opacity: 1; }
+            70% { transform: scale(1.15); opacity: .85; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .shift-hero-card {
+            position: relative;
+            overflow: hidden;
+            border: 0;
+            border-radius: var(--shift-radius-xl);
+            background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #0ea5e9 100%);
+            color: #fff;
+            box-shadow: 0 24px 60px rgba(37, 99, 235, 0.22);
+        }
+
+        .shift-hero-card::before {
+            content: "";
+            position: absolute;
+            top: -40px;
+            right: -30px;
+            width: 180px;
+            height: 180px;
+            background: rgba(255,255,255,.08);
+            border-radius: 50%;
+        }
+
+        .shift-hero-card::after {
+            content: "";
+            position: absolute;
+            bottom: -50px;
+            left: -30px;
+            width: 160px;
+            height: 160px;
+            background: rgba(255,255,255,.06);
+            border-radius: 50%;
+        }
+
+        .shift-hero-body {
+            position: relative;
+            z-index: 1;
+            padding: 1.35rem 1.4rem;
+        }
+
+        .shift-hero-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .shift-hero-label {
+            font-size: .88rem;
+            opacity: .85;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+        }
+
+        .shift-hero-code {
+            margin-top: .45rem;
+            font-size: 2rem;
+            line-height: 1.1;
+            font-weight: 900;
+            letter-spacing: -.03em;
+        }
+
+        .shift-hero-opened {
+            margin-top: .45rem;
+            opacity: .92;
+            font-size: .94rem;
+        }
+
+        .shift-hero-status {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            padding: .6rem .9rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,.14);
+            border: 1px solid rgba(255,255,255,.14);
+            font-size: .82rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .shift-hero-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .9rem;
+            margin-top: 1.15rem;
+        }
+
+        .shift-hero-mini {
+            padding: .9rem 1rem;
+            border-radius: 18px;
+            background: rgba(255,255,255,.12);
+            border: 1px solid rgba(255,255,255,.14);
+            backdrop-filter: blur(6px);
+        }
+
+        .shift-hero-mini-label {
+            font-size: .78rem;
+            opacity: .88;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            font-weight: 700;
+        }
+
+        .shift-hero-mini-value {
+            margin-top: .35rem;
+            font-size: 1.18rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .shift-card {
+            border: 1px solid rgba(226,232,240,.95);
+            border-radius: var(--shift-radius-xl);
+            background: var(--shift-card);
+            box-shadow: var(--shift-shadow);
+            overflow: hidden;
+            height: 100%;
+        }
+
+        .shift-card-header {
+            padding: 1rem 1.2rem;
+            border-bottom: 1px solid var(--shift-border);
+            background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+        }
+
+        .shift-card-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 800;
+            color: var(--shift-dark);
+        }
+
+        .shift-card-subtitle {
+            margin-top: .2rem;
+            color: var(--shift-muted);
+            font-size: .88rem;
+        }
+
+        .shift-card-body {
+            padding: 1.2rem;
+        }
+
+        .shift-metric-card {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid var(--shift-border);
+            border-radius: 22px;
+            background: #fff;
+            box-shadow: var(--shift-shadow-soft);
+            height: 100%;
+            transition: all .2s ease;
+        }
+
+        .shift-metric-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 34px rgba(15, 23, 42, 0.09);
+        }
+
+        .shift-metric-card.primary {
+            background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 100%);
+            border-color: #dbeafe;
+        }
+
+        .shift-metric-card.success {
+            background: linear-gradient(135deg, #f0fdf4 0%, #f8fff9 100%);
+            border-color: #dcfce7;
+        }
+
+        .shift-metric-card.info {
+            background: linear-gradient(135deg, #ecfeff 0%, #f7feff 100%);
+            border-color: #bae6fd;
+        }
+
+        .shift-metric-card.warning {
+            background: linear-gradient(135deg, #fff7ed 0%, #fffaf4 100%);
+            border-color: #fed7aa;
+        }
+
+        .shift-metric-card.danger {
+            background: linear-gradient(135deg, #fff1f2 0%, #fff8f8 100%);
+            border-color: #fecdd3;
+        }
+
+        .shift-metric-body {
+            padding: 1.15rem 1.15rem 1.05rem;
+        }
+
+        .shift-metric-top {
+            display: flex;
+            justify-content: space-between;
+            gap: .75rem;
+            align-items: flex-start;
+        }
+
+        .shift-metric-label {
+            font-size: .84rem;
+            color: var(--shift-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .shift-metric-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .shift-metric-card.primary .shift-metric-icon {
+            background: var(--shift-primary-soft);
+            color: var(--shift-primary);
+        }
+
+        .shift-metric-card.success .shift-metric-icon {
+            background: var(--shift-success-soft);
+            color: var(--shift-success);
+        }
+
+        .shift-metric-card.info .shift-metric-icon {
+            background: var(--shift-info-soft);
+            color: var(--shift-info);
+        }
+
+        .shift-metric-card.warning .shift-metric-icon {
+            background: var(--shift-warning-soft);
+            color: var(--shift-warning);
+        }
+
+        .shift-metric-card.danger .shift-metric-icon {
+            background: var(--shift-danger-soft);
+            color: var(--shift-danger);
+        }
+
+        .shift-metric-value {
+            margin-top: .75rem;
+            font-size: 1.9rem;
+            line-height: 1.1;
+            font-weight: 900;
+            letter-spacing: -.03em;
+            color: var(--shift-dark);
+        }
+
+        .shift-metric-sub {
+            margin-top: .45rem;
+            color: var(--shift-muted);
+            font-size: .86rem;
+            line-height: 1.5;
+        }
+
+        .shift-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: .9rem;
+        }
+
+        .shift-info-box {
+            border: 1px solid var(--shift-border);
+            border-radius: 20px;
+            background: linear-gradient(180deg, #fff 0%, #fbfdff 100%);
+            padding: 1rem 1rem .95rem;
+            box-shadow: var(--shift-shadow-soft);
+            height: 100%;
+        }
+
+        .shift-info-label {
+            font-size: .8rem;
+            color: var(--shift-muted);
+            font-weight: 700;
+            margin-bottom: .42rem;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .shift-info-value {
+            font-size: 1.02rem;
+            font-weight: 800;
+            color: var(--shift-dark);
+            word-break: break-word;
+            line-height: 1.4;
+        }
+
+        .shift-info-meta {
+            margin-top: .35rem;
+            font-size: .82rem;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        .shift-foot-note {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: .75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            padding: .95rem 1rem;
+            border-radius: 16px;
+            background: #f8fafc;
+            border: 1px dashed var(--shift-border);
+        }
+
+        .shift-foot-note-text {
+            color: var(--shift-muted);
+            font-size: .88rem;
+            font-weight: 600;
+        }
+
+        .shift-last-refresh {
+            color: var(--shift-text);
+            font-size: .88rem;
+            font-weight: 800;
+        }
+
+        .dash-loading {
+            color: #94a3b8 !important;
+            font-style: normal;
+        }
+
+        .dash-error {
+            color: var(--shift-danger) !important;
+        }
+
+        @@media (max-width: 1199.98px) {
+            .shift-hero-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .shift-detail-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+
+        @@media (max-width: 991.98px) {
+            .shift-header-title {
+                font-size: 1.5rem;
+            }
+
+            .shift-hero-code {
+                font-size: 1.7rem;
+            }
+
+            .shift-metric-value {
+                font-size: 1.6rem;
+            }
+
+            .shift-detail-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .shift-hero-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shift-detail-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .shift-card-body,
+            .shift-card-header,
+            .shift-hero-body {
+                padding: 1rem;
+            }
+
+            .shift-live-badge {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+}
+
+@section header {
+    <div class="shift-header">
+        <div>
+            <h3 class="shift-header-title">Dashboard ca POS</h3>
+            <div class="shift-header-subtitle">
+                Theo dõi nhanh doanh thu, thanh toán và tình trạng ca đang mở tại quầy
+            </div>
+        </div>
+
+        <div class="shift-live-badge">
+            <span class="shift-live-dot"></span>
+            <span>Dữ liệu tự cập nhật mỗi 5 giây</span>
+        </div>
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+
+<div class="pos-dashboard-shell">
+    <div class="row g-3 mb-3">
+        <div class="col-12">
+            <div class="shift-hero-card">
+                <div class="shift-hero-body">
+                    <div class="shift-hero-top">
+                        <div>
+                            <div class="shift-hero-label">Ca đang hoạt động</div>
+                            <div id="shiftCodeHero" class="shift-hero-code dash-loading">Đang tải...</div>
+                            <div class="shift-hero-opened">
+                                Mở lúc: <span id="openedAtHero" class="dash-loading">Đang tải...</span>
+                            </div>
+                        </div>
+
+                        <div class="shift-hero-status">
+                            <span>Đang mở ca</span>
+                        </div>
+                    </div>
+
+                    <div class="shift-hero-grid">
+                        <div class="shift-hero-mini">
+                            <div class="shift-hero-mini-label">Tổng doanh thu</div>
+                            <div id="heroTotalSales" class="shift-hero-mini-value dash-loading">Đang tải...</div>
+                        </div>
+
+                        <div class="shift-hero-mini">
+                            <div class="shift-hero-mini-label">Đơn hoàn tất</div>
+                            <div id="heroOrdersCount" class="shift-hero-mini-value dash-loading">Đang tải...</div>
+                        </div>
+
+                        <div class="shift-hero-mini">
+                            <div class="shift-hero-mini-label">Void</div>
+                            <div id="heroVoidCount" class="shift-hero-mini-value dash-loading">Đang tải...</div>
+                        </div>
+
+                        <div class="shift-hero-mini">
+                            <div class="shift-hero-mini-label">Refund</div>
+                            <div id="heroRefundCount" class="shift-hero-mini-value dash-loading">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Số liệu chính -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-6 col-xl-3">
+            <div class="shift-metric-card primary">
+                <div class="shift-metric-body">
+                    <div class="shift-metric-top">
+                        <div class="shift-metric-label">Tổng doanh thu</div>
+                        <div class="shift-metric-icon">₫</div>
+                    </div>
+                    <div id="totalSales" class="shift-metric-value dash-loading">Đang tải...</div>
+                    <div class="shift-metric-sub">
+                        Tổng tiền từ các đơn hoàn tất trong ca hiện tại
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="shift-metric-card success">
+                <div class="shift-metric-body">
+                    <div class="shift-metric-top">
+                        <div class="shift-metric-label">Tiền mặt</div>
+                        <div class="shift-metric-icon">C</div>
+                    </div>
+                    <div id="cashSales" class="shift-metric-value dash-loading">Đang tải...</div>
+                    <div class="shift-metric-sub">
+                        Doanh thu thực thu bằng phương thức tiền mặt
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="shift-metric-card info">
+                <div class="shift-metric-body">
+                    <div class="shift-metric-top">
+                        <div class="shift-metric-label">Không tiền mặt</div>
+                        <div class="shift-metric-icon">↗</div>
+                    </div>
+                    <div id="bankSales" class="shift-metric-value dash-loading">Đang tải...</div>
+                    <div class="shift-metric-sub">
+                        Chuyển khoản, thẻ và các phương thức thanh toán khác
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="shift-metric-card warning">
+                <div class="shift-metric-body">
+                    <div class="shift-metric-top">
+                        <div class="shift-metric-label">Số đơn hoàn tất</div>
+                        <div class="shift-metric-icon">#</div>
+                    </div>
+                    <div id="ordersCount" class="shift-metric-value dash-loading">Đang tải...</div>
+                    <div class="shift-metric-sub">
+                        Tổng số đơn đã chốt thành công trong ca
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="shift-metric-card danger">
+                <div class="shift-metric-body">
+                    <div class="shift-metric-top">
+                        <div class="shift-metric-label">Tổng tiền hoàn</div>
+                        <div class="shift-metric-icon">↩</div>
+                    </div>
+                    <div id="refundTotal" class="shift-metric-value dash-loading">Đang tải...</div>
+                    <div class="shift-metric-sub">
+                        Tổng tiền refund phát sinh trong ca hiện tại
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thông tin ca -->
+    <div class="row g-3">
+        <div class="col-12">
+            <div class="shift-card">
+                <div class="shift-card-header">
+                    <h5 class="shift-card-title">Thông tin chi tiết ca đang mở</h5>
+                    <div class="shift-card-subtitle">
+                        Các chỉ số vận hành để kiểm tra nhanh tại quầy
+                    </div>
+                </div>
+
+                <div class="shift-card-body">
+                    <div class="shift-detail-grid">
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Mã ca</div>
+                            <div id="shiftCode" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">Mã nhận diện ca bán hàng</div>
+                        </div>
+
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Mở lúc</div>
+                            <div id="openedAt" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">Thời điểm bắt đầu ca hiện tại</div>
+                        </div>
+
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Void</div>
+                            <div id="voidCount" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">Số đơn hủy sau chốt trong ca</div>
+                        </div>
+
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Refund giao dịch</div>
+                            <div id="refundCount" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">Số giao dịch hoàn tiền phát sinh</div>
+                        </div>
+
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Refund tổng</div>
+                            <div id="refundTotalDetail" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">Tổng tiền hoàn trong ca</div>
+                        </div>
+
+                        <div class="shift-info-box">
+                            <div class="shift-info-label">Shift ID</div>
+                            <div id="shiftId" class="shift-info-value dash-loading">Đang tải...</div>
+                            <div class="shift-info-meta">ID nội bộ phục vụ đối soát</div>
+                        </div>
+                    </div>
+
+                    <div class="shift-foot-note">
+                        <div class="shift-foot-note-text">
+                            Dashboard tự làm mới dữ liệu để nhân viên và quản lý theo dõi số liệu gần thời gian thực.
+                        </div>
+                        <div class="shift-last-refresh">
+                            Cập nhật gần nhất: <span id="lastRefreshAt">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        function formatMoney(value) {
+            const n = Number(value || 0);
+            return n.toLocaleString('vi-VN');
+        }
+
+        function formatDateTime(value) {
+            if (!value) return '-';
+
+            const d = new Date(value);
+            return d.toLocaleString('vi-VN');
+        }
+
+        function updateLastRefreshTime() {
+            const now = new Date();
+            document.getElementById('lastRefreshAt').textContent = now.toLocaleTimeString('vi-VN');
+        }
+
+        function showError(msg) {
+            if (window.toastr) {
+                toastr.error(msg || 'Có lỗi xảy ra');
+            } else {
+                alert(msg || 'Có lỗi xảy ra');
+            }
+        }
+
+        async function fetchJson(url, options = {}) {
+            const res = await fetch(url, options);
+            const contentType = res.headers.get('content-type') || '';
+
+            let jsonData = null;
+            let textData = '';
+
+            try {
+                if (contentType.includes('application/json')) {
+                    jsonData = await res.json();
+                } else {
+                    textData = await res.text();
+                }
+            } catch { }
+
+            if (!res.ok) {
+                const msg =
+                    jsonData?.message ||
+                    jsonData?.title ||
+                    jsonData?.error ||
+                    textData ||
+                    `Yêu cầu thất bại (${res.status})`;
+
+                throw new Error(msg);
+            }
+
+            return jsonData ?? textData ?? null;
+        }
+
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = value;
+                el.classList.remove('dash-error');
+            }
+        }
+
+        function setErrorState() {
+            const ids = [
+                'totalSales', 'cashSales', 'bankSales', 'ordersCount',
+                'refundTotal', 'refundTotalDetail',
+                'shiftCode', 'openedAt', 'voidCount', 'refundCount', 'shiftId',
+                'shiftCodeHero', 'openedAtHero', 'heroTotalSales', 'heroOrdersCount',
+                'heroVoidCount', 'heroRefundCount'
+            ];
+
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = '-';
+                    el.classList.add('dash-error');
+                }
+            });
+
+            document.getElementById('lastRefreshAt').textContent = '-';
+        }
+
+        function renderDashboard(data) {
+            const totalSales = formatMoney(data.totalSales);
+            const cashSales = formatMoney(data.cashSales);
+            const bankSales = formatMoney(data.bankSales);
+            const refundTotal = formatMoney(data.refundTotal);
+            const ordersCount = data.ordersCount ?? 0;
+            const shiftCode = data.shiftCode || '-';
+            const openedAt = formatDateTime(data.openedAt);
+            const voidCount = data.voidCount ?? 0;
+            const refundCount = data.refundCount ?? 0;
+            const shiftId = data.shiftId ?? '-';
+
+            setText('shiftCodeHero', shiftCode);
+            setText('openedAtHero', openedAt);
+            setText('heroTotalSales', totalSales);
+            setText('heroOrdersCount', ordersCount);
+            setText('heroVoidCount', voidCount);
+            setText('heroRefundCount', refundCount);
+
+            setText('totalSales', totalSales);
+            setText('cashSales', cashSales);
+            setText('bankSales', bankSales);
+            setText('ordersCount', ordersCount);
+            setText('refundTotal', refundTotal);
+
+            setText('shiftCode', shiftCode);
+            setText('openedAt', openedAt);
+            setText('voidCount', voidCount);
+            setText('refundCount', refundCount);
+            setText('refundTotalDetail', refundTotal);
+            setText('shiftId', shiftId);
+
+            updateLastRefreshTime();
+        }
+
+        async function loadDashboard() {
+            try {
+                const data = await fetchJson('/admin/pos/shift/dashboard');
+                renderDashboard(data);
+            } catch (err) {
+                setErrorState();
+                showError(err.message || 'Không tải được dashboard ca POS.');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            await loadDashboard();
+
+            setInterval(async function () {
+                await loadDashboard();
+            }, 5000);
+        });
+    </script>
+}
