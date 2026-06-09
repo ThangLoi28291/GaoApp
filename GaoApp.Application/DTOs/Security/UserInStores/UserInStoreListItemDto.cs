@@ -17,4 +17,11 @@ public class UserInStoreListItemDto
 
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
+    public string? PhoneNumber { get; set; }
+
+    public string? PositionName { get; set; }
+
+    public DateTime? JoinedDate { get; set; }
+
+    public string? Note { get; set; }
 }

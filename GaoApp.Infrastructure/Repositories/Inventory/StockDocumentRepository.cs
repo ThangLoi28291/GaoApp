@@ -34,15 +34,25 @@ public class StockDocumentRepository : IStockDocumentRepository
         return await _context.StockDocuments
             .Include(x => x.Warehouse)
             .Include(x => x.Supplier)
+
+            // STOCKDOC.UI.1B:
+            // Include ảnh chính của variant để hiển thị ở bảng dòng nhập.
             .Include(x => x.Lines)
+                .ThenInclude(x => x.ProductVariant)
+                    .ThenInclude(x => x.PrimaryProductImage)
+                        .ThenInclude(x => x.MediaAsset)
+
+            .Include(x => x.LineInputInvoiceMaps)
+                .ThenInclude(x => x.InputInvoiceDetail)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
     public async Task<StockDocument?> GetForConfirmAsync(int id, CancellationToken ct = default)
     {
         return await _context.StockDocuments
-            .Include(x => x.Lines)
-            .FirstOrDefaultAsync(x => x.Id == id, ct);
+     .Include(x => x.Lines)
+     .Include(x => x.LineInputInvoiceMaps)
+     .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
     public async Task<StockDocumentLine?> GetLineByIdAsync(int lineId, CancellationToken ct = default)
@@ -73,12 +83,17 @@ public class StockDocumentRepository : IStockDocumentRepository
         return await _context.Suppliers.AnyAsync(x => x.Id == supplierId, ct);
     }
 
-    public async Task<ProductVariant?> GetVariantForStockDocumentAsync(int productVariantId, CancellationToken ct = default)
+    public async Task<ProductVariant?> GetVariantForStockDocumentAsync(
+        int variantId,
+        CancellationToken ct = default)
     {
         return await _context.ProductVariants
             .Include(x => x.Product)
-                .ThenInclude(x => x.BaseUnit)
-            .FirstOrDefaultAsync(x => x.Id == productVariantId, ct);
+            .Include(x => x.PrimaryProductImage)
+                .ThenInclude(x => x.MediaAsset)
+            .Include(x => x.UnitConversions)
+                .ThenInclude(x => x.Barcodes)
+            .FirstOrDefaultAsync(x => x.Id == variantId && !x.IsDeleted, ct);
     }
 
     public async Task<ProductUnitConversion?> GetConversionAsync(int productVariantId, int unitId, CancellationToken ct = default)
@@ -117,15 +132,18 @@ public class StockDocumentRepository : IStockDocumentRepository
         await _context.InventoryTransactions.AddAsync(entity, ct);
     }
 
-    
+
 
     public async Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default)
     {
         return await _context.StockDocuments
+            .AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Supplier)
-            .Where(x => x.Type == StockDocumentType.Receipt)
-            .OrderByDescending(x => x.Id)
+            .Include(x => x.Lines)
+            .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted)
+            .OrderByDescending(x => x.DocumentDate)
+            .ThenByDescending(x => x.Id)
             .ToListAsync(ct);
     }
 
@@ -176,5 +194,32 @@ public class StockDocumentRepository : IStockDocumentRepository
     {
         await _context.SaveChangesAsync(ct);
     }
-   
+    public async Task MarkVariantsHasInputInvoiceAsync(
+    IEnumerable<int> productVariantIds,
+    int? userId,
+    CancellationToken ct = default)
+    {
+        var ids = productVariantIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+            return;
+
+        var variants = await _context.ProductVariants
+            .Where(x => ids.Contains(x.Id) && !x.IsDeleted)
+            .ToListAsync(ct);
+
+        foreach (var variant in variants)
+        {
+            if (variant.HasInputInvoice)
+                continue;
+
+            variant.HasInputInvoice = true;
+            variant.UpdatedAtUtc = DateTime.UtcNow;
+            variant.UpdatedBy = userId;
+        }
+    }
+
 }

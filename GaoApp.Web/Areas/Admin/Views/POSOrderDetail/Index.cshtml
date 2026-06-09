@@ -12,6 +12,8 @@
 
     var paymentCount = Model.Payments?.Count ?? 0;
     var lineCount = Model.Lines?.Count ?? 0;
+    var voucherCount = Model.RewardVouchers?.Count ?? 0;
+var hasVoucher = Model.VoucherDiscountTotal > 0 || voucherCount > 0;
 
     var canRefund = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase);
     var canVoid = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase) && Model.RefundedTotal <= 0;
@@ -983,7 +985,7 @@
     <div class="ord-overview">
         <div class="ord-stat primary">
             <div class="ord-stat-label">Tổng tiền đơn</div>
-            <div class="ord-stat-value">@Model.GrandTotal.ToString("N0") đ</div>
+           <div class="ord-stat-value">@Model.Subtotal.ToString("N0") đ</div>
         </div>
 
         <div class="ord-stat success">
@@ -1007,9 +1009,11 @@
         </div>
 
         <div class="ord-stat danger">
-            <div class="ord-stat-label">Hậu mãi</div>
-            <div class="ord-stat-value">@(hasAfterSaleHistory ? "Có phát sinh" : "Chưa có")</div>
-        </div>
+    <div class="ord-stat-label">Voucher</div>
+    <div class="ord-stat-value">
+        @(hasVoucher ? Model.VoucherDiscountTotal.ToString("N0") + " đ" : "Chưa có")
+    </div>
+</div>
     </div>
 
     <div class="ord-layout">
@@ -1044,7 +1048,40 @@
                         <div class="ord-info-value">@DisplayCustomerName()</div>
                         <div class="ord-info-sub">SĐT: @DisplayCustomerPhone()</div>
                     </div>
+                    @if (hasVoucher)
+{
+    <div class="ord-info">
+        <div class="ord-info-label">Voucher đã dùng</div>
 
+        <div class="ord-info-value">
+            @Model.VoucherDiscountTotal.ToString("N0") đ
+        </div>
+
+        <div class="ord-info-sub">
+            @voucherCount phiếu áp dụng cho đơn này
+        </div>
+
+        <div style="margin-top:10px; display:grid; gap:8px;">
+            @foreach (var v in Model.RewardVouchers)
+            {
+                <div style="border:1px solid #e6edf5; border-radius:14px; padding:10px 12px; background:#f8fbff;">
+                    <div style="font-weight:900; color:#2957c8;">
+                        @v.VoucherCode
+                    </div>
+
+                    <div style="font-size:.88rem; color:#667085; font-weight:700;">
+                        Giá trị: @v.Value.ToString("N0") đ
+
+                        @if (!string.IsNullOrWhiteSpace(v.Status))
+                        {
+                            <span> · Trạng thái: @v.Status</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
                     <div class="ord-info">
                         <div class="ord-info-label">Nhân viên / Ca POS</div>
                         <div class="ord-info-value">@DisplayCashierName()</div>
@@ -1237,7 +1274,7 @@
                 <div class="ord-popup-hero">
                     <div class="ord-popup-stat">
                         <div class="ord-popup-stat-label">Tổng tiền đơn</div>
-                        <div class="ord-popup-stat-value">@Model.GrandTotal.ToString("N0") đ</div>
+                      <div class="ord-popup-stat-value">@Model.Subtotal.ToString("N0") đ</div>
                     </div>
                     <div class="ord-popup-stat">
                         <div class="ord-popup-stat-label">Đã thanh toán</div>
@@ -1950,7 +1987,7 @@
                         </div>
                         <div class="ret-mini-stat">
                             <div class="ret-mini-label">Tổng tiền đơn</div>
-                            <div class="ret-mini-value">${formatMoney(@Model.GrandTotal)}</div>
+                           <div class="ret-mini-value">${formatMoney(@Model.Subtotal)}</div>
                         </div>
                         <div class="ret-mini-stat">
                             <div class="ret-mini-label">Đã thanh toán</div>

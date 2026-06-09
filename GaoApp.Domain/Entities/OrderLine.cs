@@ -74,6 +74,13 @@ public class OrderLine : BaseStoreEntity
     public string? CostSnapshotNote { get; set; }
 
     public int? SellingUnitId { get; set; }
+    /// <summary>
+    /// Snapshot ProductUnitConversion thực tế
+    /// dùng khi bán hàng.
+    /// Đây mới là khóa chính xác để repricing,
+    /// promotion và audit.
+    /// </summary>
+    public int? ProductUnitConversionId { get; set; }
 
     /// <summary>
     /// Tên đơn vị bán snapshot tại thời điểm bán.
@@ -128,4 +135,84 @@ public class OrderLine : BaseStoreEntity
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal LineTotal { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal OriginalUnitPrice { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal PromotionDiscount { get; set; }
+
+    public int? PromotionId { get; set; }
+
+    public string? PromotionName { get; set; }
+    public int? ComboPromotionId { get; set; }
+
+    public string? ComboPromotionName { get; set; }
+
+    public string? ComboPromotionNote { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal ComboAllocatedDiscount { get; set; }
+    /// <summary>
+    /// Loại khuyến mãi sản phẩm đang áp trên dòng.
+    /// 1 = ProductDiscount
+    /// 3 = BuyXGetY
+    /// Null = không có khuyến mãi dòng.
+    /// </summary>
+    public PromotionType? PromotionType { get; set; }
+
+    /// <summary>
+    /// Mua bao nhiêu để được tặng.
+    /// Ví dụ mua 10 tặng 1 => 10.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal PromotionBuyQuantity { get; set; }
+
+    /// <summary>
+    /// Số lượng được tặng thực tế trên dòng.
+    /// Ví dụ SL 11, mua 10 tặng 1 => 1.
+    /// SL 22 => 2.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal PromotionGiftQuantity { get; set; }
+    // =========================================================
+    // BUY X GET Y - DÒNG HÀNG TẶNG
+    // =========================================================
+
+    /// <summary>
+    /// Đánh dấu đây là dòng hàng tặng do khuyến mãi sinh ra.
+    /// 
+    /// Lưu ý:
+    /// - Dòng hàng mua bình thường: false
+    /// - Dòng hàng tặng: true
+    /// - Dòng tặng luôn UnitPrice = 0, LineTotal = 0
+    /// </summary>
+    public bool IsPromotionGift { get; set; }
+
+    /// <summary>
+    /// PromotionId của chương trình sinh ra dòng quà.
+    /// Không dùng chung với PromotionId của giảm giá sản phẩm để tránh lẫn Type 1.
+    /// </summary>
+    public int? GiftPromotionId { get; set; }
+
+    /// <summary>
+    /// OrderLineId của dòng mua gốc sinh ra dòng tặng.
+    /// Ví dụ:
+    /// - Dòng mua: Xoài sấy SL 11
+    /// - Dòng tặng: Xoài sấy SL 1
+    /// => GiftSourceLineId = Id của dòng mua.
+    /// </summary>
+    public int? GiftSourceLineId { get; set; }
+
+    /// <summary>
+    /// Tên chương trình khuyến mãi dùng để hiển thị POS / bill.
+    /// Ví dụ: Mua 10 tặng 1.
+    /// </summary>
+    public string? GiftPromotionName { get; set; }
+
+    /// <summary>
+    /// Ghi chú rõ ràng cho dòng hàng tặng.
+    /// Ví dụ: Hàng tặng từ CTKM: Mua 10 tặng 1.
+    /// </summary>
+    public string? GiftPromotionNote { get; set; }
+
 }

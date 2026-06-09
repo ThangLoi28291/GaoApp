@@ -6,6 +6,7 @@ public class StockDocumentDto
 {
     public int Id { get; set; }
     public string DocumentNo { get; set; } = default!;
+    public string? DocumentTitle { get; set; }
     public StockDocumentType Type { get; set; }
     public StockDocumentStatus Status { get; set; }
 
@@ -34,6 +35,12 @@ public class StockDocumentDto
 
     public bool CanEditHeader { get; set; }
     public bool CanEditLines { get; set; }
+    public bool HasRevisionRequest { get; set; }
+    public string? RevisionRequestNote { get; set; }
+    public DateTime? RevisionRequestedAtUtc { get; set; }
+    public int? RevisionRequestedByUserId { get; set; }
+    public DateTime? RevisionResolvedAtUtc { get; set; }
+    public int? RevisionResolvedByUserId { get; set; }
 
     public List<StockDocumentLineDto> Lines { get; set; } = new();
 }

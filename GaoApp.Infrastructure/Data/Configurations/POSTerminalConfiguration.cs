@@ -33,11 +33,11 @@ public class POSTerminalConfiguration : IEntityTypeConfiguration<POSTerminal>
         builder.HasIndex(x => new { x.StoreId, x.Code })
             .IsUnique();
 
-        /// <summary>
-        /// 1 store không được có 2 terminal dùng chung 1 IP.
-        /// </summary>
+        // Giữ lại IP cũ để tương thích dữ liệu cũ.
+        // Chỉ unique khi LocalIp có giá trị, tránh lỗi nhiều terminal có LocalIp = null.
         builder.HasIndex(x => new { x.StoreId, x.LocalIp })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[LocalIp] IS NOT NULL");
 
         builder.HasMany(x => x.Shifts)
             .WithOne(x => x.Terminal)

@@ -1,0 +1,106 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _DraftMetaPanel.cshtml
+   Mục đích:
+   - Gộp thông tin phụ của đơn vào 1 card gọn
+   - Chứa Tạm tính / Giảm giá / Đã thanh toán
+   - Giữ ghi chú và giảm giá đơn dạng mở rộng
+========================================================= *@
+
+<div class="card pos-card pos-order-info-card mb-3">
+    <div class="card-body">
+        <div class="pos-section-title mb-2">Thông tin đơn</div>
+
+        <div class="pos-order-money-list">
+            <div class="pos-order-money-row">
+                <span>Tạm tính</span>
+                <strong id="sumSubtotal">0</strong>
+            </div>
+
+            <div class="pos-order-money-row">
+                <span>Giảm giá</span>
+                <strong id="sumDiscount">0</strong>
+            </div>
+
+        </div>
+
+        <div class="pos-order-divider"></div>
+
+        <div class="pos-meta-section is-collapsed" data-meta-section="note">
+            <div class="pos-meta-section__header">
+                <div>
+                    <div class="pos-meta-section__title">Ghi chú đơn</div>
+                    <div id="metaOrderNoteSummary" class="pos-meta-summary text-muted small">
+                        Chưa có ghi chú
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn btn-sm btn-light pos-meta-toggle"
+                        data-toggle-meta="note">
+                    Sửa
+                </button>
+            </div>
+
+            <div class="pos-note-box">
+                <textarea id="txtOrderNote"
+                          class="form-control"
+                          rows="3"
+                          placeholder="Nhập ghi chú..."></textarea>
+
+                <div class="d-grid mt-2">
+                    <button id="btnSaveOrderNote"
+                            type="button"
+                            class="btn btn-outline-primary">
+                        Lưu ghi chú
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="pos-order-divider"></div>
+
+        <div class="pos-meta-section is-collapsed" data-meta-section="discount">
+            <div class="pos-meta-section__header">
+                <div>
+                    <div class="pos-meta-section__title">Giảm giá đơn</div>
+                    <div id="metaOrderDiscountSummary" class="pos-meta-summary text-muted small">
+                        0
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn btn-sm btn-light pos-meta-toggle"
+                        data-toggle-meta="discount">
+                    Sửa
+                </button>
+            </div>
+
+            <div class="pos-note-box">
+                <input id="txtOrderDiscount"
+                       type="number"
+                       min="0"
+                       step="1000"
+                       class="form-control"
+                       placeholder="Nhập số tiền giảm" />
+
+                <div class="row g-2 mt-2">
+                    <div class="col-6 d-grid">
+                        <button id="btnSaveOrderDiscount"
+                                type="button"
+                                class="btn btn-outline-warning">
+                            Lưu
+                        </button>
+                    </div>
+
+                    <div class="col-6 d-grid">
+                        <button id="btnClearOrderDiscount"
+                                type="button"
+                                class="btn btn-outline-secondary">
+                            Xóa
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

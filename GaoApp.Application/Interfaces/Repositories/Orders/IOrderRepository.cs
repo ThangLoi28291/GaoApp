@@ -11,10 +11,6 @@ public interface IOrderRepository
 
     Task AddAsync(Order order, CancellationToken ct = default);
 
-    /// <summary>
-    /// Update order hiện có.
-    /// Dùng cho các flow mirror trạng thái inventory issue về Order.
-    /// </summary>
     void Update(Order order);
 
     Task SaveChangesAsync(CancellationToken ct = default);
@@ -38,6 +34,9 @@ public interface IOrderRepository
 
     Task<List<Order>> GetHeldOrdersByShiftAsync(int shiftId, CancellationToken ct = default);
 
+    // NEW
+    Task<List<Order>> GetHeldOrdersByStoreAsync(int storeId, CancellationToken ct = default);
+
     Task<List<Order>> GetDraftOrdersByShiftAsync(int shiftId, CancellationToken ct = default);
 
     Task<Order?> GetByIdWithDetailsAsync(int orderId, CancellationToken ct = default);
@@ -47,4 +46,12 @@ public interface IOrderRepository
     Task<Order?> GetCompletedOrderForRefundAsync(int orderId, CancellationToken ct = default);
 
     Task<Order?> GetDraftForFinalizeAsync(int orderId, CancellationToken ct = default);
+    Task ReplaceRewardVouchersAsync(
+    int orderId,
+    List<OrderRewardVoucher> vouchers,
+    CancellationToken ct = default);
+
+    Task ClearRewardVouchersAsync(
+        int orderId,
+        CancellationToken ct = default);
 }

@@ -59,4 +59,20 @@ public interface IUserInStoreAdminService
         int storeId,
         bool onlyActive = true,
         CancellationToken ct = default);
+    Task<(bool Success, string? ErrorMessage, int? Id)> CreateEmployeeAsync(
+    int storeId,
+    int? actorUserId,
+    CreateEmployeeInStoreRequest request,
+    CancellationToken ct = default);
+    Task<(bool Success, string? ErrorMessage)> ResetPasswordAsync(
+    int storeId,
+    int userId,
+    string newPassword,
+    int? actorUserId,
+    CancellationToken ct = default);
+    Task<(bool Success, string? ErrorMessage)> ToggleActiveAsync(
+    int storeId,
+    int id,
+    int? actorUserId,
+    CancellationToken ct = default);
 }

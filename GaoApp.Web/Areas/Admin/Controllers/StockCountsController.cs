@@ -1,5 +1,7 @@
-﻿using GaoApp.Application.DTOs.Inventory;
+﻿using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -15,14 +17,14 @@ public class StockCountsController : ControllerBase
     {
         _stockCountService = stockCountService;
     }
-
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.View)]
     [HttpGet]
     public async Task<IActionResult> GetList(CancellationToken ct)
     {
         var result = await _stockCountService.GetListAsync(ct);
         return Ok(result);
     }
-
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Create)]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateStockCountDocumentRequest request, CancellationToken ct)
     {
@@ -43,13 +45,14 @@ public class StockCountsController : ControllerBase
 
         return Ok(result);
     }
-
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
     [HttpPost("update-header")]
     public async Task<IActionResult> UpdateHeader([FromBody] UpdateStockCountDocumentHeaderRequest request, CancellationToken ct)
     {
         await _stockCountService.UpdateHeaderAsync(request, ct);
         return Ok(new { message = "Cập nhật header phiếu kiểm kê thành công." });
     }
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
 
     [HttpPost("{stockCountDocumentId:int}/lines")]
     public async Task<IActionResult> AddLine(int stockCountDocumentId, [FromBody] AddStockCountLineRequest request, CancellationToken ct)
@@ -75,7 +78,7 @@ public class StockCountsController : ControllerBase
         await _stockCountService.DeleteLineAsync(lineId, ct);
         return Ok(new { message = "Xóa dòng kiểm kê thành công." });
     }
-
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Approve)]
     [HttpPost("{stockCountDocumentId:int}/confirm")]
     public async Task<IActionResult> Confirm(int stockCountDocumentId, CancellationToken ct)
     {

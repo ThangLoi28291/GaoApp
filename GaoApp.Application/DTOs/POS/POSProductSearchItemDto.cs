@@ -28,4 +28,29 @@ public class POSProductSearchItemDto
 
     public decimal Price { get; set; }
     public bool IsActive { get; set; }
+    public decimal OnHandQty { get; set; }
+    public bool IsNegativeStock { get; set; }
+
+    /// <summary>
+    /// Ảnh đầy đủ để preview / modal.
+    /// </summary>
+    public string? ImageUrl { get; set; }
+
+    /// <summary>
+    /// Ảnh thumbnail nhỏ cho autocomplete / cart.
+    /// Nếu chưa có resize riêng thì có thể tạm dùng cùng ImageUrl.
+    /// </summary>
+    public string? ImageThumbUrl { get; set; }
+
+    /// <summary>
+    /// Alt text hiển thị cho ảnh.
+    /// </summary>
+    public string? ImageAlt { get; set; }
+
+    /// <summary>
+    /// Có ảnh để render nhanh phía UI.
+    /// </summary>
+    public bool HasImage { get; set; }
+
+    public List<POSProductSearchUnitOptionDto> UnitOptions { get; set; } = new();
 }

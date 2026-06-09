@@ -1,0 +1,349 @@
+﻿@{
+    Layout = null;
+    var slipId = (int)(ViewBag.SlipId ?? 0);
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>In phiếu nhận ca</title>
+
+    <style>
+            @@page {
+                size: 80mm auto;
+                margin: 0;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                background: #fff;
+                font-family: Arial, sans-serif;
+                color: #000;
+            }
+
+            .receipt {
+                width: 80mm;
+                padding: 8px 7px;
+                box-sizing: border-box;
+                font-size: 12px;
+            }
+
+            .center {
+                text-align: center;
+            }
+
+            .title {
+                font-size: 16px;
+                font-weight: 900;
+                margin-top: 6px;
+                text-transform: uppercase;
+            }
+
+            .sub {
+                font-size: 11px;
+                margin-top: 2px;
+            }
+
+            .line {
+                border-top: 1px dashed #000;
+                margin: 8px 0;
+            }
+
+            .row {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+                margin: 3px 0;
+            }
+
+            .label {
+                font-weight: 700;
+            }
+
+            .value {
+                text-align: right;
+                font-weight: 700;
+            }
+
+            .money {
+                font-size: 15px;
+                font-weight: 900;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 4px;
+            }
+
+            th, td {
+                font-size: 11px;
+                padding: 3px 0;
+                border-bottom: 1px dotted #999;
+            }
+
+            th {
+                text-align: left;
+                font-weight: 900;
+            }
+
+                td:nth-child(2),
+                td:nth-child(3),
+                th:nth-child(2),
+                th:nth-child(3) {
+                    text-align: right;
+                }
+
+            .barcode-box {
+                text-align: center;
+                margin-top: 8px;
+            }
+
+            #barcode {
+                max-width: 72mm;
+                height: 42px;
+            }
+
+            .barcode-text {
+                font-size: 10px;
+                word-break: break-all;
+                margin-top: 2px;
+            }
+
+            .sign-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                margin-top: 14px;
+                text-align: center;
+                font-size: 11px;
+            }
+
+            .sign-title {
+                font-weight: 900;
+            }
+
+            .sign-space {
+                height: 42px;
+            }
+
+            .footer {
+                margin-top: 8px;
+                font-size: 10px;
+                text-align: center;
+            }
+
+            .btn-print {
+                position: fixed;
+                right: 12px;
+                top: 12px;
+                padding: 8px 14px;
+                border: 0;
+                border-radius: 8px;
+                background: #111827;
+                color: #fff;
+                font-weight: 800;
+                cursor: pointer;
+            }
+
+            @@media print {
+                .btn-print {
+                    display: none;
+                }
+            }
+    </style>
+</head>
+<body>
+    <button class="btn-print" onclick="window.print()">In lại</button>
+
+    <div class="receipt">
+        <div class="center">
+            <div style="font-weight:900;font-size:14px;">GAO MART</div>
+            <div class="sub">Phiếu quản lý bàn giao tiền đầu ca</div>
+            <div class="title">PHIẾU NHẬN CA</div>
+        </div>
+
+        <div class="barcode-box">
+            <svg id="barcode"></svg>
+            <div id="barcodeText" class="barcode-text"></div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row">
+            <div class="label">Mã phiếu:</div>
+            <div id="slipCode" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Trạng thái:</div>
+            <div id="statusText" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Ngày tạo:</div>
+            <div id="createdAt" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Kho:</div>
+            <div id="warehouseText" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Terminal:</div>
+            <div id="terminalText" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Người lập:</div>
+            <div id="createdBy" class="value">-</div>
+        </div>
+
+        <div class="row">
+            <div class="label">Người nhận:</div>
+            <div id="assignedTo" class="value">-</div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="center" style="font-weight:900;">CHI TIẾT MỆNH GIÁ</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Mệnh giá</th>
+                    <th>SL</th>
+                    <th>Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody id="denomBody">
+                <tr>
+                    <td colspan="3">Đang tải...</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="line"></div>
+
+        <div class="row">
+            <div class="label money">TỔNG TIỀN:</div>
+            <div id="totalMoney" class="value money">0</div>
+        </div>
+
+        <div id="noteBox" style="margin-top:6px;display:none;">
+            <div class="label">Ghi chú:</div>
+            <div id="noteText" style="white-space:pre-wrap;"></div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="sign-grid">
+            <div>
+                <div class="sign-title">NGƯỜI LẬP</div>
+                <div class="sign-space"></div>
+                <div id="signCreatedBy">..............</div>
+            </div>
+            <div>
+                <div class="sign-title">NGƯỜI NHẬN CA</div>
+                <div class="sign-space"></div>
+                <div id="signAssignedTo">..............</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Phiếu dùng để quét khi nhân viên nhận ca POS.<br />
+            Vui lòng kiểm đếm trước khi xác nhận nhận ca.
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
+    <script>
+        const slipId = @slipId;
+
+        function formatMoney(value) {
+        return Number(value || 0).toLocaleString('vi-VN') + ' đ';
+        }
+
+        function formatDateTime(value) {
+        if (!value) return '-';
+        return new Date(value).toLocaleString('vi-VN');
+        }
+
+        function statusText(status) {
+        const raw = (status || '').toString();
+
+        if (raw === '1' || raw.toLowerCase().includes('draft')) return 'Mới tạo';
+        if (raw === '2' || raw.toLowerCase().includes('printed')) return 'Đã in';
+        if (raw === '3' || raw.toLowerCase().includes('used')) return 'Đã sử dụng';
+        if (raw === '4' || raw.toLowerCase().includes('cancelled')) return 'Đã hủy';
+
+        return raw || '-';
+        }
+
+        async function loadSlip() {
+        const res = await fetch(`/admin/pos/shift-handover-slips/${slipId}`);
+
+        if (!res.ok) {
+        document.body.innerHTML = '<div style="padding:20px;font-family:Arial;">Không tải được phiếu nhận ca.</div>';
+        return;
+        }
+
+        const slip = await res.json();
+
+        document.getElementById('slipCode').textContent = slip.slipCode || '-';
+        document.getElementById('statusText').textContent = statusText(slip.status);
+        document.getElementById('createdAt').textContent = formatDateTime(slip.createdAtUtc);
+        document.getElementById('warehouseText').textContent = `${slip.warehouseCode || ''} ${slip.warehouseName || ''}`.trim() || '-';
+        document.getElementById('terminalText').textContent = `${slip.terminalCode || ''} ${slip.terminalName || ''}`.trim() || 'Dùng chung';
+        document.getElementById('createdBy').textContent = slip.createdByUserName || `User #${slip.createdByUserId}`;
+        document.getElementById('assignedTo').textContent = slip.assignedToUserName || 'Chưa chỉ định';
+        document.getElementById('signCreatedBy').textContent = slip.createdByUserName || '..............';
+        document.getElementById('signAssignedTo').textContent = slip.assignedToUserName || '..............';
+
+        document.getElementById('totalMoney').textContent = formatMoney(slip.openingCashTotal);
+
+        if (slip.note) {
+        document.getElementById('noteBox').style.display = '';
+        document.getElementById('noteText').textContent = slip.note;
+        }
+
+        const denoms = slip.denominations || [];
+
+        document.getElementById('denomBody').innerHTML = denoms.length
+        ? denoms.map(x => `
+        <tr>
+        <td>${formatMoney(x.denominationValue)}</td>
+        <td>${x.quantity}</td>
+        <td>${formatMoney(x.amount)}</td>
+        </tr>
+        `).join('')
+        : `<tr><td colspan="3">Không có dữ liệu mệnh giá.</td></tr>`;
+
+        document.getElementById('barcodeText').textContent = slip.barcodeValue;
+
+        JsBarcode('#barcode', slip.barcodeValue, {
+        format: 'CODE128',
+        displayValue: false,
+        width: 1.4,
+        height: 42,
+        margin: 0
+        });
+
+        // Đánh dấu đã in, không chặn nếu lỗi.
+        fetch(`/admin/pos/shift-handover-slips/${slip.id}/mark-printed`, {
+        method: 'POST'
+        }).catch(() => { });
+
+        setTimeout(() => {
+        window.print();
+        }, 500);
+        }
+
+        loadSlip();
+    </script>
+</body>
+</html>

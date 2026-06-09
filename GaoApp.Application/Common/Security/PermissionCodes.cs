@@ -157,7 +157,27 @@ public static class PermissionCodes
             public const string Create = "inventory.adjustment.create";
             public const string Update = "inventory.adjustment.update";
             public const string Delete = "inventory.adjustment.delete";
+
+            /// <summary>
+            /// Gửi phiếu điều chỉnh sang trạng thái chờ duyệt.
+            /// </summary>
+            public const string Submit = "inventory.adjustment.submit";
+
+            /// <summary>
+            /// Duyệt phiếu điều chỉnh.
+            /// Khi duyệt mới phát sinh InventoryTransaction.
+            /// </summary>
             public const string Approve = "inventory.adjustment.approve";
+
+            /// <summary>
+            /// Từ chối phiếu đang chờ duyệt.
+            /// </summary>
+            public const string Reject = "inventory.adjustment.reject";
+
+            /// <summary>
+            /// Hủy phiếu chưa duyệt.
+            /// </summary>
+            public const string Cancel = "inventory.adjustment.cancel";
         }
 
         public static class Balance
@@ -263,6 +283,7 @@ public static class PermissionCodes
             public const string Reprint = "pos.order.reprint";
             public const string Hold = "pos.order.hold";
             public const string Discount = "pos.order.discount";
+
         }
 
         public static class Shift
@@ -271,6 +292,8 @@ public static class PermissionCodes
             public const string Open = "pos.shift.open";
             public const string Close = "pos.shift.close";
             public const string Reconcile = "pos.shift.reconcile";
+            public const string TakeOver = "pos.shift.takeover";
+            public const string ForceClose = "pos.shift.forceclose";
         }
 
         public static class Payment

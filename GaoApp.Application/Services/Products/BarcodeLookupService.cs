@@ -159,6 +159,9 @@ public class BarcodeLookupService : IBarcodeLookupService
             Factor = unit.Factor,
             IsBaseUnitFallback = unit.IsBaseUnitFallback,
             SourceType = sourceType,
+            Price = unit.Price,
+            CostPrice = variant.CostPrice,
+            ImageUrl = BuildImageUrl(variant),
             Text = BuildLookupText(
                 variant.Product.Name,
                 variant.Sku,
@@ -167,6 +170,23 @@ public class BarcodeLookupService : IBarcodeLookupService
                 normalizedBarcode,
                 unit.IsBaseUnitFallback)
         });
+    }
+    private static string? BuildImageUrl(ProductVariant variant)
+    {
+        var storagePath = variant.PrimaryProductImage?.MediaAsset?.StoragePath;
+
+        if (string.IsNullOrWhiteSpace(storagePath))
+            return null;
+
+        storagePath = storagePath.Trim();
+
+        if (storagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            storagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return storagePath;
+        }
+
+        return "/" + storagePath.TrimStart('/');
     }
 
     /// <summary>
@@ -284,62 +304,110 @@ public class BarcodeLookupService : IBarcodeLookupService
     /// 2. Nếu barcode history có match -> trả variant tương ứng
     /// 3. Search keyword theo tên/SKU/... -> bung toàn bộ đơn vị của variant
     /// </summary>
+
     public async Task<List<StockDocumentLookupSelect2ItemDto>> SearchForStockDocumentSelect2Async(
-        string keyword,
-        int take = 20,
-        CancellationToken ct = default)
+      string keyword,
+      int take = 20,
+      CancellationToken ct = default)
     {
         keyword = (keyword ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(keyword))
             return new List<StockDocumentLookupSelect2ItemDto>();
 
+        take = take <= 0 ? 20 : take;
+
         var results = new List<StockDocumentLookupSelect2ItemDto>();
         var addedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var storeId = _currentStore.StoreId;
 
-        // 1) Barcode đơn vị quy đổi -> ưu tiên trả đúng unit đó
-        var unitBarcode = await _barcodeRepo.FindByBarcodeAsync(storeId, keyword, ct);
-        if (unitBarcode != null)
+        var isBarcodeKeyword = IsBarcodeKeyword(keyword);
+
+        // =========================================================
+        // 1) Nếu là barcode: ưu tiên match chính xác barcode đơn vị.
+        //    Match được thì trả đúng unit đó và DỪNG.
+        // =========================================================
+        if (isBarcodeKeyword)
         {
-            var conversion = unitBarcode.ProductUnitConversion
-                ?? throw new InvalidOperationException("ProductVariantUnitBarcode thiếu ProductUnitConversion.");
+            var unitBarcode = await _barcodeRepo.FindByBarcodeAsync(
+                storeId,
+                keyword,
+                ct);
 
-            var variant = conversion.ProductVariant
-                ?? throw new InvalidOperationException("ProductUnitConversion thiếu ProductVariant.");
-
-            var unitOption = BuildUnitOptionFromBarcodeMatch(unitBarcode);
-            AddLookupResult(results, addedKeys, variant, unitOption, keyword, "UnitBarcode");
-        }
-
-        // 2) Barcode history
-        // Tạm giữ logic cũ nếu history vẫn map ra variant-level.
-        var historyVariantId = await _variantRepo.ResolveVariantIdByBarcodeHistoryAsync(keyword, ct);
-        if (historyVariantId.HasValue)
-        {
-            var variantFromHistory = await _variantRepo.GetActiveWithProductAsync(historyVariantId.Value, ct);
-            if (variantFromHistory != null)
+            if (unitBarcode != null)
             {
-                var unitOptions = BuildUnitOptionsForVariant(variantFromHistory);
+                var conversion = unitBarcode.ProductUnitConversion
+                    ?? throw new InvalidOperationException(
+                        "ProductVariantUnitBarcode thiếu ProductUnitConversion.");
 
-                var fallbackBaseUnit = unitOptions.FirstOrDefault(x => x.IsBaseUnitFallback);
-                if (fallbackBaseUnit != null)
+                var variant = conversion.ProductVariant
+                    ?? throw new InvalidOperationException(
+                        "ProductUnitConversion thiếu ProductVariant.");
+
+                var unitOption = BuildUnitOptionFromBarcodeMatch(unitBarcode);
+
+                AddLookupResult(
+                    results,
+                    addedKeys,
+                    variant,
+                    unitOption,
+                    keyword,
+                    "UnitBarcode");
+
+                return results.Take(take).ToList();
+            }
+
+            // =====================================================
+            // 2) Barcode history: chỉ chạy khi không tìm thấy barcode hiện tại.
+            //    Vì history chỉ map variant-level nên fallback về base/default unit.
+            //    Match được thì cũng DỪNG, tránh bung ra nhiều đơn vị.
+            // =====================================================
+            var historyVariantId = await _variantRepo.ResolveVariantIdByBarcodeHistoryAsync(
+                keyword,
+                ct);
+
+            if (historyVariantId.HasValue)
+            {
+                var variantFromHistory = await _variantRepo.GetActiveWithProductAsync(
+                    historyVariantId.Value,
+                    ct);
+
+                if (variantFromHistory != null)
                 {
-                    AddLookupResult(results, addedKeys, variantFromHistory, fallbackBaseUnit, keyword, "BarcodeHistory");
-                }
-                else
-                {
-                    var firstUnit = unitOptions.FirstOrDefault();
-                    if (firstUnit != null)
+                    var unitOptions = BuildUnitOptionsForVariant(variantFromHistory);
+
+                    var fallbackUnit =
+       unitOptions.FirstOrDefault(x => x.IsBaseUnitFallback)
+       ?? unitOptions.FirstOrDefault();
+
+                    if (fallbackUnit != null)
                     {
-                        AddLookupResult(results, addedKeys, variantFromHistory, firstUnit, keyword, "BarcodeHistory");
+                        AddLookupResult(
+                            results,
+                            addedKeys,
+                            variantFromHistory,
+                            fallbackUnit,
+                            keyword,
+                            "BarcodeHistory");
+
+                        return results.Take(take).ToList();
                     }
                 }
             }
+
+            // Nếu là barcode số nhưng không tìm thấy gì,
+            // không search tiếp theo tên để tránh ra kết quả sai.
+            return new List<StockDocumentLookupSelect2ItemDto>();
         }
 
-        // 3) Search theo keyword -> bung ra toàn bộ đơn vị
-        var keywordMatches = await _variantRepo.SearchForPOSAsync(keyword, take, ct);
+        // =========================================================
+        // 3) Nhập tay theo tên: search variant rồi bung đơn vị.
+        //    JS sẽ gom lại theo ProductVariantId để mobile dễ chọn.
+        // =========================================================
+        var keywordMatches = await _variantRepo.SearchForPOSAsync(
+            keyword,
+            take,
+            ct);
 
         foreach (var variant in keywordMatches)
         {
@@ -347,11 +415,25 @@ public class BarcodeLookupService : IBarcodeLookupService
 
             foreach (var unit in unitOptions)
             {
-                AddLookupResult(results, addedKeys, variant, unit, unit.Barcode, "Keyword");
+                AddLookupResult(
+                    results,
+                    addedKeys,
+                    variant,
+                    unit,
+                    unit.Barcode,
+                    "Keyword");
             }
         }
 
         return results.Take(take).ToList();
+    }
+
+    private static bool IsBarcodeKeyword(string keyword)
+    {
+        keyword = (keyword ?? string.Empty).Trim();
+
+        return keyword.Length >= 6 &&
+               keyword.All(char.IsDigit);
     }
 
     /// <summary>
@@ -375,6 +457,11 @@ public class BarcodeLookupService : IBarcodeLookupService
             Barcode = x.Barcode,
             UnitName = x.UnitName,
             Factor = x.Factor,
+
+            ImageUrl = x.ImageUrl,
+            Price = x.Price,
+            CostPrice = x.CostPrice,
+
             IsBaseUnitFallback = x.IsBaseUnitFallback,
             SourceType = x.SourceType,
             Text = x.Text

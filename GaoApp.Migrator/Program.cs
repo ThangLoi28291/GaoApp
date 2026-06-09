@@ -7,11 +7,6 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 
-// =========================================================
-// Bootstrap logger:
-// Dùng để bắt log rất sớm khi app khởi động,
-// kể cả khi lỗi xảy ra trước lúc host build xong.
-// =========================================================
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .Enrich.FromLogContext()
@@ -24,11 +19,21 @@ try
 
     var builder = Host.CreateApplicationBuilder(args);
 
-    // =========================================================
-    // Gắn Serilog vào Host:
-    // - toàn bộ ILogger<T> sẽ đi qua Serilog
-    // - cấu hình thật đọc từ appsettings.json
-    // =========================================================
+    // QUAN TRỌNG:
+    // ép base path về thư mục output của chính executable
+    // để console app luôn đọc đúng appsettings.json của Migrator
+    builder.Configuration.Sources.Clear();
+    builder.Configuration
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+        .AddJsonFile(
+            $"appsettings.{builder.Environment.EnvironmentName}.json",
+            optional: true,
+            reloadOnChange: false)
+        .AddEnvironmentVariables();
+
+
+
     builder.Services.AddSerilog((services, configuration) =>
     {
         configuration
@@ -37,33 +42,18 @@ try
             .Enrich.FromLogContext();
     });
 
-    // =========================================================
-    // 1. Đọc cấu hình từ appsettings copy từ GaoApp.Web
-    // =========================================================
-    builder.Configuration
-        .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-        .AddJsonFile(
-            $"appsettings.{builder.Environment.EnvironmentName}.json",
-            optional: true,
-            reloadOnChange: false)
-        .AddEnvironmentVariables();
-
-    // =========================================================
-    // 2. Đăng ký dependency nền
-    // =========================================================
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
-    // =========================================================
-    // 3. Runner migrate + seed
-    // =========================================================
     builder.Services.AddScoped<MigrationRunner>();
 
     var host = builder.Build();
 
     using var scope = host.Services.CreateScope();
 
-    Log.Information("Running migration and seed");
+    Log.Information(
+        "Running migration and seed for environment: {EnvironmentName}",
+        builder.Environment.EnvironmentName);
 
     var runner = scope.ServiceProvider.GetRequiredService<MigrationRunner>();
     await runner.RunAsync();
@@ -73,6 +63,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "GaoApp.Migrator terminated unexpectedly");
+    throw;
 }
 finally
 {

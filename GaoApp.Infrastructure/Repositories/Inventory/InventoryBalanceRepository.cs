@@ -184,6 +184,45 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
         return (items, totalItems);
     }
 
+    public async Task<Dictionary<int, decimal>> GetAvailableQtyMapByVariantIdsAsync(
+    int storeId,
+    int warehouseId,
+    IReadOnlyCollection<int> variantIds,
+    CancellationToken ct = default)
+    {
+        if (storeId <= 0 || warehouseId <= 0 || variantIds == null || variantIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var normalizedVariantIds = variantIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        if (normalizedVariantIds.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var items = await _db.InventoryBalances
+            .AsNoTracking()
+            .Where(x =>
+                !x.IsDeleted &&
+                x.StoreId == storeId &&
+                x.WarehouseId == warehouseId &&
+                normalizedVariantIds.Contains(x.ProductVariantId))
+            .Select(x => new
+            {
+                x.ProductVariantId,
+                AvailableQty = x.OnHandQty - x.ReservedQty
+            })
+            .ToListAsync(ct);
+
+        return items.ToDictionary(
+            x => x.ProductVariantId,
+            x => x.AvailableQty);
+    }
     /// <summary>
     /// Áp dụng sort cho query tồn kho.
     /// </summary>

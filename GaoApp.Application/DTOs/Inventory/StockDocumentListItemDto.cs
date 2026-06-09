@@ -14,4 +14,12 @@ public class StockDocumentListItemDto
 
     public DateTime? SubmittedAtUtc { get; set; }
     public DateTime? ApprovedAtUtc { get; set; }
+    public string? DocumentTitle { get; set; }
+    public DateTime? CreatedAtUtc { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+    public int TotalProductTypes { get; set; }
+    public int TotalLines { get; set; }
+    public bool HasRevisionRequest { get; set; }
+    public string? RevisionRequestNote { get; set; }
+    public DateTime? RevisionRequestedAtUtc { get; set; }
 }

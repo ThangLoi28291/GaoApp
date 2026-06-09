@@ -32,16 +32,9 @@ public class AuthService : IAuthService
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var storeId = _currentStore.StoreId;
-
         var clientIp = _clientNetworkInfo.GetClientIp();
-        if (string.IsNullOrWhiteSpace(clientIp))
-            throw new InvalidOperationException("Không xác định được IP máy hiện tại.");
 
-        var terminal = await _terminals.GetByStoreAndIpAsync(storeId, clientIp, ct);
-        if (terminal == null)
-            throw new InvalidOperationException(
-                $"Máy hiện tại chưa được khai báo POS terminal cho store này. IP hiện tại: {clientIp}");
-
+        // 1. Kiểm tra tài khoản trước
         var user = await _users.GetByUserNameAsync(request.UserName.Trim(), ct)
             ?? throw new InvalidOperationException("Tài khoản hoặc mật khẩu không đúng.");
 
@@ -55,19 +48,68 @@ public class AuthService : IAuthService
         if (userInStore == null)
             throw new InvalidOperationException("Tài khoản không có quyền truy cập cửa hàng hiện tại.");
 
+        if (!userInStore.IsActive)
+            throw new InvalidOperationException("Tài khoản đã bị khóa tại cửa hàng hiện tại.");
+        if (userInStore.Role == null || userInStore.Role.IsDeleted)
+            throw new InvalidOperationException("Vai trò của tài khoản không còn hợp lệ.");
+        // 2. Resolve terminal bằng DeviceKey
+        var deviceKey = request.DeviceKey;
+        var devicePaired = false;
+
+        GaoApp.Domain.Entities.POSTerminal? terminal = null;
+
+        if (!string.IsNullOrWhiteSpace(deviceKey))
+        {
+            terminal = await _terminals.GetByDeviceKeyAsync(storeId, deviceKey, ct);
+        }
+
+        // 3. Nếu chưa có terminal từ cookie thì bắt buộc chọn terminal để ghép
+        if (terminal == null)
+        {
+            if (!request.SelectedTerminalId.HasValue || request.SelectedTerminalId.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Thiết bị này chưa được ghép POS. Vui lòng chọn máy POS để tiếp tục.");
+            }
+
+            deviceKey = Guid.NewGuid().ToString("N");
+
+            await _terminals.AttachDeviceAsync(
+                storeId: storeId,
+                terminalId: request.SelectedTerminalId.Value,
+                deviceKey: deviceKey,
+                deviceName: request.DeviceName,
+               userAgent: request.UserAgent,
+                lastIp: clientIp,
+                ct: ct);
+
+            terminal = await _terminals.GetByDeviceKeyAsync(storeId, deviceKey, ct);
+
+            if (terminal == null)
+                throw new InvalidOperationException("Ghép thiết bị POS không thành công. Vui lòng thử lại.");
+
+            devicePaired = true;
+        }
+
         return new LoginResponse
         {
             UserId = user.Id,
             UserName = user.UserName,
             FullName = user.FullName,
+
             RoleId = userInStore.RoleId,
             RoleCode = userInStore.Role?.Code ?? string.Empty,
             RoleName = userInStore.Role?.Name ?? string.Empty,
+
             StoreId = storeId,
+
             TerminalId = terminal.Id,
             TerminalCode = terminal.Code,
             TerminalName = terminal.Name,
-            ClientIp = clientIp
+
+            ClientIp = clientIp,
+            DeviceKey = deviceKey,
+            DevicePaired = devicePaired
         };
     }
 }

@@ -33,9 +33,9 @@ public class POSTerminal : BaseStoreEntity, IAuditTrackedEntity
     public string Name { get; set; } = default!;
 
     /// <summary>
-    /// IP nội bộ tĩnh của máy POS.
-    /// Dùng để tự động nhận diện terminal lúc đăng nhập.
-    /// Ví dụ: 192.168.1.20
+    /// IP nội bộ cũ của máy POS.
+    /// OBSOLETE: Không còn dùng để nhận diện terminal.
+    /// Chỉ giữ lại để tương thích dữ liệu cũ.
     /// </summary>
     [StringLength(100)]
     public string? LocalIp { get; set; }
@@ -47,9 +47,9 @@ public class POSTerminal : BaseStoreEntity, IAuditTrackedEntity
     public string? DeviceName { get; set; }
 
     /// <summary>
-    /// Có cho phép tự động bind terminal theo IP hay không.
+    /// OBSOLETE: Không còn dùng. Terminal hiện nhận diện bằng POSTerminalDevice.DeviceKey.
     /// </summary>
-    public bool AutoResolveByIp { get; set; } = true;
+    public bool AutoResolveByIp { get; set; } = false;
 
     /// <summary>
     /// Trạng thái terminal.
@@ -68,4 +68,8 @@ public class POSTerminal : BaseStoreEntity, IAuditTrackedEntity
     /// Danh sách ca đã mở trên terminal này.
     /// </summary>
     public ICollection<POSShift> Shifts { get; set; } = new List<POSShift>();
+    /// <summary>
+    /// Danh sách thiết bị đã ghép với terminal này.
+    /// </summary>
+    public ICollection<POSTerminalDevice> Devices { get; set; } = new List<POSTerminalDevice>();
 }

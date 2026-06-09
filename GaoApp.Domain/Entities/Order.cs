@@ -167,6 +167,38 @@ public class Order : BaseStoreEntity, IAuditTrackedEntity
     /// Thời điểm quản lý duyệt issue inventory.
     /// </summary>
     public DateTime? InventoryIssueApprovedAtUtc { get; set; }
+    /// <summary>
+    /// Tổng tiền giảm bằng voucher tích điểm.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal VoucherDiscountTotal { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal PromotionDiscountTotal { get; set; }
+    /// <summary>
+    /// Tổng tiền giảm do combo.
+    /// Ví dụ: SP1 + SP2 + SP3 giá gốc 33.000, combo còn 30.000
+    /// => ComboDiscountTotal = 3.000.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal ComboDiscountTotal { get; set; }
+
+    /// <summary>
+    /// PromotionId combo đang áp dụng.
+    /// Phase 1 chỉ lưu combo tốt nhất.
+    /// </summary>
+    public int? ComboPromotionId { get; set; }
+
+    /// <summary>
+    /// Tên combo snapshot.
+    /// </summary>
+    [StringLength(200)]
+    public string? ComboPromotionName { get; set; }
+
+    /// <summary>
+    /// Ghi chú combo hiển thị POS / bill.
+    /// </summary>
+    [StringLength(500)]
+    public string? ComboPromotionNote { get; set; }
 
     // =========================
     // NAVIGATION
@@ -181,4 +213,5 @@ public class Order : BaseStoreEntity, IAuditTrackedEntity
     public ICollection<OrderLine> Lines { get; set; } = new List<OrderLine>();
     public ICollection<OrderPayment> Payments { get; set; } = new List<OrderPayment>();
     public ICollection<SalesReturn> SalesReturns { get; set; } = new List<SalesReturn>();
+    public ICollection<OrderRewardVoucher> RewardVouchers { get; set; } = new List<OrderRewardVoucher>();
 }

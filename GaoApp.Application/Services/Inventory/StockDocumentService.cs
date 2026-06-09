@@ -61,13 +61,27 @@ public class StockDocumentService : IStockDocumentService
         {
             Id = x.Id,
             DocumentNo = x.DocumentNo,
+            DocumentTitle = x.DocumentTitle,
             DocumentDate = x.DocumentDate,
             WarehouseName = x.Warehouse?.Name ?? string.Empty,
             SupplierName = x.Supplier?.Name,
             Status = x.Status,
             TotalAmount = x.TotalAmount,
             SubmittedAtUtc = x.SubmittedAtUtc,
-            ApprovedAtUtc = x.ApprovedAtUtc
+            ApprovedAtUtc = x.ApprovedAtUtc,
+
+            CreatedAtUtc = x.CreatedAtUtc,
+            UpdatedAtUtc = x.UpdatedAtUtc,
+            // REVISION REQUEST
+            HasRevisionRequest = x.HasRevisionRequest,
+            RevisionRequestNote = x.RevisionRequestNote,
+            RevisionRequestedAtUtc = x.RevisionRequestedAtUtc,
+            TotalLines = x.Lines?.Count(l => !l.IsDeleted) ?? 0,
+            TotalProductTypes = x.Lines?
+         .Where(l => !l.IsDeleted)
+         .Select(l => l.ProductVariantId)
+         .Distinct()
+         .Count() ?? 0
         }).ToList();
     }
 
@@ -97,6 +111,7 @@ public class StockDocumentService : IStockDocumentService
         var document = new StockDocument
         {
             DocumentNo = documentNo,
+            DocumentTitle = request.DocumentTitle?.Trim(),
             Type = StockDocumentType.Receipt,
             Status = StockDocumentStatus.Draft,
             WarehouseId = request.WarehouseId,
@@ -117,19 +132,31 @@ public class StockDocumentService : IStockDocumentService
         var document = await _stockDocumentRepository.GetDetailAsync(id, ct);
         if (document == null) return null;
 
+        // Lấy map XML theo từng dòng nhập kho
+        var lineXmlMap = document.LineInputInvoiceMaps?
+            .Where(x => !x.IsDeleted)
+            .GroupBy(x => x.StockDocumentLineId)
+            .ToDictionary(x => x.Key, x => x.First())
+            ?? new Dictionary<int, StockDocumentLineInputInvoiceMap>();
+
         return new StockDocumentDto
         {
             Id = document.Id,
             DocumentNo = document.DocumentNo,
+            DocumentTitle = document.DocumentTitle,
             Type = document.Type,
             Status = document.Status,
             DocumentDate = document.DocumentDate,
+
             WarehouseId = document.WarehouseId,
             WarehouseName = document.Warehouse?.Name ?? string.Empty,
+
             SupplierId = document.SupplierId,
             SupplierName = document.Supplier?.Name,
+
             Note = document.Note,
             TotalAmount = document.TotalAmount,
+
             SubmittedAtUtc = document.SubmittedAtUtc,
             SubmittedByUserId = document.SubmittedByUserId,
             ApprovedAtUtc = document.ApprovedAtUtc,
@@ -137,30 +164,84 @@ public class StockDocumentService : IStockDocumentService
             ApprovalNote = document.ApprovalNote,
             ConfirmedAtUtc = document.ConfirmedAtUtc,
             ConfirmedByUserId = document.ConfirmedByUserId,
+            HasRevisionRequest = document.HasRevisionRequest,
+            RevisionRequestNote = document.RevisionRequestNote,
+            RevisionRequestedAtUtc = document.RevisionRequestedAtUtc,
+            RevisionRequestedByUserId = document.RevisionRequestedByUserId,
+            RevisionResolvedAtUtc = document.RevisionResolvedAtUtc,
+            RevisionResolvedByUserId = document.RevisionResolvedByUserId,
+
             Lines = document.Lines
+                .Where(x => !x.IsDeleted)
                 .OrderBy(x => x.LineNo)
-                .Select(x => new StockDocumentLineDto
+                .Select(x =>
                 {
-                    Id = x.Id,
-                    LineNo = x.LineNo,
-                    ProductVariantId = x.ProductVariantId,
-                    UnitId = x.UnitId,
-                    UnitName = x.UnitNameSnapshot,
-                    Factor = x.Factor,
-                    Quantity = x.Quantity,
-                    BaseQuantity = x.BaseQuantity,
-                    UnitCost = x.UnitCost,
-                    LineTotal = x.LineTotal,
-                    ProductNameSnapshot = x.ProductNameSnapshot,
-                    SkuSnapshot = x.SkuSnapshot,
-                    BarcodeSnapshot = x.BarcodeSnapshot,
-                    Note = x.Note
+                    lineXmlMap.TryGetValue(x.Id, out var xmlMap);
+
+                    return new StockDocumentLineDto
+                    {
+                        Id = x.Id,
+                        LineNo = x.LineNo,
+                        ProductVariantId = x.ProductVariantId,
+
+                        UnitId = x.UnitId,
+                        UnitName = x.UnitNameSnapshot,
+
+                        Factor = x.Factor,
+                        Quantity = x.Quantity,
+                        BaseQuantity = x.BaseQuantity,
+
+                        UnitCost = x.UnitCost,
+                        LineTotal = x.LineTotal,
+
+                        ProductNameSnapshot = x.ProductNameSnapshot,
+                        ProductImageUrl = BuildProductImageUrl(
+    x.ProductVariant?.PrimaryProductImage?.MediaAsset?.StoragePath),
+                        SkuSnapshot = x.SkuSnapshot,
+                        BarcodeSnapshot = x.BarcodeSnapshot,
+                        Note = x.Note,
+
+                        // ===============================
+                        // PHASE 2.5 - XML INPUT INVOICE
+                        // ===============================
+                        UseInputInvoice = xmlMap?.UseInputInvoice ?? false,
+                        InputInvoiceDetailId = xmlMap?.InputInvoiceDetailId,
+
+                        XmlItemName = xmlMap?.InputInvoiceDetail?.ItemName,
+                        XmlQuantity = xmlMap?.InputInvoiceDetail?.Quantity,
+                        XmlLineAmount = xmlMap?.InputInvoiceDetail?.LineAmount,
+
+                        InputInvoiceMatchStatus = xmlMap?.MatchStatus,
+                        QuantityDifference = xmlMap?.QuantityDifference ?? 0,
+                        AmountDifference = xmlMap?.AmountDifference ?? 0
+                    };
                 })
                 .ToList()
         };
     }
+    private static string? BuildProductImageUrl(string? storagePath)
+    {
+        if (string.IsNullOrWhiteSpace(storagePath))
+            return null;
 
-    public async Task<int> AddLineAsync(int documentId, AddStockDocumentLineRequest request, CancellationToken ct = default)
+        var path = storagePath.Trim().Replace("\\", "/");
+
+        if (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return path;
+        }
+
+        if (path.StartsWith("/"))
+            return path;
+
+        return "/" + path;
+    }
+
+    public async Task<int> AddLineAsync(
+     int documentId,
+     AddStockDocumentLineRequest request,
+     CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetDetailAsync(documentId, ct);
         if (document == null)
@@ -168,13 +249,65 @@ public class StockDocumentService : IStockDocumentService
 
         EnsureEditable(document.Status);
 
-        var variant = await _stockDocumentRepository.GetVariantForStockDocumentAsync(request.ProductVariantId, ct);
+        if (request.Quantity <= 0)
+            throw new InvalidOperationException("Số lượng phải lớn hơn 0.");
+
+        var variant = await _stockDocumentRepository.GetVariantForStockDocumentAsync(
+            request.ProductVariantId,
+            ct);
+
         if (variant == null)
             throw new InvalidOperationException("Sản phẩm không tồn tại.");
 
-        var conversion = await _inventoryUnitResolver.ResolveAsync(request.ProductVariantId, request.UnitId, ct);
+        var conversion = await _inventoryUnitResolver.ResolveAsync(
+            request.ProductVariantId,
+            request.UnitId,
+            ct);
+        // Giá nhập thực tế ưu tiên lấy từ popup.
+        // Nếu không truyền lên thì mới fallback về giá vốn hiện tại của sản phẩm.
+        var unitCost = request.UnitCost > 0
+    ? request.UnitCost
+    : variant.CostPrice;
 
-        var unitCost = variant.CostPrice;
+        if (unitCost <= 0)
+            throw new InvalidOperationException("Đơn giá nhập phải lớn hơn 0.");
+        var baseQuantityToAdd = request.Quantity * conversion.Factor;
+        var lineTotalToAdd = baseQuantityToAdd * unitCost;
+        var barcodeSnapshot = ResolveBarcodeSnapshot(variant, conversion.UnitId);
+
+        // STOCKDOC.UI:
+        // Nếu đã có dòng cùng sản phẩm + đơn vị + giá vốn thì cộng dồn,
+        // không tạo dòng mới để tránh trùng như hình.
+        var existingLine = document.Lines.FirstOrDefault(x =>
+            !x.IsDeleted &&
+            x.ProductVariantId == request.ProductVariantId &&
+            x.UnitId == conversion.UnitId &&
+            x.UnitCost == unitCost);
+
+        if (existingLine != null)
+        {
+            existingLine.Quantity += request.Quantity;
+            existingLine.BaseQuantity += baseQuantityToAdd;
+            existingLine.LineTotal += lineTotalToAdd;
+            existingLine.Factor = conversion.Factor;
+            existingLine.UnitNameSnapshot = conversion.UnitName;
+            existingLine.BarcodeSnapshot = barcodeSnapshot;
+            existingLine.SkuSnapshot = variant.Sku;
+            existingLine.ProductNameSnapshot =
+                !string.IsNullOrWhiteSpace(variant.ProductVariantName)
+                    ? variant.ProductVariantName
+                    : (variant.Product?.Name ?? $"Variant #{variant.Id}");
+
+            if (!string.IsNullOrWhiteSpace(request.Note))
+                existingLine.Note = request.Note;
+
+            document.TotalAmount = document.Lines
+                .Where(x => !x.IsDeleted)
+                .Sum(x => x.LineTotal);
+
+            await _stockDocumentRepository.SaveChangesAsync(ct);
+            return existingLine.Id;
+        }
 
         var line = new StockDocumentLine
         {
@@ -185,17 +318,25 @@ public class StockDocumentService : IStockDocumentService
             UnitNameSnapshot = conversion.UnitName,
             Factor = conversion.Factor,
             Quantity = request.Quantity,
-            BaseQuantity = request.Quantity * conversion.Factor,
+            BaseQuantity = baseQuantityToAdd,
             UnitCost = unitCost,
-            LineTotal = (request.Quantity * conversion.Factor) * unitCost,
-            ProductNameSnapshot = variant.Product?.Name ?? $"Variant #{variant.Id}",
+            LineTotal = lineTotalToAdd,
+
+            ProductNameSnapshot =
+                !string.IsNullOrWhiteSpace(variant.ProductVariantName)
+                    ? variant.ProductVariantName
+                    : (variant.Product?.Name ?? $"Variant #{variant.Id}"),
+
             SkuSnapshot = variant.Sku,
-            BarcodeSnapshot = ResolveBarcodeSnapshot(variant, conversion.UnitId),
+            BarcodeSnapshot = barcodeSnapshot,
             Note = request.Note
         };
 
         document.Lines.Add(line);
-        document.TotalAmount += line.LineTotal;
+
+        document.TotalAmount = document.Lines
+            .Where(x => !x.IsDeleted)
+            .Sum(x => x.LineTotal);
 
         await _stockDocumentRepository.SaveChangesAsync(ct);
 
@@ -349,11 +490,20 @@ public class StockDocumentService : IStockDocumentService
         document.SubmittedAtUtc = DateTime.UtcNow;
         document.SubmittedByUserId = null;
         document.ApprovalNote = approvalNote;
+        document.HasRevisionRequest = false;
+        document.RevisionRequestNote = null;
+        document.RevisionRequestedAtUtc = null;
+        document.RevisionRequestedByUserId = null;
+        document.RevisionResolvedAtUtc = null;
+        document.RevisionResolvedByUserId = null;
 
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 
-    public async Task ApproveAsync(int documentId, string? approvalNote = null, CancellationToken ct = default)
+    public async Task ApproveAsync(
+      int documentId,
+      string? approvalNote = null,
+      CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct);
         if (document == null)
@@ -437,6 +587,32 @@ public class StockDocumentService : IStockDocumentService
                 }
             }
 
+            // =====================================================
+            // PHASE 2.7:
+            // Dòng nhập nào được đánh dấu UseInputInvoice = true
+            // thì bật ProductVariant.HasInputInvoice = true.
+            //
+            // Lưu ý:
+            // - Không set false cho các dòng không thuộc XML.
+            // - Vì 1 variant có thể đã từng có hóa đơn đầu vào ở phiếu khác.
+            // =====================================================
+            var useInputInvoiceLineIds = document.LineInputInvoiceMaps
+                .Where(x => !x.IsDeleted && x.UseInputInvoice)
+                .Select(x => x.StockDocumentLineId)
+                .Distinct()
+                .ToHashSet();
+
+            var inputInvoiceVariantIds = activeLines
+                .Where(x => useInputInvoiceLineIds.Contains(x.Id))
+                .Select(x => x.ProductVariantId)
+                .Distinct()
+                .ToList();
+
+            await _stockDocumentRepository.MarkVariantsHasInputInvoiceAsync(
+                inputInvoiceVariantIds,
+                userId: null,
+                ct);
+
             document.Status = StockDocumentStatus.Confirmed;
             document.ApprovedAtUtc = occurredAtUtc;
             document.ApprovedByUserId = null;
@@ -465,6 +641,9 @@ public class StockDocumentService : IStockDocumentService
 
         document.Status = StockDocumentStatus.Rejected;
         document.ApprovalNote = approvalNote;
+        document.HasRevisionRequest = false;
+        document.RevisionResolvedAtUtc = DateTime.UtcNow;
+        document.RevisionResolvedByUserId = null;
 
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
@@ -601,4 +780,66 @@ public class StockDocumentService : IStockDocumentService
     {
         return $"NK-{documentDate:yyyyMMdd}-{sequence:D4}";
     }
+    public async Task RequestRevisionAsync(
+    int documentId,
+    string note,
+    CancellationToken ct = default)
+    {
+        var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
+        if (document == null)
+            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+
+        if (document.Status != StockDocumentStatus.PendingApproval)
+            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được đề nghị sửa.");
+
+        if (document.HasRevisionRequest)
+            throw new InvalidOperationException("Phiếu này đã có yêu cầu sửa, vui lòng chờ quản lý xử lý.");
+
+        note = (note ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(note))
+            throw new InvalidOperationException("Vui lòng nhập lý do đề nghị sửa.");
+
+        if (note.Length > 1000)
+            throw new InvalidOperationException("Lý do đề nghị sửa không được vượt quá 1000 ký tự.");
+
+        document.HasRevisionRequest = true;
+        document.RevisionRequestNote = note;
+        document.RevisionRequestedAtUtc = DateTime.UtcNow;
+        document.RevisionRequestedByUserId = null;
+
+        await _stockDocumentRepository.SaveChangesAsync(ct);
+    }
+
+    public async Task ResolveRevisionRequestAsync(
+        int documentId,
+        bool returnToEdit,
+        string? approvalNote = null,
+        CancellationToken ct = default)
+    {
+        var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
+        if (document == null)
+            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+
+        if (document.Status != StockDocumentStatus.PendingApproval)
+            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới xử lý được yêu cầu sửa.");
+
+        if (!document.HasRevisionRequest)
+            throw new InvalidOperationException("Phiếu này chưa có yêu cầu sửa.");
+
+        document.HasRevisionRequest = false;
+        document.RevisionResolvedAtUtc = DateTime.UtcNow;
+        document.RevisionResolvedByUserId = null;
+
+        if (returnToEdit)
+        {
+            document.Status = StockDocumentStatus.Rejected;
+            document.ApprovalNote = string.IsNullOrWhiteSpace(approvalNote)
+                ? document.RevisionRequestNote
+                : approvalNote.Trim();
+        }
+
+        await _stockDocumentRepository.SaveChangesAsync(ct);
+    }
+
 }

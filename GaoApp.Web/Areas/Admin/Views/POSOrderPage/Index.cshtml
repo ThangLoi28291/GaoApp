@@ -350,10 +350,40 @@
                 padding: 16px;
             }
         }
+        .pos-voucher-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 150px;
+}
+
+.pos-voucher-empty {
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: .82rem;
+}
+
+.pos-voucher-code {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #2957c8;
+    padding: 5px 10px;
+    font-size: .78rem;
+    font-weight: 900;
+}
+
+.pos-voucher-amount {
+    font-size: .78rem;
+    color: #64748b;
+    font-weight: 800;
+}
 
     </style>
 }
-
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
 <div class="pos-orders-page">
     <div class="pos-page-head">
         <h3 class="pos-page-title">Đơn POS</h3>
@@ -447,6 +477,7 @@
                                 <th style="width:130px;">Trạng thái</th>
                                 <th style="width:130px;">Thanh toán</th>
                                 <th style="width:170px;">Hậu mãi</th>
+                                <th style="width:180px;">Voucher</th>
                                 <th style="width:160px;">Tổng tiền</th>
                                 <th style="width:160px;">Đã thanh toán</th>
                                 <th style="width:160px;">Còn thiếu</th>
@@ -457,7 +488,7 @@
                         </thead>
                         <tbody id="ordersBody">
                             <tr>
-                                <td colspan="10" class="text-center text-muted py-4">Đang tải...</td>
+                                <td colspan="11" class="text-center text-muted py-4">Đang tải...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -587,6 +618,36 @@
                 </div>
             `;
         }
+        function renderVoucherCell(x) {
+    const total = Number(x.voucherDiscountTotal || x.VoucherDiscountTotal || 0);
+    const vouchers = x.rewardVouchers || x.RewardVouchers || [];
+
+    if (!total && (!vouchers || vouchers.length === 0)) {
+        return `<span class="pos-voucher-empty">-</span>`;
+    }
+
+    return `
+        <div class="pos-voucher-box">
+            <span class="pos-badge pos-badge-info">Có voucher</span>
+
+            ${(vouchers || []).slice(0, 2).map(v => `
+                <span class="pos-voucher-code">
+                    ${escapeHtml(v.voucherCode || v.VoucherCode || '')}
+                </span>
+            `).join('')}
+
+            ${(vouchers || []).length > 2 ? `
+                <div class="pos-voucher-amount">
+                    +${(vouchers || []).length - 2} phiếu khác
+                </div>
+            ` : ''}
+
+            <div class="pos-voucher-amount">
+                Giảm: <strong>${formatMoney(total)} đ</strong>
+            </div>
+        </div>
+    `;
+}
 
         function canVoidCompletedOrderOnClient(completedAtUtc) {
             if (!completedAtUtc) return false;
@@ -633,6 +694,7 @@
                         <td>${getStatusBadge(x.status)}</td>
                         <td>${getPaymentBadge(x.paymentStatus, x.refundedTotal)}</td>
                         <td>${renderAfterSaleCell(x)}</td>
+                        <td>${renderVoucherCell(x)}</td>
                         <td>
                             <span class="pos-amount-main">${formatMoney(x.grandTotal)}</span>
                             <span class="pos-amount-sub">Tổng hóa đơn</span>

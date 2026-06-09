@@ -118,7 +118,12 @@ public class UserInStoresController : BaseAdminController
         {
             Id = dto.Id,
             RoleId = dto.RoleId,
-            IsActive = dto.IsActive
+            IsActive = dto.IsActive,
+
+            PhoneNumber = dto.PhoneNumber,
+            PositionName = dto.PositionName,
+            JoinedDate = dto.JoinedDate,
+            Note = dto.Note
         };
 
         return View(model);
@@ -207,5 +212,85 @@ public class UserInStoresController : BaseAdminController
 
         ViewBag.CanDelete = await _currentStorePermissionService.HasPermissionAsync(
             storeId, userId, PermissionCodes.Security.UserInStore.Delete, ct);
+    }
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Security.UserInStore.Create)]
+    public async Task<IActionResult> CreateEmployee(CreateEmployeeInStoreRequest request, CancellationToken ct)
+    {
+        var storeId = CurrentStoreId;
+        var userId = CurrentUserId;
+
+        if (!ModelState.IsValid)
+        {
+            ToastError("Dữ liệu tạo nhân viên chưa hợp lệ.");
+            return RedirectToAction(nameof(Create));
+        }
+
+        var result = await _userInStoreAdminService.CreateEmployeeAsync(
+            storeId,
+            userId,
+            request,
+            ct);
+
+        if (!result.Success)
+        {
+            ToastError(result.ErrorMessage ?? "Tạo nhân viên không thành công.");
+            return RedirectToAction(nameof(Create));
+        }
+
+        ToastSuccess("Tạo nhân viên mới thành công.");
+        return RedirectToAction(nameof(Index));
+    }
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Security.UserInStore.Update)]
+    public async Task<IActionResult> ResetPassword(
+    ResetPasswordRequest request,
+    CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            ToastError("Mật khẩu không hợp lệ.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        var result = await _userInStoreAdminService.ResetPasswordAsync(
+            CurrentStoreId,
+            request.UserId,
+            request.NewPassword,
+            CurrentUserId,
+            ct);
+
+        if (!result.Success)
+        {
+            ToastError(result.ErrorMessage ?? "Không thể đổi mật khẩu.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        ToastSuccess("Đã đổi mật khẩu thành công.");
+        return RedirectToAction(nameof(Index));
+    }
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Security.UserInStore.Update)]
+    public async Task<IActionResult> ToggleActive(
+    int id,
+    CancellationToken ct)
+    {
+        var result = await _userInStoreAdminService.ToggleActiveAsync(
+            CurrentStoreId,
+            id,
+            CurrentUserId,
+            ct);
+
+        if (!result.Success)
+        {
+            ToastError(result.ErrorMessage ?? "Không thể cập nhật trạng thái.");
+            return RedirectToAction(nameof(Index));
+        }
+
+        ToastSuccess("Đã cập nhật trạng thái nhân viên.");
+        return RedirectToAction(nameof(Index));
     }
 }

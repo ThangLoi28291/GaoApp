@@ -1,6 +1,5 @@
 ﻿namespace GaoApp.Application.DTOs.Inventory.Warehouse;
 
-
 public class UpdateWarehouseRequest
 {
     public int Id { get; set; }
@@ -10,4 +9,6 @@ public class UpdateWarehouseRequest
     public string? Note { get; set; }
     public bool IsDefault { get; set; }
     public bool IsActive { get; set; }
+
+    public bool AllowNegativeInventory { get; set; }
 }

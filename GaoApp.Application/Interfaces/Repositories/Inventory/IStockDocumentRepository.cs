@@ -52,7 +52,10 @@ public interface IStockDocumentRepository
     Task RollbackTransactionAsync(CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
- 
 
+    Task MarkVariantsHasInputInvoiceAsync(
+    IEnumerable<int> productVariantIds,
+    int? userId,
+    CancellationToken ct = default);
 
 }

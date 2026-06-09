@@ -13,4 +13,6 @@ public class CreateStockDocumentRequest
 
     [StringLength(1000)]
     public string? Note { get; set; }
+    [StringLength(255)]
+    public string? DocumentTitle { get; set; }
 }

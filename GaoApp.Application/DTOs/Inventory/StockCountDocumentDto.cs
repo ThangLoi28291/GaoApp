@@ -14,6 +14,7 @@ public class StockCountDocumentDto
     /// Số phiếu kiểm kê.
     /// </summary>
     public string DocumentNo { get; set; } = string.Empty;
+    public string? DocumentName { get; set; }
 
     /// <summary>
     /// Ngày chứng từ.

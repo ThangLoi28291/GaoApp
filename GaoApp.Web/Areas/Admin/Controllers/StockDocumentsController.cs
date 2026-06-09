@@ -1,5 +1,8 @@
-﻿using GaoApp.Application.Common.Security;
+﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.Products;
@@ -31,79 +34,62 @@ public class StockDocumentsController : ControllerBase
     private readonly IStockDocumentService _stockDocumentService;
     private readonly IBarcodeLookupService _barcodeLookupService;
     private readonly IPOSService _posService;
-    private readonly AppDbContext _context;
+    private readonly IStockDocumentLookupService _stockDocumentLookupService;
+    private readonly ITenantContext _tenantContext;
+    private readonly IInputInvoiceXmlService _inputInvoiceXmlService;
 
     public StockDocumentsController(
-        IStockDocumentService stockDocumentService,
-        IBarcodeLookupService barcodeLookupService,
-        IPOSService posService,
-        AppDbContext context)
+      IStockDocumentService stockDocumentService,
+      IStockDocumentLookupService stockDocumentLookupService,
+      IBarcodeLookupService barcodeLookupService,
+      IPOSService posService,
+      ITenantContext tenantContext,
+IInputInvoiceXmlService inputInvoiceXmlService)
     {
         _stockDocumentService = stockDocumentService;
+        _stockDocumentLookupService = stockDocumentLookupService;
         _barcodeLookupService = barcodeLookupService;
         _posService = posService;
-        _context = context;
+        _tenantContext = tenantContext;
+        _inputInvoiceXmlService = inputInvoiceXmlService;
     }
+
 
     /// <summary>
     /// Lấy danh sách đơn vị của 1 biến thể sản phẩm.
     /// API này có thể dùng ở màn xem chi tiết nên chỉ cần quyền xem.
     /// </summary>
+
     [HttpGet("product-variants/{variantId:int}/units")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentView)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
     public async Task<IActionResult> GetVariantUnits(int variantId, CancellationToken ct)
     {
-        var variant = await _context.ProductVariants
-            .Include(x => x.Product)
-                .ThenInclude(x => x.BaseUnit)
-            .FirstOrDefaultAsync(x => x.Id == variantId, ct);
-
-        if (variant == null)
+        if (variantId <= 0)
         {
-            return NotFound(new
+            return BadRequest(new
             {
-                message = "Không tìm thấy biến thể sản phẩm."
+                message = "Variant không hợp lệ."
             });
         }
 
-        var conversions = await _context.ProductUnitConversions
-            .Include(x => x.Unit)
-            .Where(x => x.ProductVariantId == variantId && x.IsActive)
-            .OrderByDescending(x => x.IsBaseUnit)
-            .ThenByDescending(x => x.IsDefaultForSale)
-            .ThenBy(x => x.SortOrder)
-            .Select(x => new
-            {
-                unitId = x.UnitId,
-                unitName = x.Unit.Name,
-                factor = x.Factor,
-                isBaseUnit = x.IsBaseUnit,
-                isDefaultForSale = x.IsDefaultForSale
-            })
-            .ToListAsync(ct);
+        var units = await _stockDocumentLookupService.GetVariantUnitsAsync(variantId, ct);
 
-        if (conversions.Any())
+        if (units == null || units.Count == 0)
         {
-            return Ok(conversions);
+            return NotFound(new
+            {
+                message = "Không tìm thấy biến thể sản phẩm hoặc chưa cấu hình đơn vị."
+            });
         }
 
-        // Fallback: chưa có ProductUnitConversion thì dùng BaseUnit của Product
-        if (variant.Product?.BaseUnit == null)
+        return Ok(units.Select(x => new
         {
-            return Ok(new List<object>());
-        }
-
-        return Ok(new[]
-        {
-            new
-            {
-                unitId = variant.Product.BaseUnitId,
-                unitName = variant.Product.BaseUnit.Name,
-                factor = 1m,
-                isBaseUnit = true,
-                isDefaultForSale = true
-            }
-        });
+            unitId = x.UnitId,
+            unitName = x.UnitName,
+            factor = x.Factor,
+            isBaseUnit = x.IsBaseUnit,
+            isDefaultForSale = x.IsDefaultForSale
+        }));
     }
 
     /// <summary>
@@ -111,7 +97,7 @@ public class StockDocumentsController : ControllerBase
     /// Chỉ cần quyền xem chứng từ kho.
     /// </summary>
     [HttpGet("receipts")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentView)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.View)]
     public async Task<IActionResult> GetReceiptList(CancellationToken ct)
     {
         var result = await _stockDocumentService.GetReceiptListAsync(ct);
@@ -123,7 +109,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpPost("receipts")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
     public async Task<IActionResult> CreateReceipt(
         [FromBody] CreateStockDocumentRequest request,
         CancellationToken ct)
@@ -142,7 +128,7 @@ public class StockDocumentsController : ControllerBase
     /// Chỉ cần quyền xem.
     /// </summary>
     [HttpGet("{id:int}")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentView)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.View)]
     public async Task<IActionResult> GetDetail(int id, CancellationToken ct)
     {
         var result = await _stockDocumentService.GetDetailAsync(id, ct);
@@ -162,7 +148,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpGet("lookup-barcode")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
     public async Task<IActionResult> LookupBarcode([FromQuery] string barcode, CancellationToken ct)
     {
         var result = await _barcodeLookupService.FindAsync(barcode, ct);
@@ -200,7 +186,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpGet("search-products")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
     public async Task<IActionResult> SearchProducts([FromQuery] string keyword, CancellationToken ct)
     {
         var result = await _posService.SearchProductsForPOSAsync(keyword, 20, ct);
@@ -212,7 +198,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/lines")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
     public async Task<IActionResult> AddLine(
         int id,
         [FromBody] AddStockDocumentLineRequest request,
@@ -232,43 +218,19 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/lines/by-barcode")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
     public async Task<IActionResult> AddLineByBarcode(
-        int id,
-        [FromBody] AddStockDocumentLineByBarcodeRequest request,
-        CancellationToken ct)
+    int id,
+    [FromBody] AddStockDocumentLineByBarcodeRequest request,
+    CancellationToken ct)
     {
-        try
-        {
-            var lineId = await _stockDocumentService.AddLineByBarcodeAsync(id, request, ct);
+        var lineId = await _stockDocumentService.AddLineByBarcodeAsync(id, request, ct);
 
-            return Ok(new
-            {
-                message = "Thêm dòng bằng barcode thành công.",
-                lineId
-            });
-        }
-        catch (InvalidOperationException ex)
+        return Ok(new
         {
-            return BadRequest(new
-            {
-                message = ex.Message
-            });
-        }
-        catch (DbUpdateException ex)
-        {
-            return StatusCode(500, new
-            {
-                message = ex.InnerException?.Message ?? ex.Message
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                message = ex.Message
-            });
-        }
+            message = "Thêm dòng bằng barcode thành công.",
+            lineId
+        });
     }
 
     /// <summary>
@@ -276,7 +238,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpPut("{documentId:int}/lines/{lineId:int}")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
     public async Task<IActionResult> UpdateLine(
         int documentId,
         int lineId,
@@ -296,7 +258,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpDelete("{documentId:int}/lines/{lineId:int}")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Delete)]
     public async Task<IActionResult> DeleteLine(
         int documentId,
         int lineId,
@@ -315,7 +277,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/submit-approval")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentCreate)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
     public async Task<IActionResult> SubmitApproval(
         int id,
         [FromBody] ApprovalActionRequest? request,
@@ -335,7 +297,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền duyệt chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/approve")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentApprove)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
     public async Task<IActionResult> Approve(
         int id,
         [FromBody] ApprovalActionRequest? request,
@@ -355,7 +317,7 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền duyệt chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/reject")]
-    [Authorize(Policy = AppPermissions.InventoryStockDocumentApprove)]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Cancel)]
     public async Task<IActionResult> Reject(
         int id,
         [FromBody] ApprovalActionRequest? request,
@@ -369,4 +331,242 @@ public class StockDocumentsController : ControllerBase
             redirectUrl = Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })
         });
     }
+    [HttpPost("{id:int}/input-invoices/upload-xml")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> UploadInputInvoiceXml(
+    int id,
+    IFormFile file,
+    CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Không xác định được cửa hàng hiện tại."
+            });
+        }
+
+        if (file == null || file.Length == 0)
+        {
+            return BadRequest(new
+            {
+                message = "Vui lòng chọn file XML."
+            });
+        }
+
+        var ext = Path.GetExtension(file.FileName);
+        if (!string.Equals(ext, ".xml", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "Chỉ hỗ trợ file XML."
+            });
+        }
+
+        await using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+
+        var result = await _inputInvoiceXmlService.UploadXmlAsync(
+            _tenantContext.StoreId.Value,
+            new UploadInputInvoiceXmlRequest
+            {
+                StockDocumentId = id,
+                OriginalFileName = file.FileName,
+                FileBytes = ms.ToArray()
+            },
+            ct);
+
+        return Ok(new
+        {
+            message = result.IsExistingInvoice
+                ? "XML này đã tồn tại, đã gắn vào phiếu nhập hiện tại."
+                : "Đã upload và đọc XML thành công.",
+            data = result
+        });
+    }
+    [HttpGet("{id:int}/input-invoices")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> GetInputInvoices(
+    int id,
+    CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Không xác định được cửa hàng hiện tại."
+            });
+        }
+
+        var result = await _inputInvoiceXmlService.GetInvoicesByStockDocumentAsync(
+            _tenantContext.StoreId.Value,
+            id,
+            ct);
+
+        return Ok(result);
+    }
+    [HttpGet("{id:int}/input-invoices/line-maps")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> GetInputInvoiceLineMaps(
+    int id,
+    CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Không xác định được cửa hàng hiện tại."
+            });
+        }
+
+        var result = await _inputInvoiceXmlService.GetLineMapsAsync(
+            _tenantContext.StoreId.Value,
+            id,
+            ct);
+
+        return Ok(result);
+    }
+
+    [HttpPost("{id:int}/input-invoices/line-maps")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> UpdateInputInvoiceLineMap(
+        int id,
+        [FromBody] UpdateStockDocumentLineInputInvoiceMapRequest request,
+        CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Không xác định được cửa hàng hiện tại."
+            });
+        }
+
+        try
+        {
+            await _inputInvoiceXmlService.UpdateLineMapAsync(
+                _tenantContext.StoreId.Value,
+                id,
+                request,
+                ct);
+
+            return Ok(new
+            {
+                message = "Đã cập nhật map dòng XML."
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+    [HttpPost("{id:int}/input-invoices/line-maps/bulk")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> BulkUpdateInputInvoiceLineMaps(
+    int id,
+    [FromBody] BulkUpdateStockDocumentLineInputInvoiceRequest request,
+    CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+        {
+            return BadRequest(new
+            {
+                message = "Không xác định được cửa hàng hiện tại."
+            });
+        }
+
+        try
+        {
+            await _inputInvoiceXmlService.BulkUpdateLineMapsAsync(
+                _tenantContext.StoreId.Value,
+                id,
+                request.UseInputInvoice,
+                ct);
+
+            return Ok(new
+            {
+                message = request.UseInputInvoice
+                    ? "Đã chọn tất cả dòng thuộc hóa đơn XML."
+                    : "Đã bỏ chọn tất cả dòng khỏi hóa đơn XML."
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+    /// <summary>
+    /// Nhân viên gửi yêu cầu xin sửa phiếu sau khi đã gửi duyệt.
+    /// Phiếu vẫn ở trạng thái PendingApproval, quản lý sẽ quyết định có trả về sửa hay không.
+    /// </summary>
+    [HttpPost("{id:int}/request-revision")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
+    public async Task<IActionResult> RequestRevision(
+        int id,
+        [FromBody] ApprovalActionRequest? request,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _stockDocumentService.RequestRevisionAsync(id, request?.Note ?? string.Empty, ct);
+
+            return Ok(new
+            {
+                message = "Đã gửi yêu cầu sửa phiếu cho quản lý.",
+                redirectUrl = Url.Action("Detail", "WarehouseReceiving", new { area = "Admin", id })
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
+    /// <summary>
+    /// Quản lý xử lý yêu cầu sửa phiếu.
+    /// - ReturnToEdit = true: trả phiếu về Rejected để nhân viên sửa.
+    /// - ReturnToEdit = false: bỏ qua yêu cầu sửa, phiếu vẫn PendingApproval.
+    /// </summary>
+    [HttpPost("{id:int}/resolve-revision-request")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> ResolveRevisionRequest(
+        int id,
+        [FromBody] ResolveRevisionRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _stockDocumentService.ResolveRevisionRequestAsync(
+                id,
+                request.ReturnToEdit,
+                request.Note,
+                ct);
+
+            return Ok(new
+            {
+                message = request.ReturnToEdit
+                    ? "Đã trả phiếu về cho nhân viên sửa."
+                    : "Đã bỏ qua yêu cầu sửa.",
+                redirectUrl = Url.Action("Edit", "StockDocumentManagement", new { area = "Admin", id })
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                message = ex.Message
+            });
+        }
+    }
+
+
 }

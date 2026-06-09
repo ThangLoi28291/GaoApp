@@ -41,7 +41,36 @@ public class ProductVariant : BaseStoreEntity, IAuditTrackedEntity
 
     public int? PrimaryProductImageId { get; set; }
     public ProductImage? PrimaryProductImage { get; set; }
-    
+    /// <summary>
+    /// Cờ nghiệp vụ: biến thể này có hóa đơn đầu vào hợp lệ hay không.
+    /// 
+    /// true:
+    /// - Khi POS bán ra, OrderLine của variant này sẽ được đưa vào InvoiceDetail bán ra.
+    /// 
+    /// false:
+    /// - Vẫn cho bán bình thường.
+    /// - Nhưng không đưa vào InvoiceDetail/sổ hóa đơn bán ra.
+    /// 
+    /// Cờ này có thể được bật/tắt thủ công.
+    /// Sau này khi map XML đầu vào thành công, hệ thống cũng có thể tự bật true.
+    /// </summary>
+    public bool HasInputInvoice { get; set; } = false;
+    /// <summary>
+    /// Giá sỉ theo đơn vị gốc của variant.
+    /// 
+    /// Ví dụ:
+    /// - Sản phẩm bán theo lon/chai/gói/cái.
+    /// - Nếu khách là WHOLESALE và đơn vị quy đổi không có giá sỉ riêng,
+    ///   POS sẽ fallback về giá này.
+    /// 
+    /// Null hoặc <= 0:
+    /// - Không có giá sỉ.
+    /// - POS sẽ dùng giá lẻ như hiện tại.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    [Range(0, double.MaxValue, ErrorMessage = "Giá sỉ không hợp lệ.")]
+    public decimal? WholesalePrice { get; set; }
+
 
     public ICollection<ProductVariantAttributeValue> AttributeValues { get; set; } = new List<ProductVariantAttributeValue>();
 

@@ -29,6 +29,19 @@ public class ProductUnitConversion : BaseStoreEntity
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal? Price { get; set; }
+    /// <summary>
+    /// Giá sỉ riêng cho đơn vị quy đổi.
+    /// 
+    /// Ví dụ:
+    /// - lon: giá lẻ 10.000, giá sỉ 9.500
+    /// - lốc: giá lẻ 58.000, giá sỉ 55.000
+    /// - thùng: giá lẻ 220.000, giá sỉ 210.000
+    /// 
+    /// Đây là giá ưu tiên cao nhất khi khách thuộc nhóm WHOLESALE.
+    /// </summary>
+    [Column(TypeName = "decimal(18,2)")]
+    [Range(0, double.MaxValue, ErrorMessage = "Giá sỉ không hợp lệ.")]
+    public decimal? WholesalePrice { get; set; }
 
     public bool IsActive { get; set; } = true;
 

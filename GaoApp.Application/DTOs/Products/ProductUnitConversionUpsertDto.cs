@@ -18,6 +18,11 @@ public class ProductUnitConversionUpsertDto
     public bool IsBaseUnit { get; set; } = false;
     public bool IsDefaultForSale { get; set; } = false;
     public decimal? Price { get; set; }
+    /// <summary>
+    /// Giá sỉ riêng cho đơn vị quy đổi: lon/lốc/thùng.
+    /// Null hoặc <= 0 nghĩa là dùng giá lẻ.
+    /// </summary>
+    public decimal? WholesalePrice { get; set; }
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; } = 0;
 }

@@ -31,9 +31,22 @@ public sealed class AttributeValueService : IAttributeValueService
     }
 
     public async Task<PagedResult<AttributeValueListItemDto>> GetPagedAsync(
-        int storeId, int? attributeId, string? search, int page, int pageSize, CancellationToken ct = default)
+     int storeId,
+     int? attributeId,
+     bool? status,
+     string? search,
+     int page,
+     int pageSize,
+     CancellationToken ct = default)
     {
-        var (items, total) = await _repo.GetPagedAsync(storeId, attributeId, search, page, pageSize, ct);
+        var (items, total) = await _repo.GetPagedAsync(
+            storeId,
+            attributeId,
+            status,
+            search,
+            page,
+            pageSize,
+            ct);
 
         return new PagedResult<AttributeValueListItemDto>
         {
@@ -198,10 +211,10 @@ public sealed class AttributeValueService : IAttributeValueService
     }
 
     public async Task<Result> SoftDeleteAsync(
-        int storeId,
-        int id,
-        int? userId,
-        CancellationToken ct = default)
+      int storeId,
+      int id,
+      int? userId,
+      CancellationToken ct = default)
     {
         if (id <= 0)
             return Result.Failure(AttributeValueErrors.InvalidId);
@@ -209,6 +222,10 @@ public sealed class AttributeValueService : IAttributeValueService
         var entity = await _repo.GetByIdAsync(storeId, id, ct);
         if (entity == null)
             return Result.Failure(AttributeValueErrors.NotFound);
+
+        var isUsed = await _repo.IsUsedAsync(storeId, id, ct);
+        if (isUsed)
+            return Result.Failure(AttributeValueErrors.ValueIsUsed);
 
         entity.IsDeleted = true;
         entity.DeletedAtUtc = DateTime.UtcNow;

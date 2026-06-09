@@ -10,6 +10,10 @@ public class UpsertProductUnitConversionRequest
     public bool IsBaseUnit { get; set; }
     public bool IsDefaultForSale { get; set; }
     public decimal? Price { get; set; }
+    /// <summary>
+    /// Giá sỉ của đơn vị quy đổi.
+    /// </summary>
+    public decimal? WholesalePrice { get; set; }
     public bool IsActive { get; set; }
     public int SortOrder { get; set; }
 

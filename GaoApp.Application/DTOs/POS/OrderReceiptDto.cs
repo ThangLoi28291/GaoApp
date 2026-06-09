@@ -36,6 +36,9 @@ public sealed class OrderReceiptDto
     public decimal TotalQuantity { get; set; }
     public decimal RefundedTotal { get; set; }
     public decimal RefundableRemaining { get; set; }
+    public decimal VoucherDiscountTotal { get; set; }
+
+    public List<OrderRewardVoucherDto> RewardVouchers { get; set; } = new();
 
     public List<OrderLineDto> Lines { get; set; } = new();
     public List<OrderPaymentDto> Payments { get; set; } = new();

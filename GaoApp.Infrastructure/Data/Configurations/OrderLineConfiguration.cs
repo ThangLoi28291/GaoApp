@@ -85,7 +85,60 @@ public sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLine>
 
         b.Property(x => x.IsProvisionalCost)
             .HasDefaultValue(false);
+        b.Property(x => x.ProductUnitConversionId);
+        b.Property(x => x.ComboPromotionName)
+    .HasMaxLength(200);
 
+        b.Property(x => x.ComboPromotionNote)
+            .HasMaxLength(500);
+
+        b.Property(x => x.ComboAllocatedDiscount)
+            .HasPrecision(18, 2);
+        b.Property(x => x.PromotionType)
+    .HasConversion<byte?>();
+
+        b.Property(x => x.PromotionBuyQuantity)
+            .HasPrecision(18, 4)
+            .HasDefaultValue(0m);
+
+        b.Property(x => x.PromotionGiftQuantity)
+            .HasPrecision(18, 4)
+            .HasDefaultValue(0m);
+        // =========================================================
+        // BUY X GET Y - GIFT LINE
+        // =========================================================
+
+        b.Property(x => x.IsPromotionGift)
+            .HasDefaultValue(false);
+
+        b.Property(x => x.GiftPromotionName)
+            .HasMaxLength(200);
+
+        b.Property(x => x.GiftPromotionNote)
+            .HasMaxLength(500);
+
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.ProductUnitConversionId
+        });
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.IsPromotionGift
+        });
+
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.GiftPromotionId
+        });
+
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.GiftSourceLineId
+        });
         // =========================================================
         // Indexes
         // =========================================================

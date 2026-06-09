@@ -1,0 +1,613 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@{
+    ViewData["Title"] = "Dashboard quản lý ca POS";
+    Layout = "_ContentNavbarLayout";
+
+    // var posCtx = ViewBag.POSHeaderContext as POSHeaderContextViewModel ?? new POSHeaderContextViewModel();
+}
+
+@section VendorStyles {
+    <style>
+        .manager-dashboard {
+            padding-bottom: 28px;
+        }
+
+        .manager-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .manager-title {
+            font-size: 1.65rem;
+            font-weight: 950;
+            color: #101828;
+            margin: 0;
+        }
+
+        .manager-subtitle {
+            color: #667085;
+            font-weight: 650;
+            margin-top: 6px;
+        }
+
+        .manager-filter-card,
+        .manager-card {
+            border: 1px solid #e7edf5;
+            border-radius: 22px;
+            background: #fff;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, .06);
+        }
+
+        .manager-filter-card {
+            padding: 18px;
+            margin-bottom: 18px;
+        }
+
+        .manager-filter-grid {
+            display: grid;
+            grid-template-columns: 180px 180px 180px 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .manager-label {
+            font-size: .84rem;
+            font-weight: 900;
+            color: #344054;
+            margin-bottom: 7px;
+        }
+
+        .manager-filter-card .form-control,
+        .manager-filter-card .form-select {
+            min-height: 46px;
+            border-radius: 14px;
+            font-weight: 750;
+        }
+
+        .manager-btn {
+            min-height: 46px;
+            border-radius: 14px;
+            font-weight: 900;
+            padding: 0 18px;
+        }
+
+        .quick-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .quick-group .btn {
+            border-radius: 999px;
+            font-weight: 850;
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .kpi-card {
+            border-radius: 22px;
+            border: 1px solid #e7edf5;
+            background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+            padding: 18px;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, .05);
+            min-height: 142px;
+        }
+
+        .kpi-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .kpi-label {
+            color: #667085;
+            font-size: .82rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+
+        .kpi-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 950;
+            background: #eef4ff;
+            color: #2458b8;
+        }
+
+        .kpi-value {
+            margin-top: 14px;
+            font-size: 1.65rem;
+            font-weight: 950;
+            color: #101828;
+            letter-spacing: -.03em;
+        }
+
+        .kpi-note {
+            margin-top: 8px;
+            color: #667085;
+            font-weight: 650;
+            font-size: .86rem;
+        }
+
+        .text-money-good {
+            color: #067647 !important;
+        }
+
+        .text-money-bad {
+            color: #c01048 !important;
+        }
+
+        .manager-grid {
+            display: grid;
+            grid-template-columns: 1.1fr .9fr;
+            gap: 18px;
+            margin-bottom: 18px;
+        }
+
+        .manager-card-head {
+            padding: 16px 18px;
+            border-bottom: 1px solid #edf1f5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .manager-card-title {
+            font-size: 1rem;
+            font-weight: 950;
+            color: #101828;
+            margin: 0;
+        }
+
+        .manager-card-sub {
+            color: #667085;
+            font-weight: 650;
+            font-size: .86rem;
+            margin-top: 3px;
+        }
+
+        .manager-card-body {
+            padding: 16px 18px 18px;
+        }
+
+        .manager-table {
+            margin: 0;
+        }
+
+        .manager-table th {
+            background: #f8fafc;
+            color: #475467;
+            font-size: .78rem;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            white-space: nowrap;
+            padding: 12px;
+        }
+
+        .manager-table td {
+            padding: 13px 12px;
+            vertical-align: middle;
+            border-top: 1px solid #edf1f5;
+        }
+
+        .row-main {
+            font-weight: 950;
+            color: #101828;
+        }
+
+        .row-sub {
+            color: #667085;
+            font-size: .82rem;
+            font-weight: 650;
+            margin-top: 3px;
+        }
+
+        .badge-shift {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 86px;
+            padding: 7px 11px;
+            border-radius: 999px;
+            font-size: .78rem;
+            font-weight: 950;
+        }
+
+        .badge-open {
+            background: #ecfdf3;
+            color: #067647;
+        }
+
+        .badge-closed {
+            background: #f2f4f7;
+            color: #344054;
+        }
+
+        .diff-pill {
+            display: inline-flex;
+            min-width: 92px;
+            justify-content: center;
+            padding: 7px 10px;
+            border-radius: 999px;
+            font-size: .8rem;
+            font-weight: 950;
+        }
+
+        .diff-zero {
+            background: #ecfdf3;
+            color: #067647;
+        }
+
+        .diff-over {
+            background: #eff6ff;
+            color: #2458b8;
+        }
+
+        .diff-short {
+            background: #fff1f3;
+            color: #c01048;
+        }
+
+        .table-action-btn {
+            border-radius: 12px;
+            font-weight: 900;
+            padding: 7px 12px;
+        }
+
+        .empty-box {
+            padding: 24px;
+            text-align: center;
+            color: #98a2b3;
+            font-weight: 800;
+            border: 1px dashed #d7dee8;
+            border-radius: 18px;
+            background: #fafcff;
+        }
+
+        .manager-popup-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .manager-popup-item {
+            border: 1px solid #edf1f5;
+            border-radius: 16px;
+            background: #f8fafc;
+            padding: 12px;
+        }
+
+        .manager-popup-label {
+            color: #667085;
+            font-size: .78rem;
+            text-transform: uppercase;
+            font-weight: 900;
+            margin-bottom: 6px;
+        }
+
+        .manager-popup-value {
+            color: #101828;
+            font-size: 1rem;
+            font-weight: 950;
+        }
+
+        @@media (max-width: 1199.98px) {
+            .manager-filter-grid,
+            .kpi-grid,
+            .manager-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .manager-filter-grid,
+            .kpi-grid,
+            .manager-grid,
+            .manager-popup-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+}
+
+@section header {
+    <div class="manager-head">
+        <div>
+            <h3 class="manager-title">Dashboard quản lý ca POS</h3>
+            <div class="manager-subtitle">
+                Theo dõi doanh thu, thu chi, refund, void và lệch quỹ của từng nhân viên theo ca.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <button id="btnExportExcel" type="button" class="btn btn-success manager-btn">
+                Xuất Excel
+            </button>
+
+            <button id="btnPrintReport" type="button" class="btn btn-outline-primary manager-btn">
+                In báo cáo
+            </button>
+
+            <button id="btnReloadDashboard" type="button" class="btn btn-primary manager-btn">
+                Tải lại báo cáo
+            </button>
+        </div>
+    </div>
+}
+
+
+<div class="manager-dashboard">
+    @Html.AntiForgeryToken()
+
+    <div class="manager-filter-card">
+        <div class="manager-filter-grid">
+            <div>
+                <label class="manager-label">Từ ngày</label>
+                <input id="filterFromDate" type="date" class="form-control" />
+            </div>
+
+            <div>
+                <label class="manager-label">Đến ngày</label>
+                <input id="filterToDate" type="date" class="form-control" />
+            </div>
+
+            <div>
+                <label class="manager-label">Trạng thái</label>
+                <select id="filterStatus" class="form-select">
+                    <option value="">Tất cả</option>
+                    <option value="1">Đang mở</option>
+                    <option value="2">Đã đóng</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="manager-label">Nhân viên</label>
+                <select id="filterUserId" class="form-select">
+                    <option value="">Tất cả nhân viên</option>
+                </select>
+            </div>
+
+            <div>
+                <button id="btnApplyFilter" type="button" class="btn btn-primary manager-btn">
+                    Xem báo cáo
+                </button>
+            </div>
+        </div>
+
+        <div class="quick-group">
+            <button id="btnToday" type="button" class="btn btn-outline-secondary">Hôm nay</button>
+            <button id="btnLast7Days" type="button" class="btn btn-outline-secondary">7 ngày</button>
+            <button id="btnLast30Days" type="button" class="btn btn-outline-secondary">30 ngày</button>
+            <button id="btnClearFilter" type="button" class="btn btn-outline-danger">Xóa lọc</button>
+        </div>
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Tổng doanh thu</div>
+                <div class="kpi-icon">₫</div>
+            </div>
+            <div id="kpiTotalSales" class="kpi-value">0</div>
+            <div class="kpi-note">Tiền mặt + không tiền mặt</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Tiền mặt</div>
+                <div class="kpi-icon">TM</div>
+            </div>
+            <div id="kpiCashSales" class="kpi-value">0</div>
+            <div class="kpi-note">Doanh thu bằng tiền mặt</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Không tiền mặt</div>
+                <div class="kpi-icon">CK</div>
+            </div>
+            <div id="kpiNonCashSales" class="kpi-value">0</div>
+            <div class="kpi-note">Chuyển khoản, thẻ, ví...</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Lệch quỹ</div>
+                <div class="kpi-icon">!</div>
+            </div>
+            <div id="kpiCashDiff" class="kpi-value">0</div>
+            <div id="kpiCashDiffNote" class="kpi-note">Ca thiếu/thừa quỹ</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Số ca</div>
+                <div class="kpi-icon">CA</div>
+            </div>
+            <div id="kpiShiftCount" class="kpi-value">0</div>
+            <div id="kpiShiftCountNote" class="kpi-note">Đang mở / đã đóng</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Thu thêm</div>
+                <div class="kpi-icon">+</div>
+            </div>
+            <div id="kpiCashIn" class="kpi-value">0</div>
+            <div class="kpi-note">Tiền nộp thêm vào két</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Chi ra</div>
+                <div class="kpi-icon">-</div>
+            </div>
+            <div id="kpiCashOut" class="kpi-value">0</div>
+            <div class="kpi-note">Tiền rút/chi khỏi két</div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-top">
+                <div class="kpi-label">Refund / Void</div>
+                <div class="kpi-icon">↩</div>
+            </div>
+            <div id="kpiRefundVoid" class="kpi-value">0</div>
+            <div id="kpiRefundVoidNote" class="kpi-note">Tổng hoàn và số void</div>
+        </div>
+    </div>
+
+    <div class="manager-grid">
+        <div class="manager-card">
+            <div class="manager-card-head">
+                <div>
+                    <h5 class="manager-card-title">Thống kê theo nhân viên</h5>
+                    <div class="manager-card-sub">Xếp theo tổng doanh thu cao nhất</div>
+                </div>
+            </div>
+
+            <div class="manager-card-body">
+                <div class="table-responsive">
+                    <table class="table manager-table">
+                        <thead>
+                            <tr>
+                                <th>Nhân viên</th>
+                                <th class="text-end">Số ca</th>
+                                <th class="text-end">Doanh thu</th>
+                                <th class="text-end">Lệch quỹ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employeeBody">
+                            <tr><td colspan="4"><div class="empty-box">Đang tải...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="manager-card">
+            <div class="manager-card-head">
+                <div>
+                    <h5 class="manager-card-title">Ca lệch quỹ cần kiểm tra</h5>
+                    <div class="manager-card-sub">Thiếu/thừa quỹ lớn nhất</div>
+                </div>
+            </div>
+
+            <div class="manager-card-body">
+                <div id="differenceBody">
+                    <div class="empty-box">Đang tải...</div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                    <div id="differencePagerInfo" class="text-muted fw-bold">0 ca</div>
+
+                    <div class="d-flex gap-2">
+                        <button id="btnDiffPrev" type="button" class="btn btn-outline-secondary btn-sm table-action-btn">
+                            Trang trước
+                        </button>
+                        <button id="btnDiffNext" type="button" class="btn btn-outline-secondary btn-sm table-action-btn">
+                            Trang sau
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="manager-card">
+        <div class="manager-card-head">
+            <div>
+                <h5 class="manager-card-title">Danh sách ca theo bộ lọc</h5>
+                <div class="manager-card-sub">Bấm chi tiết để xem số liệu từng ca</div>
+            </div>
+            <div id="shiftTotalText" class="fw-bold text-muted">0 ca</div>
+        </div>
+
+        <div class="manager-card-body">
+            <div class="table-responsive">
+                <table class="table manager-table">
+                    <thead>
+                        <tr>
+                            <th>Ca</th>
+                            <th>Nhân viên</th>
+                            <th>Trạng thái</th>
+                            <th class="text-end">Doanh thu</th>
+                            <th class="text-end">Tiền mặt</th>
+                            <th class="text-end">Refund</th>
+                            <th class="text-end">Lệch quỹ</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="shiftBody">
+                        <tr><td colspan="8"><div class="empty-box">Đang tải...</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+                <div id="shiftPagerInfo" class="text-muted fw-bold">0 ca</div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <select id="shiftPageSize" class="form-select form-select-sm" style="width:90px;border-radius:12px;font-weight:800;">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                    </select>
+
+                    <button id="btnShiftPrev" type="button" class="btn btn-outline-secondary btn-sm table-action-btn">
+                        Trang trước
+                    </button>
+                    <button id="btnShiftNext" type="button" class="btn btn-outline-secondary btn-sm table-action-btn">
+                        Trang sau
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="shiftDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="border:0;border-radius:22px;overflow:hidden;">
+            <div class="modal-header">
+                <div>
+                    <h5 id="detailTitle" class="modal-title fw-bold">Chi tiết ca</h5>
+                    <div id="detailSub" class="text-muted fw-semibold mt-1"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="detailContent"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnPrintClosingSlip" type="button" class="btn btn-primary manager-btn">
+                    In phiếu bàn giao
+                </button>
+                <button type="button" class="btn btn-light manager-btn" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos-shift-manager-dashboard.js" asp-append-version="true"></script>
+}

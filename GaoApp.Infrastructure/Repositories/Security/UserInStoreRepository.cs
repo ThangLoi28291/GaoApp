@@ -131,6 +131,18 @@ public class UserInStoreRepository : IUserInStoreRepository
             .Select(g => new { RoleId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.RoleId, x => x.Count, ct);
     }
+    public Task<UserInStore?> GetByUserIdAsync(
+    int storeId,
+    int userId,
+    CancellationToken ct = default)
+    {
+        return _db.UserInStores
+            .Include(x => x.User)
+            .FirstOrDefaultAsync(
+                x => x.StoreId == storeId &&
+                     x.UserId == userId &&
+                     !x.IsDeleted,
+                ct);
+    }
 
-   
 }

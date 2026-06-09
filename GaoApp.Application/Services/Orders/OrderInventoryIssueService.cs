@@ -109,14 +109,14 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         }
 
         await AddActionInternalAsync(
-            issue,
-            InventoryIssueActionType.NegativeDetected,
-            actorUserId,
-            note ?? "Hệ thống ghi nhận thêm phát sinh âm kho.",
-            InventoryIssueReferenceType.Order,
-            issue.OrderId,
-            null,
-            ct);
+      issue,
+      InventoryIssueActionType.NegativeDetected,
+      actorUserId,
+      BuildNegativeDetectedSummary(issue, note),
+      InventoryIssueReferenceType.Order,
+      issue.OrderId,
+      null,
+      ct);
 
         await RefreshIssueLineResolutionAsync(issue, now, ct);
 
@@ -679,7 +679,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             ActionAtUtc = DateTime.UtcNow,
             ReferenceType = referenceType,
             ReferenceId = referenceId,
-            Note = note
+            Note = NormalizeActionNote(note)
         };
 
         await _issueRepository.AddActionAsync(action, ct);
@@ -1167,5 +1167,38 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         }
 
         return result;
+    }
+    private static string BuildNegativeDetectedSummary(
+    OrderInventoryIssue issue,
+    string? sourceNote)
+    {
+        var activeLines = issue.Lines
+            .Where(x => !x.IsDeleted)
+            .ToList();
+
+        var totalLines = activeLines.Count;
+        var unresolvedLines = activeLines.Count(x => !x.IsResolved);
+        var provisionalLines = activeLines.Count(x =>
+            x.ProvisionalUnitCost.HasValue || x.ProvisionalCostAmount.HasValue);
+
+        return
+            $"Phát hiện tồn âm/provisional cost sau finalize. " +
+            $"IssueId={issue.Id}; OrderId={issue.OrderId}; " +
+            $"Số dòng issue={totalLines}; Chưa xử lý={unresolvedLines}; " +
+            $"Có provisional cost={provisionalLines}. " +
+            $"Chi tiết xem tại OrderInventoryIssueLines.";
+    }
+
+    private static string? NormalizeActionNote(string? note, int maxLength = 1000)
+    {
+        if (string.IsNullOrWhiteSpace(note))
+            return null;
+
+        var value = note.Trim();
+
+        if (value.Length <= maxLength)
+            return value;
+
+        return value[..(maxLength - 30)] + "... [đã rút gọn]";
     }
 }

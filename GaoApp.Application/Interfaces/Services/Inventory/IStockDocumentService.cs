@@ -26,5 +26,13 @@ public interface IStockDocumentService
     Task RejectAsync(int documentId, string? approvalNote = null, CancellationToken ct = default);
 
     Task UpdateHeaderAsync(UpdateStockDocumentHeaderRequest request, CancellationToken ct = default);
+    Task RequestRevisionAsync(int documentId, string note, CancellationToken ct = default);
+
+    Task ResolveRevisionRequestAsync(
+        int documentId,
+        bool returnToEdit,
+        string? approvalNote = null,
+        CancellationToken ct = default);
+
 
 }

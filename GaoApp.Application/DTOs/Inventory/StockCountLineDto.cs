@@ -12,6 +12,7 @@ public class StockCountLineDto
 
     public int UnitId { get; set; }
     public string? UnitName { get; set; }
+    public string? ImageUrl { get; set; }
 
     public decimal Factor { get; set; }
 

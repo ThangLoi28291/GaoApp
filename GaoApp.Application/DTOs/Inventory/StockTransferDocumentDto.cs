@@ -27,6 +27,9 @@ public class StockTransferDocumentDto
     public int? ConfirmedByUserId { get; set; }
 
     public int TotalLines { get; set; }
+    public string? DocumentName { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+    public decimal TotalQuantity { get; set; }
 
     public List<StockTransferLineDto> Lines { get; set; } = new();
 }

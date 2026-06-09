@@ -1,44 +1,64 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Abstractions;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Interfaces.Common;
+using GaoApp.Application.Interfaces.Repositories.AdminMenus;
 using GaoApp.Application.Interfaces.Repositories.AttributeValues;
 using GaoApp.Application.Interfaces.Repositories.Audit;
 using GaoApp.Application.Interfaces.Repositories.Auth;
 using GaoApp.Application.Interfaces.Repositories.Brands;
 using GaoApp.Application.Interfaces.Repositories.Categories;
 using GaoApp.Application.Interfaces.Repositories.Customers;
+using GaoApp.Application.Interfaces.Repositories.Display;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
+using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Media;
 using GaoApp.Application.Interfaces.Repositories.Orders;
+using GaoApp.Application.Interfaces.Repositories.POSPaymentQrs;
+using GaoApp.Application.Interfaces.Repositories.POSShiftClosingSlips;
+using GaoApp.Application.Interfaces.Repositories.POSShiftHandoverSlips;
 using GaoApp.Application.Interfaces.Repositories.POSTerminals;
 using GaoApp.Application.Interfaces.Repositories.ProductAttributes;
 using GaoApp.Application.Interfaces.Repositories.Products;
+using GaoApp.Application.Interfaces.Repositories.Promotions;
+using GaoApp.Application.Interfaces.Repositories.Rewards;
 using GaoApp.Application.Interfaces.Repositories.Security;
+using GaoApp.Application.Interfaces.Repositories.StoreBankAccounts;
 using GaoApp.Application.Interfaces.Repositories.Suppliers;
 using GaoApp.Application.Interfaces.Repositories.Taxes;
 using GaoApp.Application.Interfaces.Repositories.Units;
 using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Infrastructure.Caching;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Data.Repositories.Orders;
 using GaoApp.Infrastructure.Identity;
 using GaoApp.Infrastructure.Interceptors;
 using GaoApp.Infrastructure.Network;
+using GaoApp.Infrastructure.Repositories.AdminMenus;
 using GaoApp.Infrastructure.Repositories.AttributeValues;
 using GaoApp.Infrastructure.Repositories.Audit;
 using GaoApp.Infrastructure.Repositories.Auth;
 using GaoApp.Infrastructure.Repositories.Brands;
 using GaoApp.Infrastructure.Repositories.Categories;
 using GaoApp.Infrastructure.Repositories.Customers;
+using GaoApp.Infrastructure.Repositories.Display;
 using GaoApp.Infrastructure.Repositories.Inventory;
+using GaoApp.Infrastructure.Repositories.Invoices;
 using GaoApp.Infrastructure.Repositories.Media;
 using GaoApp.Infrastructure.Repositories.Orders;
+using GaoApp.Infrastructure.Repositories.POSPaymentQrs;
+using GaoApp.Infrastructure.Repositories.POSShiftClosingSlips;
+using GaoApp.Infrastructure.Repositories.POSShiftHandoverSlips;
 using GaoApp.Infrastructure.Repositories.POSTerminals;
 using GaoApp.Infrastructure.Repositories.ProductAttributes;
 using GaoApp.Infrastructure.Repositories.Products;
+using GaoApp.Infrastructure.Repositories.Promotions;
+using GaoApp.Infrastructure.Repositories.Rewards;
 using GaoApp.Infrastructure.Repositories.Security;
+using GaoApp.Infrastructure.Repositories.StoreBankAccounts;
 using GaoApp.Infrastructure.Repositories.Suppliers;
 using GaoApp.Infrastructure.Repositories.Taxes;
 using GaoApp.Infrastructure.Repositories.Units;
@@ -50,9 +70,7 @@ using GaoApp.Infrastructure.Tenant;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using GaoApp.Application.Common.Interfaces;
-using GaoApp.Infrastructure.Caching;
-using Microsoft.Extensions.DependencyInjection;
+
 
 namespace GaoApp.Infrastructure;
 
@@ -138,6 +156,7 @@ public static class DependencyInjection
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<IMediaAssetRepository, MediaAssetRepository>();
         services.AddScoped<IProductImageRepository, ProductImageRepository>();
+        services.AddScoped<IProductBarcodeVerificationRepository, ProductBarcodeVerificationRepository>();
 
         // =========================================================
         // ORDER / POS
@@ -148,6 +167,20 @@ public static class DependencyInjection
         services.AddScoped<IPOSShiftRepository, POSShiftRepository>();
         services.AddScoped<ICustomerRepository, CustomerRepository>();
         services.AddScoped<IPOSAuditLogRepository, POSAuditLogRepository>();
+        services.AddScoped<IStoreBankAccountRepository, StoreBankAccountRepository>();
+ 
+        services.AddScoped<IPOSPaymentQrRequestRepository, POSPaymentQrRequestRepository>();
+        services.AddScoped<IDisplayPromotionRepository, DisplayPromotionRepository>();
+        services.AddScoped<IPromotionRepository, PromotionRepository>();
+        // =========================================================
+        // REWARDS
+        // =========================================================
+        services.AddScoped<IRewardSettingsRepository, RewardSettingsRepository>();
+        services.AddScoped<ICustomerRewardLedgerRepository, CustomerRewardLedgerRepository>();
+        services.AddScoped<ICustomerRewardVoucherRepository, CustomerRewardVoucherRepository>();
+        services.AddScoped<IRewardOrderRepository, RewardOrderRepository>();
+        services.AddScoped<IPOSShiftHandoverSlipRepository, POSShiftHandoverSlipRepository>();
+        services.AddScoped<IPOSShiftClosingSlipRepository, POSShiftClosingSlipRepository>();
 
         // =========================================================
         // INVENTORY
@@ -156,6 +189,11 @@ public static class DependencyInjection
         services.AddScoped<IInventoryBalanceRepository, InventoryBalanceRepository>();
         services.AddScoped<IInventoryTransactionRepository, InventoryTransactionRepository>();
         services.AddScoped<IStockDocumentRepository, StockDocumentRepository>();
+        services.AddScoped<IStockDocumentLookupRepository, StockDocumentLookupRepository>();
+        services.AddScoped<IInventoryAdjustmentDocumentRepository, InventoryAdjustmentDocumentRepository>();
+        services.AddScoped<IInventoryAdjustmentDocumentNumberRepository,
+    InventoryAdjustmentDocumentNumberRepository>();
+        services.AddScoped<IInventoryCostSuggestionRepository, InventoryCostSuggestionRepository>();
 
         services.AddScoped<IProductUnitConversionRepository, ProductUnitConversionRepository>();
         services.AddScoped<IProductVariantUnitBarcodeRepository, ProductVariantUnitBarcodeRepository>();
@@ -170,6 +208,10 @@ public static class DependencyInjection
         services.AddScoped<IDocumentNumberSequenceRepository, DocumentNumberSequenceRepository>();
         services.AddScoped<IInventoryCostLayerRepository, InventoryCostLayerRepository>();
         services.AddScoped<IInventoryCostLayerAllocationRepository, InventoryCostLayerAllocationRepository>();
+        services.AddScoped<IInputInvoiceRepository, InputInvoiceRepository>();
+        services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+        services.AddScoped<IAdminMenuRepository, AdminMenuRepository>();
+        services.AddScoped<IAdminMenuPermissionRepository, AdminMenuPermissionRepository>();
 
         // =========================================================
         // UNIT OF WORK

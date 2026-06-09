@@ -25,33 +25,22 @@ public class POSShiftRepository : IPOSShiftRepository
     /// Legacy: lấy một ca mở bất kỳ.
     /// Không nên dùng cho code mới vì có thể lấy nhầm ca của terminal khác.
     /// </summary>
-    public async Task<POSShift?> GetOpenShiftAsync(CancellationToken ct = default)
+    public Task<POSShift?> GetOpenShiftAsync(CancellationToken ct = default)
     {
-        return await _db.POSShifts
-            .Include(x => x.Warehouse)
-            .Include(x => x.Terminal)
-            .FirstOrDefaultAsync(x =>
-                x.Status == POSShiftStatus.Open &&
-                !x.IsDeleted,
-                ct);
+        throw new InvalidOperationException(
+            "Unsafe legacy method. Multi-terminal POS phải dùng GetOpenShiftAsync(storeId, terminalId, ct).");
     }
 
     /// <summary>
     /// Method chuẩn:
     /// lấy ca mở theo Store + Terminal.
     /// </summary>
-    public async Task<POSShift?> GetOpenShiftAsync(int storeId, int terminalId, CancellationToken ct = default)
+    public async Task<POSShift?> GetOpenShiftAsync(
+      int storeId,
+      int terminalId,
+      CancellationToken ct = default)
     {
-        return await _db.POSShifts
-            .Include(x => x.Warehouse)
-            .Include(x => x.Terminal)
-            .Include(x => x.CurrentOrder)
-            .FirstOrDefaultAsync(x =>
-                x.StoreId == storeId &&
-                x.TerminalId == terminalId &&
-                x.Status == POSShiftStatus.Open &&
-                !x.IsDeleted,
-                ct);
+        return await GetOpenShiftWithDetailsAsync(storeId, terminalId, ct);
     }
 
     public async Task<POSShift?> GetByIdAsync(int id, CancellationToken ct = default)
@@ -60,6 +49,7 @@ public class POSShiftRepository : IPOSShiftRepository
             .Include(x => x.Warehouse)
             .Include(x => x.Terminal)
             .Include(x => x.CurrentOrder)
+              .Include(x => x.CashDenominations)
             .FirstOrDefaultAsync(x =>
                 x.Id == id &&
                 !x.IsDeleted,
@@ -185,6 +175,88 @@ public class POSShiftRepository : IPOSShiftRepository
                 x.Status == POSShiftStatus.Open &&
                 !x.IsDeleted,
                 ct);
+    }
+    /// <summary>
+    /// Lấy ca POS đang mở theo ShiftId + StoreId.
+    /// Dùng cho tiếp quản / đóng hộ ca.
+    /// </summary>
+    public async Task<POSShift?> GetOpenShiftByIdAsync(
+        int storeId,
+        int shiftId,
+        CancellationToken ct = default)
+    {
+        return await _db.POSShifts
+            .Include(x => x.Warehouse)
+            .Include(x => x.Terminal)
+            .Include(x => x.CurrentOrder)
+            .FirstOrDefaultAsync(x =>
+                x.Id == shiftId &&
+                x.StoreId == storeId &&
+                x.Status == POSShiftStatus.Open &&
+                !x.IsDeleted,
+                ct);
+    }
+    /// <summary>
+    /// Lấy ca POS đang mở theo Store + Terminal.
+    /// Include sẵn Warehouse + Terminal + CurrentOrder.
+    /// </summary>
+    public async Task<POSShift?> GetOpenShiftWithDetailsAsync(
+        int storeId,
+        int terminalId,
+        CancellationToken ct = default)
+    {
+        return await _db.POSShifts
+            .Include(x => x.Warehouse)
+            .Include(x => x.Terminal)
+            .Include(x => x.CurrentOrder)
+            .FirstOrDefaultAsync(x =>
+                x.StoreId == storeId &&
+                x.TerminalId == terminalId &&
+                x.Status == POSShiftStatus.Open &&
+                !x.IsDeleted,
+                ct);
+    }
+
+    /// <summary>
+    /// Query danh sách ca cho dashboard quản lý.
+    /// Include Terminal + Warehouse để hiển thị rõ ca thuộc máy/kho nào.
+    /// </summary>
+    public async Task<List<POSShift>> QueryForManagerDashboardAsync(
+        int storeId,
+        DateTime? fromUtc,
+        DateTime? toUtcExclusive,
+        int? userId,
+        int? terminalId,
+        POSShiftStatus? status,
+        CancellationToken ct = default)
+    {
+        IQueryable<POSShift> q = _db.POSShifts
+            .AsNoTracking()
+            .Include(x => x.Terminal)
+            .Include(x => x.Warehouse)
+            .Where(x =>
+                x.StoreId == storeId &&
+                !x.IsDeleted);
+
+        if (fromUtc.HasValue)
+            q = q.Where(x => x.OpenedAtUtc >= fromUtc.Value);
+
+        if (toUtcExclusive.HasValue)
+            q = q.Where(x => x.OpenedAtUtc < toUtcExclusive.Value);
+
+        if (userId.HasValue)
+            q = q.Where(x => x.OpenedByUserId == userId.Value);
+
+        if (terminalId.HasValue)
+            q = q.Where(x => x.TerminalId == terminalId.Value);
+
+        if (status.HasValue)
+            q = q.Where(x => x.Status == status.Value);
+
+        return await q
+            .OrderByDescending(x => x.OpenedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(ct);
     }
 
 

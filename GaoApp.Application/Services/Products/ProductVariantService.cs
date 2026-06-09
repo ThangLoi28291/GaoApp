@@ -48,21 +48,43 @@ public sealed class ProductVariantService : IProductVariantService
     {
         var list = await _repo.GetByProductAsync(storeId, productId, ct);
 
-        return list.Select(v => new ProductVariantRowDto
+        return list.Select(v =>
         {
-            Id = v.Id,
-            Sku = v.Sku,
-            ProductVariantName = v.ProductVariantName,
-            CostPrice = v.CostPrice,
-            Price = v.Price,
-            IsActive = v.IsActive,
-            PrimaryProductImageId = v.PrimaryProductImageId,
-            AttributeValueIds = v.AttributeValues
-                .Where(x => !x.IsDeleted)
-                .Select(x => x.AttributeValueId)
-                .Distinct()
-                .ToList(),
-            IsLocked = false
+            // NEW:
+            // Giá bán hiển thị ngoài bảng Variant không lấy từ ProductVariant.Price nữa.
+            // Vì mỗi variant luôn có 1 ProductUnitConversion gốc được tạo tự động.
+            var baseConversion = v.UnitConversions?
+                .Where(c => !c.IsDeleted)
+                .OrderByDescending(c => c.IsBaseUnit)
+                .ThenBy(c => c.SortOrder)
+                .ThenBy(c => c.Id)
+                .FirstOrDefault();
+
+            return new ProductVariantRowDto
+            {
+                Id = v.Id,
+                Sku = v.Sku,
+                ProductVariantName = v.ProductVariantName,
+                CostPrice = v.CostPrice,
+
+                // Giữ Price cũ để tránh vỡ DTO cũ, nhưng UI mới không dùng để nhập giá nữa.
+                Price = v.Price,
+
+                // NEW: hiển thị giá của đơn vị gốc
+                BaseUnitPrice = baseConversion?.Price,
+                BaseUnitWholesalePrice = baseConversion?.WholesalePrice,
+                BaseUnitName = baseConversion?.Unit?.Name,
+
+                IsActive = v.IsActive,
+                HasInputInvoice = v.HasInputInvoice,
+                PrimaryProductImageId = v.PrimaryProductImageId,
+                AttributeValueIds = v.AttributeValues
+                    .Where(x => !x.IsDeleted)
+                    .Select(x => x.AttributeValueId)
+                    .Distinct()
+                    .ToList(),
+                IsLocked = false
+            };
         }).ToList();
     }
 

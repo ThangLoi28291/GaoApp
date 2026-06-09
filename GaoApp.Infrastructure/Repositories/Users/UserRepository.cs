@@ -56,4 +56,23 @@ public class UserRepository : IUserRepository
             .Take(maxResults)
             .ToListAsync(ct);
     }
+    public async Task<List<User>> GetByIdsAsync(List<int> ids, CancellationToken ct = default)
+    {
+        if (ids == null || ids.Count == 0)
+            return new List<User>();
+
+        return await _context.Users
+            .Where(x => ids.Contains(x.Id))
+            .ToListAsync(ct);
+    }
+    public Task<bool> ExistsByUserNameAsync(
+    string userName,
+    CancellationToken ct = default)
+    {
+        return _context.Users.AnyAsync(x =>
+            x.UserName == userName &&
+            !x.IsDeleted,
+            ct);
+    }
+
 }

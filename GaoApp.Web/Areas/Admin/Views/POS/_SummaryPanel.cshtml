@@ -1,0 +1,41 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _SummaryPanel.cshtml
+   Mục đích:
+   - Chỉ hiển thị số tiền quan trọng nhất
+   - Các dòng phụ như Tạm tính/Giảm giá/Đã thanh toán chuyển sang _DraftMetaPanel
+========================================================= *@
+
+<div class="card pos-card pos-summary-card mb-3">
+    <div class="card-body">
+        <div class="pos-summary-head">
+            <div class="pos-section-title mb-0">Tổng tiền</div>
+
+            <button id="btnRefreshScreen"
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary pos-refresh-btn">
+                Làm mới
+            </button>
+        </div>
+
+        <div id="posSummaryHero"
+             class="pos-summary-hero pos-summary-hero--grand pos-summary-hero--empty">
+            <div class="pos-summary-hero__label">Thành tiền</div>
+            <div id="sumGrandTotal" class="pos-summary-hero__value">0</div>
+            <div id="sumPaymentStateText" class="pos-summary-hero__state">
+                Chưa thanh toán
+            </div>
+        </div>
+
+        <div class="pos-summary-status-grid pos-summary-status-grid--compact">
+            <div class="pos-summary-status-card pos-summary-status-card--danger">
+                <div class="pos-summary-status-card__label">Còn thiếu</div>
+                <div id="sumBalance" class="pos-summary-status-card__value">0</div>
+            </div>
+
+            <div class="pos-summary-status-card pos-summary-status-card--success">
+                <div class="pos-summary-status-card__label">Đã thu</div>
+                <div id="sumPaid" class="pos-summary-status-card__value">0</div>
+            </div>
+        </div>
+    </div>
+</div>

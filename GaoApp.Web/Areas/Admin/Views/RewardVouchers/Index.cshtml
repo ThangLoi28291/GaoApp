@@ -1,0 +1,326 @@
+﻿@{
+    ViewData["Title"] = "Phiếu thưởng khách hàng";
+}
+
+<div class="reward-voucher-page">
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bx bx-gift text-primary me-1"></i>
+                Phiếu Giảm Giá 
+            </h3>
+            <div class="text-muted">
+                Quản lý toàn bộ phiếu đổi từ điểm thưởng khách hàng.
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 rv-stat-card">
+                <div class="card-body">
+                    <div class="rv-stat-icon bg-label-primary"><i class="bx bx-receipt"></i></div>
+                    <div class="mt-3 text-muted small">Tổng phiếu</div>
+                    <div class="rv-stat-value" id="totalVoucherCount">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 rv-stat-card">
+                <div class="card-body">
+                    <div class="rv-stat-icon bg-label-success"><i class="bx bx-check-circle"></i></div>
+                    <div class="mt-3 text-muted small">Chưa sử dụng</div>
+                    <div class="rv-stat-value text-success" id="availableVoucherCount">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 rv-stat-card">
+                <div class="card-body">
+                    <div class="rv-stat-icon bg-label-info"><i class="bx bx-wallet"></i></div>
+                    <div class="mt-3 text-muted small">Đã sử dụng</div>
+                    <div class="rv-stat-value text-info" id="usedVoucherCount">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 rv-stat-card">
+                <div class="card-body">
+                    <div class="rv-stat-icon bg-label-danger"><i class="bx bx-x-circle"></i></div>
+                    <div class="mt-3 text-muted small">Đã hủy / hết hạn</div>
+                    <div class="rv-stat-value text-danger" id="cancelledVoucherCount">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <label class="form-label">Tìm kiếm</label>
+                    <input type="text" id="txtKeyword" class="form-control" placeholder="Mã phiếu / khách / SĐT">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Trạng thái</label>
+                    <select id="ddlStatus" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="1">Chưa sử dụng</option>
+                        <option value="2">Đã sử dụng</option>
+                        <option value="3">Đã hủy</option>
+                        <option value="4">Hết hạn</option>
+                        <option value="5">Đã khóa</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Từ ngày</label>
+                    <input type="date" id="fromDate" class="form-control">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Đến ngày</label>
+                    <input type="date" id="toDate" class="form-control">
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                    <button type="button" class="btn btn-primary" id="btnSearch">
+                        <i class="bx bx-search"></i> Tìm
+                    </button>
+                    <button type="button" class="btn btn-label-secondary" id="btnReset">
+                        Làm mới
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table align-middle rv-table">
+                    <thead>
+                        <tr>
+                            <th>Mã phiếu</th>
+                            <th>Khách hàng</th>
+                            <th>Điện thoại</th>
+                            <th class="text-end">Giá trị</th>
+                           
+                            <th>Ngày tạo</th>
+                            <th>Trạng thái</th>
+                            <th class="text-end">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="voucherTableBody">
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-5">
+                                Đang tải dữ liệu...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="text-muted small" id="pagingInfo">--</div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-label-secondary" id="btnPrev">Trước</button>
+                    <button type="button" class="btn btn-sm btn-label-secondary" id="btnNext">Sau</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="voucherDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Chi tiết phiếu thưởng</h5>
+                    <div class="text-muted small" id="detailVoucherCodeHeader">--</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="rv-detail-grid">
+                    <div class="rv-detail-item"><span>Mã phiếu</span><strong id="detailVoucherCode">--</strong></div>
+                    <div class="rv-detail-item"><span>Khách hàng</span><strong id="detailCustomerName">--</strong></div>
+                    <div class="rv-detail-item"><span>Điện thoại</span><strong id="detailCustomerPhone">--</strong></div>
+                    <div class="rv-detail-item"><span>Giá trị phiếu</span><strong id="detailVoucherValue">--</strong></div>
+                    <div class="rv-detail-item"><span>Tiền tích lũy đã trừ</span><strong id="detailRequiredAmount">--</strong></div>
+                    <div class="rv-detail-item"><span>Ngày tạo</span><strong id="detailIssuedAt">--</strong></div>
+                    <div class="rv-detail-item"><span>Ngày dùng</span><strong id="detailUsedAt">--</strong></div>
+                    <div class="rv-detail-item"><span>Trạng thái</span><strong id="detailStatus">--</strong></div>
+                    <div class="rv-detail-item"><span>Đơn sử dụng</span><strong id="detailUsedOrderId">--</strong></div>
+                    <div class="rv-detail-item"><span>Tham chiếu</span><strong id="detailReferenceCode">--</strong></div>
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold">Ghi chú</label>
+                    <div class="rv-note-box" id="detailDescription">--</div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>
+               <button type="button" class="btn btn-outline-info" id="btnViewVoucherLogs">
+    Nhật ký
+</button>
+
+<button type="button" class="btn btn-outline-primary" id="btnPrintVoucher">
+    In phiếu
+</button>
+
+<button type="button" class="btn btn-warning d-none" id="btnLockVoucher">
+    Khóa phiếu
+</button>
+
+<button type="button" class="btn btn-success d-none" id="btnUnlockVoucher">
+    Mở khóa
+</button>
+
+<button type="button" class="btn btn-danger d-none" id="btnOpenCancelVoucher">
+    Hủy phiếu
+</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cancelVoucherModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Hủy phiếu thưởng</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <label class="form-label">Lý do hủy</label>
+                <textarea id="cancelReason" class="form-control" rows="3" placeholder="Nhập lý do hủy phiếu nếu có"></textarea>
+
+                <div class="alert alert-warning mt-3 mb-0">
+                    Hủy phiếu không tự hoàn lại điểm cho khách.
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-danger" id="btnConfirmCancelVoucher">
+                    Xác nhận hủy
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="voucherLogsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nhật ký voucher</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="voucherLogsBox" class="d-grid gap-2">
+                    Đang tải...
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    .rv-stat-card { transition: all .2s ease; border-radius: 18px; }
+    .rv-stat-card:hover { transform: translateY(-2px); }
+
+    .rv-stat-icon {
+        width: 52px; height: 52px; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 24px;
+    }
+
+    .rv-stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+
+    .rv-table thead th {
+        border: 0 !important;
+        background: #f5f5f9;
+        color: #566a7f;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        font-weight: 700;
+        padding-top: 16px;
+        padding-bottom: 16px;
+    }
+
+    .rv-table tbody tr { transition: all .15s ease; }
+    .rv-table tbody tr:hover { background: rgba(105,108,255,.04); }
+    .rv-table tbody td { padding-top: 18px; padding-bottom: 18px; border-color: #ebeef0; }
+
+    .rv-code { font-weight: 700; color: #566a7f; }
+    .rv-customer-name { font-weight: 700; font-size: 15px; }
+
+    .rv-status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .rv-status-available { background: rgba(40,199,111,.12); color: #28c76f; }
+    .rv-status-used { background: rgba(3,195,236,.12); color: #03c3ec; }
+    .rv-status-cancelled { background: rgba(234,84,85,.12); color: #ea5455; }
+    .rv-status-expired { background: rgba(133,146,163,.12); color: #8592a3; }
+
+    .rv-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .rv-detail-item {
+        border: 1px solid #ebeef0;
+        border-radius: 14px;
+        padding: 12px;
+        background: #fafbfc;
+    }
+
+    .rv-detail-item span {
+        display: block;
+        font-size: 12px;
+        color: #6c757d;
+        margin-bottom: 4px;
+    }
+
+    .rv-detail-item strong { font-size: 15px; color: #566a7f; }
+
+    .rv-note-box {
+        min-height: 54px;
+        border: 1px solid #ebeef0;
+        border-radius: 14px;
+        padding: 12px;
+        background: #fafbfc;
+        color: #566a7f;
+    }
+
+    @@media (max-width: 768px) {
+        .rv-detail-grid { grid-template-columns: 1fr; }
+        .rv-table { min-width: 900px; }
+    }
+</style>
+
+@section Scripts {
+    <script src="~/admin/js/reward-vouchers.js" asp-append-version="true"></script>
+}

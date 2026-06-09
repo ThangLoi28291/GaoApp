@@ -32,8 +32,10 @@ public enum AuditActionType
 
     OpenShift = 60,
     CloseShift = 61,
+    TakeOverShift = 62,
+    ForceCloseShift = 63,
 
-        ReturnCreate = 200,
+    ReturnCreate = 200,
     ReturnComplete = 201,
     ReturnCancel = 202,
     RefundPayment = 203,

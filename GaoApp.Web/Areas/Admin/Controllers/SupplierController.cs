@@ -1,14 +1,16 @@
 ﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Suppliers;
 using GaoApp.Application.Interfaces.Services.Suppliers;
 using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.Suppliers;
-using GaoApp.Web.Common.Extensions;
 using GaoApp.Web.Extensions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
+[Authorize(Policy = PermissionCodes.Catalog.Supplier.View)]
 public class SupplierController : BaseAdminController
 {
     private readonly ISupplierService _service;
@@ -78,11 +80,13 @@ public class SupplierController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Create)]
     public IActionResult Create()
         => View("Edit", new SupplierEditViewModel { Status = true });
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Create)]
     public async Task<IActionResult> Create(SupplierEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid)
@@ -90,20 +94,22 @@ public class SupplierController : BaseAdminController
 
         var storeId = CurrentStoreId();
 
-        var dto = new CreateSupplierRequest
-        {
-            Code = vm.Code,
-            Name = vm.Name,
-            Phone = vm.Phone,
-            Email = vm.Email,
-            Address = vm.Address,
-            ContactName = vm.ContactName,
-            TaxCode = vm.TaxCode,
-            Note = vm.Note,
-            Status = vm.Status
-        };
-
-        var result = await _service.CreateAsync(storeId, dto, userId: null, ct);
+        var result = await _service.CreateAsync(
+            storeId,
+            new CreateSupplierRequest
+            {
+                Code = vm.Code,
+                Name = vm.Name,
+                Phone = vm.Phone,
+                Email = vm.Email,
+                Address = vm.Address,
+                ContactName = vm.ContactName,
+                TaxCode = vm.TaxCode,
+                Note = vm.Note,
+                Status = vm.Status
+            },
+            userId: null,
+            ct);
 
         if (result.IsFailure)
         {
@@ -116,17 +122,21 @@ public class SupplierController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
         var result = await _service.GetForEditAsync(storeId, id, ct);
 
         if (result.IsFailure)
-            return NotFound();
+        {
+            TempData["ToastError"] = result.Error.Message;
+            return RedirectToAction(nameof(Index));
+        }
 
         var dto = result.Value;
 
-        var vm = new SupplierEditViewModel
+        return View(new SupplierEditViewModel
         {
             Id = dto.Id,
             Code = dto.Code,
@@ -139,13 +149,12 @@ public class SupplierController : BaseAdminController
             Note = dto.Note,
             Status = dto.Status,
             RowVersion = dto.RowVersion
-        };
-
-        return View(vm);
+        });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Update)]
     public async Task<IActionResult> Edit(SupplierEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid)
@@ -153,26 +162,28 @@ public class SupplierController : BaseAdminController
 
         var storeId = CurrentStoreId();
 
-        var dto = new UpdateSupplierRequest
-        {
-            Id = vm.Id,
-            Code = vm.Code,
-            Name = vm.Name,
-            Phone = vm.Phone,
-            Email = vm.Email,
-            Address = vm.Address,
-            ContactName = vm.ContactName,
-            TaxCode = vm.TaxCode,
-            Note = vm.Note,
-            Status = vm.Status,
-            RowVersion = vm.RowVersion
-        };
-
-        var result = await _service.UpdateAsync(storeId, dto, userId: null, ct);
+        var result = await _service.UpdateAsync(
+            storeId,
+            new UpdateSupplierRequest
+            {
+                Id = vm.Id,
+                Code = vm.Code ?? string.Empty,
+                Name = vm.Name,
+                Phone = vm.Phone,
+                Email = vm.Email,
+                Address = vm.Address,
+                ContactName = vm.ContactName,
+                TaxCode = vm.TaxCode,
+                Note = vm.Note,
+                Status = vm.Status,
+                RowVersion = vm.RowVersion
+            },
+            userId: null,
+            ct);
 
         if (result.IsFailure)
         {
-           // ModelState.AddResultErrors(result);
+            ModelState.AddResultErrors(result);
             return View(vm);
         }
 
@@ -182,6 +193,7 @@ public class SupplierController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -189,14 +201,16 @@ public class SupplierController : BaseAdminController
 
         return Json(new
         {
+            success = result.IsSuccess,
             message = result.IsSuccess
-    ? "Đã cập nhật trạng thái."
-    : result.Error.Message
+                ? "Đã cập nhật trạng thái."
+                : result.Error.Message
         });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Supplier.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -204,9 +218,10 @@ public class SupplierController : BaseAdminController
 
         return Json(new
         {
+            success = result.IsSuccess,
             message = result.IsSuccess
-    ? "Đã xóa nhà cung cấp."
-    : result.Error.Message
+                ? "Đã xóa nhà cung cấp."
+                : result.Error.Message
         });
     }
 }

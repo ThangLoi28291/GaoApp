@@ -1,0 +1,292 @@
+﻿@model List<GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto>
+
+@{
+    ViewData["Title"] = "Quản lý menu";
+    var no = 1;
+}
+
+<div class="container-fluid admin-menu-page">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="mb-1">Quản lý menu</h3>
+            <div class="text-muted">
+                Admin tự thêm, sửa, xóa menu cha/con. Menu sẽ hiển thị theo quyền được gắn.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="AdminMenus"
+               asp-action="Create"
+               class="btn btn-primary">
+            <i class="bi bi-plus-circle me-1"></i>
+            Thêm menu cha
+        </a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0 admin-menu-table">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:70px;">#</th>
+                        <th>Tên menu</th>
+                        <th>Controller</th>
+                        <th>Action</th>
+                        <th>Permission</th>
+                        <th class="text-center">Thứ tự</th>
+                        <th class="text-center">Loại</th>
+                        <th class="text-center">Trạng thái</th>
+                        <th style="width:300px;">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (Model == null || !Model.Any())
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                Chưa có menu. Bấm “Thêm menu cha” để tạo menu đầu tiên.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var parent in Model.OrderBy(x => x.SortOrder))
+                        {
+                            <tr class="menu-parent-row">
+                                <td>@no</td>
+
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <i class="icon-base @(parent.Icon ?? "bx bx-folder") text-primary"></i>
+                                        <div>
+                                            <div class="fw-bold">@parent.Title</div>
+                                            <div class="small text-muted">Menu cha</div>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <td>@(parent.Controller ?? "-")</td>
+                                <td>@(parent.Action ?? "-")</td>
+
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(parent.PermissionCode))
+                                    {
+                                        <code>@parent.PermissionCode</code>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">Không gắn</span>
+                                    }
+                                </td>
+
+                                <td class="text-center">@parent.SortOrder</td>
+
+                                <td class="text-center">
+                                    @if (parent.IsSystem)
+                                    {
+                                        <span class="badge bg-warning-subtle text-warning">Hệ thống</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info-subtle text-info">Tùy chỉnh</span>
+                                    }
+                                </td>
+
+                                <td class="text-center">
+                                    @if (parent.IsActive)
+                                    {
+                                        <span class="badge bg-success-subtle text-success">Hoạt động</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary-subtle text-secondary">Đã tắt</span>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a asp-area="Admin"
+                                               asp-controller="AdminMenus"
+                                               asp-action="Create"
+                                               asp-route-parentId="@parent.Id"
+                                               class="btn btn-sm btn-outline-success">
+                                            Thêm con
+                                        </a>
+
+                                        <a asp-area="Admin"
+                                               asp-controller="AdminMenus"
+                                               asp-action="Edit"
+                                               asp-route-id="@parent.Id"
+                                               class="btn btn-sm btn-outline-primary">
+                                            Sửa
+                                        </a>
+
+                                        <form asp-area="Admin"
+                                              asp-controller="AdminMenus"
+                                              asp-action="Delete"
+                                              asp-route-id="@parent.Id"
+                                              method="post"
+                                              class="d-inline js-delete-menu">
+                                            @Html.AntiForgeryToken()
+
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-danger">
+                                                Xóa
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            no++;
+
+                            if (parent.Children != null && parent.Children.Any())
+                            {
+                                foreach (var child in parent.Children.OrderBy(x => x.SortOrder))
+                                {
+                                    <tr class="menu-child-row">
+                                        <td>@no</td>
+
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2 ps-4">
+                                                <span class="tree-line">└──</span>
+                                                <i class="icon-base @(child.Icon ?? "bx bx-radio-circle") text-muted"></i>
+                                                <div>
+                                                    <div class="fw-semibold">@child.Title</div>
+                                                    <div class="small text-muted">Menu con của: @parent.Title</div>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td>@(child.Controller ?? "-")</td>
+                                        <td>@(child.Action ?? "-")</td>
+
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(child.PermissionCode))
+                                            {
+                                                <code>@child.PermissionCode</code>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">Không gắn</span>
+                                            }
+                                        </td>
+
+                                        <td class="text-center">@child.SortOrder</td>
+
+                                        <td class="text-center">
+                                            @if (child.IsSystem)
+                                            {
+                                                <span class="badge bg-warning-subtle text-warning">Hệ thống</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-info-subtle text-info">Tùy chỉnh</span>
+                                            }
+                                        </td>
+
+                                        <td class="text-center">
+                                            @if (child.IsActive)
+                                            {
+                                                <span class="badge bg-success-subtle text-success">Hoạt động</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary-subtle text-secondary">Đã tắt</span>
+                                            }
+                                        </td>
+
+                                        <td>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <a asp-area="Admin"
+                                                       asp-controller="AdminMenus"
+                                                       asp-action="Create"
+                                                       asp-route-parentId="@child.Id"
+                                                       class="btn btn-sm btn-outline-success">
+                                                    Thêm con
+                                                </a>
+
+                                                <a asp-area="Admin"
+                                                       asp-controller="AdminMenus"
+                                                       asp-action="Edit"
+                                                       asp-route-id="@child.Id"
+                                                       class="btn btn-sm btn-outline-primary">
+                                                    Sửa
+                                                </a>
+
+                                                <form asp-area="Admin"
+                                                      asp-controller="AdminMenus"
+                                                      asp-action="Delete"
+                                                      asp-route-id="@child.Id"
+                                                      method="post"
+                                                      class="d-inline js-delete-menu">
+                                                    @Html.AntiForgeryToken()
+
+                                                    <button type="submit"
+                                                            class="btn btn-sm btn-outline-danger">
+                                                        Xóa
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    no++;
+                                }
+                            }
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    .admin-menu-page .card {
+        border-radius: 18px;
+    }
+
+    .admin-menu-table thead th {
+        white-space: nowrap;
+        font-size: .78rem;
+        text-transform: uppercase;
+        color: #475569;
+    }
+
+    .admin-menu-table tbody td {
+        vertical-align: middle;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    .menu-child-row {
+        background: #fbfdff;
+    }
+
+    .tree-line {
+        color: #94a3b8;
+        font-weight: 700;
+    }
+
+    .admin-menu-page code {
+        color: #db2777;
+        background: #fdf2f8;
+        padding: .2rem .45rem;
+        border-radius: .5rem;
+        font-size: .78rem;
+    }
+</style>
+
+@section Scripts {
+    <script>
+        document.querySelectorAll('.js-delete-menu').forEach(function (form) {
+            form.addEventListener('submit', function (e) {
+                const ok = confirm('Bạn có chắc chắn muốn xóa menu này không?');
+                if (!ok) e.preventDefault();
+            });
+        });
+    </script>
+}

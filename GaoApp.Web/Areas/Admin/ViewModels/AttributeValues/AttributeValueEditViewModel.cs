@@ -20,6 +20,10 @@ public sealed class AttributeValueEditViewModel
     public string Name { get; set; } = default!;
 
     public bool Status { get; set; } = true;
+    public DateTime? CreatedAtUtc { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+    public int? CreatedBy { get; set; }
+    public int? UpdatedBy { get; set; }
 
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 

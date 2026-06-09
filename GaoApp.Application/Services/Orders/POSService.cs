@@ -1,4 +1,5 @@
 ﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Application.DTOs.POSShifts;
@@ -8,12 +9,21 @@ using GaoApp.Application.Interfaces.Repositories.Customers;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Repositories.Products;
+using GaoApp.Application.Interfaces.Repositories.Promotions;
+using GaoApp.Application.Interfaces.Repositories.Rewards;
+using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.Products;
+using GaoApp.Application.Interfaces.Services.Promotions;
+using GaoApp.Application.Interfaces.Services.Rewards;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace GaoApp.Application.Services.Orders;
@@ -39,6 +49,17 @@ public sealed class POSService : IPOSService
     private readonly IInventoryValuationEntryRepository _inventoryValuationEntryRepository;
     private readonly IOrderInventoryIssueRepository _orderInventoryIssues;
     private readonly IProductVariantRepository _productVariantRepository;
+    private readonly ICurrentPOSContext _posContext;
+    private readonly IInventoryBalanceRepository _inventoryBalanceRepository;
+    private readonly IUserRepository _users;
+    private readonly IInvoiceService _invoiceService;
+    private readonly ILogger<POSService> _logger;
+    private readonly IOrderRewardCalculator _orderRewardCalculator;
+    private readonly ICustomerRewardLedgerRepository _rewardLedgerRepository;
+    private readonly ICustomerRewardService _customerRewardService;
+    private readonly ICustomerRewardVoucherRepository _rewardVoucherRepository;
+    private readonly IPromotionEngine _promotionEngine;
+    private readonly IPromotionRepository _promotionRepository;
     public POSService(
         IAppUnitOfWork uow,
         IOrderRepository orders,
@@ -58,7 +79,17 @@ public sealed class POSService : IPOSService
            ISalesReturnRepository salesReturns,
            IInventoryValuationEntryRepository inventoryValuationEntryRepository,
            IOrderInventoryIssueRepository orderInventoryIssues,
-           IProductVariantRepository productVariantRepository)
+           IProductVariantRepository productVariantRepository,
+           ICurrentPOSContext posContext,
+           IInventoryBalanceRepository inventoryBalanceRepository,
+            IUserRepository users, IInvoiceService invoiceService,
+ILogger<POSService> logger,
+IOrderRewardCalculator orderRewardCalculator,
+ICustomerRewardLedgerRepository rewardLedgerRepository, 
+ICustomerRewardService customerRewardService, 
+ICustomerRewardVoucherRepository rewardVoucherRepository, 
+IPromotionEngine promotionEngine,
+IPromotionRepository promotionRepository)
     {
         _uow = uow;
         _orders = orders;
@@ -79,6 +110,17 @@ public sealed class POSService : IPOSService
         _inventoryValuationEntryRepository = inventoryValuationEntryRepository;
         _orderInventoryIssues = orderInventoryIssues;
         _productVariantRepository = productVariantRepository;
+        _posContext = posContext;
+        _inventoryBalanceRepository = inventoryBalanceRepository;
+        _users = users;
+        _invoiceService = invoiceService;
+        _logger = logger;
+        _orderRewardCalculator = orderRewardCalculator;
+        _rewardLedgerRepository = rewardLedgerRepository;
+        _customerRewardService = customerRewardService;
+        _rewardVoucherRepository = rewardVoucherRepository;
+        _promotionEngine = promotionEngine;
+        _promotionRepository = promotionRepository;
     }
     private sealed class FinalizeInventoryIssueLine
     {
@@ -108,12 +150,184 @@ public sealed class POSService : IPOSService
         public string? Note { get; set; }
     }
 
+
     private sealed class FinalizeInventorySummary
     {
         public bool HasNegativeInventory { get; set; }
         public bool HasProvisionalCost { get; set; }
 
         public List<FinalizeInventoryIssueLine> IssueLines { get; set; } = new();
+    }
+    /// <summary>
+    /// Tự sinh hóa đơn bán ra sau khi POS finalize thành công.
+    /// Lưu ý:
+    /// - Chạy sau khi transaction POS đã commit.
+    /// - Không được làm fail POS nếu invoice lỗi.
+    /// </summary>
+    private async Task TryGenerateInvoiceAfterFinalizeAsync(
+        int orderId,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var createResult = await _invoiceService.CreateInvoiceHeadFromOrderAsync(orderId, ct);
+
+            if (!createResult.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "Không tạo được InvoiceHead sau finalize. OrderId={OrderId}. Error={Error}",
+                    orderId,
+                    createResult.Error?.Message);
+
+                return;
+            }
+
+            var generateResult = await _invoiceService.GenerateDetailsFromOrderLinesAsync(orderId, ct);
+
+            if (!generateResult.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "Không sinh được InvoiceDetail sau finalize. OrderId={OrderId}. Error={Error}",
+                    orderId,
+                    generateResult.Error?.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Lỗi hậu xử lý Invoice sau POS finalize. POS vẫn đã hoàn tất. OrderId={OrderId}",
+                orderId);
+        }
+    }
+    private async Task<POSShift> RequireCurrentOpenShiftAsync(CancellationToken ct)
+    {
+        if (!_posContext.IsAvailable || _posContext.StoreId <= 0 || _posContext.TerminalId <= 0)
+        {
+            throw PosAppException.Context(
+                errorCode: PosErrorCodes.ContextTerminalNotResolved,
+                message: "Không xác định được máy POS hiện tại.",
+                actionHint: "Vui lòng đăng nhập lại hoặc kiểm tra cấu hình terminal của máy này.",
+                metadata: new
+                {
+                    _posContext.IsAvailable,
+                    _posContext.StoreId,
+                    _posContext.TerminalId
+                });
+        }
+
+        var shift = await _shifts.GetOpenShiftAsync(
+            _posContext.StoreId,
+            _posContext.TerminalId,
+            ct);
+
+        if (shift == null)
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.ShiftNotOpen,
+                message: "Terminal này chưa mở ca POS.",
+                actionHint: "Vui lòng mở ca trước khi thực hiện thao tác này.",
+                metadata: new
+                {
+                    _posContext.StoreId,
+                    _posContext.TerminalId
+                });
+        }
+
+        return shift;
+    }
+
+    private async Task<int?> TryResolveCurrentPOSWarehouseIdAsync(CancellationToken ct)
+    {
+        if (!_posContext.IsAvailable)
+            return null;
+
+        var shift = await _shifts.GetOpenShiftAsync(
+            _posContext.StoreId,
+            _posContext.TerminalId,
+            ct);
+
+        if (shift == null)
+            return null;
+
+        if (shift.WarehouseId <= 0)
+            return null;
+
+        return shift.WarehouseId;
+    }
+    private void EnsureShiftOwnership(POSShift shift)
+    {
+        var currentUserId = _posContext.UserId;
+
+        if (!currentUserId.HasValue || currentUserId.Value <= 0)
+        {
+            throw PosAppException.Context(
+                errorCode: PosErrorCodes.ContextUserNotResolved,
+                message: "Không xác định được tài khoản đang thao tác.",
+                actionHint: "Vui lòng đăng nhập lại rồi thử lại.");
+        }
+
+        if (shift.OpenedByUserId <= 0 || shift.OpenedByUserId == currentUserId.Value)
+            return;
+
+        shift.RecalcExpected();
+
+        throw PosAppException.Ownership(
+            errorCode: PosErrorCodes.ShiftOwnedByAnotherUser,
+            message: "Terminal này đang có ca POS của nhân viên khác.",
+            actionHint: "Vui lòng đổi đúng tài khoản đã mở ca, hoặc nhờ quản lý tiếp quản/đóng hộ ca.",
+            metadata: new
+            {
+                shiftId = shift.Id,
+                shiftCode = string.IsNullOrWhiteSpace(shift.ShiftCode)
+                    ? $"SHIFT-{shift.Id}"
+                    : shift.ShiftCode,
+
+                storeId = shift.StoreId,
+
+                terminalId = shift.TerminalId,
+                terminalCode = shift.Terminal != null
+                    ? shift.Terminal.Code
+                    : null,
+                terminalName = shift.Terminal != null
+                    ? shift.Terminal.Name
+                    : null,
+
+                openedByUserId = shift.OpenedByUserId,
+
+                // POSService chưa nên query user trong hàm sync này.
+                // UI sẽ gọi /admin/pos/shift/ownership-info để lấy tên người mở ca.
+                openedByUserName = (string?)null,
+
+                currentUserId = currentUserId.Value,
+
+                openedAtUtc = shift.OpenedAtUtc,
+
+                warehouseId = shift.WarehouseId,
+                warehouseCode = shift.Warehouse != null
+                    ? shift.Warehouse.Code
+                    : null,
+                warehouseName = shift.Warehouse != null
+                    ? shift.Warehouse.Name
+                    : null,
+
+                openingCash = shift.OpeningCash,
+                cashSalesTotal = shift.CashSalesTotal,
+                cashInTotal = shift.CashInTotal,
+                cashOutTotal = shift.CashOutTotal,
+                cashRefundTotal = shift.CashRefundTotal,
+                closingCashExpected = shift.ClosingCashExpected,
+
+                ownershipInfoUrl = "/admin/pos/shift/ownership-info",
+                takeOverUrl = "/admin/pos/shift/takeover",
+                forceCloseUrl = "/admin/pos/shift/force-close",
+
+                canTakeOver = false,
+                canForceClose = false,
+
+                requiredTakeOverPolicy = "pos.shift.takeover",
+                requiredForceClosePolicy = "pos.shift.forceclose"
+            });
     }
     /// <summary>
     /// Ghi log timeline riêng cho POS.
@@ -285,14 +499,45 @@ public sealed class POSService : IPOSService
     {
         return $"H{orderId:D6}";
     }
+    private static bool HasMeaningfulWork(Order order)
+    {
+        if (order == null) return false;
 
+        var hasLines = order.Lines.Any(x => !x.IsDeleted);
+        var hasPayments = order.Payments.Any(x => !x.IsDeleted);
+
+        return hasLines || hasPayments;
+    }
     private static void EnsureCanBeCurrentCart(Order order, int shiftId)
     {
         if (order.POSShiftId != shiftId)
-            throw new InvalidOperationException("Đơn không thuộc ca POS hiện tại.");
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartNotInCurrentShift,
+                message: "Đơn này không thuộc ca POS hiện tại.",
+                actionHint: "Vui lòng chọn đơn thuộc ca hiện tại hoặc chuyển sang đúng ca để tiếp tục.",
+                metadata: new
+                {
+                    order.Id,
+                    order.OrderNumber,
+                    OrderShiftId = order.POSShiftId,
+                    CurrentShiftId = shiftId
+                });
+        }
 
         if (order.Status != OrderStatus.Draft)
-            throw new InvalidOperationException("Chỉ đơn Draft mới có thể là giỏ hiện tại.");
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentInvalidStatus,
+                message: "Giỏ hiện tại không còn ở trạng thái có thể chỉnh sửa.",
+                actionHint: "Vui lòng chọn một đơn nháp khác hoặc tạo giỏ mới.",
+                metadata: new
+                {
+                    order.Id,
+                    order.OrderNumber,
+                    Status = order.Status.ToString()
+                });
+        }
     }
 
     private static decimal SafePositive(decimal value, decimal fallback = 0m)
@@ -422,7 +667,9 @@ public sealed class POSService : IPOSService
     /// 3) conversion active đầu tiên
     /// 4) fallback về base unit của Product
     /// </summary>
-    private static PosSellingUnitInfo ResolvePreferredSellingUnit(ProductVariant variant)
+    private static PosSellingUnitInfo ResolvePreferredSellingUnit(
+    ProductVariant variant,
+    string priceTier = CustomerPriceTiers.Retail)
     {
         var product = variant.Product
             ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
@@ -453,7 +700,7 @@ public sealed class POSService : IPOSService
                 BaseUnitId = baseUnitId,
                 BaseUnitName = baseUnitName,
                 Multiplier = chosen.Factor <= 0 ? 1m : chosen.Factor,
-                UnitPrice = chosen.Price ?? variant.Price ?? product.BasePrice,
+                UnitPrice = ResolveSalePriceByTier(variant, chosen, priceTier),
                 Barcode = ResolvePrimaryBarcode(chosen),
                 IsBaseUnit = chosen.IsBaseUnit,
                 IsDefaultForSale = chosen.IsDefaultForSale
@@ -469,7 +716,7 @@ public sealed class POSService : IPOSService
             BaseUnitId = baseUnitId,
             BaseUnitName = baseUnitName,
             Multiplier = 1m,
-            UnitPrice = variant.Price ?? product.BasePrice,
+            UnitPrice = ResolveSalePriceByTier(variant, null, priceTier),
             Barcode = null,
             IsBaseUnit = true,
             IsDefaultForSale = true
@@ -486,9 +733,9 @@ public sealed class POSService : IPOSService
 
         var existing = order.Lines.FirstOrDefault(x =>
             !x.IsDeleted &&
-            x.VariantId == lookup.ProductVariantId &&
-            x.SellingUnitId == lookup.UnitId &&
-            x.UnitPrice == unitPrice);
+          x.VariantId == lookup.ProductVariantId
+&& x.ProductUnitConversionId ==
+   lookup.ProductUnitConversionId);
 
         if (existing != null)
         {
@@ -497,6 +744,8 @@ public sealed class POSService : IPOSService
             existing.Multiplier = multiplier;
             existing.ScannedBarcode = lookup.Barcode;
             existing.BarcodeSource = barcodeSource;
+            existing.ProductUnitConversionId =
+    lookup.ProductUnitConversionId;
             existing.SellingUnitId = lookup.UnitId;
             existing.SellingUnitName = lookup.UnitName;
             existing.BaseUnitId = lookup.BaseUnitId;
@@ -511,7 +760,7 @@ public sealed class POSService : IPOSService
             OrderId = order.Id,
             ProductId = lookup.ProductId,
             VariantId = lookup.ProductVariantId,
-
+            ProductUnitConversionId = lookup.ProductUnitConversionId,
             ItemName = lookup.ProductName,
             UnitName = lookup.UnitName,
             Sku = lookup.VariantSku,
@@ -533,15 +782,38 @@ public sealed class POSService : IPOSService
         });
     }
 
- 
+
 
     private async Task<Order> RequireCurrentDraftAsync(CancellationToken ct)
     {
         var currentDraft = await EnsureCurrentCartAsync(ct);
         var order = await _orders.GetByIdAsync(currentDraft.OrderId, ct);
 
-        if (order == null || order.Status != OrderStatus.Draft)
-            throw new InvalidOperationException("Không tìm thấy giỏ hiện tại hợp lệ.");
+        if (order == null)
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentNotFound,
+                message: "Không tìm thấy giỏ hiện tại hợp lệ.",
+                actionHint: "Vui lòng tải lại màn hình POS hoặc tạo giỏ mới.",
+                metadata: new
+                {
+                    CurrentOrderId = currentDraft.OrderId
+                });
+        }
+
+        if (order.Status != OrderStatus.Draft)
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentInvalidStatus,
+                message: "Giỏ hiện tại không còn ở trạng thái có thể chỉnh sửa.",
+                actionHint: "Vui lòng chọn một đơn nháp khác hoặc tạo giỏ mới.",
+                metadata: new
+                {
+                    order.Id,
+                    order.OrderNumber,
+                    Status = order.Status.ToString()
+                });
+        }
 
         return order;
     }
@@ -551,12 +823,22 @@ public sealed class POSService : IPOSService
         if (order.Status != OrderStatus.Draft)
             return false;
 
-        var hasLines = order.Lines.Any(x => !x.IsDeleted);
-        var hasPayments = order.Payments.Any(x => !x.IsDeleted);
-
-        return !hasLines && !hasPayments;
+        return !HasMeaningfulWork(order);
     }
+    private async Task<Order?> FindReusableEmptyDraftAsync(
+    int shiftId,
+    int? excludeOrderId = null,
+    CancellationToken ct = default)
+    {
+        var drafts = await _orders.GetDraftOrdersByShiftAsync(shiftId, ct);
 
+        return drafts
+            .Where(x => !excludeOrderId.HasValue || x.Id != excludeOrderId.Value)
+            .Where(IsEmptyDraft)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefault();
+    }
     private static void ReversePaymentsFromShift(POSShift shift, Order order)
     {
         var payments = order.Payments.Where(p => !p.IsDeleted).ToList();
@@ -671,7 +953,7 @@ public sealed class POSService : IPOSService
                 movementRequest.UnitCost = provisionalUnitCost.Value;
             }
 
-        
+
 
             // POS finalize mức 2:
             // vẫn complete order dù âm tồn.
@@ -718,7 +1000,8 @@ public sealed class POSService : IPOSService
                     OrderLineId = line.Id,
                     ProductId = line.ProductId,
                     VariantId = line.VariantId,
-                    ProductUnitConversionId = line.SellingUnitId, // nếu sau này bạn có field riêng thì map lại
+                    ProductUnitConversionId =
+    line.ProductUnitConversionId, // nếu sau này bạn có field riêng thì map lại
                     BarcodeId = null, // hiện chưa thấy bạn có BarcodeId trên OrderLine, tạm để null
                     ItemName = line.ItemName,
                     BaseQuantity = qtyToDeduct,
@@ -815,6 +1098,26 @@ public sealed class POSService : IPOSService
         // - root cause sẽ được cập nhật ở bước xử lý case sau
         return InventoryIssueReasonType.Unknown;
     }
+    private static string BuildInventoryIssueInternalSummary(FinalizeInventorySummary summary)
+    {
+        var issueCount = summary.IssueLines?.Count ?? 0;
+
+        var parts = new List<string>();
+
+        if (summary.HasNegativeInventory)
+            parts.Add("âm tồn");
+
+        if (summary.HasProvisionalCost)
+            parts.Add("provisional cost");
+
+        var reasonText = parts.Count > 0
+            ? string.Join(" / ", parts)
+            : "inventory issue";
+
+        return $"Phát hiện {reasonText} sau finalize. " +
+               $"Số dòng issue: {issueCount}. " +
+               $"Chi tiết xem tại OrderInventoryIssueLines.";
+    }
     private static string BuildInventoryIssueInternalNote(FinalizeInventorySummary summary)
     {
         var parts = new List<string>();
@@ -875,7 +1178,7 @@ public sealed class POSService : IPOSService
         // CÓ ISSUE => ORDER VẪN COMPLETE, NHƯNG MỞ CASE HẬU KIỂM
         // =========================================================
         var reasonType = ResolveInventoryIssueReasonType(summary);
-        var internalNote = BuildInventoryIssueInternalNote(summary);
+        var internalNote = BuildInventoryIssueInternalSummary(summary);
 
         var issue = order.InventoryIssue
             ?? await _orderInventoryIssues.GetByOrderIdAsync(order.Id, ct);
@@ -898,7 +1201,7 @@ public sealed class POSService : IPOSService
                 RejectedAtUtc = null,
                 RejectedByUserId = null,
                 ReasonType = reasonType,
-                InternalNote = internalNote,
+                InternalNote = TrimText(internalNote, 1000),
                 IsOverdue = false
             };
             issue.Severity = CalculateSeverity(issue, now);
@@ -934,7 +1237,7 @@ public sealed class POSService : IPOSService
                 ActionAtUtc = now,
                 ReferenceType = InventoryIssueReferenceType.Order,
                 ReferenceId = issue.OrderId,
-                Note = internalNote
+                Note = TrimText(internalNote, 1000)
             }, ct);
 
             await _orderInventoryIssues.SaveChangesAsync(ct);
@@ -1183,25 +1486,51 @@ public sealed class POSService : IPOSService
         order.Status = OrderStatus.Refunded;
         order.PaymentStatus = PaymentStatus.Refunded;
 
+        await ReverseRewardForRefundedOrderAsync(order, reason, ct);
+        // Hoàn voucher để khách dùng lại
+        await _rewardVoucherRepository.RestoreUsedVouchersByOrderIdAsync(
+      order.Id,
+      reason,
+      ct);
+
         await _orders.SaveChangesAsync(ct);
 
         return await GetReceiptAsync(order.Id, ct);
     }
 
-    public async Task<int> CreateDraftAsync(int? customerId = null, string? note = null, CancellationToken ct = default)
+    public async Task<int> CreateDraftAsync(
+     int? customerId = null,
+     string? note = null,
+     CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Không thể tạo đơn: chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
+
+        var reusableDraft = await FindReusableEmptyDraftAsync(openShift.Id, null, ct);
+
+        if (reusableDraft != null)
+        {
+            reusableDraft.CustomerId = customerId;
+            reusableDraft.Note = string.IsNullOrWhiteSpace(note) ? reusableDraft.Note : note.Trim();
+
+            openShift.CurrentOrderId = reusableDraft.Id;
+
+            Recalc(reusableDraft);
+            await _orders.SaveChangesAsync(ct);
+
+            return reusableDraft.Id;
+        }
 
         var order = new Order
         {
-            CustomerId = customerId,
-            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             Status = OrderStatus.Draft,
             PaymentStatus = PaymentStatus.Unpaid,
-            POSShiftId = openShift.Id
+            POSShiftId = openShift.Id,
+            CustomerId = customerId,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
         };
+
+        Recalc(order);
 
         await _orders.AddAsync(order, ct);
         await _orders.SaveChangesAsync(ct);
@@ -1211,22 +1540,69 @@ public sealed class POSService : IPOSService
 
         return order.Id;
     }
-
     public async Task<OrderDraftDto> GetDraftAsync(int orderId, CancellationToken ct = default)
     {
         var order = await RequireDraftAsync(orderId, ct);
 
+        await ApplyPromotionsForOrderAsync(order, ct);
+
         Recalc(order);
         await _orders.SaveChangesAsync(ct);
 
-        return Map(order);
+        return await MapAsync(order, ct);
     }
-
-    public async Task<OrderDraftDto> AddItemAsync(int orderId, int variantId, decimal qty = 1, CancellationToken ct = default)
+    private static PosSellingUnitInfo ResolveSellingUnitForManualAdd(
+    ProductVariant variant,
+    int? productUnitConversionId = null,
+    string priceTier = CustomerPriceTiers.Retail)
     {
-        if (qty <= 0) qty = 1;
+        if (variant == null)
+            throw new ArgumentNullException(nameof(variant));
+
+        var product = variant.Product
+            ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+
+        var baseUnitId = product.BaseUnitId;
+        var baseUnitName = product.BaseUnit?.Name;
+
+        // Không truyền conversion => giữ logic cũ
+        if (!productUnitConversionId.HasValue || productUnitConversionId.Value <= 0)
+            return ResolvePreferredSellingUnit(variant, priceTier);
+
+        var activeConversions = (variant.UnitConversions ?? new List<ProductUnitConversion>())
+            .Where(c => !c.IsDeleted && c.IsActive)
+            .ToList();
+
+        var chosen = activeConversions.FirstOrDefault(c => c.Id == productUnitConversionId.Value);
+        if (chosen == null)
+            throw new InvalidOperationException("Không tìm thấy đơn vị quy đổi hợp lệ cho sản phẩm.");
+
+        return new PosSellingUnitInfo
+        {
+            ProductUnitConversionId = chosen.Id,
+            SellingUnitId = chosen.UnitId,
+            SellingUnitName = chosen.Unit?.Name,
+            BaseUnitId = baseUnitId,
+            BaseUnitName = baseUnitName,
+            Multiplier = chosen.Factor <= 0 ? 1m : chosen.Factor,
+            UnitPrice = ResolveSalePriceByTier(variant, chosen, priceTier),
+            Barcode = ResolvePrimaryBarcode(chosen),
+            IsBaseUnit = chosen.IsBaseUnit,
+            IsDefaultForSale = chosen.IsDefaultForSale
+        };
+    }
+    public async Task<OrderDraftDto> AddItemAsync(
+    int orderId,
+    int variantId,
+    int? productUnitConversionId = null,
+    decimal qty = 1,
+    CancellationToken ct = default)
+    {
+        if (qty <= 0)
+            qty = 1;
 
         var order = await RequireDraftAsync(orderId, ct);
+        var priceTier = ResolveOrderPriceTier(order);
 
         var variant = await _variants.GetActiveWithProductAsync(variantId, ct)
                      ?? throw new InvalidOperationException("Variant không tồn tại hoặc đang bị khóa.");
@@ -1234,9 +1610,14 @@ public sealed class POSService : IPOSService
         var product = variant.Product
                       ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
 
-        // Không còn lấy theo variant.Barcode nữa.
-        // POS sẽ tự resolve đơn vị bán mặc định + barcode đại diện.
-        var sellingInfo = ResolvePreferredSellingUnit(variant);
+        // NEW:
+        // nếu có productUnitConversionId => add đúng đơn vị con
+        // nếu không => giữ hành vi cũ theo đơn vị ưu tiên mặc định
+        var sellingInfo = ResolveSellingUnitForManualAdd(
+    variant,
+    productUnitConversionId,
+    priceTier);
+
 
         var unitPrice = SafePositive(sellingInfo.UnitPrice ?? 0m, 0m);
         var barcodeSource = BarcodeLookupSourceType.ManualVariant;
@@ -1244,15 +1625,16 @@ public sealed class POSService : IPOSService
 
         var existing = order.Lines.FirstOrDefault(x =>
             !x.IsDeleted &&
-            x.VariantId == variantId &&
-            x.SellingUnitId == sellingInfo.SellingUnitId &&
-            x.UnitPrice == unitPrice);
-
+          x.VariantId == variantId
+&& x.ProductUnitConversionId ==
+   sellingInfo.ProductUnitConversionId);
         if (existing != null)
         {
             existing.Quantity += qty;
             existing.BaseQuantity += ComputeBaseQuantity(qty, sellingInfo.Multiplier);
             existing.Multiplier = sellingInfo.Multiplier;
+            existing.ProductUnitConversionId =
+    sellingInfo.ProductUnitConversionId;
             existing.SellingUnitId = sellingInfo.SellingUnitId;
             existing.SellingUnitName = sellingInfo.SellingUnitName;
             existing.BaseUnitId = sellingInfo.BaseUnitId;
@@ -1270,14 +1652,16 @@ public sealed class POSService : IPOSService
                 ProductId = variant.ProductId,
                 VariantId = variant.Id,
                 ItemName = product.Name,
-                
+
                 UnitName = sellingInfo.SellingUnitName,
+
                 Sku = variant.Sku,
                 Barcode = barcode,
 
                 Quantity = qty,
                 BaseQuantity = ComputeBaseQuantity(qty, sellingInfo.Multiplier),
                 Multiplier = sellingInfo.Multiplier,
+                ProductUnitConversionId = sellingInfo.ProductUnitConversionId,
 
                 SellingUnitId = sellingInfo.SellingUnitId,
                 SellingUnitName = sellingInfo.SellingUnitName,
@@ -1291,10 +1675,13 @@ public sealed class POSService : IPOSService
             });
         }
 
-        Recalc(order);
-        await _orders.SaveChangesAsync(ct);
 
-        return await GetDraftAsync(order.Id, ct);
+        await ApplyBestPackPriceForVariantLinesAsync(
+     order,
+     variant.Id,
+     ct);
+
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> AddItemByBarcodeAsync(int orderId, string barcode, decimal qty = 1, CancellationToken ct = default)
@@ -1322,8 +1709,8 @@ public sealed class POSService : IPOSService
                 {
                     var product = variant.Product
                                   ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
-
-                    var sellingInfo = ResolvePreferredSellingUnit(variant);
+                    var priceTier = ResolveOrderPriceTier(order);
+                    var sellingInfo = ResolvePreferredSellingUnit(variant, priceTier);
 
                     lookup = new BarcodeLookupResultDto
                     {
@@ -1358,15 +1745,16 @@ public sealed class POSService : IPOSService
 
         if (lookup == null)
             throw new InvalidOperationException("Không tìm thấy sản phẩm theo barcode.");
+        lookup = await ApplyPriceTierToBarcodeLookupAsync(order, lookup, ct);
 
         AddOrMergeLineFromBarcode(order, lookup, qty);
+        await ApplyBestPackPriceForVariantLinesAsync(
+      order,
+      lookup.ProductVariantId,
+      ct);
 
-        Recalc(order);
-        await _orders.SaveChangesAsync(ct);
-
-        return await GetDraftAsync(order.Id, ct);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
-
     public async Task<OrderDraftDto> UpdateLineQtyAsync(int lineId, decimal qty, CancellationToken ct = default)
     {
         if (qty <= 0) qty = 1;
@@ -1374,19 +1762,20 @@ public sealed class POSService : IPOSService
         var line = await _orders.GetDraftLineAsync(lineId, ct)
                    ?? throw new InvalidOperationException("Line không tồn tại hoặc đơn không còn Draft.");
 
+        var order = await RequireDraftAsync(line.OrderId, ct);
+
         line.Quantity = qty;
 
         var multiplier = line.Multiplier <= 0 ? 1m : line.Multiplier;
         line.BaseQuantity = qty * multiplier;
 
-        var order = await RequireDraftAsync(line.OrderId, ct);
+        await ApplyBestPackPriceForVariantLinesAsync(
+     order,
+     line.VariantId,
+     ct);
 
-        Recalc(order);
-        await _orders.SaveChangesAsync(ct);
-
-        return Map(order);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
-
     public async Task<OrderDraftDto> RemoveLineAsync(int lineId, CancellationToken ct = default)
     {
         var line = await _orders.GetDraftLineAsync(lineId, ct)
@@ -1396,10 +1785,7 @@ public sealed class POSService : IPOSService
 
         var order = await RequireDraftAsync(line.OrderId, ct);
 
-        Recalc(order);
-        await _orders.SaveChangesAsync(ct);
-
-        return Map(order);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> AddPaymentAsync(int orderId, UpsertPaymentRequest dto, CancellationToken ct = default)
@@ -1436,7 +1822,7 @@ public sealed class POSService : IPOSService
         Recalc(order);
         await _orders.SaveChangesAsync(ct);
 
-        return Map(order);
+        return await MapAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> RemovePaymentAsync(int paymentId, CancellationToken ct = default)
@@ -1451,7 +1837,7 @@ public sealed class POSService : IPOSService
         Recalc(order);
         await _orders.SaveChangesAsync(ct);
 
-        return Map(order);
+        return await MapAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> FinalizeAsync(int orderId, CancellationToken ct = default)
@@ -1472,7 +1858,7 @@ public sealed class POSService : IPOSService
             // Lưu trạng thái cũ để ghi audit old/new values
             var oldStatus = order.Status.ToString();
             var oldPaymentStatus = order.PaymentStatus.ToString();
-
+            await ApplyPromotionsForOrderAsync(order, ct);
             Recalc(order);
 
             if (!order.Lines.Any(l => !l.IsDeleted))
@@ -1509,11 +1895,18 @@ public sealed class POSService : IPOSService
             order.PaymentStatus = PaymentStatus.Paid;
             order.CompletedAtUtc = DateTime.UtcNow;
 
+            // Đánh dấu voucher đã dùng khi đơn chốt thành công
+            MarkRewardVouchersAsUsed(order);
+
             // Nhưng inventory/cost issue thì đi luồng riêng
             await UpsertPendingInventoryIssueAsync(order, finalizeInventorySummary, ct);
 
             if (string.IsNullOrWhiteSpace(order.OrderNumber))
                 order.OrderNumber = await _orderNo.NextAsync(ct);
+
+            // Cộng tích điểm sau khi đơn đã Completed/Paid và đã có OrderNumber.
+            // Chỉ Add ledger, SaveChanges sẽ dùng chung với transaction finalize bên dưới.
+            await ApplyRewardForFinalizedOrderAsync(order, ct);
 
             ApplyPaymentsToShift(shift, order);
 
@@ -1549,7 +1942,14 @@ public sealed class POSService : IPOSService
 
             await tx.CommitAsync(ct);
 
-            return Map(order);
+            // =====================================================
+            // Phase 3.5:
+            // Tự sinh Invoice sau khi POS finalize đã commit.
+            // Không để lỗi Invoice làm fail POS.
+            // =====================================================
+            await TryGenerateInvoiceAfterFinalizeAsync(order.Id, ct);
+
+            return await MapAsync(order, ct);
         }
         catch (Exception ex)
         {
@@ -1595,7 +1995,8 @@ public sealed class POSService : IPOSService
             if (order.Status != OrderStatus.Draft && order.Status != OrderStatus.OnHold)
                 throw new InvalidOperationException("Chỉ được hủy đơn Draft hoặc đơn đang giữ.");
 
-            var openShift = await _shifts.GetOpenShiftAsync(ct);
+            var openShift = await RequireCurrentOpenShiftAsync(ct);
+            EnsureShiftOwnership(openShift);
             if (openShift != null && openShift.CurrentOrderId == order.Id)
             {
                 openShift.CurrentOrderId = null;
@@ -1688,6 +2089,7 @@ public sealed class POSService : IPOSService
             CustomerId = order.CustomerId,
             CustomerName = order.Customer?.Name,
             CustomerPhone = order.Customer?.Phone,
+
             CashierName = null,
             ShiftCode = order.POSShift?.ShiftCode,
             Note = order.Note,
@@ -1697,6 +2099,18 @@ public sealed class POSService : IPOSService
             Subtotal = order.Subtotal,
             DiscountTotal = order.DiscountTotal,
             GrandTotal = order.GrandTotal,
+            VoucherDiscountTotal = order.VoucherDiscountTotal,
+            RewardVouchers = order.RewardVouchers
+    .Where(x => !x.IsDeleted)
+    .OrderBy(x => x.Id)
+    .Select(x => new OrderRewardVoucherDto
+    {
+        VoucherId = x.VoucherId,
+        VoucherCode = x.Voucher != null ? x.Voucher.VoucherCode : "",
+        Value = x.VoucherValue,
+        Status = x.Voucher != null ? x.Voucher.Status.ToString() : null
+    })
+    .ToList(),
             PaidTotal = order.PaidTotal,
             BalanceDue = order.BalanceDue,
             ChangeDue = order.ChangeDue,
@@ -1705,27 +2119,42 @@ public sealed class POSService : IPOSService
             RefundedTotal = refundedTotal,
             RefundableRemaining = refundableRemaining,
 
-            Lines = order.Lines.Select(x => new OrderLineDto
+            Lines = order.Lines.Select(x =>
             {
-                LineId = x.Id,
-                VariantId = x.VariantId,
-                ItemName = x.ItemName,
-                ProductVariantName = x.Variant != null ? x.Variant.ProductVariantName : null,
-                UnitName = x.UnitName,
-                Sku = x.Sku ?? string.Empty,
-                Barcode = x.Barcode,
-                Quantity = x.Quantity,
-                UnitPrice = x.UnitPrice,
-                LineDiscount = x.LineDiscount,
-                LineTotal = x.LineTotal,
-                SellingUnitId = x.SellingUnitId,
-                SellingUnitName = x.SellingUnitName,
-                BaseUnitId = x.BaseUnitId,
-                BaseUnitName = x.BaseUnitName,
-                Multiplier = x.Multiplier,
-                BaseQuantity = x.BaseQuantity,
-                ScannedBarcode = x.ScannedBarcode,
-                BarcodeSource = x.BarcodeSource
+                var img = ResolveVariantImage(x.Variant);
+
+                return new OrderLineDto
+                {
+                    LineId = x.Id,
+                    VariantId = x.VariantId,
+                    ItemName = x.ItemName,
+                    ProductVariantName = x.Variant != null ? x.Variant.ProductVariantName : null,
+                    UnitName = x.UnitName,
+                    Sku = x.Sku ?? string.Empty,
+                    Barcode = x.Barcode,
+
+                    // ✅ NEW: IMAGE
+                    ImageUrl = img.url,
+                    ImageThumbUrl = img.thumb,
+                    ImageAlt = img.alt,
+                    HasImage = img.hasImage,
+
+                    Quantity = x.Quantity,
+                    UnitPrice = x.UnitPrice,
+                    LineDiscount = x.LineDiscount,
+                    LineTotal = x.LineTotal,
+                    SellingUnitId = x.SellingUnitId,
+                    SellingUnitName = x.SellingUnitName,
+                    OriginalUnitPrice = x.OriginalUnitPrice,
+                    PromotionDiscount = x.PromotionDiscount,
+                    PromotionName = x.PromotionName,
+                    BaseUnitId = x.BaseUnitId,
+                    BaseUnitName = x.BaseUnitName,
+                    Multiplier = x.Multiplier,
+                    BaseQuantity = x.BaseQuantity,
+                    ScannedBarcode = x.ScannedBarcode,
+                    BarcodeSource = x.BarcodeSource
+                };
             }).ToList(),
             Payments = order.Payments.Select(p => new OrderPaymentDto
             {
@@ -1787,6 +2216,18 @@ public sealed class POSService : IPOSService
                 Status = o.Status.ToString(),
                 PaymentStatus = o.PaymentStatus.ToString(),
                 GrandTotal = o.GrandTotal,
+                VoucherDiscountTotal = o.VoucherDiscountTotal,
+                RewardVouchers = o.RewardVouchers
+    .Where(x => !x.IsDeleted)
+    .OrderBy(x => x.Id)
+    .Select(x => new OrderRewardVoucherDto
+    {
+        VoucherId = x.VoucherId,
+        VoucherCode = x.Voucher != null ? x.Voucher.VoucherCode : "",
+        Value = x.VoucherValue,
+        Status = x.Voucher != null ? x.Voucher.Status.ToString() : null
+    })
+    .ToList(),
                 PaidTotal = o.PaidTotal,
                 BalanceDue = o.BalanceDue,
                 CreatedAtUtc = o.CreatedAtUtc,
@@ -1797,6 +2238,7 @@ public sealed class POSService : IPOSService
                 // =========================
                 RefundedTotal = afterSale?.RefundedTotal ?? 0m,
                 ReturnCount = afterSale?.ReturnCount ?? 0
+
             };
         }).ToList();
 
@@ -1813,42 +2255,197 @@ public sealed class POSService : IPOSService
     {
         var order = await _orders.GetDraftAsync(orderId, ct);
         if (order == null)
-            throw new InvalidOperationException("Không tìm thấy Draft order (đơn có thể đã giữ, đã hoàn tất hoặc đã hủy).");
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentNotFound,
+                message: "Không tìm thấy đơn nháp hợp lệ.",
+                actionHint: "Đơn có thể đã được giữ, đã hoàn tất hoặc đã hủy. Vui lòng tải lại danh sách đơn.");
+        }
 
         if (order.Status != OrderStatus.Draft)
-            throw new InvalidOperationException("Đơn không còn ở trạng thái Draft.");
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentInvalidStatus,
+                message: "Đơn không còn ở trạng thái có thể chỉnh sửa.",
+                actionHint: "Vui lòng tải lại trạng thái đơn hoặc chọn đơn khác.",
+                metadata: new
+                {
+                    order.Id,
+                    order.OrderNumber,
+                    Status = order.Status.ToString()
+                });
+        }
 
         return order;
     }
 
     private static void Recalc(Order order)
     {
-        var lines = order.Lines.Where(x => !x.IsDeleted).ToList();
+        var lines = order.Lines
+            .Where(x => !x.IsDeleted)
+            .ToList();
 
+        // =========================
+        // 1. TÍNH LẠI TỪNG DÒNG
+        // =========================
         foreach (var l in lines)
         {
-            l.LineTotal = (l.Quantity * l.UnitPrice) - l.LineDiscount;
+            var grossLineAmount = Math.Round(
+                l.Quantity * l.UnitPrice,
+                0,
+                MidpointRounding.AwayFromZero);
+
+            if (grossLineAmount < 0)
+                grossLineAmount = 0;
+
+            if (l.LineDiscount < 0)
+                l.LineDiscount = 0;
+
+            if (l.PromotionDiscount < 0)
+                l.PromotionDiscount = 0;
+
+            if (l.LineDiscount > grossLineAmount)
+                l.LineDiscount = grossLineAmount;
+
+            var remainAfterLineDiscount = Math.Max(
+                grossLineAmount - l.LineDiscount,
+                0);
+
+            if (l.PromotionDiscount > remainAfterLineDiscount)
+                l.PromotionDiscount = remainAfterLineDiscount;
+
+            l.LineTotal = Math.Round(
+                grossLineAmount - l.LineDiscount - l.PromotionDiscount,
+                0,
+                MidpointRounding.AwayFromZero);
+
             if (l.LineTotal < 0)
                 l.LineTotal = 0;
         }
 
-        var subtotal = lines.Sum(x => x.Quantity * x.UnitPrice);
-        if (subtotal < 0) subtotal = 0;
+        // =========================
+        // 2. TỔNG TIỀN HÀNG
+        // =========================
+        var subtotal = Math.Round(
+            lines.Sum(x => x.Quantity * x.UnitPrice),
+            0,
+            MidpointRounding.AwayFromZero);
 
-        var lineDiscountTotal = Math.Max(lines.Sum(x => x.LineDiscount), 0);
+        if (subtotal < 0)
+            subtotal = 0;
+
+        var lineDiscountTotal = Math.Round(
+            Math.Max(lines.Sum(x => x.LineDiscount), 0),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        var promotionDiscountTotal = Math.Round(
+            Math.Max(lines.Sum(x => x.PromotionDiscount), 0),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        var comboDiscountTotal = Math.Round(
+            Math.Max(order.ComboDiscountTotal, 0),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        order.Subtotal = subtotal;
+        order.PromotionDiscountTotal = promotionDiscountTotal;
+        order.ComboDiscountTotal = comboDiscountTotal;
+
+        // =========================
+        // 3. KHÓA COMBO KHÔNG VƯỢT TIỀN CÒN LẠI
+        // =========================
+        var maxComboDiscount = Math.Max(
+            subtotal - lineDiscountTotal - promotionDiscountTotal,
+            0);
+
+        if (order.ComboDiscountTotal > maxComboDiscount)
+            order.ComboDiscountTotal = maxComboDiscount;
+
+        comboDiscountTotal = order.ComboDiscountTotal;
+
+        // Nếu combo bị đưa về 0 thì xóa snapshot combo.
+        if (comboDiscountTotal <= 0)
+        {
+            order.ComboPromotionId = null;
+            order.ComboPromotionName = null;
+            order.ComboPromotionNote = null;
+        }
+
+        // =========================
+        // 4. GIẢM GIÁ ĐƠN HÀNG
+        // =========================
+        var maxOrderDiscount = Math.Max(
+            subtotal
+            - lineDiscountTotal
+            - promotionDiscountTotal
+            - comboDiscountTotal,
+            0);
 
         if (order.OrderDiscount < 0)
             order.OrderDiscount = 0;
 
-        if (order.OrderDiscount > subtotal)
-            order.OrderDiscount = subtotal;
+        order.OrderDiscount = Math.Round(
+            order.OrderDiscount,
+            0,
+            MidpointRounding.AwayFromZero);
 
-        order.Subtotal = subtotal;
-        order.DiscountTotal = lineDiscountTotal + order.OrderDiscount;
-        order.GrandTotal = Math.Max(order.Subtotal - order.DiscountTotal, 0);
+        if (order.OrderDiscount > maxOrderDiscount)
+            order.OrderDiscount = maxOrderDiscount;
 
-        order.PaidTotal = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount);
-        if (order.PaidTotal < 0) order.PaidTotal = 0;
+        // =========================
+        // 5. VOUCHER
+        // =========================
+        var voucherDiscountTotal = order.RewardVouchers?
+            .Where(x => !x.IsDeleted)
+            .Sum(x => x.VoucherValue) ?? 0m;
+
+        voucherDiscountTotal = Math.Round(
+            Math.Max(voucherDiscountTotal, 0),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        var maxVoucherDiscount = Math.Max(
+            subtotal
+            - lineDiscountTotal
+            - promotionDiscountTotal
+            - comboDiscountTotal
+            - order.OrderDiscount,
+            0);
+
+        if (voucherDiscountTotal > maxVoucherDiscount)
+            voucherDiscountTotal = maxVoucherDiscount;
+
+        order.VoucherDiscountTotal = voucherDiscountTotal;
+
+        // =========================
+        // 6. TỔNG GIẢM / TỔNG THANH TOÁN
+        // =========================
+        order.DiscountTotal = Math.Round(
+            lineDiscountTotal
+            + promotionDiscountTotal
+            + comboDiscountTotal
+            + order.OrderDiscount
+            + order.VoucherDiscountTotal,
+            0,
+            MidpointRounding.AwayFromZero);
+
+        order.GrandTotal = Math.Round(
+            Math.Max(order.Subtotal - order.DiscountTotal, 0),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        // =========================
+        // 7. THANH TOÁN
+        // =========================
+        order.PaidTotal = Math.Round(
+            order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount),
+            0,
+            MidpointRounding.AwayFromZero);
+
+        if (order.PaidTotal < 0)
+            order.PaidTotal = 0;
 
         order.BalanceDue = Math.Max(order.GrandTotal - order.PaidTotal, 0);
         order.ChangeDue = Math.Max(order.PaidTotal - order.GrandTotal, 0);
@@ -1861,22 +2458,103 @@ public sealed class POSService : IPOSService
             order.PaymentStatus = PaymentStatus.Paid;
     }
 
+    /// <summary>
+    /// Áp lại khuyến mãi cho toàn bộ line trong đơn.
+    /// Gọi sau khi giá bán đã được tính xong:
+    /// - giá lẻ
+    /// - giá sỉ
+    /// - giá lốc/thùng
+    /// </summary>
+    private async Task ApplyPromotionsForOrderAsync(
+        Order order,
+        CancellationToken ct = default)
+    {
+        if (order == null)
+            return;
+
+        if (order.StoreId <= 0)
+            return;
+
+        var hasLines = order.Lines.Any(x => !x.IsDeleted);
+        if (!hasLines)
+            return;
+
+        // Query DB đúng 2 lần cho cả giỏ:
+        // 1 lần lấy KM sản phẩm + mua X tặng Y
+        // 1 lần lấy KM combo
+        var productPromotions = await _promotionRepository
+            .GetActiveProductDiscountPromotionsAsync(order.StoreId, ct);
+
+        var comboPromotions = await _promotionRepository
+            .GetActiveComboPromotionsAsync(order.StoreId, ct);
+
+        await _promotionEngine.ApplyOrderPromotionsAsync(
+            order,
+            productPromotions,
+            comboPromotions,
+            ct);
+    }
+
+    private async Task<OrderDraftDto> SaveAndMapDraftAfterCartChangedAsync(
+    Order order,
+    CancellationToken ct = default)
+    {
+        await ApplyPromotionsForOrderAsync(order, ct);
+
+        Recalc(order);
+
+        await _orders.SaveChangesAsync(ct);
+
+        return await MapAsync(order, ct);
+    }
+
+    /// <summary>
+    /// Cộng thanh toán của đơn vào ca POS.
+    ///
+    /// QUAN TRỌNG:
+    /// - Không cộng phần tiền khách đưa dư vào doanh thu ca.
+    /// - Tổng cộng vào ca tối đa chỉ bằng GrandTotal.
+    /// - Nếu đơn có nhiều phương thức thanh toán:
+    ///   + Ưu tiên cộng non-cash đúng số đã thanh toán.
+    ///   + Cash chỉ nhận phần còn lại cần đủ GrandTotal.
+    /// 
+    /// Ví dụ:
+    /// - Đơn 840.000
+    /// - Khách đưa tiền mặt 1.000.000
+    /// => CashSalesTotal chỉ cộng 840.000, không cộng 1.000.000.
+    /// </summary>
     private static void ApplyPaymentsToShift(POSShift shift, Order order)
     {
-        var payments = order.Payments.Where(p => !p.IsDeleted).ToList();
+        var payments = order.Payments
+            .Where(p => !p.IsDeleted && p.Amount > 0)
+            .OrderBy(p => p.Method == PaymentMethod.Cash ? 2 : 1)
+            .ThenBy(p => p.Id)
+            .ToList();
+
+        var remainingToApply = order.GrandTotal;
+
+        if (remainingToApply <= 0)
+            return;
 
         foreach (var payment in payments)
         {
+            if (remainingToApply <= 0)
+                break;
+
+            var amountToApply = Math.Min(payment.Amount, remainingToApply);
+
             if (payment.Method == PaymentMethod.Cash)
-                shift.CashSalesTotal += payment.Amount;
+                shift.CashSalesTotal += amountToApply;
             else
-                shift.NonCashSalesTotal += payment.Amount;
+                shift.NonCashSalesTotal += amountToApply;
+
+            remainingToApply -= amountToApply;
         }
 
         shift.RecalcExpected();
     }
 
-    private static OrderDraftDto Map(Order order)
+    private async Task<OrderDraftDto> MapAsync(Order order, CancellationToken ct = default)
     {
         return new OrderDraftDto
         {
@@ -1885,11 +2563,31 @@ public sealed class POSService : IPOSService
             CustomerId = order.CustomerId,
             CustomerName = order.Customer?.Name,
             CustomerPhone = order.Customer?.Phone,
+            CustomerPriceTier = order.Customer?.PriceTier,
+            PromotionDiscountTotal = order.PromotionDiscountTotal,
+            RewardSummary = order.CustomerId.HasValue
+    ? await _customerRewardService.GetSummaryAsync(order.CustomerId.Value, ct)
+    : null,
             Note = order.Note,
             Subtotal = order.Subtotal,
             OrderDiscount = order.OrderDiscount,
             DiscountTotal = order.DiscountTotal,
             GrandTotal = order.GrandTotal,
+            ComboDiscountTotal = order.ComboDiscountTotal,
+            ComboPromotionId = order.ComboPromotionId,
+            ComboPromotionName = order.ComboPromotionName,
+            ComboPromotionNote = order.ComboPromotionNote,
+            VoucherDiscountTotal = order.VoucherDiscountTotal,
+            AppliedRewardVouchers = order.RewardVouchers
+    .Where(x => !x.IsDeleted)
+    .OrderBy(x => x.Id)
+    .Select(x => new AppliedRewardVoucherDto
+    {
+        VoucherId = x.VoucherId,
+        VoucherCode = x.Voucher != null ? x.Voucher.VoucherCode : "",
+        Value = x.VoucherValue
+    })
+    .ToList(),
             PaidTotal = order.PaidTotal,
             BalanceDue = order.BalanceDue,
             ChangeDue = order.ChangeDue,
@@ -1905,64 +2603,220 @@ public sealed class POSService : IPOSService
                     CreatedAt = p.PaidAtUtc
                 })
                 .ToList(),
-            Lines = order.Lines
-                .Where(x => !x.IsDeleted)
-                .OrderBy(x => x.Id)
-                .Select(x => new OrderLineDto
-                {
-                    LineId = x.Id,
-                    VariantId = x.VariantId,
-                    ItemName = x.ItemName,
-                    ProductVariantName = x.Variant != null ? x.Variant.ProductVariantName : null,
-                    UnitName = x.UnitName,
-                    Sku = x.Sku ?? string.Empty,
-                    Barcode = x.Barcode,
-                    Quantity = x.Quantity,
-                    UnitPrice = x.UnitPrice,
-                    LineDiscount = x.LineDiscount,
-                    LineTotal = x.LineTotal,
-                    SellingUnitId = x.SellingUnitId,
-                    SellingUnitName = x.SellingUnitName,
-                    BaseUnitId = x.BaseUnitId,
-                    BaseUnitName = x.BaseUnitName,
-                    Multiplier = x.Multiplier,
-                    BaseQuantity = x.BaseQuantity,
-                    ScannedBarcode = x.ScannedBarcode,
-                    BarcodeSource = x.BarcodeSource
-                })
-                .ToList()
+            Lines = BuildOrderedPosLines(order)
+    .Select(x =>
+    {
+        var img = ResolveVariantImage(x.Variant);
+
+        return new OrderLineDto
+        {
+            LineId = x.Id,
+            VariantId = x.VariantId,
+            ItemName = x.ItemName,
+            ProductVariantName = x.Variant != null ? x.Variant.ProductVariantName : null,
+            UnitName = x.UnitName,
+            Sku = x.Sku ?? string.Empty,
+            Barcode = x.Barcode,
+            UnitPrices = BuildLineUnitPrices(order, x),
+
+            OriginalUnitPrice = x.OriginalUnitPrice,
+            PromotionDiscount = x.PromotionDiscount,
+            PromotionName = x.PromotionName,
+
+            ImageUrl = img.url,
+            ImageThumbUrl = img.thumb,
+            ImageAlt = img.alt,
+            HasImage = img.hasImage,
+
+            Quantity = x.Quantity,
+            UnitPrice = x.UnitPrice,
+            LineDiscount = x.LineDiscount,
+            LineTotal = x.LineTotal,
+
+            SellingUnitId = x.SellingUnitId,
+            SellingUnitName = x.SellingUnitName,
+            BaseUnitId = x.BaseUnitId,
+            BaseUnitName = x.BaseUnitName,
+            Multiplier = x.Multiplier,
+            BaseQuantity = x.BaseQuantity,
+            ScannedBarcode = x.ScannedBarcode,
+
+            ComboPromotionId = x.ComboPromotionId,
+            ComboPromotionName = x.ComboPromotionName,
+            ComboPromotionNote = x.ComboPromotionNote,
+            ComboAllocatedDiscount = x.ComboAllocatedDiscount,
+
+            PromotionType = x.PromotionType,
+            PromotionBuyQuantity = x.PromotionBuyQuantity,
+            PromotionGiftQuantity = x.PromotionGiftQuantity,
+
+            IsPromotionGift = x.IsPromotionGift,
+            GiftPromotionId = x.GiftPromotionId,
+            GiftSourceLineId = x.GiftSourceLineId,
+            GiftPromotionName = x.GiftPromotionName,
+            GiftPromotionNote = x.GiftPromotionNote,
+
+            BarcodeSource = x.BarcodeSource
+        };
+    })
+    .ToList()
         };
     }
-
-    public async Task<HoldOrderResultDto> HoldAndCreateNewDraftAsync(
-     int orderId,
-     string? holdNote = null,
-     CancellationToken ct = default)
+    private static List<OrderLine> BuildOrderedPosLines(Order order)
     {
-        // Transaction ngoài cùng:
-        // - đổi order thành OnHold
-        // - reserve hàng
-        // - tạo draft mới
-        // - set current cart
-        // nếu lỗi giữa chừng sẽ rollback toàn bộ
+        var lines = order.Lines
+            .Where(x => !x.IsDeleted)
+            .ToList();
+
+        var normalLines = lines
+            .Where(x => !x.IsPromotionGift)
+            .OrderBy(x => x.Id)
+            .ToList();
+
+        var giftLinesBySource = lines
+            .Where(x => x.IsPromotionGift)
+            .GroupBy(x => x.GiftSourceLineId ?? 0)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(x => x.Id).ToList());
+
+        var result = new List<OrderLine>();
+
+        foreach (var line in normalLines)
+        {
+            result.Add(line);
+
+            if (giftLinesBySource.TryGetValue(line.Id, out var gifts))
+            {
+                result.AddRange(gifts);
+            }
+        }
+
+        // Phòng trường hợp gift cũ chưa có source id
+        var orphanGifts = lines
+            .Where(x => x.IsPromotionGift && (!x.GiftSourceLineId.HasValue || x.GiftSourceLineId.Value <= 0))
+            .OrderBy(x => x.Id)
+            .ToList();
+
+        result.AddRange(orphanGifts);
+
+        return result;
+    }
+    private static List<OrderLineUnitPriceDto> BuildLineUnitPrices(Order order, OrderLine line)
+    {
+        var tier = (order.Customer?.PriceTier ?? "RETAIL")
+            .Trim()
+            .ToUpperInvariant();
+
+        var isWholesale = tier == "WHOLESALE";
+
+        var conversions = line.Variant?.UnitConversions?
+            .Where(c => !c.IsDeleted && c.IsActive && c.Unit != null)
+            .OrderByDescending(c => c.IsBaseUnit)
+            .ThenBy(c => c.Factor)
+            .ThenBy(c => c.SortOrder)
+            .ThenBy(c => c.Id)
+            .ToList() ?? new();
+
+        var sameVariantLines = order.Lines
+            .Where(x => !x.IsDeleted && x.VariantId == line.VariantId)
+            .ToList();
+
+        foreach (var l in sameVariantLines)
+        {
+            var m = l.Multiplier <= 0 ? 1m : l.Multiplier;
+            l.BaseQuantity = l.Quantity * m;
+        }
+
+        var totalBaseQty = sameVariantLines.Sum(x => x.BaseQuantity);
+
+        ProductUnitConversion? appliedConversion = null;
+
+        // Tổng >= 48: áp giá thùng
+        appliedConversion = conversions
+            .Where(c => c.Factor >= 48 && totalBaseQty >= c.Factor)
+            .OrderByDescending(c => c.Factor)
+            .FirstOrDefault();
+
+        // Tổng >= 4: áp giá lốc
+        appliedConversion ??= conversions
+            .Where(c => c.Factor >= 4 && c.Factor < 48 && totalBaseQty >= c.Factor)
+            .OrderByDescending(c => c.Factor)
+            .FirstOrDefault();
+
+        return conversions.Select(c =>
+        {
+            var retail = c.Price;
+            var wholesale = c.WholesalePrice;
+
+            var effective = isWholesale && wholesale.HasValue && wholesale.Value > 0
+                ? wholesale.Value
+                : retail ?? 0m;
+
+            return new OrderLineUnitPriceDto
+            {
+                UnitName = c.Unit.Name,
+                Factor = c.Factor,
+                RetailPrice = retail,
+                WholesalePrice = wholesale,
+                EffectivePrice = effective,
+                IsBaseUnit = c.IsBaseUnit,
+
+                // Đơn vị bán thật sự của dòng hiện tại
+                IsCurrentUnit =
+    line.ProductUnitConversionId.HasValue
+        ? c.Id == line.ProductUnitConversionId.Value
+        : c.UnitId == line.SellingUnitId,
+
+                // Đơn vị giá đang áp dụng theo tổng cùng VariantId
+                IsEffectivePriceUnit = appliedConversion != null
+                    ? c.Id == appliedConversion.Id
+                    : c.UnitId == line.SellingUnitId
+            };
+        }).ToList();
+    }
+    public async Task<HoldOrderResultDto> HoldAndCreateNewDraftAsync(
+      int orderId,
+      string? holdNote = null,
+      CancellationToken ct = default)
+    {
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
         try
         {
-            var openShift = await _shifts.GetOpenShiftAsync(ct);
-            if (openShift == null)
-                throw new InvalidOperationException("Không thể giữ đơn: chưa mở ca POS.");
+            var openShift = await RequireCurrentOpenShiftAsync(ct);
+            EnsureShiftOwnership(openShift);
 
             var order = await RequireDraftAsync(orderId, ct);
 
             if (order.POSShiftId != openShift.Id)
-                throw new InvalidOperationException("Không thể giữ đơn: đơn không thuộc ca POS đang mở.");
+            {
+                throw PosAppException.Business(
+                    errorCode: PosErrorCodes.CartNotInCurrentTerminal,
+                    message: "Không thể giữ đơn vì đơn không thuộc terminal POS hiện tại.",
+                    actionHint: "Vui lòng thao tác trên đúng terminal hoặc chuyển xử lý đơn phù hợp.",
+                    metadata: new
+                    {
+                        order.Id,
+                        order.OrderNumber,
+                        OrderShiftId = order.POSShiftId,
+                        CurrentShiftId = openShift.Id,
+                        openShift.TerminalId
+                    });
+            }
 
             if (!order.Lines.Any(x => !x.IsDeleted))
-                throw new InvalidOperationException("Không thể giữ đơn trống.");
-
-            if (order.Payments.Any(x => !x.IsDeleted))
-                throw new InvalidOperationException("Đơn đã có thanh toán, vui lòng xóa thanh toán trước khi giữ đơn.");
+            {
+                throw PosAppException.Validation(
+                    errorCode: PosErrorCodes.CartEmptyCannotHold,
+                    message: "Không thể giữ giỏ trống.",
+                    actionHint: "Hãy thêm sản phẩm vào giỏ trước khi giữ đơn.",
+                    metadata: new
+                    {
+                        order.Id,
+                        order.OrderNumber
+                    });
+            }
 
             order.Status = OrderStatus.OnHold;
             order.HeldAtUtc = DateTime.UtcNow;
@@ -1971,18 +2825,33 @@ public sealed class POSService : IPOSService
             if (string.IsNullOrWhiteSpace(order.HoldCode))
                 order.HoldCode = GenerateHoldCode(order.Id);
 
-            // Giữ hàng chỉ phát sinh khi đơn chuyển sang OnHold.
             await _inventoryReservationService.RebuildForOrderAsync(order, ct);
 
-            var newDraft = new Order
-            {
-                Status = OrderStatus.Draft,
-                PaymentStatus = PaymentStatus.Unpaid,
-                POSShiftId = openShift.Id
-            };
+            var reusableDraft = await FindReusableEmptyDraftAsync(
+                openShift.Id,
+                excludeOrderId: order.Id,
+                ct);
 
-            await _orders.AddAsync(newDraft, ct);
-            await _orders.SaveChangesAsync(ct);
+            Order newDraft;
+
+            if (reusableDraft != null)
+            {
+                newDraft = reusableDraft;
+            }
+            else
+            {
+                newDraft = new Order
+                {
+                    Status = OrderStatus.Draft,
+                    PaymentStatus = PaymentStatus.Unpaid,
+                    POSShiftId = openShift.Id
+                };
+
+                Recalc(newDraft);
+
+                await _orders.AddAsync(newDraft, ct);
+                await _orders.SaveChangesAsync(ct);
+            }
 
             openShift.CurrentOrderId = newDraft.Id;
             await _orders.SaveChangesAsync(ct);
@@ -1994,7 +2863,7 @@ public sealed class POSService : IPOSService
                 HeldOrderId = order.Id,
                 HoldCode = order.HoldCode,
                 NewDraftOrderId = newDraft.Id,
-                Message = "Đã giữ đơn và tạo đơn nháp mới."
+                Message = "Đã giữ đơn và chuyển sang giỏ nháp mới."
             };
         }
         catch
@@ -2006,54 +2875,77 @@ public sealed class POSService : IPOSService
 
     public async Task<int> ResumeHeldAsync(int orderId, CancellationToken ct = default)
     {
-        // Resume có nhiều bước:
-        // - kiểm tra đơn giữ
-        // - xử lý current cart hiện tại
-        // - đổi held order về Draft
-        // - set CurrentOrderId
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
         try
         {
-            var openShift = await _shifts.GetOpenShiftAsync(ct);
-            if (openShift == null)
-                throw new InvalidOperationException("Không thể mở lại đơn giữ: chưa mở ca POS.");
+            var openShift = await RequireCurrentOpenShiftAsync(ct);
+            EnsureShiftOwnership(openShift);
 
-            var heldOrder = await _orders.GetByIdAsync(orderId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
-
-            if (heldOrder.POSShiftId != openShift.Id)
-                throw new InvalidOperationException("Đơn không thuộc ca POS đang mở.");
+            var heldOrder = await _orders.GetByIdAsync(orderId, ct);
+            if (heldOrder == null)
+            {
+                throw PosAppException.Business(
+                    errorCode: PosErrorCodes.CartCurrentNotFound,
+                    message: "Không tìm thấy đơn cần mở lại.",
+                    actionHint: "Vui lòng tải lại danh sách đơn giữ rồi thử lại.");
+            }
 
             if (heldOrder.Status != OrderStatus.OnHold)
-                throw new InvalidOperationException("Đơn không ở trạng thái đang giữ.");
+            {
+                throw PosAppException.Business(
+                    errorCode: PosErrorCodes.CartResumeNotHeld,
+                    message: "Đơn này không còn ở trạng thái đang giữ.",
+                    actionHint: "Vui lòng tải lại danh sách đơn giữ.",
+                    metadata: new
+                    {
+                        heldOrder.Id,
+                        heldOrder.OrderNumber,
+                        Status = heldOrder.Status.ToString()
+                    });
+            }
+
+            if (heldOrder.StoreId != openShift.StoreId)
+            {
+                throw PosAppException.Business(
+                    errorCode: PosErrorCodes.CartResumeStoreMismatch,
+                    message: "Đơn giữ này không thuộc cửa hàng hiện tại.",
+                    actionHint: "Vui lòng kiểm tra lại cửa hàng hoặc mở đơn ở đúng nơi phát sinh.",
+                    metadata: new
+                    {
+                        heldOrder.Id,
+                        heldOrder.OrderNumber,
+                        OrderStoreId = heldOrder.StoreId,
+                        CurrentStoreId = openShift.StoreId
+                    });
+            }
 
             if (openShift.CurrentOrderId.HasValue)
             {
                 var currentOrder = await _orders.GetByIdAsync(openShift.CurrentOrderId.Value, ct);
 
                 if (currentOrder != null &&
-                    currentOrder.POSShiftId == openShift.Id &&
-                    currentOrder.Status == OrderStatus.Draft)
+                    currentOrder.Status == OrderStatus.Draft &&
+                    currentOrder.Id != heldOrder.Id)
                 {
-                    if (currentOrder.Id != heldOrder.Id)
+                    var hasData = HasMeaningfulWork(currentOrder);
+
+                    if (hasData)
                     {
-                        if (IsEmptyDraft(currentOrder))
-                        {
-                            currentOrder.Status = OrderStatus.Cancelled;
-                        }
-                        else
-                        {
-                            throw new InvalidOperationException(
-                                "Giỏ hiện tại đang có dữ liệu. Vui lòng giữ đơn hoặc hủy giỏ hiện tại trước khi lấy lại đơn giữ.");
-                        }
+                        currentOrder.Status = OrderStatus.OnHold;
+                        currentOrder.HeldAtUtc = DateTime.UtcNow;
+
+                        if (string.IsNullOrWhiteSpace(currentOrder.HoldCode))
+                            currentOrder.HoldCode = GenerateHoldCode(currentOrder.Id);
+
+                        if (string.IsNullOrWhiteSpace(currentOrder.HoldNote))
+                            currentOrder.HoldNote = "Tự giữ khi chuyển sang đơn khác";
                     }
                 }
             }
 
-            // Resume chỉ đổi đơn từ OnHold về Draft.
-            // Reservation vẫn còn active, không reserve lại, không release.
             heldOrder.Status = OrderStatus.Draft;
+            heldOrder.POSShiftId = openShift.Id;
             openShift.CurrentOrderId = heldOrder.Id;
 
             await _orders.SaveChangesAsync(ct);
@@ -2070,11 +2962,20 @@ public sealed class POSService : IPOSService
 
     public async Task<List<HeldOrderDto>> GetHeldOrdersAsync(CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
-        var orders = await _orders.GetHeldOrdersByShiftAsync(openShift.Id, ct);
+        var orders = await _orders.GetHeldOrdersByStoreAsync(openShift.StoreId, ct);
+        var userIds = orders
+    .Where(o => o.POSShift != null && o.POSShift.OpenedByUserId > 0)
+    .Select(o => o.POSShift.OpenedByUserId)
+    .Distinct()
+    .ToList();
+        var users = await _users.GetByIdsAsync(userIds, ct);
+        var userMap = users.ToDictionary(
+    x => x.Id,
+    x => string.IsNullOrWhiteSpace(x.FullName) ? x.UserName : x.FullName
+);
 
         return orders.Select(o => new HeldOrderDto
         {
@@ -2082,21 +2983,50 @@ public sealed class POSService : IPOSService
             HoldCode = o.HoldCode,
             HoldNote = o.HoldNote,
             HeldAtUtc = o.HeldAtUtc,
+
             LineCount = o.Lines.Count(x => !x.IsDeleted),
             TotalQuantity = o.Lines.Where(x => !x.IsDeleted).Sum(x => x.Quantity),
-            Subtotal = o.Lines.Where(x => !x.IsDeleted).Sum(x => x.LineTotal)
+            Subtotal = o.Lines.Where(x => !x.IsDeleted).Sum(x => x.LineTotal),
+
+            CustomerId = o.CustomerId,
+            CustomerName = o.Customer?.Name,
+            CustomerPhone = o.Customer?.Phone,
+
+            // =========================================================
+            // BƯỚC 4.2:
+            // Map thông tin ca POS đang giữ đơn
+            // =========================================================
+            PosShiftId = o.POSShiftId,
+            ShiftCode = o.POSShift?.ShiftCode,
+
+            // Terminal hiện tạm map dạng string để UI dùng thống nhất
+            TerminalId = o.POSShift != null
+         ? o.POSShift.TerminalId.ToString()
+         : null,
+            TerminalName = o.POSShift != null
+    ? o.POSShift.Terminal.Name
+    : null,
+
+            HeldByUserId = o.POSShift?.OpenedByUserId,
+            HeldByUserName = o.POSShift != null &&
+                 userMap.ContainsKey(o.POSShift.OpenedByUserId)
+    ? userMap[o.POSShift.OpenedByUserId]
+    : null,
+            IsCurrentShift = o.POSShiftId == openShift.Id,
+            IsCurrentTerminal = o.POSShift != null
+         && o.POSShift.TerminalId == openShift.TerminalId
         }).ToList();
     }
 
     public async Task<CurrentCartDto> GetCurrentCartAsync(CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
         if (openShift.CurrentOrderId.HasValue)
         {
             var order = await _orders.GetByIdAsync(openShift.CurrentOrderId.Value, ct);
+
             if (order == null || order.POSShiftId != openShift.Id || order.Status != OrderStatus.Draft)
             {
                 openShift.CurrentOrderId = null;
@@ -2112,12 +3042,17 @@ public sealed class POSService : IPOSService
 
     public async Task SetCurrentCartAsync(int orderId, CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
-        var order = await _orders.GetByIdAsync(orderId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+        var order = await _orders.GetByIdAsync(orderId, ct);
+        if (order == null)
+        {
+            throw PosAppException.Business(
+                errorCode: PosErrorCodes.CartCurrentNotFound,
+                message: "Không tìm thấy đơn hàng.",
+                actionHint: "Vui lòng tải lại danh sách đơn và thử lại.");
+        }
 
         EnsureCanBeCurrentCart(order, openShift.Id);
 
@@ -2127,9 +3062,8 @@ public sealed class POSService : IPOSService
 
     public async Task<List<ActiveDraftOrderDto>> GetDraftOrdersAsync(CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
         var orders = await _orders.GetDraftOrdersByShiftAsync(openShift.Id, ct);
 
@@ -2162,9 +3096,8 @@ public sealed class POSService : IPOSService
 
     public async Task<OrderDraftDto> EnsureCurrentCartAsync(CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
         if (openShift.CurrentOrderId.HasValue)
         {
@@ -2179,7 +3112,7 @@ public sealed class POSService : IPOSService
             {
                 Recalc(currentOrder!);
                 await _orders.SaveChangesAsync(ct);
-                return Map(currentOrder!);
+                return await MapAsync(currentOrder!, ct);
             }
 
             openShift.CurrentOrderId = null;
@@ -2188,19 +3121,20 @@ public sealed class POSService : IPOSService
 
         var draftOrders = await _orders.GetDraftOrdersByShiftAsync(openShift.Id, ct);
 
-        var latestDraft = draftOrders
-            .OrderByDescending(x => x.CreatedAtUtc)
+        var reusableDraft = draftOrders
+            .OrderByDescending(x => HasMeaningfulWork(x))
+            .ThenByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
             .FirstOrDefault();
 
-        if (latestDraft != null)
+        if (reusableDraft != null)
         {
-            openShift.CurrentOrderId = latestDraft.Id;
+            openShift.CurrentOrderId = reusableDraft.Id;
+
+            Recalc(reusableDraft);
             await _orders.SaveChangesAsync(ct);
 
-            Recalc(latestDraft);
-            await _orders.SaveChangesAsync(ct);
-
-            return Map(latestDraft);
+            return await MapAsync(reusableDraft, ct);
         }
 
         var newOrder = new Order
@@ -2210,16 +3144,15 @@ public sealed class POSService : IPOSService
             POSShiftId = openShift.Id
         };
 
+        Recalc(newOrder);
+
         await _orders.AddAsync(newOrder, ct);
         await _orders.SaveChangesAsync(ct);
 
         openShift.CurrentOrderId = newOrder.Id;
         await _orders.SaveChangesAsync(ct);
 
-        Recalc(newOrder);
-        await _orders.SaveChangesAsync(ct);
-
-        return Map(newOrder);
+        return await MapAsync(newOrder, ct);
     }
 
     public async Task<OrderDraftDto> ScanToCurrentCartAsync(string barcode, decimal qty = 1, CancellationToken ct = default)
@@ -2263,9 +3196,8 @@ public sealed class POSService : IPOSService
 
     public async Task<int> CreateAndSwitchNewCartAsync(int? customerId = null, string? note = null, CancellationToken ct = default)
     {
-        var openShift = await _shifts.GetOpenShiftAsync(ct);
-        if (openShift == null)
-            throw new InvalidOperationException("Chưa mở ca POS.");
+        var openShift = await RequireCurrentOpenShiftAsync(ct);
+        EnsureShiftOwnership(openShift);
 
         if (openShift.CurrentOrderId.HasValue)
         {
@@ -2278,8 +3210,17 @@ public sealed class POSService : IPOSService
                 if (IsEmptyDraft(current))
                     return current.Id;
 
-                throw new InvalidOperationException(
-                    "Giỏ hiện tại đang có dữ liệu. Vui lòng giữ đơn hoặc hủy giỏ hiện tại trước khi tạo giỏ mới.");
+                throw PosAppException.Business(
+                    errorCode: PosErrorCodes.CartNewBlockedByActiveCart,
+                    message: "Giỏ hiện tại đang có dữ liệu.",
+                    actionHint: "Vui lòng giữ đơn hoặc hủy giỏ hiện tại trước khi tạo giỏ mới.",
+                    metadata: new
+                    {
+                        current.Id,
+                        current.OrderNumber,
+                        HasLines = current.Lines.Any(x => !x.IsDeleted),
+                        HasPayments = current.Payments.Any(x => !x.IsDeleted)
+                    });
             }
         }
 
@@ -2298,19 +3239,83 @@ public sealed class POSService : IPOSService
 
         var variants = await _variants.SearchForPOSAsync(keyword, take, ct);
 
+        if (variants == null || variants.Count == 0)
+            return new List<POSProductSearchItemDto>();
+
+        // =========================================================
+        // Resolve kho POS hiện tại để lấy tồn đúng kho đang bán
+        // =========================================================
+        var warehouseId = await TryResolveCurrentPOSWarehouseIdAsync(ct);
+
+        Dictionary<int, decimal> availableQtyMap = new();
+
+        if (_posContext.IsAvailable && warehouseId.HasValue && warehouseId.Value > 0)
+        {
+            var variantIds = variants
+                .Select(x => x.Id)
+                .Where(x => x > 0)
+                .Distinct()
+                .ToList();
+
+            availableQtyMap = await _inventoryBalanceRepository.GetAvailableQtyMapByVariantIdsAsync(
+                _posContext.StoreId,
+                warehouseId.Value,
+                variantIds,
+                ct);
+        }
+
         return variants.Select(x =>
         {
             var productName = x.Product?.Name?.Trim() ?? string.Empty;
-
-            // Ưu tiên lấy tên biến thể thực tế.
-            // Không lấy SKU làm tên biến thể nữa.
             var productVariantName = x.ProductVariantName?.Trim() ?? string.Empty;
 
-            var displayName = string.IsNullOrWhiteSpace(productVariantName)
-                ? productName
-                : $"{productName} - {productVariantName}";
-
             var sellingInfo = ResolvePreferredSellingUnit(x);
+            var image = ResolveVariantImage(x);
+            var availableQty = availableQtyMap.TryGetValue(x.Id, out var qty)
+              ? qty
+              : 0m;
+            var isNegativeStock = availableQty < 0;
+            var displayQty = isNegativeStock ? 0m : availableQty;
+            var unitOptions = (x.UnitConversions ?? Enumerable.Empty<ProductUnitConversion>())
+    .Where(c =>
+        !c.IsDeleted &&
+        c.IsActive &&
+        c.Unit != null &&
+        !c.Unit.IsDeleted &&
+        c.Factor > 1 &&
+        !c.IsBaseUnit)
+    .OrderBy(c => c.Factor)
+    .Select(c =>
+    {
+        var factor = c.Factor <= 0 ? 1m : c.Factor;
+
+        // CHỐT:
+        // chỉ lấy phần chẵn tương đối, không hiển thị phần dư
+        var convertedAvailableQty = factor > 0
+            ? Math.Floor(displayQty / factor)
+            : 0m;
+
+        return new POSProductSearchUnitOptionDto
+        {
+            ProductUnitConversionId = c.Id,
+            UnitId = c.UnitId,
+            UnitName = c.Unit.Name,
+            Factor = c.Factor,
+            Price = c.Price ?? 0m,
+            Barcode = c.Barcodes?
+                .Where(b => !b.IsDeleted && b.IsActive)
+                .OrderByDescending(b => b.IsPrimary)
+                .ThenBy(b => b.Id)
+                .Select(b => b.Barcode)
+                .FirstOrDefault(),
+
+            AvailableQty = convertedAvailableQty,
+            IsNegativeStock = isNegativeStock
+        };
+    })
+    .ToList();
+
+
 
             return new POSProductSearchItemDto
             {
@@ -2318,15 +3323,22 @@ public sealed class POSService : IPOSService
                 ProductId = x.ProductId,
                 ProductName = productName,
                 ProductVariantName = productVariantName,
-                DisplayName = displayName,
+                DisplayName = string.IsNullOrWhiteSpace(productVariantName)
+         ? productName
+         : productVariantName,
                 Sku = x.Sku,
-
-                // Barcode đại diện của đơn vị bán ưu tiên
                 Barcode = sellingInfo.Barcode ?? ResolveRepresentativeBarcode(x),
-
-                // Giá hiển thị theo đơn vị bán ưu tiên
                 Price = sellingInfo.UnitPrice ?? 0m,
-                IsActive = x.IsActive
+                IsActive = x.IsActive,
+
+                ImageUrl = image.url,
+                ImageThumbUrl = image.thumb,
+                ImageAlt = image.alt,
+                HasImage = image.hasImage,
+
+                OnHandQty = displayQty,
+                IsNegativeStock = isNegativeStock,
+                UnitOptions = unitOptions
             };
         }).ToList();
     }
@@ -2345,22 +3357,88 @@ public sealed class POSService : IPOSService
             CustomerId = x.Id,
             Name = x.Name,
             Phone = x.Phone,
-            Address = x.Address
+            Address = x.Address,
+
+            // NEW: trả nhóm giá để UI biết khách lẻ hay khách sỉ
+            PriceTier = NormalizeCustomerPriceTier(x.PriceTier)
         }).ToList();
     }
 
-    public async Task<OrderDraftDto> SetCustomerForCurrentCartAsync(int customerId, CancellationToken ct = default)
+    public async Task<OrderDraftDto> SetCustomerForCurrentCartAsync(
+     int customerId,
+     bool repriceExistingLines = false,
+     CancellationToken ct = default)
     {
         var customer = await _customers.GetActiveByIdAsync(customerId, ct)
             ?? throw new InvalidOperationException("Khách hàng không tồn tại hoặc đã bị khóa.");
 
         var order = await RequireCurrentDraftAsync(ct);
 
+        var oldCustomerId = order.CustomerId;
+
+        if (oldCustomerId.HasValue && oldCustomerId.Value != customer.Id)
+        {
+            await _orders.ClearRewardVouchersAsync(order.Id, ct);
+            order.RewardVouchers.Clear();
+        }
+
         order.CustomerId = customer.Id;
 
-        await _orders.SaveChangesAsync(ct);
+        // NEW:
+        // Nếu user chọn áp lại giá thì cập nhật giá các dòng hiện có
+        // theo PriceTier của khách mới.
+        if (repriceExistingLines)
+        {
+            await RepriceOrderLinesByCustomerAsync(order, customer.PriceTier, ct);
+        }
 
-        return await GetDraftAsync(order.Id, ct);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
+    }
+    private async Task RepriceOrderLinesByCustomerAsync(
+    Order order,
+    string? customerPriceTier,
+    CancellationToken ct)
+    {
+        var priceTier = NormalizeCustomerPriceTier(customerPriceTier);
+
+        var lines = order.Lines
+            .Where(x => !x.IsDeleted)
+            .ToList();
+
+        if (!lines.Any())
+            return;
+
+        foreach (var line in lines)
+        {
+            var variant = await _variants.GetActiveWithProductAsync(line.VariantId, ct);
+            if (variant == null)
+                continue;
+
+            ProductUnitConversion? conversion = null;
+
+            // Ưu tiên tìm đúng đơn vị đang bán của dòng.
+            // line.SellingUnitId hiện là UnitId, không phải ProductUnitConversionId.
+            conversion = variant.UnitConversions?
+      .FirstOrDefault(c =>
+          !c.IsDeleted &&
+          c.IsActive &&
+          line.ProductUnitConversionId.HasValue &&
+          c.Id == line.ProductUnitConversionId.Value);
+
+            // Fallback nếu không tìm thấy.
+            conversion ??= variant.UnitConversions?
+      .FirstOrDefault(c =>
+          !c.IsDeleted &&
+          c.IsActive &&
+          c.UnitId == line.SellingUnitId);
+
+            var newUnitPrice = ResolveSalePriceByTier(
+                variant,
+                conversion,
+                priceTier);
+
+            line.UnitPrice = newUnitPrice;
+        }
     }
 
     public async Task<OrderDraftDto> ClearCustomerForCurrentCartAsync(CancellationToken ct = default)
@@ -2369,9 +3447,10 @@ public sealed class POSService : IPOSService
 
         order.CustomerId = null;
 
-        await _orders.SaveChangesAsync(ct);
+        await _orders.ClearRewardVouchersAsync(order.Id, ct);
+        order.RewardVouchers.Clear();
 
-        return await GetDraftAsync(order.Id, ct);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> CreateCustomerAndSetForCurrentCartAsync(CreatePOSCustomerDto dto, CancellationToken ct = default)
@@ -2397,30 +3476,52 @@ public sealed class POSService : IPOSService
             Phone = string.IsNullOrWhiteSpace(phone) ? null : phone,
             Address = string.IsNullOrWhiteSpace(address) ? null : address,
             Note = string.IsNullOrWhiteSpace(note) ? null : note,
+
+            // NEW:
+            // Nếu UI gửi WHOLESALE thì lưu khách sỉ.
+            // Nếu không gửi hoặc gửi sai thì mặc định RETAIL.
+            PriceTier = NormalizeCustomerPriceTier(dto.PriceTier),
+
             IsActive = true
         };
 
         await _customers.AddAsync(customer, ct);
         await _customers.SaveChangesAsync(ct);
 
-        return await SetCustomerForCurrentCartAsync(customer.Id, ct);
+        return await SetCustomerForCurrentCartAsync(
+     customer.Id,
+     repriceExistingLines: false,
+     ct);
+    }
+    /// <summary>
+    /// Chuẩn hóa nhóm giá khách hàng.
+    /// Chỉ cho phép:
+    /// - RETAIL
+    /// - WHOLESALE
+    /// Nếu dữ liệu null/sai thì trả về RETAIL để an toàn.
+    /// </summary>
+    private static string NormalizeCustomerPriceTier(string? priceTier)
+    {
+        priceTier = (priceTier ?? string.Empty).Trim().ToUpperInvariant();
+
+        return priceTier == CustomerPriceTiers.Wholesale
+            ? CustomerPriceTiers.Wholesale
+            : CustomerPriceTiers.Retail;
     }
 
-    public async Task<OrderDraftDto> UpdateCurrentCartNoteAsync(string? note, CancellationToken ct = default)
+    public async Task<OrderDraftDto> UpdateCurrentCartNoteAsync(
+     string? note,
+     CancellationToken ct = default)
     {
         var order = await RequireCurrentDraftAsync(ct);
 
-        order.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        order.Note = string.IsNullOrWhiteSpace(note)
+            ? null
+            : note.Trim();
 
         await _orders.SaveChangesAsync(ct);
 
-        var reloaded = await _orders.GetDraftAsync(order.Id, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy giỏ hiện tại.");
-
-        Recalc(reloaded);
-        await _orders.SaveChangesAsync(ct);
-
-        return Map(reloaded);
+        return await MapAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> UpdateCurrentCartDiscountAsync(decimal discountAmount, CancellationToken ct = default)
@@ -2437,13 +3538,7 @@ public sealed class POSService : IPOSService
 
         order.OrderDiscount = discountAmount;
 
-        Recalc(order);
-        await _orders.SaveChangesAsync(ct);
-
-        var reloaded = await _orders.GetDraftAsync(order.Id, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy giỏ hiện tại.");
-
-        return Map(reloaded);
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
 
     public async Task<OrderDraftDto> UpdateLineDiscountAsync(int lineId, decimal discountAmount, CancellationToken ct = default)
@@ -2465,7 +3560,7 @@ public sealed class POSService : IPOSService
         Recalc(order);
         await _orders.SaveChangesAsync(ct);
 
-        return Map(order);
+        return await MapAsync(order, ct);
     }
 
     public async Task<OrderReceiptDto> VoidCompletedOrderAsync(int orderId, string reason, CancellationToken ct = default)
@@ -2511,6 +3606,11 @@ public sealed class POSService : IPOSService
 
             order.Status = OrderStatus.Voided;
             order.PaymentStatus = PaymentStatus.Voided;
+            await ReverseRewardForVoidedOrderAsync(order, reason, ct);
+            await _rewardVoucherRepository.RestoreUsedVouchersByOrderIdAsync(
+           order.Id,
+           reason,
+           ct);
 
             var voidNote = $"[HỦY SAU KHI CHỐT - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] {reason}";
             order.Note = string.IsNullOrWhiteSpace(order.Note)
@@ -2571,6 +3671,45 @@ public sealed class POSService : IPOSService
         }
     }
     /// <summary>
+    /// Trừ lại tích lũy khi refund toàn phần đơn hàng.
+    /// Chỉ trừ đúng số đã từng cộng từ SaleEarned.
+    /// </summary>
+    private async Task ReverseRewardForRefundedOrderAsync(
+        Order order,
+        string reason,
+        CancellationToken ct)
+    {
+        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+            return;
+
+        var earnedAmount = await _rewardLedgerRepository.GetOrderLedgerAmountAsync(
+            order.Id,
+            CustomerRewardLedgerType.SaleEarned,
+            ct);
+
+        if (earnedAmount <= 0)
+            return;
+
+        var existed = await _rewardLedgerRepository.HasLedgerForOrderAsync(
+            order.Id,
+            CustomerRewardLedgerType.SaleRefunded,
+            ct);
+
+        if (existed)
+            return;
+
+        await _rewardLedgerRepository.AddAsync(new CustomerRewardLedger
+        {
+            StoreId = order.StoreId,
+            CustomerId = order.CustomerId.Value,
+            Type = CustomerRewardLedgerType.SaleRefunded,
+            Amount = -earnedAmount,
+            OrderId = order.Id,
+            ReferenceCode = $"ORDER_REFUND_{order.Id}",
+            Description = $"Trừ tích lũy do refund đơn {order.OrderNumber ?? order.Id.ToString()}. Lý do: {reason}"
+        }, ct);
+    }
+    /// <summary>
     /// Đảo tác động thanh toán của SALE khỏi ca khi VOID đơn đã chốt.
     ///
     /// QUAN TRỌNG:
@@ -2592,28 +3731,103 @@ public sealed class POSService : IPOSService
 
         shift.IncreaseVoidCount();
     }
+    private static (string? url, string? thumb, string? alt, bool hasImage)
+ ResolveVariantImage(ProductVariant? variant)
+    {
+        // =========================================
+        // 1. Ưu tiên ảnh riêng của variant
+        // =========================================
+        var variantImage = variant?.PrimaryProductImage;
+        var variantMedia = variantImage?.MediaAsset;
 
+        if (variantMedia != null && !string.IsNullOrWhiteSpace(variantMedia.StoragePath))
+        {
+            var variantUrl = "/" + variantMedia.StoragePath.Replace("\\", "/").TrimStart('/');
+
+            return (
+                variantUrl,
+                variantUrl, // tạm thời thumb = url
+                !string.IsNullOrWhiteSpace(variantImage?.AltText)
+                    ? variantImage!.AltText
+                    : !string.IsNullOrWhiteSpace(variant?.ProductVariantName)
+                        ? variant.ProductVariantName
+                        : variant?.Product?.Name,
+                true
+            );
+        }
+
+        // =========================================
+        // 2. Fallback ảnh primary của Product
+        // =========================================
+        var productImages = variant?.Product?.ProductImages?
+            .Where(x => !x.IsDeleted && x.MediaAsset != null && !string.IsNullOrWhiteSpace(x.MediaAsset.StoragePath))
+            .OrderByDescending(x => x.IsPrimary)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .ToList();
+
+        var productPrimaryImage = productImages?.FirstOrDefault();
+        var productPrimaryMedia = productPrimaryImage?.MediaAsset;
+
+        if (productPrimaryMedia != null && !string.IsNullOrWhiteSpace(productPrimaryMedia.StoragePath))
+        {
+            var productUrl = "/" + productPrimaryMedia.StoragePath.Replace("\\", "/").TrimStart('/');
+
+            return (
+                productUrl,
+                productUrl, // tạm thời thumb = url
+                !string.IsNullOrWhiteSpace(productPrimaryImage?.AltText)
+                    ? productPrimaryImage!.AltText
+                    : !string.IsNullOrWhiteSpace(variant?.ProductVariantName)
+                        ? variant.ProductVariantName
+                        : variant?.Product?.Name,
+                true
+            );
+        }
+
+        // =========================================
+        // 3. Không có ảnh
+        // =========================================
+        return (null, null, null, false);
+    }
     public async Task<POSShiftDashboardDto> GetCurrentShiftDashboardAsync(CancellationToken ct = default)
     {
-        var shift = await _shifts.GetCurrentOpenShiftAsync(ct);
+        // =====================================================
+        // FIX:
+        // Không dùng GetCurrentOpenShiftAsync() legacy nữa
+        // vì method đó có thể lấy nhầm ca của terminal khác.
+        //
+        // POS chuẩn phải luôn lấy ca theo:
+        // StoreId + TerminalId hiện tại.
+        // =====================================================
+        var shift = await RequireCurrentOpenShiftAsync(ct);
 
-        if (shift == null)
-            throw new InvalidOperationException("Chưa có ca POS đang mở.");
+        // Kiểm tra ca này có thuộc đúng nhân viên đang đăng nhập không.
+        // Nếu không đúng, hệ thống sẽ báo popup tiếp quản / đóng hộ.
+        EnsureShiftOwnership(shift);
 
         var orders = await _orders.GetByShiftIdAsync(shift.Id, ct);
 
-        var completed = orders.Where(x => x.Status == OrderStatus.Completed).ToList();
-        var voided = orders.Where(x => x.Status == OrderStatus.Voided).ToList();
-        var refunded = orders.Where(x => x.Status == OrderStatus.Refunded).ToList();
+        var completed = orders
+            .Where(x => x.Status == OrderStatus.Completed)
+            .ToList();
+
+        var voided = orders
+            .Where(x => x.Status == OrderStatus.Voided)
+            .ToList();
+
+        var refunded = orders
+            .Where(x => x.Status == OrderStatus.Refunded)
+            .ToList();
 
         var cashSales = completed
             .SelectMany(x => x.Payments)
-            .Where(p => p.Method == PaymentMethod.Cash)
+            .Where(p => !p.IsDeleted && p.Method == PaymentMethod.Cash)
             .Sum(x => x.Amount);
 
         var bankSales = completed
             .SelectMany(x => x.Payments)
-            .Where(p => p.Method != PaymentMethod.Cash)
+            .Where(p => !p.IsDeleted && p.Method != PaymentMethod.Cash)
             .Sum(x => x.Amount);
 
         return new POSShiftDashboardDto
@@ -2621,12 +3835,435 @@ public sealed class POSService : IPOSService
             ShiftId = shift.Id,
             ShiftCode = shift.ShiftCode,
             OpenedAt = shift.OpenedAtUtc.ToLocalTime(),
+
             CashSales = cashSales,
             BankSales = bankSales,
             TotalSales = cashSales + bankSales,
+
             OrdersCount = completed.Count,
             VoidCount = voided.Count,
             RefundCount = refunded.Count
         };
     }
+    private static string? TrimText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        value = value.Trim();
+
+        if (value.Length <= maxLength)
+            return value;
+
+        return value[..(maxLength - 20)] + "... [rút gọn]";
+    }
+    /// <summary>
+    /// Cộng tiền tích lũy cho khách sau khi đơn POS finalize thành công.
+    /// Chống cộng trùng bằng OrderId + Type = SaleEarned.
+    /// </summary>
+    private async Task ApplyRewardForFinalizedOrderAsync(Order order, CancellationToken ct)
+    {
+        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+            return;
+
+        if (order.Status != OrderStatus.Completed || order.PaymentStatus != PaymentStatus.Paid)
+            return;
+
+        var existed = await _rewardLedgerRepository.HasLedgerForOrderAsync(
+     order.Id,
+     CustomerRewardLedgerType.SaleEarned,
+     ct);
+        if (existed)
+            return;
+
+        var calculation = await _orderRewardCalculator.CalculateAsync(order.Id, ct);
+
+        if (calculation.RewardableAmount <= 0)
+            return;
+
+        var ledger = new CustomerRewardLedger
+        {
+            StoreId = order.StoreId,
+            CustomerId = order.CustomerId.Value,
+            Type = CustomerRewardLedgerType.SaleEarned,
+            Amount = calculation.RewardableAmount,
+            OrderId = order.Id,
+            ReferenceCode = $"ORDER_{order.Id}",
+            Description = $"Tích điểm từ đơn hàng {order.OrderNumber ?? order.Id.ToString()}: {calculation.RewardableAmount:N0}đ"
+        };
+
+        await _rewardLedgerRepository.AddAsync(ledger, ct);
+    }
+    /// <summary>
+    /// Trừ lại tích lũy khi hủy đơn đã chốt.
+    /// Chỉ trừ đúng số đã từng cộng từ SaleEarned.
+    /// </summary>
+    private async Task ReverseRewardForVoidedOrderAsync(
+        Order order,
+        string reason,
+        CancellationToken ct)
+    {
+        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+            return;
+
+        var earnedAmount = await _rewardLedgerRepository.GetOrderLedgerAmountAsync(
+            order.Id,
+            CustomerRewardLedgerType.SaleEarned,
+            ct);
+
+        if (earnedAmount <= 0)
+            return;
+
+        var existed = await _rewardLedgerRepository.HasLedgerForOrderAsync(
+            order.Id,
+            CustomerRewardLedgerType.SaleVoided,
+            ct);
+
+        if (existed)
+            return;
+
+        await _rewardLedgerRepository.AddAsync(new CustomerRewardLedger
+        {
+            StoreId = order.StoreId,
+            CustomerId = order.CustomerId.Value,
+            Type = CustomerRewardLedgerType.SaleVoided,
+            Amount = -earnedAmount,
+            OrderId = order.Id,
+            ReferenceCode = $"ORDER_VOID_{order.Id}",
+            Description = $"Trừ tích lũy do hủy đơn {order.OrderNumber ?? order.Id.ToString()}. Lý do: {reason}"
+        }, ct);
+    }
+   
+    public async Task<OrderDraftDto> ApplyRewardVouchersToCurrentCartAsync(
+        ApplyRewardVouchersRequest request,
+        CancellationToken ct = default)
+    {
+        request ??= new ApplyRewardVouchersRequest();
+
+        var voucherIds = request.VoucherIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToList();
+
+        if (!voucherIds.Any())
+            throw new InvalidOperationException("Vui lòng chọn voucher.");
+
+        var order = await RequireCurrentDraftAsync(ct);
+
+        if (!order.CustomerId.HasValue)
+            throw new InvalidOperationException("Vui lòng chọn khách hàng trước khi dùng voucher.");
+
+        if (!order.Lines.Any(x => !x.IsDeleted))
+            throw new InvalidOperationException("Giỏ hàng chưa có sản phẩm.");
+
+        var availableVouchers = await _rewardVoucherRepository.GetByCustomerAsync(
+            order.CustomerId.Value,
+            CustomerRewardVoucherStatus.Available,
+            ct);
+
+        var vouchers = availableVouchers
+            .Where(x => voucherIds.Contains(x.Id))
+            .ToList();
+
+        if (vouchers.Count != voucherIds.Count)
+            throw new InvalidOperationException("Có voucher không hợp lệ hoặc không còn khả dụng.");
+
+        var rewardVouchers = vouchers.Select(voucher => new OrderRewardVoucher
+        {
+            StoreId = order.StoreId,
+            OrderId = order.Id,
+            VoucherId = voucher.Id,
+            VoucherValue = voucher.Value
+        }).ToList();
+
+        await _orders.ReplaceRewardVouchersAsync(order.Id, rewardVouchers, ct);
+
+        order.RewardVouchers.Clear();
+
+        foreach (var item in rewardVouchers)
+        {
+            order.RewardVouchers.Add(item);
+        }
+
+        Recalc(order);
+
+        await _orders.SaveChangesAsync(ct);
+
+        var freshOrder = await _orders.GetDraftAsync(order.Id, ct)
+            ?? throw new InvalidOperationException("Không tải lại được giỏ hàng.");
+
+        Recalc(freshOrder);
+
+        return await MapAsync(freshOrder, ct);
+    }
+    private void MarkRewardVouchersAsUsed(Order order)
+    {
+        var appliedVouchers = order.RewardVouchers
+            .Where(x => !x.IsDeleted)
+            .ToList();
+
+        if (!appliedVouchers.Any())
+            return;
+
+        var now = DateTime.UtcNow;
+
+        foreach (var applied in appliedVouchers)
+        {
+            if (applied.Voucher == null)
+            {
+                throw new InvalidOperationException(
+                    $"Voucher #{applied.VoucherId} chưa được load khi chốt đơn. Kiểm tra Include RewardVouchers.ThenInclude(Voucher).");
+            }
+
+            if (applied.Voucher.Status != CustomerRewardVoucherStatus.Available)
+            {
+                throw new InvalidOperationException(
+                    $"Voucher {applied.Voucher.VoucherCode} không còn khả dụng.");
+            }
+
+            applied.Voucher.Status = CustomerRewardVoucherStatus.Used;
+            applied.Voucher.UsedOrderId = order.Id;
+            applied.Voucher.UsedAtUtc = now;
+        }
+    }
+
+  
+    public async Task<OrderDraftDto> ClearRewardVouchersFromCurrentCartAsync(
+        CancellationToken ct = default)
+    {
+        var order = await RequireCurrentDraftAsync(ct);
+
+        await _orders.ClearRewardVouchersAsync(order.Id, ct);
+
+        order.RewardVouchers.Clear();
+
+        Recalc(order);
+
+        await _orders.SaveChangesAsync(ct);
+
+        var freshOrder = await _orders.GetDraftAsync(order.Id, ct)
+            ?? throw new InvalidOperationException("Không tải lại được giỏ hàng.");
+
+        Recalc(freshOrder);
+
+        return await MapAsync(freshOrder, ct);
+    }
+
+    #region Helper
+    /// <summary>
+    /// Lấy nhóm giá đang áp dụng cho đơn.
+    /// Nếu chưa chọn khách hoặc khách không hợp lệ thì mặc định khách lẻ.
+    /// </summary>
+    private static string ResolveOrderPriceTier(Order order)
+    {
+        var tier = order.Customer?.PriceTier;
+
+        tier = (tier ?? string.Empty).Trim().ToUpperInvariant();
+
+        return tier == CustomerPriceTiers.Wholesale
+            ? CustomerPriceTiers.Wholesale
+            : CustomerPriceTiers.Retail;
+    }
+    /// <summary>
+    /// Resolve giá bán theo nhóm khách.
+    /// 
+    /// WHOLESALE:
+    /// - Ưu tiên ProductUnitConversion.WholesalePrice
+    /// - Nếu không có thì fallback ProductUnitConversion.Price
+    /// 
+    /// RETAIL:
+    /// - Dùng ProductUnitConversion.Price
+    /// 
+    /// Fallback cuối giữ dữ liệu cũ:
+    /// - variant.Price
+    /// - product.BasePrice
+    /// </summary>
+    private static decimal ResolveSalePriceByTier(
+        ProductVariant variant,
+        ProductUnitConversion? conversion,
+        string priceTier)
+    {
+        var product = variant.Product
+            ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+
+        var isWholesale = string.Equals(
+            priceTier,
+            CustomerPriceTiers.Wholesale,
+            StringComparison.OrdinalIgnoreCase);
+
+        if (isWholesale && conversion?.WholesalePrice is > 0)
+            return conversion.WholesalePrice.Value;
+
+        if (conversion?.Price is > 0)
+            return conversion.Price.Value;
+
+        if (variant.Price is > 0)
+            return variant.Price.Value;
+
+        return product.BasePrice;
+    }
+    /// <summary>
+    /// Override giá lookup barcode theo nhóm khách.
+    /// Vì barcode lookup hiện tại có thể trả giá lẻ mặc định.
+    /// </summary>
+    private async Task<BarcodeLookupResultDto> ApplyPriceTierToBarcodeLookupAsync(
+    Order order,
+    BarcodeLookupResultDto lookup,
+    CancellationToken ct)
+    {
+        var priceTier = ResolveOrderPriceTier(order);
+
+        var variant = await _variants.GetActiveWithProductAsync(
+            lookup.ProductVariantId,
+            ct);
+
+        if (variant == null)
+            return lookup;
+
+        // Ưu tiên đúng đơn vị quy đổi mà barcode lookup trả về.
+        var conversion = variant.UnitConversions?
+            .FirstOrDefault(c =>
+                !c.IsDeleted &&
+                c.IsActive &&
+                lookup.ProductUnitConversionId.HasValue &&
+                c.Id == lookup.ProductUnitConversionId.Value);
+
+        // Fallback nếu lookup cũ không có ProductUnitConversionId.
+        conversion ??= variant.UnitConversions?
+            .Where(c => !c.IsDeleted && c.IsActive)
+            .OrderByDescending(c => c.IsDefaultForSale)
+            .ThenByDescending(c => c.IsBaseUnit)
+            .ThenBy(c => c.SortOrder)
+            .ThenBy(c => c.Id)
+            .FirstOrDefault();
+
+        lookup.SellPrice = ResolveSalePriceByTier(
+            variant,
+            conversion,
+            priceTier);
+
+        return lookup;
+    }
+
+    /// <summary>
+    /// Tìm đơn vị gói/lốc/thùng tốt nhất theo số lượng gốc.
+    /// Ví dụ:
+    /// - baseQuantity = 4  => chọn lốc factor 4
+    /// - baseQuantity = 48 => chọn thùng factor 48
+    /// - baseQuantity = 96 => chọn thùng factor 48
+    /// </summary>
+    private static ProductUnitConversion? FindBestPackPriceConversion(
+        ProductVariant variant,
+        decimal baseQuantity)
+    {
+        if (variant.UnitConversions == null || baseQuantity <= 0)
+            return null;
+
+        return variant.UnitConversions
+            .Where(c =>
+                !c.IsDeleted &&
+                c.IsActive &&
+                c.Factor > 1 &&
+                baseQuantity >= c.Factor &&
+                baseQuantity % c.Factor == 0)
+            .OrderByDescending(c => c.Factor)
+            .ThenBy(c => c.Id)
+            .FirstOrDefault();
+    }
+    /// <summary>
+    /// Áp giá theo tổng số lượng gốc của cùng VariantId trong giỏ.
+    /// Luật:
+    /// - Tổng base >= 48: áp giá thùng cho tất cả dòng cùng variant.
+    /// - Tổng base >= 4 : áp giá lốc cho tất cả dòng cùng variant.
+    /// - Còn lại       : áp giá đơn vị hiện tại của từng dòng.
+    /// 
+    /// Ví dụ:
+    /// - 4 cái + 2 lốc + 1 thùng = 60 cái
+    /// => tất cả dòng cùng variant áp giá thùng.
+    /// </summary>
+    private async Task ApplyBestPackPriceForVariantLinesAsync(
+        Order order,
+        int variantId,
+        CancellationToken ct)
+    {
+        var variant = await _variants.GetActiveWithProductAsync(variantId, ct);
+        if (variant == null)
+            return;
+
+        var priceTier = ResolveOrderPriceTier(order);
+
+        var lines = order.Lines
+            .Where(x => !x.IsDeleted && x.VariantId == variantId)
+            .ToList();
+
+        if (!lines.Any())
+            return;
+
+        foreach (var line in lines)
+        {
+            var multiplier = line.Multiplier <= 0 ? 1m : line.Multiplier;
+            line.BaseQuantity = line.Quantity * multiplier;
+        }
+
+        var totalBaseQty = lines.Sum(x => x.BaseQuantity);
+
+        var activeConversions = variant.UnitConversions?
+            .Where(x => !x.IsDeleted && x.IsActive)
+            .OrderByDescending(x => x.Factor)
+            .ToList() ?? new();
+
+        ProductUnitConversion? priceConversion = null;
+
+        // Ưu tiên thùng nếu tổng số lượng gốc >= 48
+        priceConversion = activeConversions
+            .Where(x => x.Factor >= 48 && totalBaseQty >= x.Factor)
+            .OrderByDescending(x => x.Factor)
+            .FirstOrDefault();
+
+        // Nếu chưa đủ thùng thì xét lốc >= 4
+        priceConversion ??= activeConversions
+            .Where(x => x.Factor >= 4 && x.Factor < 48 && totalBaseQty >= x.Factor)
+            .OrderByDescending(x => x.Factor)
+            .FirstOrDefault();
+
+        foreach (var line in lines)
+        {
+            var currentMultiplier = line.Multiplier <= 0 ? 1m : line.Multiplier;
+
+            if (priceConversion != null)
+            {
+                var packPrice = ResolveSalePriceByTier(
+                    variant,
+                    priceConversion,
+                    priceTier);
+
+                if (packPrice > 0 && priceConversion.Factor > 0)
+                {
+                    line.UnitPrice = Math.Round(
+                        packPrice / priceConversion.Factor * currentMultiplier,
+                        6,
+                        MidpointRounding.AwayFromZero);
+                }
+
+                continue;
+            }
+
+            // Không đủ lốc/thùng thì lấy giá đúng đơn vị dòng hiện tại.
+            var currentConversion = activeConversions
+       .FirstOrDefault(x =>
+           line.ProductUnitConversionId.HasValue &&
+           x.Id == line.ProductUnitConversionId.Value);
+
+            currentConversion ??= activeConversions
+    .FirstOrDefault(x =>
+        x.UnitId == line.SellingUnitId);
+
+            line.UnitPrice = ResolveSalePriceByTier(
+                variant,
+                currentConversion,
+                priceTier);
+        }
+    }
+    #endregion
+
 }

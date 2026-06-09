@@ -1,0 +1,155 @@
+﻿@{
+    ViewData["Title"] = "Chi tiết phiếu điều chỉnh kho";
+    Layout = "_ContentNavbarLayout";
+    var id = ViewBag.Id ?? 0;
+}
+
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/inventory-adjustment-documents.css" />
+}
+
+<div class="container-xxl flex-grow-1 container-p-y adj-page"
+     data-document-id="@id">
+
+    <div class="adj-hero mb-4">
+        <div>
+            <div class="adj-kicker">Adjustment Detail</div>
+            <h4 class="mb-1">
+                Phiếu điều chỉnh kho <span id="docNo" class="text-primary"></span>
+            </h4>
+            <div class="text-muted" id="docSubTitle">Đang tải dữ liệu...</div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap" id="actionBox">
+            <a href="/admin/inventory-adjustment-documents" class="btn btn-outline-secondary">
+                <i class="bx bx-arrow-back me-1"></i> Quay lại
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3 col-6">
+            <div class="adj-stat">
+                <div class="adj-stat-label">Trạng thái</div>
+                <div class="mt-2" id="docStatus">-</div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+            <div class="adj-stat">
+                <div class="adj-stat-label">Loại điều chỉnh</div>
+                <div class="adj-stat-value small-value" id="docType">-</div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+            <div class="adj-stat">
+                <div class="adj-stat-label">Kho</div>
+                <div class="adj-stat-value small-value" id="docWarehouse">-</div>
+            </div>
+        </div>
+
+        <div class="col-lg-3 col-6">
+            <div class="adj-stat">
+                <div class="adj-stat-label">Số dòng</div>
+                <div class="adj-stat-value" id="docLineCount">0</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card adj-card mb-4">
+        <div class="card-header fw-bold">Thông tin phiếu</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="adj-info-label">Ngày phiếu</div>
+                    <div class="adj-info-value" id="docDate">-</div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="adj-info-label">Lý do</div>
+                    <div class="adj-info-value" id="docReason">-</div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="adj-info-label">Ngày gửi duyệt</div>
+                    <div class="adj-info-value" id="docSubmittedAt">-</div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="adj-info-label">Ngày duyệt/từ chối/hủy</div>
+                    <div class="adj-info-value" id="docFinalAt">-</div>
+                </div>
+
+                <div class="col-12">
+                    <div class="adj-info-label">Ghi chú</div>
+                    <div class="adj-note-box" id="docNote">-</div>
+                </div>
+
+                <div class="col-12">
+                    <div class="adj-info-label">Ghi chú xử lý</div>
+                    <div class="adj-note-box" id="docApprovalNote">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card adj-card">
+        <div class="card-header fw-bold">Dòng sản phẩm</div>
+
+        <div class="table-responsive d-none d-md-block">
+            <table class="table table-hover align-middle mb-0 adj-table">
+                <thead>
+                    <tr>
+                        <th>Sản phẩm</th>                       
+                        <th>Đơn vị</th>
+                        <th class="text-end">SL nhập</th>
+                        <th class="text-end">Factor</th>
+                        <th class="text-end">SL gốc</th>
+                        <th class="text-end">Giá lẻ</th>
+                        <th class="text-end adj-cost-col">Giá vốn</th>
+                        <th class="text-end">Giá tạm</th>
+                        <th>Ghi chú</th>
+                    </tr>
+                </thead>
+
+                <tbody id="lineBody">
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">
+                            Đang tải dữ liệu...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-md-none p-3" id="lineMobileList">
+            <div class="text-center text-muted py-4">Đang tải dữ liệu...</div>
+        </div>
+
+        <div class="adj-summary-footer">
+            <div>
+                <div class="adj-info-label">Tổng dòng</div>
+                <div class="adj-info-value" id="sumLineCount">0</div>
+            </div>
+
+            <div>
+                <div class="adj-info-label">Tổng SL gốc</div>
+                <div class="adj-info-value" id="sumBaseQty">0</div>
+            </div>
+
+            <div class="adj-cost-col">
+                <div class="adj-info-label">Tổng giá trị tăng</div>
+                <div class="adj-info-value" id="sumIncreaseAmount">-</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-adjustment-document-detail.js"></script>
+}

@@ -7,12 +7,13 @@ namespace GaoApp.Application.Interfaces.Services.AttributeValues;
 public interface IAttributeValueService
 {
     Task<PagedResult<AttributeValueListItemDto>> GetPagedAsync(
-        int storeId,
-        int? attributeId,
-        string? search,
-        int page,
-        int pageSize,
-        CancellationToken ct = default);
+     int storeId,
+     int? attributeId,
+     bool? status,
+     string? search,
+     int page,
+     int pageSize,
+     CancellationToken ct = default);
 
     Task<Result<AttributeValueEditDto>> GetForEditAsync(
         int storeId,
@@ -42,4 +43,5 @@ public interface IAttributeValueService
         int id,
         int? userId,
         CancellationToken ct = default);
+   
 }

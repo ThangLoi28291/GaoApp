@@ -1,156 +1,202 @@
 ﻿@using GaoApp.Application.Common.Security
 @inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
+
 @{
     ViewData["Title"] = "Phiếu nhập kho";
     Layout = "_ContentNavbarLayout";
+
+    var canCreate = (await AuthorizationService
+        .AuthorizeAsync(User, null, AppPermissions.InventoryStockDocumentCreate)).Succeeded;
+}
+
+@section VendorStyles {
+    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
 }
 
 <div class="container-xxl flex-grow-1 container-p-y">
-    <div class="card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h5 class="mb-0">Phiếu nhập kho</h5>
-                <small class="text-muted">Quản lý phiếu nhập theo trạng thái xử lý</small>
+
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+        <div>
+            <h4 class="sd-page-title mb-1">Phiếu nhập kho</h4>
+            <div class="sd-muted">
+                Mặc định hiển thị phiếu nháp và phiếu chờ duyệt.
             </div>
-       
-            @if ((await AuthorizationService.AuthorizeAsync(User, null, AppPermissions.InventoryStockDocumentCreate)).Succeeded)
-            {
-                <button class="btn btn-primary" id="btnCreateReceipt">
-                    <i class="bx bx-plus"></i> Tạo phiếu nhập
-                </button>
-            }
+        </div>
+
+        @if (canCreate)
+        {
+            <button class="btn btn-primary" id="btnCreateReceipt">
+                <i class="bx bx-plus"></i>
+                Tạo phiếu nhập
+            </button>
+        }
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="sd-stat">
+                <div class="sd-stat-label">Tổng phiếu</div>
+                <div class="sd-stat-value" id="sdCountAll">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="sd-stat">
+                <div class="sd-stat-label">Đang làm</div>
+                <div class="sd-stat-value text-primary" id="sdCountWorking">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="sd-stat">
+                <div class="sd-stat-label">Chờ duyệt</div>
+                <div class="sd-stat-value text-warning" id="sdCountPending">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="sd-stat">
+                <div class="sd-stat-label">Đã duyệt</div>
+                <div class="sd-stat-value text-success" id="sdCountConfirmed">0</div>
+            </div>
         </div>
     </div>
 
-    <div class="card">
+    <div class="card sd-index-card">
         <div class="card-body">
-            <ul class="nav nav-tabs mb-3" id="receiptTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active"
-                            id="tab-working-btn"
-                            data-bs-toggle="tab"
-                            data-bs-target="#tab-working"
-                            type="button"
-                            role="tab">
-                        Đang làm
-                    </button>
-                </li>
 
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link"
-                            id="tab-pending-btn"
-                            data-bs-toggle="tab"
-                            data-bs-target="#tab-pending"
-                            type="button"
-                            role="tab">
-                        Chờ duyệt
-                    </button>
-                </li>
-
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link"
-                            id="tab-confirmed-btn"
-                            data-bs-toggle="tab"
-                            data-bs-target="#tab-confirmed"
-                            type="button"
-                            role="tab">
-                        Đã duyệt
-                    </button>
-                </li>
-            </ul>
-
-            <div class="tab-content">
-                <div class="tab-pane fade show active" id="tab-working" role="tabpanel">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Mã phiếu</th>
-                                    <th>Ngày phiếu</th>
-                                    <th>Kho</th>
-                                    <th>Nhà cung cấp</th>
-                                    <th>Trạng thái</th>
-                                    <th class="text-end">Tổng tiền</th>
-                                    <th style="width:120px;">Thao tác</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tbodyWorking">
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+            <div class="sd-filter-box mb-3">
+                <div class="row g-3 align-items-end">
+                    <div class="col-lg-5">
+                        <label class="form-label">Tìm kiếm</label>
+                        <input type="text"
+                               class="form-control"
+                               id="sdSearchKeyword"
+                               placeholder="Tìm mã phiếu, tên phiếu, kho..." />
                     </div>
-                </div>
 
-                <div class="tab-pane fade" id="tab-pending" role="tabpanel">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Mã phiếu</th>
-                                    <th>Ngày phiếu</th>
-                                    <th>Kho</th>
-                                    <th>Nhà cung cấp</th>
-                                    <th>Gửi duyệt lúc</th>
-                                    <th class="text-end">Tổng tiền</th>
-                                    <th style="width:120px;">Thao tác</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tbodyPending">
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="col-lg-3">
+                        <label class="form-label">Trạng thái</label>
+                        <select class="form-select" id="sdStatusFilter">
+                            <option value="active" selected>Nháp + Chờ duyệt</option>
+                            <option value="all">Tất cả</option>
+                            <option value="working">Nháp</option>
+                            <option value="pending">Chờ duyệt</option>
+                            <option value="confirmed">Đã duyệt</option>
+                            <option value="rejected">Từ chối</option>
+                        </select>
                     </div>
-                </div>
 
-                <div class="tab-pane fade" id="tab-confirmed" role="tabpanel">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Mã phiếu</th>
-                                    <th>Ngày phiếu</th>
-                                    <th>Kho</th>
-                                    <th>Nhà cung cấp</th>
-                                    <th>Duyệt lúc</th>
-                                    <th class="text-end">Tổng tiền</th>
-                                    <th style="width:120px;">Thao tác</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tbodyConfirmed">
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted">Đang tải dữ liệu...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="col-lg-2">
+                        <label class="form-label">Số dòng/trang</label>
+                        <select class="form-select" id="sdPageSize">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+
+                    <div class="col-lg-2 d-grid">
+                        <button type="button" class="btn btn-outline-secondary" id="sdBtnResetFilter">
+                            Xóa lọc
+                        </button>
                     </div>
                 </div>
             </div>
+
+            <div class="table-responsive sd-line-table-wrap">
+                <table class="table table-hover align-middle sd-table mb-0">
+                    <thead>
+                        <tr>
+                            <th style="min-width:210px;">Mã / Tên phiếu</th>
+                            <th style="min-width:140px;">Ngày tạo</th>
+                            <th style="min-width:140px;">Ngày sửa</th>
+                            <th style="min-width:140px;">Gửi duyệt</th>
+                            <th style="min-width:130px;">Kho</th>
+                            <th style="width:120px;">Trạng thái</th>
+                            <th class="text-end" style="width:120px;">Loại SP</th>
+                            <th class="text-end" style="width:140px;">Tổng tiền</th>
+                            <th class="sd-action-cell">Thao tác</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="sdReceiptTableBody">
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                Đang tải dữ liệu...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="sd-pagination mt-3">
+                <div class="text-muted small" id="sdPaginationInfo">
+                    Đang tải...
+                </div>
+
+                <div class="btn-group">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="sdBtnPrevPage">
+                        Trước
+                    </button>
+
+                    <button type="button" class="btn btn-outline-secondary btn-sm disabled" id="sdCurrentPageText">
+                        1 / 1
+                    </button>
+
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="sdBtnNextPage">
+                        Sau
+                    </button>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="createReceiptModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Tạo phiếu nhập kho</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 sd-create-modal">
+
+            <div class="sd-create-modal-header d-flex justify-content-between align-items-start">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="sd-create-icon">
+                        <i class="bx bx-package"></i>
+                    </div>
+
+                    <div>
+                        <h5 class="fw-bold mb-1 text-white">Tạo phiếu nhập kho</h5>
+                        <div class="text-muted small">
+                            Đặt tên phiếu để dễ tìm lại và quản lý.
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
             </div>
 
-            <div class="modal-body">
+            <div class="modal-body p-4">
                 <div class="mb-3">
-                    <label class="form-label">Kho <span class="text-danger">*</span></label>
+                    <label class="form-label fw-semibold">Tên phiếu</label>
+                    <input type="text"
+                           class="form-control"
+                           id="createDocumentTitle"
+                           placeholder="VD: Nhập hàng NCC A - buổi sáng" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Kho <span class="text-danger">*</span></label>
                     <select class="form-select" id="createWarehouseId">
                         <option value="">-- Chọn kho --</option>
                     </select>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Nhà cung cấp</label>
+                    <label class="form-label fw-semibold">Nhà cung cấp</label>
                     <input type="text"
                            class="form-control"
                            id="createSupplierKeyword"
@@ -161,25 +207,141 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Ngày phiếu</label>
-                    <input type="datetime-local" class="form-control" id="createDocumentDate" />
+                    <label class="form-label fw-semibold">Ngày phiếu</label>
+                    <input type="datetime-local"
+                           class="form-control"
+                           id="createDocumentDate" />
                 </div>
 
                 <div class="mb-0">
-                    <label class="form-label">Ghi chú</label>
-                    <textarea class="form-control" id="createNote" rows="3"></textarea>
+                    <label class="form-label fw-semibold">Ghi chú</label>
+                    <textarea class="form-control"
+                              id="createNote"
+                              rows="3"
+                              placeholder="Ghi chú thêm nếu cần..."></textarea>
                 </div>
 
                 <div class="form-text mt-2 text-danger" id="createReceiptMessage"></div>
             </div>
 
-            <div class="modal-footer">
+            <div class="modal-footer justify-content-between border-0 px-4 pb-4 pt-0">
+                <div class="small text-muted">
+                    Enter: tạo phiếu · Esc: đóng
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button"
+                            class="btn btn-outline-secondary px-4"
+                            data-bs-dismiss="modal">
+                        Đóng
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-primary px-4"
+                            id="btnSubmitCreateReceipt">
+                        <i class="bx bx-check me-1"></i>
+                        Tạo phiếu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stockDocumentInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 sd-approval-modal">
+            <div class="modal-body p-4">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h5 class="fw-bold mb-1" id="sdInfoTitle">Chi tiết phiếu</h5>
+                        <div class="text-muted small" id="sdInfoSubTitle">-</div>
+                    </div>
+
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Trạng thái</div>
+                            <div class="sd-popup-info-value" id="sdInfoStatus">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Kho</div>
+                            <div class="sd-popup-info-value" id="sdInfoWarehouse">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Nhà cung cấp</div>
+                            <div class="sd-popup-info-value" id="sdInfoSupplier">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Ngày phiếu</div>
+                            <div class="sd-popup-info-value" id="sdInfoDocumentDate">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Ngày tạo</div>
+                            <div class="sd-popup-info-value" id="sdInfoCreatedAt">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Ngày sửa</div>
+                            <div class="sd-popup-info-value" id="sdInfoUpdatedAt">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Gửi duyệt</div>
+                            <div class="sd-popup-info-value" id="sdInfoSubmittedAt">-</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Tổng dòng</div>
+                            <div class="sd-popup-info-value" id="sdInfoTotalLines">0</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Tổng loại sản phẩm</div>
+                            <div class="sd-popup-info-value" id="sdInfoTotalProducts">0</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Tổng tiền</div>
+                            <div class="sd-popup-info-value text-primary" id="sdInfoTotalAmount">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 px-4 pb-4 pt-0">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
                     Đóng
                 </button>
-                <button type="button" class="btn btn-primary" id="btnSubmitCreateReceipt">
-                    Tạo phiếu
-                </button>
+
+                <a class="btn btn-primary" id="sdInfoOpenDetail" href="#">
+                    Mở chi tiết
+                </a>
             </div>
         </div>
     </div>
@@ -191,5 +353,6 @@
             mode: 'index'
         };
     </script>
+
     <script src="~/admin/js/stock-document-management.js"></script>
 }

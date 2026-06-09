@@ -1,13 +1,17 @@
 ﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.AttributeValues;
 using GaoApp.Application.Interfaces.Services.AttributeValues;
 using GaoApp.Application.Interfaces.Services.ProductAttributes;
 using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.AttributeValues;
 using GaoApp.Web.Extensions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
+
+[Authorize(Policy = PermissionCodes.Catalog.AttributeValue.View)]
 
 public class AttributeValueController : BaseAdminController
 {
@@ -40,17 +44,24 @@ public class AttributeValueController : BaseAdminController
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(int? attributeId = null, string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Index(
+    int? attributeId = null,
+    bool? status = null,
+    string? search = "",
+    int page = 1,
+    int pageSize = 20,
+    CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId();
         var attrs = await _attrService.GetAllAsync(storeId, ct);
-        var paged = await _service.GetPagedAsync(storeId, attributeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
 
         return View(new AttributeValueIndexVM
         {
             AttributeId = attributeId,
+            Status = status,
             SearchString = search,
             Page = page,
             PageSize = pageSize,
@@ -60,17 +71,24 @@ public class AttributeValueController : BaseAdminController
     }
 
     [HttpGet]
-    public async Task<IActionResult> Search(int? attributeId = null, string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Search(
+    int? attributeId = null,
+    bool? status = null,
+    string? search = "",
+    int page = 1,
+    int pageSize = 20,
+    CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId();
         var attrs = await _attrService.GetAllAsync(storeId, ct);
-        var paged = await _service.GetPagedAsync(storeId, attributeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
 
         return PartialView("_AttributeValueTable", new AttributeValueIndexVM
         {
             AttributeId = attributeId,
+            Status = status,
             SearchString = search,
             Page = page,
             PageSize = pageSize,
@@ -80,6 +98,7 @@ public class AttributeValueController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Create)]
     public async Task<IActionResult> Create(CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -94,6 +113,7 @@ public class AttributeValueController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Create)]
     public async Task<IActionResult> Create(AttributeValueEditViewModel vm, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -125,6 +145,7 @@ public class AttributeValueController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -146,12 +167,19 @@ public class AttributeValueController : BaseAdminController
             Name = dto.Name,
             Status = dto.Status,
             RowVersion = dto.RowVersion,
+
+            CreatedAtUtc = dto.CreatedAtUtc,
+            UpdatedAtUtc = dto.UpdatedAtUtc,
+            CreatedBy = dto.CreatedBy,
+            UpdatedBy = dto.UpdatedBy,
+
             Attributes = attrs
         });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> Edit(AttributeValueEditViewModel vm, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -186,6 +214,7 @@ public class AttributeValueController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -200,6 +229,7 @@ public class AttributeValueController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();

@@ -44,14 +44,22 @@ public class InventoryAdjustmentsController : ControllerBase
 
         var results = items.Select(x => new
         {
-            id = $"{x.ProductVariantId}_{x.UnitId}",
+            id = $"{x.ProductVariantId}_{x.UnitId}_{x.ProductUnitConversionId}",
             productVariantId = x.ProductVariantId,
+            productUnitConversionId = x.ProductUnitConversionId,
             unitId = x.UnitId,
+
             productName = x.ProductName,
             sku = x.Sku,
             barcode = x.Barcode,
             unitName = x.UnitName,
             factor = x.Factor,
+
+            // THÊM 3 FIELD NÀY nếu DTO/service đã có
+            imageUrl = x.ImageUrl,
+            price = x.Price,
+            costPrice = x.CostPrice,
+
             isBaseUnitFallback = x.IsBaseUnitFallback,
             sourceType = x.SourceType,
             text = x.Text

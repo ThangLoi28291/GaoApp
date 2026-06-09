@@ -29,10 +29,15 @@ public class StockCountRepository : IStockCountRepository
     public async Task<StockCountDocument?> GetDetailAsync(int id, CancellationToken ct = default)
     {
         return await _context.StockCountDocuments
-            .Include(x => x.Warehouse)
-            .Include(x => x.Lines)
-            .FirstOrDefaultAsync(x => x.Id == id, ct);
+    .Include(x => x.Warehouse)
+    .Include(x => x.Lines)
+        .ThenInclude(x => x.ProductVariant)
+            .ThenInclude(x => x.Product)
+                .ThenInclude(x => x.ProductImages)
+                    .ThenInclude(x => x.MediaAsset)
+    .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
+
 
     public async Task<StockCountLine?> GetLineByIdAsync(int lineId, CancellationToken ct = default)
     {

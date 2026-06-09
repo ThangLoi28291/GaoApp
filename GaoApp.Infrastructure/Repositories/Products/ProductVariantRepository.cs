@@ -189,10 +189,17 @@ public sealed class ProductVariantRepository : IProductVariantRepository
     }
 
     public Task<List<ProductVariant>> GetByProductAsync(int storeId, int productId, CancellationToken ct)
-        => _db.Set<ProductVariant>()
-            .Where(x => x.StoreId == storeId && x.ProductId == productId && !x.IsDeleted)
-            .Include(x => x.AttributeValues)
-            .ToListAsync(ct);
+    => _db.Set<ProductVariant>()
+        .Where(x => x.StoreId == storeId && x.ProductId == productId && !x.IsDeleted)
+
+        .Include(x => x.AttributeValues)
+
+        // NEW:
+        // Load đơn vị quy đổi để màn Variant lấy giá lẻ/giá sỉ của đơn vị gốc.
+        .Include(x => x.UnitConversions.Where(c => !c.IsDeleted))
+            .ThenInclude(c => c.Unit)
+
+        .ToListAsync(ct);
 
     public Task<bool> ExistsSkuAsync(int storeId, string sku, int? excludeVariantId, CancellationToken ct)
         => _db.Set<ProductVariant>()
@@ -426,8 +433,12 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         variant.ProductVariantName = resolvedVariantName;
         variant.ProductVariantNameNormalized = resolvedVariantNameNormalized;
         variant.Price = row.Price;
+        // NEW: Lưu giá sỉ khi khôi phục variant đã xóa mềm
+        variant.WholesalePrice = NormalizeNullableMoney(row.WholesalePrice);
         variant.CostPrice = row.CostPrice;
+
         variant.IsActive = row.IsActive;
+        variant.HasInputInvoice = row.HasInputInvoice;
         variant.PrimaryProductImageId = row.PrimaryProductImageId;
 
         variant.IsDeleted = false;
@@ -437,7 +448,17 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         variant.UpdatedAtUtc = DateTime.UtcNow;
         variant.UpdatedBy = userId;
     }
+    /// <summary>
+    /// Chuẩn hóa tiền nullable.
+    /// null hoặc <= 0 thì lưu null để hiểu là chưa cấu hình.
+    /// </summary>
+    private static decimal? NormalizeNullableMoney(decimal? value)
+    {
+        if (!value.HasValue)
+            return null;
 
+        return value.Value <= 0 ? null : value.Value;
+    }
     /// <summary>
     /// Kiểm tra variant đã từng phát sinh OrderLine chưa.
     /// Nếu đã có OrderLine thì không cho xóa và không cho đổi combo.
@@ -542,9 +563,13 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 variant.ProductVariantName = resolvedName.ProductVariantName;
                 variant.ProductVariantNameNormalized = resolvedName.ProductVariantNameNormalized;
                 variant.Price = row.Price;
+                // NEW: Giá sỉ theo đơn vị gốc
+                variant.WholesalePrice = NormalizeNullableMoney(row.WholesalePrice);
                 variant.CostPrice = row.CostPrice;
                 variant.IsActive = row.IsActive;
+                variant.HasInputInvoice = row.HasInputInvoice;
                 variant.PrimaryProductImageId = row.PrimaryProductImageId;
+
                 variant.UpdatedAtUtc = DateTime.UtcNow;
                 variant.UpdatedBy = userId;
 
@@ -631,8 +656,11 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 ProductVariantName = resolvedName.ProductVariantName,
                 ProductVariantNameNormalized = resolvedName.ProductVariantNameNormalized,
                 Price = row.Price,
+                // NEW: Giá sỉ theo đơn vị gốc
+                WholesalePrice = NormalizeNullableMoney(row.WholesalePrice),
                 CostPrice = row.CostPrice,
                 IsActive = row.IsActive,
+                HasInputInvoice = row.HasInputInvoice,
                 PrimaryProductImageId = row.PrimaryProductImageId,
                 CreatedAtUtc = DateTime.UtcNow,
                 CreatedBy = userId,
@@ -744,15 +772,20 @@ public sealed class ProductVariantRepository : IProductVariantRepository
     /// Dùng cho lookup / POS / stock.
     /// </summary>
     public Task<ProductVariant?> GetActiveWithProductAsync(int variantId, CancellationToken ct = default)
-        => _db.ProductVariants
-            .AsNoTracking()
-            .Include(v => v.Product)
-                .ThenInclude(p => p.BaseUnit)
-            .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
-                .ThenInclude(c => c.Unit)
-            .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
-                .ThenInclude(c => c.Barcodes.Where(b => !b.IsDeleted && b.IsActive))
-            .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted && v.IsActive, ct);
+      => _db.ProductVariants
+          .AsNoTracking()
+          .Include(v => v.Product)
+              .ThenInclude(p => p.BaseUnit)
+          .Include(v => v.Product)
+              .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
+                  .ThenInclude(pi => pi.MediaAsset)
+          .Include(v => v.PrimaryProductImage)
+              .ThenInclude(pi => pi.MediaAsset)
+          .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+              .ThenInclude(c => c.Unit)
+          .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+              .ThenInclude(c => c.Barcodes.Where(b => !b.IsDeleted && b.IsActive))
+          .FirstOrDefaultAsync(v => v.Id == variantId && !v.IsDeleted && v.IsActive, ct);
 
     public async Task<int?> ResolveVariantIdByBarcodeHistoryAsync(string barcode, CancellationToken ct = default)
     {
@@ -784,12 +817,27 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
         return await _db.ProductVariants
             .AsNoTracking()
+
+            // Product + BaseUnit
             .Include(x => x.Product)
                 .ThenInclude(p => p.BaseUnit)
+
+            // Ảnh fallback của Product
+            .Include(x => x.Product)
+                .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
+                    .ThenInclude(pi => pi.MediaAsset)
+
+            // Ảnh riêng của Variant
+            .Include(x => x.PrimaryProductImage)
+                .ThenInclude(pi => pi.MediaAsset)
+
+            // Unit conversion
             .Include(x => x.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                 .ThenInclude(c => c.Unit)
+
             .Include(x => x.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                 .ThenInclude(c => c.Barcodes.Where(b => !b.IsDeleted && b.IsActive))
+
             .Where(x =>
                 !x.IsDeleted &&
                 x.IsActive &&
@@ -799,7 +847,13 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                     (!string.IsNullOrEmpty(x.ProductVariantNameNormalized) && x.ProductVariantNameNormalized.Contains(normalizedKeyword)) ||
                     (!string.IsNullOrEmpty(x.ProductVariantName) && x.ProductVariantName.Contains(keyword)) ||
                     (!string.IsNullOrEmpty(x.Sku) && x.Sku.Contains(keyword)) ||
-                    x.Product.Name.Contains(keyword)
+                    x.Product.Name.Contains(keyword) ||
+                    x.UnitConversions.Any(c =>
+                        !c.IsDeleted &&
+                        c.IsActive &&
+                        c.Unit != null &&
+                        !c.Unit.IsDeleted &&
+                        c.Unit.Name.Contains(keyword))
                 ))
             .OrderBy(x => x.ProductVariantName)
             .ThenBy(x => x.Sku)

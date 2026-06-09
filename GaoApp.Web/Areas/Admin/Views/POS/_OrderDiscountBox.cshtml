@@ -1,0 +1,51 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _OrderDiscountBox.cshtml
+   Mục đích:
+   - Chứa riêng khu vực giảm giá đơn hàng
+   - Khớp đúng với JS hiện tại
+   - Giữ nguyên id txtOrderDiscount, btnSaveOrderDiscount, btnClearOrderDiscount
+   ========================================================= *@
+
+<div class="card pos-card mb-3">
+    <div class="card-body">
+        <div class="pos-section-title">Giảm giá đơn</div>
+
+        <div class="pos-note-box">
+            <div class="mb-2">
+                <label class="form-label">Số tiền giảm</label>
+
+                @* JS hiện tại đang dùng đúng id này *@
+                <input id="txtOrderDiscount"
+                       type="number"
+                       min="0"
+                       step="1000"
+                       class="form-control"
+                       placeholder="Nhập số tiền giảm" />
+            </div>
+
+            <div class="row g-2">
+                <div class="col-6 d-grid">
+                    @* JS hiện tại đang bind nút này *@
+                    <button id="btnSaveOrderDiscount"
+                            type="button"
+                            class="btn btn-outline-warning">
+                        Lưu giảm giá
+                    </button>
+                </div>
+
+                <div class="col-6 d-grid">
+                    @* JS hiện tại đang bind nút này *@
+                    <button id="btnClearOrderDiscount"
+                            type="button"
+                            class="btn btn-outline-secondary">
+                        Xóa giảm giá
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-text mt-2">
+                Giảm trực tiếp trên toàn bộ đơn hàng.
+            </div>
+        </div>
+    </div>
+</div>

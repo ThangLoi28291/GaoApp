@@ -1,9 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using GaoApp.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/stock-transfers")]
+[Authorize(Policy = PermissionCodes.Inventory.StockTransfer.View)]
 public class StockTransferController : Controller
 {
     [HttpGet("")]
@@ -14,9 +17,9 @@ public class StockTransferController : Controller
     }
 
     [HttpGet("{id:int}")]
-    public IActionResult Detail(int? id)
+    public IActionResult Detail(int id)
     {
-        ViewData["Title"] = id.HasValue ? "Chi tiết phiếu chuyển kho" : "Tạo phiếu chuyển kho";
+        ViewData["Title"] = "Chi tiết phiếu chuyển kho";
         ViewBag.StockTransferId = id;
         return View();
     }

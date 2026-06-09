@@ -74,4 +74,21 @@ public class WarehouseRepository : IWarehouseRepository
             warehouse.IsDefault = false;
         }
     }
+    public async Task<string> GenerateNextCodeAsync(CancellationToken ct = default)
+    {
+        var count = await _db.Warehouses.CountAsync(ct);
+
+        var nextNumber = count + 1;
+
+        string code;
+
+        do
+        {
+            code = $"KHO-{nextNumber:000}";
+            nextNumber++;
+        }
+        while (await _db.Warehouses.AnyAsync(x => x.Code == code, ct));
+
+        return code;
+    }
 }

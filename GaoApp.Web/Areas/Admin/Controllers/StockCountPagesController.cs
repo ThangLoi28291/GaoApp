@@ -1,9 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using GaoApp.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/stock-counts")]
+[Authorize(Policy = PermissionCodes.Inventory.StockCount.View)]
 public class StockCountPagesController : Controller
 {
     [HttpGet("")]

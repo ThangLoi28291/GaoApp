@@ -1,27 +1,34 @@
 ﻿using System.Text.Json;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Exceptions;
+using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Web.Common.Responses;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Web.Middlewares;
 
 /// <summary>
-/// Middleware bắt lỗi toàn cục cho toàn bộ request.
-/// - Log lỗi thống nhất
-/// - Trả JSON cho API/AJAX
-/// - Redirect sang trang lỗi cho MVC thông thường
-/// - Hỗ trợ phân biệt request Admin hay ngoài Admin để render view phù hợp
+/// Middleware bắt exception toàn cục và trả JSON lỗi chuẩn cho client.
+/// 
+/// Đợt nâng cấp này bổ sung hỗ trợ PosAppException để:
+/// - trả errorCode
+/// - actionHint
+/// - errorType
+/// - metadata
+/// 
+/// Nhờ đó frontend POS không cần đoán lỗi bằng text nữa.
 /// </summary>
 public class GlobalExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<GlobalExceptionMiddleware> _logger;
-    private readonly IWebHostEnvironment _environment;
+    private readonly IHostEnvironment _environment;
 
     public GlobalExceptionMiddleware(
         RequestDelegate next,
         ILogger<GlobalExceptionMiddleware> logger,
-        IWebHostEnvironment environment)
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
@@ -41,163 +48,257 @@ public class GlobalExceptionMiddleware
     }
 
     /// <summary>
-    /// Xử lý exception theo loại request.
+    /// Model nội bộ dùng để chuẩn hóa dữ liệu lỗi trước khi serialize ra ErrorResponse.
     /// </summary>
+    private sealed class ErrorEnvelope
+    {
+        public int StatusCode { get; init; }
+        public string Message { get; init; } = "Có lỗi xảy ra.";
+        public string? ErrorCode { get; init; }
+        public string? ActionHint { get; init; }
+        public string? ErrorType { get; init; }
+        public object? Metadata { get; init; }
+    }
+
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         var traceId = context.TraceIdentifier;
 
-        var (statusCode, clientMessage) = MapException(exception);
+        var mapped = MapException(exception);
 
-        _logger.LogError(
-            exception,
-            "Unhandled exception. TraceId={TraceId}, Path={Path}, Method={Method}, StatusCode={StatusCode}",
-            traceId,
-            context.Request.Path,
-            context.Request.Method,
-            statusCode);
-
-        // Nếu response đã bắt đầu thì không thể ghi đè nữa
-        if (context.Response.HasStarted)
+        // Ghi log có cấu trúc hơn một chút để dễ tra production
+        if (exception is PosAppException posEx)
         {
             _logger.LogWarning(
                 exception,
-                "Cannot handle exception normally because response has already started. TraceId={TraceId}",
-                traceId);
+                "POS exception handled. TraceId={TraceId}; ErrorCode={ErrorCode}; ErrorType={ErrorType}; StatusCode={StatusCode}; Path={Path}",
+                traceId,
+                posEx.ErrorCode,
+                posEx.ErrorType,
+                mapped.StatusCode,
+                context.Request.Path);
+        }
+        else
+        {
+            _logger.LogError(
+                exception,
+                "Unhandled exception. TraceId={TraceId}; StatusCode={StatusCode}; Path={Path}",
+                traceId,
+                mapped.StatusCode,
+                context.Request.Path);
+        }
 
-            // Không thể ghi đè response nữa, nên chỉ log rồi kết thúc.
+        if (context.Response.HasStarted)
+        {
+            _logger.LogWarning(
+                "Cannot write error response because the response has already started. TraceId={TraceId}",
+                traceId);
             return;
         }
 
         context.Response.Clear();
+        context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.StatusCode = mapped.StatusCode;
 
-        // Nếu là API/AJAX/JSON request thì trả JSON
-        if (IsApiRequest(context))
+        var payload = new ErrorResponse
         {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/json; charset=utf-8";
+            Success = false,
+            Message = mapped.Message,
+            StatusCode = mapped.StatusCode,
+            TraceId = traceId,
+            Detail = _environment.IsDevelopment() ? exception.ToString() : null,
 
-            var payload = new ErrorResponse
-            {
-                Success = false,
-                Message = clientMessage,
-                StatusCode = statusCode,
-                TraceId = traceId,
-                Detail = _environment.IsDevelopment() ? exception.ToString() : null
-            };
+            // Field mới cho POS / UI mapping
+            ErrorCode = mapped.ErrorCode,
+            ActionHint = mapped.ActionHint,
+            ErrorType = mapped.ErrorType,
+            Metadata = mapped.Metadata
+        };
 
-            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-
-            await context.Response.WriteAsync(json);
-            return;
-        }
-
-        // Với request MVC thường thì chuyển sang trang lỗi thân thiện
-        // Tránh loop nếu chính /error bị lỗi
-        if (context.Request.Path.StartsWithSegments("/error", StringComparison.OrdinalIgnoreCase))
+        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "text/plain; charset=utf-8";
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
 
-            var message = _environment.IsDevelopment()
-                ? exception.ToString()
-                : "Đã xảy ra lỗi hệ thống.";
-
-            await context.Response.WriteAsync(message);
-            return;
-        }
-
-        var encodedMessage = Uri.EscapeDataString(clientMessage);
-        var encodedTraceId = Uri.EscapeDataString(traceId);
-
-        // Xác định request gốc có thuộc admin area hay không
-        var isAdminRequest =
-            context.Request.Path.StartsWithSegments("/admin", StringComparison.OrdinalIgnoreCase) ||
-            (context.Request.RouteValues.TryGetValue("area", out var areaValue) &&
-             string.Equals(areaValue?.ToString(), "Admin", StringComparison.OrdinalIgnoreCase));
-
-        var encodedIsAdmin = isAdminRequest ? "1" : "0";
-
-        context.Response.Redirect(
-            $"/error/{statusCode}?traceId={encodedTraceId}&message={encodedMessage}&isAdmin={encodedIsAdmin}");
+        await context.Response.WriteAsync(json);
     }
 
     /// <summary>
-    /// Mapping exception sang HTTP status code + message trả client.
-    /// Có thể mở rộng dần theo domain của GaoApp.
+    /// Map exception sang response lỗi chuẩn.
+    /// 
+    /// Thứ tự ưu tiên:
+    /// 1. PosAppException
+    /// 2. AppException có sẵn của hệ thống
+    /// 3. Các exception framework/thường gặp
+    /// 4. Fallback technical error
     /// </summary>
-    private static (int StatusCode, string Message) MapException(Exception exception)
+    private static ErrorEnvelope MapException(Exception exception)
     {
-        return exception switch
+        // =========================================================
+        // 1) POS EXCEPTION - Ưu tiên cao nhất cho module POS
+        // =========================================================
+        if (exception is PosAppException posEx)
         {
-            UnauthorizedAccessException => (
-                StatusCodes.Status403Forbidden,
-                "Bạn không có quyền thực hiện thao tác này."
-            ),
+            return new ErrorEnvelope
+            {
+                StatusCode = posEx.StatusCode ?? MapStatusCodeFromPosErrorType(posEx.ErrorType),
+                Message = posEx.Message,
+                ErrorCode = posEx.ErrorCode,
+                ActionHint = posEx.ActionHint,
+                ErrorType = posEx.ErrorType,
+                Metadata = posEx.Metadata
+            };
+        }
 
-            KeyNotFoundException => (
-                StatusCodes.Status404NotFound,
-                "Không tìm thấy dữ liệu yêu cầu."
-            ),
+        // =========================================================
+        // 2) APP EXCEPTIONS CÓ SẴN TRONG HỆ THỐNG
+        // =========================================================
+        if (exception is ValidationAppException validationEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = validationEx.Message,
+                ErrorType = PosErrorTypes.Validation
+            };
+        }
 
-            ArgumentException => (
-                StatusCodes.Status400BadRequest,
-                "Dữ liệu đầu vào không hợp lệ."
-            ),
+        if (exception is ConflictAppException conflictEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status409Conflict,
+                Message = conflictEx.Message,
+                ErrorType = PosErrorTypes.StateConflict
+            };
+        }
 
-            InvalidOperationException => (
-                StatusCodes.Status400BadRequest,
-                "Thao tác hiện tại không hợp lệ."
-            ),
+        if (exception is ForbiddenAppException forbiddenEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+                Message = forbiddenEx.Message,
+                ErrorType = PosErrorTypes.Permission
+            };
+        }
 
-            DbUpdateConcurrencyException => (
-                StatusCodes.Status409Conflict,
-                "Dữ liệu đã được thay đổi bởi người dùng khác. Vui lòng tải lại trang và thử lại."
-            ),
+        if (exception is NotFoundAppException notFoundEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status404NotFound,
+                Message = notFoundEx.Message,
+                ErrorType = PosErrorTypes.BusinessRule
+            };
+        }
 
-            DbUpdateException => (
-                StatusCodes.Status500InternalServerError,
-                "Có lỗi khi lưu dữ liệu xuống cơ sở dữ liệu."
-            ),
+        // =========================================================
+        // 3) CÁC EXCEPTION THƯỜNG GẶP
+        // =========================================================
+        if (exception is UnauthorizedAccessException unauthorizedEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = unauthorizedEx.Message,
+                ErrorCode = PosErrorCodes.AuthUnauthorized,
+                ActionHint = "Vui lòng đăng nhập lại để tiếp tục.",
+                ErrorType = PosErrorTypes.Authentication
+            };
+        }
 
-            _ => (
-                StatusCodes.Status500InternalServerError,
-                "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."
-            )
+        if (exception is ArgumentException argumentEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = argumentEx.Message,
+                ErrorType = PosErrorTypes.Validation
+            };
+        }
+
+        if (exception is InvalidOperationException invalidOperationEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = invalidOperationEx.Message,
+                ErrorType = PosErrorTypes.BusinessRule
+            };
+        }
+
+        if (exception is DbUpdateException)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status500InternalServerError,
+                Message = "Không thể lưu dữ liệu vào hệ thống.",
+                ActionHint = "Vui lòng thử lại. Nếu lỗi còn tiếp diễn, hãy liên hệ quản lý hoặc kỹ thuật.",
+                ErrorType = PosErrorTypes.Technical
+            };
+        }
+
+        if (exception is JsonException)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Dữ liệu gửi lên không hợp lệ.",
+                ErrorType = PosErrorTypes.Validation
+            };
+        }
+
+        if (exception is BadHttpRequestException)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Yêu cầu gửi lên không hợp lệ.",
+                ErrorType = PosErrorTypes.Validation
+            };
+        }
+
+        if (exception is OperationCanceledException)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status408RequestTimeout,
+                Message = "Yêu cầu đã bị hủy hoặc quá thời gian xử lý.",
+                ActionHint = "Vui lòng thử lại.",
+                ErrorType = PosErrorTypes.Technical
+            };
+        }
+
+        // =========================================================
+        // 4) FALLBACK
+        // =========================================================
+        return new ErrorEnvelope
+        {
+            StatusCode = StatusCodes.Status500InternalServerError,
+            Message = "Có lỗi hệ thống xảy ra.",
+            ActionHint = "Vui lòng thử lại. Nếu lỗi còn tiếp diễn, hãy liên hệ kỹ thuật.",
+            ErrorType = PosErrorTypes.Technical
         };
     }
 
     /// <summary>
-    /// Xác định request có nên trả JSON hay không.
+    /// Map PosErrorType sang HTTP status code mặc định
+    /// khi PosAppException không truyền StatusCode cụ thể.
     /// </summary>
-    private static bool IsApiRequest(HttpContext context)
+    private static int MapStatusCodeFromPosErrorType(string? errorType)
     {
-        var path = context.Request.Path.Value ?? string.Empty;
-
-        // Các route API
-        if (path.StartsWith("/api", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // AJAX request
-        if (context.Request.Headers.TryGetValue("X-Requested-With", out var requestedWith) &&
-            requestedWith == "XMLHttpRequest")
-            return true;
-
-        // Client mong đợi JSON
-        var accept = context.Request.Headers.Accept.ToString();
-        if (!string.IsNullOrWhiteSpace(accept) &&
-            accept.Contains("application/json", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Content-Type là JSON
-        var contentType = context.Request.ContentType;
-        if (!string.IsNullOrWhiteSpace(contentType) &&
-            contentType.Contains("application/json", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
+        return errorType switch
+        {
+            PosErrorTypes.Validation => StatusCodes.Status400BadRequest,
+            PosErrorTypes.BusinessRule => StatusCodes.Status400BadRequest,
+            PosErrorTypes.Context => StatusCodes.Status400BadRequest,
+            PosErrorTypes.Ownership => StatusCodes.Status409Conflict,
+            PosErrorTypes.Permission => StatusCodes.Status403Forbidden,
+            PosErrorTypes.Authentication => StatusCodes.Status401Unauthorized,
+            PosErrorTypes.StateConflict => StatusCodes.Status409Conflict,
+            PosErrorTypes.Technical => StatusCodes.Status500InternalServerError,
+            _ => StatusCodes.Status500InternalServerError
+        };
     }
 }

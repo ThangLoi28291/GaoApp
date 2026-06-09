@@ -85,6 +85,11 @@ public class StockDocumentLine : BaseEntity
 
     [StringLength(500)]
     public string? Note { get; set; }
+    /// <summary>
+    /// Map dòng nhập kho này với dòng hóa đơn XML.
+    /// </summary>
+    public ICollection<StockDocumentLineInputInvoiceMap> InputInvoiceMaps { get; set; }
+        = new List<StockDocumentLineInputInvoiceMap>();
 
 
 }

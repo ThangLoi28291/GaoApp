@@ -99,13 +99,13 @@
             }).ToList(),
 
         BarcodeTypes = new List<BarcodeTypeOptionVm>
-        {
-            new() { Value = 0, Name = "Internal" },
-            new() { Value = 1, Name = "External" },
-            new() { Value = 2, Name = "Supplier" },
-            new() { Value = 3, Name = "Packaging" },
-            new() { Value = 4, Name = "Legacy" }
-        }
+{
+    new() { Value = 0, Name = "Nội bộ" },
+    new() { Value = 1, Name = "Mã nhà sản xuất" },
+    new() { Value = 2, Name = "Mã nhà cung cấp" },
+    new() { Value = 3, Name = "Mã đóng gói" },
+    new() { Value = 4, Name = "Mã hệ thống cũ" }
+}
     };
 }
 
@@ -274,117 +274,161 @@
         font-weight: 700;
     }
 
-    .vv-row {
-        display: grid;
-        grid-template-columns: 56px minmax(220px,1.5fr) minmax(170px,1fr) minmax(170px,1fr) minmax(190px,1fr) auto;
-        gap: 12px;
-        align-items: center;
-        padding: 12px;
-        border: 1px solid rgba(15,23,42,.06);
-        border-radius: 18px;
-        background: #fff;
-        box-shadow: 0 4px 14px rgba(15,23,42,.03);
-        transition: all .15s ease;
+    .vv-list-body {
+        padding: 12px 14px 16px;
+        background: #fbfcfe;
     }
 
-        .vv-row:hover {
-            border-color: rgba(59,130,246,.18);
-            box-shadow: 0 10px 22px rgba(15,23,42,.06);
+    .vv-variant-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 10px;
+    }
+
+        .vv-variant-table thead th {
+            font-size: 11px;
+            font-weight: 900;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 0 10px 4px;
+            white-space: nowrap;
         }
 
+        .vv-variant-table tbody tr {
+            background: #fff;
+            box-shadow: 0 5px 16px rgba(15,23,42,.05);
+        }
+
+        .vv-variant-table tbody td {
+            padding: 12px 10px;
+            vertical-align: middle;
+            border-top: 1px solid #e5e7eb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+            .vv-variant-table tbody td:first-child {
+                border-left: 1px solid #e5e7eb;
+                border-radius: 16px 0 0 16px;
+            }
+
+            .vv-variant-table tbody td:last-child {
+                border-right: 1px solid #e5e7eb;
+                border-radius: 0 16px 16px 0;
+            }
+
     .vv-thumb {
-        width: 54px;
-        height: 54px;
-        border-radius: 14px;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
         object-fit: cover;
         border: 1px solid rgba(0,0,0,.10);
         cursor: pointer;
         background: #fff;
     }
 
-    .vv-cell {
-        min-width: 0;
-    }
-
-    .vv-cell-label {
-        font-size: .72rem;
-        font-weight: 900;
-        color: #64748b;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        margin-bottom: 6px;
-    }
-
     .vv-input {
-        border-radius: 12px !important;
-        min-height: 38px;
+        border-radius: 10px !important;
+        min-height: 36px;
         border-color: rgba(148,163,184,.34);
-    }
-
-        .vv-input:focus {
-            border-color: rgba(59,130,246,.55);
-            box-shadow: 0 0 0 .14rem rgba(59,130,246,.10) !important;
-        }
-
-    .vv-sku-lock {
-        margin-top: 5px;
-        font-size: 11px;
-        color: #64748b;
         font-weight: 700;
     }
 
-    .vv-price-stack {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+    .vv-name-input {
+        min-width: 260px;
     }
+
+    .vv-sku-input {
+        min-width: 180px;
+    }
+
+    .vv-cost-input {
+        width: 96px;
+    }
+
+    .vv-base-price-box {
+        min-width: 116px;
+        border: 1px dashed #cbd5e1;
+        border-radius: 12px;
+        padding: 7px 9px;
+        background: #f8fafc;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+        .vv-base-price-box .unit {
+            font-weight: 900;
+            color: #334155;
+            margin-bottom: 4px;
+        }
+
+        .vv-base-price-box .line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .vv-base-price-box span {
+            color: #64748b;
+            font-weight: 800;
+        }
+
+        .vv-base-price-box b {
+            color: #0f172a;
+            font-weight: 900;
+        }
 
     .vv-tags {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px;
+        max-width: 220px;
     }
 
     .vv-tag {
-        display: inline-flex;
-        align-items: center;
-        min-height: 28px;
-        padding: 5px 10px;
+        min-height: 24px;
+        padding: 4px 8px;
         border-radius: 999px;
-        background: #f8fafc;
-        border: 1px solid rgba(148,163,184,.22);
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
         color: #334155;
-        font-size: .76rem;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 800;
         white-space: nowrap;
     }
 
-    .vv-side {
+    .vv-status-stack {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
-        gap: 8px;
-        min-width: 150px;
+        gap: 6px;
+        min-width: 108px;
     }
 
     .vv-status {
-        min-width: 108px;
-        border-radius: 12px;
-        font-weight: 800;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: 12px;
     }
 
     .vv-actions {
         display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
+        gap: 6px;
         justify-content: flex-end;
+        flex-wrap: wrap;
+        min-width: 190px;
     }
 
         .vv-actions .btn {
-            min-width: 78px;
-            border-radius: 12px;
-            font-weight: 700;
+            border-radius: 10px;
+            font-weight: 800;
+            white-space: nowrap;
         }
+
+    @@media (max-width: 1100px) {
+        .vv-variant-table {
+            min-width: 1050px;
+        }
+    }
 
     .vv-confirm-wrap {
         display: flex;
@@ -528,6 +572,37 @@
             grid-template-columns: 1fr;
         }
     }
+
+    .vv-unit-price-box {
+        border: 1px dashed rgba(148,163,184,.55);
+        border-radius: 12px;
+        padding: 8px 10px;
+        background: #f8fafc;
+        font-size: .82rem;
+    }
+
+        .vv-unit-price-box > div {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .vv-unit-price-box span {
+            color: #64748b;
+            font-weight: 700;
+        }
+
+        .vv-unit-price-box b {
+            color: #0f172a;
+            font-weight: 900;
+        }
+
+        .vv-unit-price-box small {
+            display: block;
+            margin-top: 4px;
+            color: #64748b;
+            font-weight: 700;
+        }
 </style>
 
 <script>
@@ -898,158 +973,217 @@
             if (!items.length) return '';
             return `<div class="vv-tags">${items.map(x => `<span class="vv-tag">${x}</span>`).join('')}</div>`;
         }
+            function escapeHtml(value) {
+        return (value ?? '')
+            .toString()
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
+    }
 
-        function renderVariants() {
-            const tb = document.getElementById('variantBody');
-            if (!tb) return;
+    function money(value) {
+        if (value === null || value === undefined || value === '') return '—';
 
-            tb.innerHTML = '';
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '—';
 
-            if (!variants || !variants.length) {
-                tb.innerHTML = `<div class="vv-empty">Chưa có biến thể</div>`;
-                return;
-            }
+        return n.toLocaleString('vi-VN');
+    }
+          function renderVariants() {
+        const tb = document.getElementById('variantBody');
+        if (!tb) return;
 
-            (variants || []).forEach((v, idx) => {
-                const isLocked = !!v.isLocked;
-                const isActive = (v.isActive ?? true);
+        tb.innerHTML = '';
 
-                const comboText = (v.attributeValueIds || [])
-                    .map(id => {
-                        const val = findValue(id);
-                        if (!val) return id;
-                        const an = (val.attributeName || '').trim();
-                        const vn = (val.name || '').trim();
-                        return an ? `${an}: ${vn}` : vn;
-                    })
-                    .join(' | ');
-
-                const statusBtn = isActive
-                    ? `<button type="button" class="btn btn-sm btn-outline-success vv-status js-toggle">Đang bán</button>`
-                    : `<button type="button" class="btn btn-sm btn-outline-secondary vv-status js-toggle">Ngưng</button>`;
-
-                const delBtn = !isLocked
-                    ? `<button type="button" class="btn btn-sm btn-outline-danger js-del">Xóa</button>`
-                    : `<button type="button" class="btn btn-sm btn-outline-secondary" disabled>Xóa</button>`;
-
-                const imgUrl = v.primaryImageUrl || _productPrimaryUrl || '';
-                const rowName = (v.productVariantName || '').trim();
-
-                const row = document.createElement('div');
-                row.className = 'vv-row';
-
-                row.innerHTML = `
-                    <div class="vv-cell">
-                        <img class="vv-thumb js-pick-img"
-                             src="${imgUrl || '/img/placeholder.png'}"
-                             title="Chọn ảnh"
-                             data-idx="${idx}" />
-                    </div>
-
-                    <div class="vv-cell">
-                        <div class="vv-cell-label">Tên hiển thị</div>
-                        <input class="form-control form-control-sm vv-input js-variant-name"
-                               value="${rowName}"
-                               placeholder="Tên hiển thị"
-                               ${!isActive ? 'readonly' : ''}/>
-                    </div>
-
-                    <div class="vv-cell">
-                        <div class="vv-cell-label">SKU</div>
-                        <input class="form-control form-control-sm vv-input js-sku"
-                               value="${(v.sku || '')}"
-                               ${isLocked ? 'readonly' : ''}/>
-                        ${isLocked ? `<div class="vv-sku-lock">SKU đã khóa</div>` : ``}
-                    </div>
-
-                    <div class="vv-cell">
-                        <div class="vv-cell-label">Giá</div>
-                        <div class="vv-price-stack">
-                            <input class="form-control form-control-sm text-end vv-input js-cost"
-                                   type="number" step="1000" min="0"
-                                   value="${v.costPrice ?? 0}"
-                                   placeholder="Giá vốn"
-                                   ${!isActive ? 'readonly' : ''}/>
-                            <input class="form-control form-control-sm text-end vv-input js-price"
-                                   type="number" step="1000" min="0"
-                                   value="${v.price ?? ''}"
-                                   placeholder="Giá bán"
-                                   ${!isActive ? 'readonly' : ''}/>
-                        </div>
-                    </div>
-
-                    <div class="vv-cell">
-                        <div class="vv-cell-label">Thuộc tính</div>
-                        ${renderComboTags(v.attributeValueIds || [])}
-                    </div>
-
-                    <div class="vv-side">
-                        ${statusBtn}
-                        <div class="vv-actions">
-                            <button type="button" class="btn btn-sm btn-outline-info js-unit-conv">Quy đổi</button>
-                            ${delBtn}
-                        </div>
-                    </div>
-                `;
-
-                row.querySelector('.js-variant-name')?.addEventListener('blur', e => {
-                    const raw = (e.target.value || '').trim();
-                    v.productVariantName = raw;
-                    e.target.value = raw;
-                });
-
-                row.querySelector('.js-sku')?.addEventListener('blur', e => {
-                    const raw = (e.target.value || '').trim();
-                    v.sku = raw;
-                    e.target.value = raw;
-                });
-
-                row.querySelector('.js-cost')?.addEventListener('input', e => {
-                    v.costPrice = parseInt(e.target.value || '0');
-                    e.target.classList.remove('is-invalid');
-                });
-
-                row.querySelector('.js-price')?.addEventListener('input', e => {
-                    v.price = e.target.value ? parseInt(e.target.value) : null;
-                });
-
-                row.querySelector('.js-toggle')?.addEventListener('click', async () => {
-                    if (!v.id) {
-                        v.isActive = !isActive;
-                        renderVariants();
-                        return;
-                    }
-                    await toggleVariantStatus(v.id);
-                    await loadVariants();
-                });
-
-                row.querySelector('.js-del')?.addEventListener('click', () => {
-                    openDeleteVariantModal({
-                        id: v.id ?? null,
-                        idx: idx,
-                        sku: (v.sku || '').trim(),
-                        comboText: comboText
-                    });
-                });
-
-                row.querySelector('.js-pick-img')?.addEventListener('click', () => {
-                    openPickImageModal(idx);
-                });
-
-                row.querySelector('.js-unit-conv')?.addEventListener('click', () => {
-                    if (!window.GaoVariantUnitConversion) return;
-
-                    window.GaoVariantUnitConversion.open({
-                        id: v.id,
-                        sku: v.sku || '',
-                        name: v.productVariantName || ''
-                    });
-                });
-
-                tb.appendChild(row);
-            });
+        if (!variants || !variants.length) {
+            tb.innerHTML = `<div class="vv-empty">Chưa có biến thể</div>`;
+            return;
         }
 
+        const table = document.createElement('div');
+        table.className = 'table-responsive';
+
+        table.innerHTML = `
+            <table class="vv-variant-table">
+                <thead>
+                    <tr>
+                        <th style="width:64px;">Ảnh</th>
+                        <th>Tên hiển thị</th>
+                        <th>SKU</th>
+                        <th class="text-end">Giá vốn</th>
+                        <th>Giá gốc</th>
+                        <th>Thuộc tính</th>
+                        <th>Trạng thái</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="variantTableRows"></tbody>
+            </table>
+        `;
+
+        tb.appendChild(table);
+
+        const body = table.querySelector('#variantTableRows');
+
+        (variants || []).forEach((v, idx) => {
+            const isLocked = !!v.isLocked;
+            const isActive = (v.isActive ?? true);
+            const hasInputInvoice = !!v.hasInputInvoice;
+
+            const comboText = (v.attributeValueIds || [])
+                .map(id => {
+                    const val = findValue(id);
+                    if (!val) return id;
+                    const an = (val.attributeName || '').trim();
+                    const vn = (val.name || '').trim();
+                    return an ? `${an}: ${vn}` : vn;
+                })
+                .join(' | ');
+
+            const statusBtn = isActive
+                ? `<button type="button" class="btn btn-sm btn-outline-success vv-status js-toggle">Đang bán</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-secondary vv-status js-toggle">Ngưng</button>`;
+
+            const inputInvoiceBtn = hasInputInvoice
+                ? `<button type="button" class="btn btn-sm btn-outline-primary vv-status js-toggle-input-invoice">Có HĐ vào</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-dark vv-status js-toggle-input-invoice">Không HĐ vào</button>`;
+
+            const delBtn = !isLocked
+                ? `<button type="button" class="btn btn-sm btn-outline-danger js-del">Xóa</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-secondary" disabled>Xóa</button>`;
+
+            const imgUrl = v.primaryImageUrl || _productPrimaryUrl || '';
+            const rowName = (v.productVariantName || '').trim();
+
+            const tr = document.createElement('tr');
+
+            tr.innerHTML = `
+                <td>
+                    <img class="vv-thumb js-pick-img"
+                         src="${imgUrl || '/img/placeholder.png'}"
+                         title="Chọn ảnh"
+                         data-idx="${idx}" />
+                </td>
+
+                <td>
+                    <input class="form-control form-control-sm vv-input vv-name-input js-variant-name"
+                           value="${escapeHtml(rowName)}"
+                           placeholder="Tên hiển thị"
+                           ${!isActive ? 'readonly' : ''}/>
+                </td>
+
+                <td>
+                    <input class="form-control form-control-sm vv-input vv-sku-input js-sku"
+                           value="${escapeHtml(v.sku || '')}"
+                           ${isLocked ? 'readonly' : ''}/>
+                    ${isLocked ? `<div class="vv-sku-lock">SKU đã khóa</div>` : ``}
+                </td>
+
+                <td class="text-end">
+                    <input class="form-control form-control-sm text-end vv-input vv-cost-input js-cost"
+                           type="number" step="1000" min="0"
+                           value="${v.costPrice ?? 0}"
+                           placeholder="Giá vốn"
+                           ${!isActive ? 'readonly' : ''}/>
+                </td>
+
+                <td>
+                    <div class="vv-base-price-box">
+                        <div class="unit">${escapeHtml(v.baseUnitName || 'Đơn vị gốc')}</div>
+                        <div class="line">
+                            <span>Lẻ</span>
+                            <b>${money(v.baseUnitPrice)}</b>
+                        </div>
+                        <div class="line">
+                            <span>Sỉ</span>
+                            <b>${money(v.baseUnitWholesalePrice)}</b>
+                        </div>
+                    </div>
+                </td>
+
+                <td>
+                    ${renderComboTags(v.attributeValueIds || []) || '<span class="text-muted fw-bold">—</span>'}
+                </td>
+
+                <td>
+                    <div class="vv-status-stack">
+                        ${statusBtn}
+                        ${inputInvoiceBtn}
+                    </div>
+                </td>
+
+                <td>
+                    <div class="vv-actions">
+                        <button type="button" class="btn btn-sm btn-outline-info js-unit-conv">
+                            Đơn vị & Barcode
+                        </button>
+                        ${delBtn}
+                    </div>
+                </td>
+            `;
+
+            tr.querySelector('.js-variant-name')?.addEventListener('blur', e => {
+                const raw = (e.target.value || '').trim();
+                v.productVariantName = raw;
+                e.target.value = raw;
+            });
+
+            tr.querySelector('.js-sku')?.addEventListener('blur', e => {
+                const raw = (e.target.value || '').trim();
+                v.sku = raw;
+                e.target.value = raw;
+            });
+
+            tr.querySelector('.js-cost')?.addEventListener('input', e => {
+                v.costPrice = parseInt(e.target.value || '0');
+                e.target.classList.remove('is-invalid');
+            });
+
+            tr.querySelector('.js-toggle')?.addEventListener('click', async () => {
+                if (!v.id) {
+                    v.isActive = !isActive;
+                    renderVariants();
+                    return;
+                }
+
+                await toggleVariantStatus(v.id);
+                await loadVariants();
+            });
+
+            tr.querySelector('.js-toggle-input-invoice')?.addEventListener('click', () => {
+                v.hasInputInvoice = !hasInputInvoice;
+                renderVariants();
+            });
+
+            tr.querySelector('.js-del')?.addEventListener('click', () => {
+                openDeleteVariantModal({
+                    id: v.id ?? null,
+                    idx: idx,
+                    sku: (v.sku || '').trim(),
+                    comboText: comboText
+                });
+            });
+
+            tr.querySelector('.js-pick-img')?.addEventListener('click', () => {
+                openPickImageModal(idx);
+            });
+
+            tr.querySelector('.js-unit-conv')?.addEventListener('click', () => {
+                if (!window.GaoVariantUnitConversion) return;
+
+                window.GaoVariantUnitConversion.open({
+                    id: v.id,
+                    sku: v.sku || '',
+                    name: v.productVariantName || ''
+                });
+            });
+
+            body.appendChild(tr);
+        });
+    }
+      
         async function toggleVariantStatus(variantId) {
             const res = await fetch('/Admin/Product/ToggleVariantStatus', {
                 method: 'POST',
@@ -1193,14 +1327,15 @@
             const json = await res.json().catch(() => null);
             const raw = json?.data || [];
 
-            variants = raw.map(v => {
-                const img = PRODUCT_IMAGES.find(x => x.id === v.primaryProductImageId);
-                return {
-                    ...v,
-                    productVariantName: v.productVariantName || '',
-                    primaryImageUrl: img?.url || ''
-                };
-            });
+               variants = raw.map(v => {
+        const img = PRODUCT_IMAGES.find(x => x.id === v.primaryProductImageId);
+        return {
+            ...v,
+            productVariantName: v.productVariantName || '',
+            hasInputInvoice: v.hasInputInvoice ?? false,
+            primaryImageUrl: img?.url || ''
+        };
+    });
 
             renderVariants();
         }
@@ -1253,10 +1388,17 @@
                     sku: (v.sku || '').trim(),
                     productVariantName: (v.productVariantName || '').trim() || null,
                     costPrice: v.costPrice ?? 0,
-                    price: v.price,
-                    isActive: v.isActive ?? true,
-                    isLocked: v.isLocked ?? false,
-                    primaryProductImageId: v.primaryProductImageId ?? null,
+                      // Giá bán không sửa ở bảng Variant nữa.
+    // Giá lẻ/giá sỉ nằm ở ProductUnitConversion.
+    price: v.price,
+                      isActive: v.isActive ?? true,
+
+    // PHASE 1:
+    // Gửi cờ hóa đơn đầu vào về SaveVariants.
+    hasInputInvoice: v.hasInputInvoice ?? false,
+
+    isLocked: v.isLocked ?? false,
+    primaryProductImageId: v.primaryProductImageId ?? null,
                     attributeValueIds: v.attributeValueIds || []
                 }))
             };

@@ -36,4 +36,8 @@ public interface IUserInStoreRepository
         int storeId,
         IEnumerable<int> roleIds,
         CancellationToken ct = default);
+    Task<UserInStore?> GetByUserIdAsync(
+    int storeId,
+    int userId,
+    CancellationToken ct = default);
 }

@@ -1,0 +1,201 @@
+﻿@model GaoApp.Application.DTOs.StoreBankAccounts.StoreBankAccountUpsertDto
+@using GaoApp.Domain.Enums
+
+@{
+    var isCreate = !Model.Id.HasValue || Model.Id.Value == 0;
+    ViewData["Title"] = isCreate ? "Thêm tài khoản ngân hàng" : "Cập nhật tài khoản ngân hàng";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section Header {
+    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
+        <h4 class="fw-bold mb-0">
+            <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Index" class="text-muted fw-light">
+                Tài khoản ngân hàng /
+            </a>
+            @ViewData["Title"]
+        </h4>
+    </div>
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-11 col-lg-9">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Thông tin ngân hàng</h5>
+                <small class="text-muted float-end">* là bắt buộc</small>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <form asp-area="Admin"
+                      asp-controller="StoreBankAccounts"
+                      asp-action="Edit"
+                      method="post"
+                      novalidate>
+                    @Html.AntiForgeryToken()
+                    @Html.HiddenFor(x => x.Id)
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="BankCode" class="form-label">Mã ngân hàng</label> <span class="text-danger">*</span>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text"><i class="bx bx-code-alt"></i></span>
+                                <input asp-for="BankCode"
+                                       class="form-control text-uppercase"
+                                       placeholder="ACB, VCB..." />
+                            </div>
+                            <span asp-validation-for="BankCode" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label asp-for="BankName" class="form-label">Tên ngân hàng</label> <span class="text-danger">*</span>
+                            <input asp-for="BankName"
+                                   class="form-control"
+                                   placeholder="Nhập tên ngân hàng..."
+                                   autofocus />
+                            <span asp-validation-for="BankName" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="AccountNumber" class="form-label">Số tài khoản</label> <span class="text-danger">*</span>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text"><i class="bx bx-credit-card"></i></span>
+                                <input asp-for="AccountNumber"
+                                       class="form-control"
+                                       placeholder="Nhập số tài khoản..."
+                                       inputmode="numeric" />
+                            </div>
+                            <span asp-validation-for="AccountNumber" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label asp-for="AccountName" class="form-label">Tên chủ tài khoản</label> <span class="text-danger">*</span>
+                            <input asp-for="AccountName"
+                                   class="form-control text-uppercase"
+                                   placeholder="VD: NGUYEN VAN A" />
+                            <span asp-validation-for="AccountName" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="VietQrBankBin" class="form-label">BIN VietQR</label>
+                            <input asp-for="VietQrBankBin"
+                                   class="form-control"
+                                   placeholder="VD: 970416"
+                                   inputmode="numeric" />
+                            <span asp-validation-for="VietQrBankBin" class="text-danger"></span>
+                            <div class="form-text">Dùng để tự tạo QR LocalEmvQr.</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label asp-for="QrRenderMode" class="form-label">Kiểu tạo QR</label>
+                            <select asp-for="QrRenderMode"
+                                    class="form-select"
+                                    asp-items="Html.GetEnumSelectList<BankQrRenderMode>()">
+                            </select>
+                            <span asp-validation-for="QrRenderMode" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label asp-for="ConfirmMode" class="form-label">Kiểu xác nhận</label>
+                            <select asp-for="ConfirmMode"
+                                    class="form-select"
+                                    asp-items="Html.GetEnumSelectList<BankQrConfirmMode>()">
+                            </select>
+                            <span asp-validation-for="ConfirmMode" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="ProviderCode" class="form-label">Provider</label>
+                            <input asp-for="ProviderCode"
+                                   class="form-control text-uppercase"
+                                   placeholder="LOCAL / VIETQR / ACB" />
+                            <span asp-validation-for="ProviderCode" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label asp-for="NoteTemplate" class="form-label">Mẫu nội dung chuyển khoản</label>
+                            <input asp-for="NoteTemplate"
+                                   class="form-control"
+                                   placeholder="POS-{OrderId}-{QrRequestId}" />
+                            <span asp-validation-for="NoteTemplate" class="text-danger"></span>
+                            <div class="form-text">
+                                Gợi ý: <code>POS-{OrderId}-{QrRequestId}</code>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info mb-4">
+                        <div class="fw-semibold mb-1">Giai đoạn hiện tại nên dùng:</div>
+                        <div>
+                            <span class="badge bg-label-primary">LocalEmvQr</span>
+                            +
+                            <span class="badge bg-label-secondary">Manual</span>
+                            <span class="ms-1">hệ thống tự tạo QR, nhân viên kiểm tra app ngân hàng rồi xác nhận.</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" asp-for="IsActive" />
+                            <label class="form-check-label" asp-for="IsActive">Đang bật</label>
+                        </div>
+
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" asp-for="IsDefault" />
+                            <label class="form-check-label" asp-for="IsDefault">Đặt làm ngân hàng mặc định cho POS</label>
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Index"
+                               class="btn btn-label-secondary me-2">
+                            Hủy bỏ
+                        </a>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bx bx-save me-1"></i> Lưu thông tin
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+
+    <script>
+        (function () {
+            const bankCode = document.querySelector('[name="BankCode"]');
+            const accountName = document.querySelector('[name="AccountName"]');
+            const providerCode = document.querySelector('[name="ProviderCode"]');
+
+            bankCode?.addEventListener('input', function () {
+                this.value = (this.value || '').toUpperCase();
+            });
+
+            accountName?.addEventListener('input', function () {
+                this.value = (this.value || '').toUpperCase();
+            });
+
+            providerCode?.addEventListener('input', function () {
+                this.value = (this.value || '').toUpperCase();
+            });
+
+            if (providerCode && !providerCode.value) {
+                providerCode.value = 'LOCAL';
+            }
+        })();
+    </script>
+}

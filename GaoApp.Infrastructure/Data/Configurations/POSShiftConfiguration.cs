@@ -30,7 +30,15 @@ public class POSShiftConfiguration : IEntityTypeConfiguration<POSShift>
         b.HasIndex(x => new { x.StoreId, x.Status });
         b.HasIndex(x => new { x.StoreId, x.OpenedAtUtc });
         b.HasIndex(x => new { x.StoreId, x.ClosedAtUtc });
-
+        // =====================================================
+        // CHỐT AN TOÀN DB:
+        // Mỗi Store + Terminal chỉ được có 1 ca đang Open.
+        // Service đã chặn, nhưng DB vẫn cần khóa cứng để chống race condition.
+        // Status = 1 tương ứng POSShiftStatus.Open.
+        // =====================================================
+        b.HasIndex(x => new { x.StoreId, x.TerminalId, x.Status })
+            .IsUnique()
+            .HasFilter("[Status] = 1 AND [IsDeleted] = 0");
         b.Property(x => x.ShiftCode)
             .HasMaxLength(30);
 
@@ -100,6 +108,15 @@ public class POSShiftConfiguration : IEntityTypeConfiguration<POSShift>
 
         b.Ignore(x => x.IsClosed);
         b.Ignore(x => x.CashDifference);
+        // =====================================================
+        // FK Terminal:
+        // Một ca POS bắt buộc thuộc một terminal.
+        // Không cho xóa terminal nếu đã có ca phát sinh.
+        // =====================================================
+        b.HasOne(x => x.Terminal)
+            .WithMany()
+            .HasForeignKey(x => x.TerminalId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         b.HasMany(x => x.CashTransactions)
             .WithOne(x => x.POSShift)

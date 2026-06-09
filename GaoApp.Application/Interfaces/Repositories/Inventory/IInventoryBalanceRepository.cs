@@ -49,4 +49,9 @@ public interface IInventoryBalanceRepository
     Task<(List<InventoryBalance> Items, int TotalItems)> QueryCurrentBalancesAsync(
         InventoryBalanceQueryRequest request,
         CancellationToken ct = default);
+    Task<Dictionary<int, decimal>> GetAvailableQtyMapByVariantIdsAsync(
+    int storeId,
+    int warehouseId,
+    IReadOnlyCollection<int> variantIds,
+    CancellationToken ct = default);
 }

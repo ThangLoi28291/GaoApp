@@ -31,6 +31,9 @@ public class StockCountDocument : BaseStoreEntity
     [Required]
     [StringLength(50)]
     public string DocumentNo { get; set; } = string.Empty;
+    // StockCountDocument.cs
+    [StringLength(250)]
+    public string? DocumentName { get; set; }
 
     /// <summary>
     /// Ngày kiểm kê trên chứng từ.

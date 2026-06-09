@@ -52,5 +52,37 @@ public interface IPOSShiftRepository
     Task<POSShift?> GetCurrentOpenShiftAsync(CancellationToken ct = default);
     Task<POSShift?> GetOpenShiftWithWarehouseAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Lấy ca POS đang mở theo ShiftId + StoreId.
+    /// Dùng cho luồng tiếp quản / đóng hộ ca.
+    /// Include sẵn Terminal + Warehouse + CurrentOrder.
+    /// </summary>
+    Task<POSShift?> GetOpenShiftByIdAsync(
+        int storeId,
+        int shiftId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy ca POS đang mở theo Store + Terminal.
+    /// Include sẵn Terminal + Warehouse + CurrentOrder.
+    /// Method này dùng cho popup ownership và kiểm tra terminal.
+    /// </summary>
+    Task<POSShift?> GetOpenShiftWithDetailsAsync(
+        int storeId,
+        int terminalId,
+        CancellationToken ct = default);
+    /// <summary>
+    /// Lấy danh sách ca POS cho dashboard quản lý.
+    /// Không phân trang vì dashboard cần tổng hợp toàn bộ theo bộ lọc.
+    /// </summary>
+    Task<List<POSShift>> QueryForManagerDashboardAsync(
+        int storeId,
+        DateTime? fromUtc,
+        DateTime? toUtcExclusive,
+        int? userId,
+        int? terminalId,
+        POSShiftStatus? status,
+        CancellationToken ct = default);
+
 
 }

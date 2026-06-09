@@ -129,30 +129,69 @@ public class StockCountService : IStockCountService
             ConfirmedByUserId = document.ConfirmedByUserId,
             Lines = document.Lines
                 .OrderBy(x => x.LineNo)
-                .Select(x => new StockCountLineDto
-                {
-                    Id = x.Id,
-                    LineNo = x.LineNo,
-                    ProductVariantId = x.ProductVariantId,
-                    UnitId = x.UnitId,
-                    UnitName = x.UnitNameSnapshot,
-                    Factor = x.Factor,
-                    SystemQtyBase = x.SystemQtyBase,
-                    CountedQty = x.CountedQty,
-                    CountedQtyBase = x.CountedQtyBase,
-                    DifferenceQtyBase = x.DifferenceQtyBase,
-                    ProductNameSnapshot = x.ProductNameSnapshot,
-                    SkuSnapshot = x.SkuSnapshot,
-                    BarcodeSnapshot = x.BarcodeSnapshot,
-                    Note = x.Note
-                })
+              .Select(x => new StockCountLineDto
+              {
+                  Id = x.Id,
+                  LineNo = x.LineNo,
+
+                  ProductVariantId = x.ProductVariantId,
+
+                  UnitId = x.UnitId,
+                  UnitName = x.UnitNameSnapshot,
+
+                  Factor = x.Factor,
+
+                  SystemQtyBase = x.SystemQtyBase,
+
+                  CountedQty = x.CountedQty,
+                  CountedQtyBase = x.CountedQtyBase,
+
+                  DifferenceQtyBase = x.DifferenceQtyBase,
+
+                  ProductNameSnapshot = x.ProductNameSnapshot,
+                  SkuSnapshot = x.SkuSnapshot,
+                  BarcodeSnapshot = x.BarcodeSnapshot,
+
+                  // NEW
+                  ImageUrl = BuildImageUrl(x.ProductVariant),
+
+                  Note = x.Note
+              })
                 .ToList()
         };
 
         ApplySummary(dto);
         return dto;
     }
+    private static string? BuildImageUrl(ProductVariant? variant)
+    {
+        var product = variant?.Product;
 
+        if (product?.ProductImages == null || !product.ProductImages.Any())
+            return null;
+
+        var image = product.ProductImages
+            .Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.IsPrimary)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .FirstOrDefault();
+
+        var storagePath = image?.MediaAsset?.StoragePath;
+
+        if (string.IsNullOrWhiteSpace(storagePath))
+            return null;
+
+        storagePath = storagePath.Trim();
+
+        if (storagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            storagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return storagePath;
+        }
+
+        return "/" + storagePath.TrimStart('/');
+    }
     public async Task UpdateHeaderAsync(UpdateStockCountDocumentHeaderRequest request, CancellationToken ct = default)
     {
         var document = await _stockCountRepository.GetByIdAsync(request.StockCountDocumentId, ct);

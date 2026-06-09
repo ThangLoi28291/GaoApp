@@ -1,0 +1,134 @@
+﻿@{
+    ViewData["Title"] = "Nhân viên nhập kho";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link href="~/admin/css/warehouse-receiving.css" rel="stylesheet" />
+}
+
+<div class="container-xxl flex-grow-1 container-p-y wr-page">
+
+    <div class="wr-header">
+        <div>
+            <h3>Nhân viên nhập kho</h3>
+            <div class="wr-muted">
+                Chỉ hiển thị phiếu đang làm, chờ duyệt hoặc bị trả về sửa.
+            </div>
+        </div>
+
+        <button type="button" class="btn btn-primary wr-btn-main" id="btnOpenCreateReceiving">
+            + Tạo phiếu nhập
+        </button>
+    </div>
+
+    <div class="wr-stat-grid">
+        <div class="wr-stat">
+            <div class="wr-stat-label">Đang làm</div>
+            <div class="wr-stat-value" id="wrDraftCount">0</div>
+        </div>
+
+        <div class="wr-stat">
+            <div class="wr-stat-label">Chờ duyệt</div>
+            <div class="wr-stat-value text-warning" id="wrPendingCount">0</div>
+        </div>
+
+        <div class="wr-stat">
+            <div class="wr-stat-label">Bị trả về</div>
+            <div class="wr-stat-value text-danger" id="wrRejectedCount">0</div>
+        </div>
+    </div>
+
+    <div class="wr-toolbar">
+        <input type="text"
+               id="wrSearch"
+               class="form-control"
+               placeholder="Tìm tên phiếu hoặc mã phiếu..." />
+
+        <button type="button" class="btn btn-outline-secondary" id="wrBtnReload">
+            Tải lại
+        </button>
+    </div>
+
+    <div id="wrReceiptList" class="wr-list">
+        <div class="wr-empty">Đang tải danh sách phiếu...</div>
+    </div>
+
+    <div class="wr-pagination">
+        <div class="wr-page-info" id="wrPageInfo">
+            Hiển thị 0 - 0 / 0 phiếu
+        </div>
+
+        <div class="wr-page-actions">
+            <button type="button" class="btn btn-outline-secondary" id="wrBtnPrevPage">
+                Trước
+            </button>
+
+            <span id="wrCurrentPageText" class="wr-page-current">1 / 1</span>
+
+            <button type="button" class="btn btn-outline-secondary" id="wrBtnNextPage">
+                Sau
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="wrCreateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content wr-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Tạo phiếu nhập kho</h5>
+                    <div class="wr-muted small">Nhân viên chỉ tạo phiếu và nhập số lượng hàng.</div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Tên phiếu</label>
+                    <input type="text"
+                           class="form-control"
+                           id="wrDocumentTitle"
+                           placeholder="VD: Nhập hàng buổi sáng" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Kho <span class="text-danger">*</span></label>
+                    <select class="form-select" id="wrWarehouseId">
+                        <option value="">Đang tải kho...</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Ghi chú</label>
+                    <textarea class="form-control"
+                              id="wrNote"
+                              rows="3"
+                              placeholder="Ghi chú nếu có..."></textarea>
+                </div>
+
+                <div class="text-danger small" id="wrCreateMessage"></div>
+            </div>
+
+            <div class="modal-footer border-0 justify-content-between">
+                <div class="wr-muted small">Enter: tạo phiếu · Esc: đóng</div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Đóng
+                    </button>
+
+                    <button type="button" class="btn btn-primary" id="btnCreateReceiving">
+                        Tạo phiếu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/admin/js/warehouse-receiving.js"></script>
+}

@@ -22,7 +22,10 @@ public class StockDocumentConfiguration : IEntityTypeConfiguration<StockDocument
 
         builder.Property(x => x.ApprovalNote)
             .HasMaxLength(1000);
+        builder.Property(x => x.RevisionRequestNote)
+    .HasMaxLength(1000);
 
+        builder.HasIndex(x => x.HasRevisionRequest);
         builder.HasIndex(x => new { x.StoreId, x.DocumentNo })
             .IsUnique();
 

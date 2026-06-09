@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common.Helpers;
+﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Common;
@@ -57,6 +58,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
             IsBaseUnit = x.IsBaseUnit,
             IsDefaultForSale = x.IsDefaultForSale,
             Price = x.Price,
+            WholesalePrice = x.WholesalePrice,
             IsActive = x.IsActive,
             SortOrder = x.SortOrder,
             Barcodes = x.Barcodes?
@@ -70,6 +72,8 @@ public class ProductUnitConversionService : IProductUnitConversionService
                     ProductUnitConversionId = b.ProductUnitConversionId,
                     Barcode = b.Barcode,
                     BarcodeType = b.BarcodeType,
+                    // NEW
+                    BarcodeTypeText = BarcodeTypeDisplayHelper.ToDisplayText(b.BarcodeType),
                     IsPrimary = b.IsPrimary,
                     IsActive = b.IsActive,
                     Note = b.Note
@@ -116,6 +120,8 @@ public class ProductUnitConversionService : IProductUnitConversionService
             entity.IsBaseUnit = dto.IsBaseUnit;
             entity.IsDefaultForSale = dto.IsDefaultForSale;
             entity.Price = dto.Price;
+            // NEW: Cập nhật giá sỉ của đơn vị quy đổi
+            entity.WholesalePrice = NormalizeNullableMoney(dto.WholesalePrice);
             entity.IsActive = dto.IsActive;
             entity.SortOrder = dto.SortOrder;
 
@@ -133,6 +139,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
                 IsBaseUnit = dto.IsBaseUnit,
                 IsDefaultForSale = dto.IsDefaultForSale,
                 Price = dto.Price,
+                WholesalePrice = NormalizeNullableMoney(dto.WholesalePrice),
                 IsActive = dto.IsActive,
                 SortOrder = dto.SortOrder,
                 AutoGeneratePrimaryBarcode = true,
@@ -142,7 +149,17 @@ public class ProductUnitConversionService : IProductUnitConversionService
 
         return created.Id;
     }
+    /// <summary>
+    /// Chuẩn hóa tiền nullable.
+    /// null hoặc <= 0 thì lưu null.
+    /// </summary>
+    private static decimal? NormalizeNullableMoney(decimal? value)
+    {
+        if (!value.HasValue)
+            return null;
 
+        return value.Value <= 0 ? null : value.Value;
+    }
     public async Task<int> SaveBarcodeAsync(
       UpsertProductVariantUnitBarcodeRequest dto,
       CancellationToken ct = default)
@@ -491,6 +508,8 @@ public class ProductUnitConversionService : IProductUnitConversionService
             IsBaseUnit = request.IsBaseUnit,
             IsDefaultForSale = request.IsDefaultForSale,
             Price = request.Price,
+            // NEW: Giá sỉ của đơn vị quy đổi lon/lốc/thùng
+            WholesalePrice = NormalizeNullableMoney(request.WholesalePrice),
             IsActive = request.IsActive,
             SortOrder = request.SortOrder
         };

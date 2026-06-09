@@ -1,0 +1,32 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _OrderNoteBox.cshtml
+   Mục đích:
+   - Chứa riêng khu vực ghi chú đơn hàng
+   - Khớp đúng với JS hiện tại
+   - Giữ nguyên id txtOrderNote và btnSaveOrderNote
+   ========================================================= *@
+
+<div class="card pos-card mb-3">
+    <div class="card-body">
+        <div class="pos-section-title">Ghi chú đơn</div>
+
+        <div class="pos-note-box">
+            <div class="mb-2">
+                @* JS hiện tại đang dùng đúng id này *@
+                <textarea id="txtOrderNote"
+                          class="form-control"
+                          rows="3"
+                          placeholder="Nhập ghi chú cho đơn hàng..."></textarea>
+            </div>
+
+            <div class="d-grid">
+                @* JS hiện tại đang bind nút này *@
+                <button id="btnSaveOrderNote"
+                        type="button"
+                        class="btn btn-outline-primary">
+                    Lưu ghi chú
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

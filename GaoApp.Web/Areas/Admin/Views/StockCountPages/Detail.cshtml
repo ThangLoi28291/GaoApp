@@ -1,222 +1,119 @@
-﻿@{
+﻿@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@{
     ViewData["Title"] = "Chi tiết phiếu kiểm kê";
     Layout = "_ContentNavbarLayout";
     var stockCountDocumentId = ViewBag.StockCountDocumentId;
+
+    // =========================================================
+    // PHÂN QUYỀN UI
+    // Backend/API vẫn phải check policy riêng.
+    // =========================================================
+    var canUpdate = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Inventory.StockCount.Update)).Succeeded;
+
+    var canDelete = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Inventory.StockCount.Delete)).Succeeded;
+
+    var canApprove = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Inventory.StockCount.Approve)).Succeeded;
 }
 
 @section VendorStyles {
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-
-    <style>
-        .scd-page {
-            min-height: calc(100vh - 140px);
-        }
-
-        .scd-card {
-            border: 0;
-            border-radius: 18px;
-            box-shadow: 0 0.125rem 0.75rem rgba(0,0,0,.08);
-        }
-
-            .scd-card .card-header {
-                background: #fff;
-                border-bottom: 1px solid #eef0f4;
-                border-top-left-radius: 18px;
-                border-top-right-radius: 18px;
-                font-weight: 700;
-            }
-
-        .scd-status-draft {
-            background: #e7f1ff;
-            color: #0d6efd;
-            border-radius: 999px;
-            padding: .25rem .65rem;
-            font-weight: 700;
-            font-size: .78rem;
-        }
-
-        .scd-status-pending {
-            background: #fff4db;
-            color: #b54708;
-            border-radius: 999px;
-            padding: .25rem .65rem;
-            font-weight: 700;
-            font-size: .78rem;
-        }
-
-        .scd-status-confirmed {
-            background: #e8f7ec;
-            color: #067647;
-            border-radius: 999px;
-            padding: .25rem .65rem;
-            font-weight: 700;
-            font-size: .78rem;
-        }
-
-        .scd-status-rejected {
-            background: #ffe5e5;
-            color: #b42318;
-            border-radius: 999px;
-            padding: .25rem .65rem;
-            font-weight: 700;
-            font-size: .78rem;
-        }
-
-        .scd-status-cancelled {
-            background: #eceff3;
-            color: #475467;
-            border-radius: 999px;
-            padding: .25rem .65rem;
-            font-weight: 700;
-            font-size: .78rem;
-        }
-
-        .scd-diff-row-plus {
-            background: #f2fff7;
-        }
-
-        .scd-diff-row-minus {
-            background: #fff7f7;
-        }
-
-        .scd-diff-row-zero {
-            background: #fafbfc;
-        }
-
-        .scd-diff-plus {
-            color: #067647;
-            font-weight: 800;
-        }
-
-        .scd-diff-minus {
-            color: #b42318;
-            font-weight: 800;
-        }
-
-        .scd-diff-zero {
-            color: #6c757d;
-            font-weight: 700;
-        }
-
-        .scd-summary-box {
-            border-radius: 16px;
-            padding: 16px 18px;
-            background: #f8f9fa;
-            height: 100%;
-        }
-
-        .scd-summary-title {
-            font-size: .9rem;
-            color: #6c757d;
-            margin-bottom: .35rem;
-        }
-
-        .scd-summary-value {
-            font-size: 1.35rem;
-            font-weight: 800;
-            color: #212529;
-        }
-
-        .select2-result-title {
-            font-weight: 700;
-            color: #212529;
-        }
-
-        .select2-result-meta {
-            font-size: .85rem;
-            color: #6c757d;
-            margin-top: .15rem;
-            white-space: normal;
-        }
-
-        .scd-last-updated {
-            position: relative;
-            box-shadow: inset 0 0 0 2px #dc3545;
-            animation: scdFlashBorder 1.2s ease-in-out 2;
-        }
-
-        @@keyframes scdFlashBorder {
-            0% {
-                box-shadow: inset 0 0 0 2px rgba(220,53,69,0.15);
-            }
-
-            50% {
-                box-shadow: inset 0 0 0 3px rgba(220,53,69,0.95);
-            }
-
-            100% {
-                box-shadow: inset 0 0 0 2px rgba(220,53,69,0.15);
-            }
-        }
-
-        .scd-group-table .table td,
-        .scd-group-table .table th {
-            vertical-align: middle;
-        }
-
-        .scd-group-card {
-            border: 1px solid #eef0f4;
-            border-radius: 16px;
-            background: #fafbfc;
-        }
-
-        .scd-group-title {
-            font-weight: 700;
-            margin-bottom: .75rem;
-        }
-    </style>
+    <link href="~/Admin/css/stock-count.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div class="container-xxl flex-grow-1 container-p-y scd-page">
     <input type="hidden" id="StockCountDocumentId" value="@stockCountDocumentId" />
 
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-4">
+    <!-- =====================================================
+         PAGE HEADER
+    ====================================================== -->
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
         <div>
-            <h4 class="mb-1">Chi tiết phiếu kiểm kê</h4>
-            <div class="text-muted">
-                Quét barcode hoặc tìm sản phẩm để nhập số lượng thực tế, sau đó gửi duyệt hoặc xác nhận.
+            <h4 class="mb-1 sc-page-title">Chi tiết phiếu kiểm kê</h4>
+            <div class="sc-page-subtitle">
+                Quét barcode hoặc tìm sản phẩm để nhập số lượng thực tế. Phím tắt:
+                <b>Alt+A</b> thêm sản phẩm, <b>Ctrl+S</b> lưu, <b>Ctrl+Enter</b> gửi duyệt/xác nhận.
             </div>
         </div>
+
         <div class="d-flex gap-2 flex-wrap">
             <a href="/admin/stock-counts" class="btn btn-outline-secondary">
                 <i class="bx bx-arrow-back me-1"></i> Quay lại
             </a>
-            <button type="button" class="btn btn-warning" id="btnSubmitStockCountApproval">
-                <i class="bx bx-send me-1"></i> Gửi duyệt
-            </button>
-            <button type="button" class="btn btn-success" id="btnConfirmStockCount">
-                <i class="bx bx-check-circle me-1"></i> Duyệt xác nhận
-            </button>
-            <button type="button" class="btn btn-danger" id="btnRejectStockCount">
-                <i class="bx bx-x-circle me-1"></i> Từ chối
-            </button>
-            <button type="button" class="btn btn-outline-info" id="btnRefreshSystemQty">
-                <i class="bx bx-sync me-1"></i> Làm mới tồn hệ thống
-            </button>
+
+            @if (canUpdate)
+            {
+                <button type="button" class="btn btn-warning" id="btnSubmitStockCountApproval">
+                    <i class="bx bx-send me-1"></i> Gửi duyệt
+                </button>
+
+                <button type="button" class="btn btn-outline-info" id="btnRefreshSystemQty">
+                    <i class="bx bx-sync me-1"></i> Làm mới tồn
+                </button>
+            }
+
+            @if (canApprove)
+            {
+                <button type="button" class="btn btn-success" id="btnConfirmStockCount">
+                    <i class="bx bx-check-circle me-1"></i> Duyệt xác nhận
+                </button>
+
+                <button type="button" class="btn btn-danger" id="btnRejectStockCount">
+                    <i class="bx bx-x-circle me-1"></i> Từ chối
+                </button>
+            }
         </div>
     </div>
 
+    <!-- =====================================================
+         SUMMARY
+    ====================================================== -->
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
+        <div class="col-6 col-md-2">
             <div class="scd-summary-box">
-                <div class="scd-summary-title">Tổng số dòng</div>
+                <div class="scd-summary-title">Số dòng</div>
                 <div class="scd-summary-value" id="sumTotalLines">0</div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-6 col-md-2">
             <div class="scd-summary-box">
-                <div class="scd-summary-title">Dòng tăng tồn</div>
-                <div class="scd-summary-value" id="sumPositiveLines">0</div>
+                <div class="scd-summary-title">Loại sản phẩm</div>
+                <div class="scd-summary-value" id="sumProductTypes">0</div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-6 col-md-2">
             <div class="scd-summary-box">
-                <div class="scd-summary-title">Dòng giảm tồn</div>
-                <div class="scd-summary-value" id="sumNegativeLines">0</div>
+                <div class="scd-summary-title">SL hệ thống</div>
+                <div class="scd-summary-value" id="sumSystemQtyBase">0</div>
             </div>
         </div>
-        <div class="col-md-3">
+
+        <div class="col-6 col-md-2">
+            <div class="scd-summary-box">
+                <div class="scd-summary-title">SL kiểm kê</div>
+                <div class="scd-summary-value" id="sumCountedQtyBase">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-2">
+            <div class="scd-summary-box">
+                <div class="scd-summary-title">Dòng lệch</div>
+                <div class="scd-summary-value" id="sumDifferentLines">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-2">
             <div class="scd-summary-box">
                 <div class="scd-summary-title">Tổng chênh lệch</div>
                 <div class="scd-summary-value" id="sumDifferenceQtyBase">0</div>
@@ -224,15 +121,28 @@
         </div>
     </div>
 
+    <!-- =====================================================
+         HEADER FORM
+    ====================================================== -->
     <div class="card scd-card mb-4">
         <div class="card-header">
             Thông tin phiếu kiểm kê
         </div>
+
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">Số phiếu</label>
                     <input type="text" class="form-control" id="DocumentNo" readonly />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Tên phiếu</label>
+                    <input type="text"
+                           class="form-control"
+                           id="DocumentName"
+                           maxlength="250"
+                           placeholder="Tên phiếu để dễ quản lý" />
                 </div>
 
                 <div class="col-md-3">
@@ -250,77 +160,114 @@
                     <div class="pt-2" id="DocumentStatusBadge"></div>
                 </div>
 
-                <div class="col-12">
+                <div class="col-md-9">
                     <label class="form-label">Ghi chú</label>
-                    <textarea class="form-control" id="DocumentNote" rows="2"></textarea>
+                    <textarea class="form-control" id="DocumentNote" rows="2" maxlength="1000"></textarea>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- =====================================================
+         QUICK ADD
+    ====================================================== -->
     <div class="card scd-card mb-4">
         <div class="card-header">
-            Thêm nhanh dòng kiểm kê
+            Thêm sản phẩm kiểm kê
         </div>
+
         <div class="card-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-9">
-                    <label class="form-label">Sản phẩm / đơn vị</label>
-                    <select id="QuickLookupInput" class="form-select"></select>
-                    <div class="form-text">
-                        Gõ tên sản phẩm, SKU hoặc quét barcode trực tiếp trong ô này. Nếu chỉ có 1 kết quả thì Enter sẽ tự chọn.
-                    </div>
+            <label class="form-label">Quét barcode / nhập SKU / tên sản phẩm</label>
 
-                    <input type="hidden" id="SelectedProductVariantId" />
-                    <input type="hidden" id="SelectedUnitId" />
-                    <input type="hidden" id="SelectedFactor" />
-                </div>
+            <select id="QuickLookupInput" class="form-select"></select>
 
-                <div class="col-md-2">
-                    <label class="form-label">SL đếm</label>
-                    <input type="number" class="form-control" id="QuickCountedQty" min="0" step="0.001" value="1" />
-                </div>
-
-                <div class="col-md-1">
-                    <button type="button" class="btn btn-primary w-100" id="btnQuickAddStockCountLine">
-                        <i class="bx bx-plus"></i>
-                    </button>
-                </div>
+            <div class="form-text">
+                Chọn sản phẩm hoặc quét barcode, hệ thống sẽ mở popup nhập số lượng kiểm kê.
             </div>
+
+            <input type="hidden" id="SelectedProductVariantId" />
+            <input type="hidden" id="SelectedUnitId" />
+            <input type="hidden" id="SelectedFactor" />
         </div>
     </div>
 
-    <div class="card scd-card">
+    <!-- =====================================================
+         LINES
+    ====================================================== -->
+    <div class="card scd-card mb-4">
         <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
             <span>Dòng kiểm kê</span>
 
             <div class="form-check form-switch m-0">
                 <input class="form-check-input" type="checkbox" id="ToggleOnlyDifferentLines" />
-
+                <label class="form-check-label" for="ToggleOnlyDifferentLines">
+                    Chỉ hiện dòng lệch
+                </label>
             </div>
         </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+
+        <div class="card-body p-0">
+            <div class="table-responsive sc-table-wrap">
+                <table class="table table-hover align-middle mb-0 scd-table">
                     <thead>
                         <tr>
-                            <th>#</th>
+                            <th style="width: 70px;">#</th>
                             <th>Sản phẩm</th>
-                            <th>Barcode</th>
-                            <th>Đơn vị</th>
-                            <th class="text-end">Factor</th>
-                            <th class="text-end">Tồn hệ thống tham chiếu</th>
-                            <th class="text-end">SL đếm</th>
-                            <th class="text-end">SL gốc dòng</th>
-                            <th class="text-end">Chênh lệch dòng</th>
-                            <th>Kết luận dòng</th>
+                            <th style="width: 120px;">Đơn vị</th>
+                            <th class="text-end" style="width: 110px;">Factor</th>
+                            <th class="text-end" style="width: 150px;">SL hệ thống</th>
+                            <th class="text-end" style="width: 130px;">SL đếm</th>
+                            <th class="text-end" style="width: 140px;">SL gốc</th>
+                            <th class="text-end" style="width: 140px;">Chênh lệch</th>
+                            <th style="width: 120px;">Kết luận</th>
                             <th>Ghi chú</th>
-                            <th></th>
+                            <th class="text-end" style="width: 140px;"></th>
                         </tr>
                     </thead>
+
                     <tbody id="stockCountLineTableBody">
                         <tr>
-                            <td colspan="12" class="text-center text-muted">Đang tải dữ liệu...</td>
+                            <td colspan="11" class="text-center text-muted py-4">Đang tải dữ liệu...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         GROUPED SUMMARY
+         Lưu ý: đã đưa vào trong container để không bị lệch layout.
+    ====================================================== -->
+    <div class="card scd-card mb-4">
+        <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+            <span>Tổng hợp kiểm kê theo sản phẩm</span>
+
+            <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="ToggleOnlyDifferentGrouped" />
+                <label class="form-check-label" for="ToggleOnlyDifferentGrouped">
+                    Chỉ hiện sản phẩm lệch
+                </label>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive sc-table-wrap">
+                <table class="table table-hover align-middle mb-0 scd-table">
+                    <thead>
+                        <tr>
+                            <th>Sản phẩm</th>
+                            <th class="text-end">Tồn hệ thống</th>
+                            <th class="text-end">Tổng SL gốc đã đếm</th>
+                            <th class="text-end">Chênh lệch cuối</th>
+                            <th>Kết luận</th>
+                            <th>Đơn vị đã nhập</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="stockCountGroupedBody">
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">Đang tải dữ liệu...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -328,78 +275,130 @@
         </div>
     </div>
 </div>
-<div class="card scd-card mb-4">
-    <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-        <span>Tổng hợp kiểm kê theo sản phẩm</span>
 
-        <div class="form-check form-switch m-0">
-            <input class="form-check-input" type="checkbox" id="ToggleOnlyDifferentGrouped" />
-            <label class="form-check-label" for="ToggleOnlyDifferentGrouped">
-                Chỉ hiện dòng lệch
-            </label>
-        </div>
-    </div>
+<!-- =========================================================
+     EDIT LINE MODAL
+========================================================= -->
+<div class="modal fade sc-modal" id="stockCountLineModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 sc-line-popup">
 
-    <div class="card-body scd-group-table">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th>Sản phẩm</th>
-                        <th class="text-end">Tồn hệ thống</th>
-                        <th class="text-end">Tổng SL gốc đã đếm</th>
-                        <th class="text-end">Chênh lệch cuối</th>
-                        <th>Kết luận</th>
-                        <th>Đơn vị đã nhập</th>
-                    </tr>
-                </thead>
-                <tbody id="stockCountGroupedBody">
-                    <tr>
-                        <td colspan="6" class="text-center text-muted">Đang tải dữ liệu...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-<div class="modal fade" id="editStockCountLineModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Sửa dòng kiểm kê</h5>
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold" id="LineModalTitle">Xác nhận kiểm kê sản phẩm</h5>
+                    <small class="text-muted" id="LineModalSubtitle">
+                        Nhập số lượng rồi nhấn Enter để lưu vào phiếu.
+                    </small>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
+
             <div class="modal-body">
-                <input type="hidden" id="EditLineId" />
-                <input type="hidden" id="EditVariantId" />
-                <input type="hidden" id="EditSystemQtyBase" />
+                <input type="hidden" id="LineModalMode" />
+                <input type="hidden" id="LineModalLineId" />
+                <input type="hidden" id="LineModalVariantId" />
 
-                <div class="mb-3">
-                    <label class="form-label">Đơn vị</label>
-                    <select id="EditLineUnitId" class="form-select"></select>
-                    <div class="form-text" id="EditLineUnitInfo"></div>
+                <div class="row g-3 align-items-start">
+                    <div class="col-md-3">
+                        <div class="sc-popup-product-img-box">
+                            <img id="LineModalProductImage"
+                                 src=""
+                                 class="img-fluid sc-popup-product-img d-none" />
+
+                            <div id="LineModalNoImage" class="sc-popup-no-img">
+                                <i class="bx bx-image fs-1"></i>
+                                <div class="small">Chưa có ảnh</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-9">
+                        <h5 id="LineModalProductName" class="sc-popup-product-title mb-3">-</h5>
+
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">Barcode</div>
+                                    <div class="sc-popup-info-value" id="LineModalBarcode">-</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">ĐVT</div>
+                                    <div class="sc-popup-info-value" id="LineModalUnitName">-</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">Factor</div>
+                                    <div class="sc-popup-info-value" id="LineModalFactor">1</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">Tồn hệ thống</div>
+                                    <div class="sc-popup-info-value" id="LineModalSystemQty">0</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">SL gốc dự kiến</div>
+                                    <div class="sc-popup-info-value" id="LineModalBaseQtyPreview">0</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div class="sc-popup-info-box">
+                                    <div class="sc-popup-info-label">Chênh lệch dự kiến</div>
+                                    <div class="sc-popup-info-value" id="LineModalDiffPreview">0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label fw-semibold">Số lượng kiểm kê</label>
+                            <input type="number"
+                                   id="LineModalCountedQty"
+                                   class="form-control form-control-lg"
+                                   value="1"
+                                   min="0"
+                                   step="0.001"
+                                   inputmode="decimal" />
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label fw-semibold">Đơn vị</label>
+                            <select id="LineModalUnitSelect" class="form-select"></select>
+                            <div class="form-text" id="LineModalUnitInfo"></div>
+                        </div>
+
+                        <div class="mt-3">
+                            <label class="form-label fw-semibold">Ghi chú</label>
+                            <textarea id="LineModalNote" class="form-control" rows="2"></textarea>
+                        </div>
+
+                        <div class="text-danger small mt-2" id="LineModalMessage"></div>
+                    </div>
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">SL đếm</label>
-                    <input type="number" id="EditCountedQty" class="form-control" min="0" step="0.001" />
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Ghi chú</label>
-                    <textarea id="EditLineNote" class="form-control" rows="3"></textarea>
-                </div>
-
-                <div class="text-danger small" id="EditLineMessage"></div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
-                <button type="button" class="btn btn-primary" id="btnSaveEditStockCountLine">Lưu</button>
+
+            <div class="modal-footer justify-content-between border-0">
+                <div class="small text-muted">
+                    Enter: lưu dòng · Esc: đóng
+                </div>
+
+                <button type="button" class="btn btn-primary px-4" id="btnSaveStockCountLineModal">
+                    <i class="bx bx-save me-1"></i>
+                    Lưu dòng
+                </button>
             </div>
         </div>
     </div>
 </div>
-
 @section VendorScripts {
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 }
@@ -407,9 +406,15 @@
 @section PageScripts {
     <script>
         window.stockCountPage = {
-            mode: 'detail',
-            stockCountDocumentId: @stockCountDocumentId
+        mode: 'detail',
+        stockCountDocumentId: @stockCountDocumentId,
+        permissions: {
+        canUpdate: @canUpdate.ToString().ToLowerInvariant(),
+        canDelete: @canDelete.ToString().ToLowerInvariant(),
+        canApprove: @canApprove.ToString().ToLowerInvariant()
+        }
         };
     </script>
-    <script src="~/Admin/js/stock-count.js"></script>
+
+    <script src="~/Admin/js/stock-count.js" asp-append-version="true"></script>
 }

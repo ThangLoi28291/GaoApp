@@ -6,6 +6,8 @@ public class CreateStockTransferDocumentRequest
 {
     [Required]
     public DateTime DocumentDate { get; set; } = DateTime.Today;
+    [StringLength(255)]
+    public string? DocumentName { get; set; } // Tên phiếu để dễ quản lý
 
     [Range(1, int.MaxValue, ErrorMessage = "Kho nguồn không hợp lệ.")]
     public int FromWarehouseId { get; set; }

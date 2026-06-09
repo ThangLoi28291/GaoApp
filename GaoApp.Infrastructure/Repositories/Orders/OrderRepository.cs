@@ -22,9 +22,31 @@ public sealed class OrderRepository : IOrderRepository
         return await _db.Orders
             .Include(x => x.Customer)
             .Include(x => x.InventoryIssue)
+
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.PrimaryProductImage)
+                        .ThenInclude(pi => pi.MediaAsset)
+
+            .Include(x => x.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.Product)
+                        .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
+                            .ThenInclude(pi => pi.MediaAsset)
+
+            // NEW:
+            // Load bảng quy đổi đơn vị để POS hiển thị bảng giá:
+            // Cái / Lốc / Thùng, giá lẻ, giá sỉ.
+            .Include(x => x.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                        .ThenInclude(c => c.Unit)
+
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
+
+            .Include(x => x.RewardVouchers.Where(v => !v.IsDeleted))
+                .ThenInclude(v => v.Voucher)
+
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
 
@@ -33,13 +55,33 @@ public sealed class OrderRepository : IOrderRepository
             .Include(l => l.Order)
             .FirstOrDefaultAsync(l => l.Id == lineId && l.Order.Status == OrderStatus.Draft, ct);
     public Task<Order?> GetByIdAsync(int orderId, CancellationToken ct = default)
-    => _db.Orders
-        .Include(o => o.Customer)
-        .Include(x => x.InventoryIssue)
-        .Include(o => o.Lines.Where(l => !l.IsDeleted))
-            .ThenInclude(l => l.Variant)
-        .Include(o => o.Payments.Where(p => !p.IsDeleted))
-        .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted, ct);
+      => _db.Orders
+          .Include(o => o.Customer)
+          .Include(o => o.InventoryIssue)
+
+          .Include(o => o.Lines.Where(l => !l.IsDeleted))
+              .ThenInclude(l => l.Variant)
+                  .ThenInclude(v => v.PrimaryProductImage)
+                      .ThenInclude(pi => pi.MediaAsset)
+
+          .Include(o => o.Lines.Where(l => !l.IsDeleted))
+              .ThenInclude(l => l.Variant)
+                  .ThenInclude(v => v.Product)
+                      .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
+                          .ThenInclude(pi => pi.MediaAsset)
+
+          // NEW: bảng giá đơn vị cho popup POS
+          .Include(o => o.Lines.Where(l => !l.IsDeleted))
+              .ThenInclude(l => l.Variant)
+                  .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                      .ThenInclude(c => c.Unit)
+
+          .Include(o => o.Payments.Where(p => !p.IsDeleted))
+
+          .Include(o => o.RewardVouchers.Where(v => !v.IsDeleted))
+              .ThenInclude(v => v.Voucher)
+
+          .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted, ct);
     public async Task<(List<Order> Items, int Total)> QueryOrdersAsync(
       DateTime? fromUtc,
       DateTime? toUtcExclusive,
@@ -53,7 +95,20 @@ public sealed class OrderRepository : IOrderRepository
         if (pageSize <= 0) pageSize = 20;
         if (pageSize > 200) pageSize = 200;
 
-        var q = _db.Orders.AsNoTracking();
+        var q = _db.Orders
+      .AsNoTracking()
+      .Where(o => !o.IsDeleted);
+
+        // Ẩn đơn nháp rỗng khỏi màn danh sách đơn.
+        // Draft rỗng vẫn giữ trong POS để làm giỏ hiện tại,
+        // nhưng không đưa vào lịch sử đơn.
+        q = q.Where(o =>
+            o.Status != OrderStatus.Draft
+            || o.GrandTotal > 0
+            || o.PaidTotal > 0
+            || !string.IsNullOrWhiteSpace(o.Note)
+            || o.Lines.Any(l => !l.IsDeleted)
+            || o.Payments.Any(p => !p.IsDeleted));
 
         // 1) Lọc theo trạng thái
         if (status.HasValue)
@@ -157,9 +212,29 @@ public sealed class OrderRepository : IOrderRepository
     {
         return await _db.Orders
             .Include(x => x.Customer)
-            .Include(x => x.Lines.Where(l => !l.IsDeleted))
+
+            .Include(o => o.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.PrimaryProductImage)
+                        .ThenInclude(pi => pi.MediaAsset)
+
+            .Include(o => o.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.Product)
+                        .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
+                            .ThenInclude(pi => pi.MediaAsset)
+
+            // NEW: bảng giá đơn vị cho POS screen
+            .Include(o => o.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                        .ThenInclude(c => c.Unit)
+
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
+
+            .Include(x => x.RewardVouchers.Where(v => !v.IsDeleted))
+                .ThenInclude(v => v.Voucher)
+
             .Where(x => x.POSShiftId == shiftId && x.Status == OrderStatus.Draft && !x.IsDeleted)
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(ct);
@@ -171,9 +246,17 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.InventoryIssue)
             .Include(x => x.POSShift)
             .Include(x => x.Store)
+
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                        .ThenInclude(c => c.Unit)
+
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
+
+            .Include(x => x.RewardVouchers)
+                .ThenInclude(x => x.Voucher)
+
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
     public async Task<Order?> GetCompletedOrderForVoidAsync(int orderId, CancellationToken ct = default)
@@ -181,10 +264,15 @@ public sealed class OrderRepository : IOrderRepository
         return await _db.Orders
             .Include(x => x.Customer)
             .Include(x => x.POSShift)
+            .Include(x => x.Store)
+
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                        .ThenInclude(c => c.Unit)
+
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
-            .Include(x => x.Store)
+
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
 
@@ -193,10 +281,15 @@ public sealed class OrderRepository : IOrderRepository
         return await _db.Orders
             .Include(x => x.Customer)
             .Include(x => x.POSShift)
+            .Include(x => x.Store)
+
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
+                    .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                        .ThenInclude(c => c.Unit)
+
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
-            .Include(x => x.Store)
+
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
     public async Task<Order?> GetDraftForFinalizeAsync(int orderId, CancellationToken ct = default)
@@ -208,10 +301,64 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
                 .ThenInclude(l => l.Variant)
             .Include(x => x.Payments.Where(p => !p.IsDeleted))
+            .Include(x => x.RewardVouchers.Where(v => !v.IsDeleted))
+    .ThenInclude(v => v.Voucher)
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
     public void Update(Order order)
     {
         _db.Orders.Update(order);
+    }
+    public async Task<List<Order>> GetHeldOrdersByStoreAsync(int storeId, CancellationToken ct = default)
+    {
+        return await _db.Orders
+            .AsNoTracking()
+            .Include(x => x.Customer)
+            .Include(x => x.InventoryIssue)
+            .Include(x => x.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant)
+            .Include(x => x.Payments.Where(p => !p.IsDeleted))
+            .Include(x => x.POSShift)
+             .ThenInclude(s => s.Terminal)
+            .Where(x =>
+                x.StoreId == storeId &&
+                x.Status == OrderStatus.OnHold &&
+                !x.IsDeleted)
+            .OrderByDescending(x => x.HeldAtUtc)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(ct);
+    }
+    public async Task ReplaceRewardVouchersAsync(
+    int orderId,
+    List<OrderRewardVoucher> vouchers,
+    CancellationToken ct = default)
+    {
+        var oldApplied = await _db.OrderRewardVouchers
+            .Where(x => x.OrderId == orderId)
+            .ToListAsync(ct);
+
+        if (oldApplied.Any())
+        {
+            _db.OrderRewardVouchers.RemoveRange(oldApplied);
+        }
+
+        if (vouchers.Any())
+        {
+            await _db.OrderRewardVouchers.AddRangeAsync(vouchers, ct);
+        }
+    }
+
+    public async Task ClearRewardVouchersAsync(
+        int orderId,
+        CancellationToken ct = default)
+    {
+        var oldApplied = await _db.OrderRewardVouchers
+            .Where(x => x.OrderId == orderId)
+            .ToListAsync(ct);
+
+        if (oldApplied.Any())
+        {
+            _db.OrderRewardVouchers.RemoveRange(oldApplied);
+        }
     }
 }

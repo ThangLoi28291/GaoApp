@@ -9,6 +9,7 @@ public class StockCountDocumentListItemDto
 {
     public int Id { get; set; }
     public string DocumentNo { get; set; } = string.Empty;
+    public string? DocumentName { get; set; }
     public DateTime DocumentDate { get; set; }
     public int WarehouseId { get; set; }
     public string WarehouseName { get; set; } = string.Empty;

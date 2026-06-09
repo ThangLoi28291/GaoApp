@@ -6,708 +6,13 @@
 }
 
 @section VendorStyles {
-    <style>
-        .shift-shell {
-            min-height: calc(100vh - 140px);
-        }
-
-        .shift-toolbar-card,
-        .shift-card,
-        .shift-panel {
-            border: 1px solid #e7edf5;
-            border-radius: 24px;
-            background: #fff;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
-        }
-
-        .shift-toolbar-card {
-            padding: 18px 20px;
-            margin-bottom: 16px;
-        }
-
-        .shift-card {
-            overflow: hidden;
-        }
-
-            .shift-card .card-body,
-            .shift-panel {
-                padding: 20px;
-            }
-
-        .shift-section-head {
-            margin-bottom: 16px;
-        }
-
-        .shift-section-title {
-            margin: 0;
-            font-size: 1.18rem;
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.25;
-        }
-
-        .shift-section-sub {
-            margin-top: 6px;
-            color: #667085;
-            font-size: .96rem;
-            font-weight: 600;
-            line-height: 1.45;
-        }
-
-        .shift-status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border-radius: 999px;
-            padding: 8px 14px;
-            font-size: .84rem;
-            font-weight: 800;
-        }
-
-            .shift-status-pill.loading {
-                background: #eef2f6;
-                color: #475467;
-            }
-
-            .shift-status-pill.open {
-                background: #ecfdf3;
-                color: #067647;
-            }
-
-            .shift-status-pill.closed {
-                background: #f2f4f7;
-                color: #344054;
-            }
-
-            .shift-status-pill.warning {
-                background: #fffaeb;
-                color: #b54708;
-            }
-
-        .shift-action-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .shift-toolbar-btn {
-            min-height: 50px;
-            border-radius: 16px;
-            padding: 10px 18px;
-            font-weight: 900;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .shift-empty {
-            border-radius: 18px;
-            border: 1px dashed #f4b26c;
-            background: #fff8ee;
-            color: #9a5a12;
-            padding: 16px 18px;
-            font-weight: 700;
-        }
-
-        .shift-tabs-nav {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-        }
-
-        .shift-tab-btn {
-            border: 1px solid #dbe4ef;
-            background: #fff;
-            color: #344054;
-            border-radius: 16px;
-            padding: 10px 16px;
-            font-weight: 800;
-            min-height: 46px;
-            transition: all .15s ease;
-        }
-
-            .shift-tab-btn.active {
-                border-color: #2458b8;
-                background: linear-gradient(180deg, #2d63cc 0%, #2458b8 100%);
-                color: #fff;
-                box-shadow: 0 8px 18px rgba(36, 88, 184, .18);
-            }
-
-        .shift-tab-pane {
-            display: none;
-        }
-
-            .shift-tab-pane.active {
-                display: block;
-            }
-
-        .shift-mini-summary {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0,1fr));
-            gap: 14px;
-            margin-bottom: 16px;
-        }
-
-        .shift-mini-box {
-            border-radius: 18px;
-            padding: 16px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            border: 1px solid #e9eef5;
-            min-height: 96px;
-        }
-
-            .shift-mini-box .k {
-                font-size: .8rem;
-                color: #667085;
-                margin-bottom: 8px;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: .04em;
-            }
-
-            .shift-mini-box .v {
-                font-size: 1.05rem;
-                font-weight: 900;
-                color: #101828;
-                line-height: 1.35;
-                word-break: break-word;
-            }
-
-        .shift-stat-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0,1fr));
-            gap: 14px;
-        }
-
-        .shift-stat-box {
-            border-radius: 18px;
-            padding: 16px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            border: 1px solid #e9eef5;
-            min-height: 110px;
-        }
-
-            .shift-stat-box.accent {
-                background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
-                border-color: #d7e5ff;
-            }
-
-        .shift-stat-label {
-            font-size: .8rem;
-            color: #667085;
-            margin-bottom: 8px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .shift-stat-value {
-            font-size: 1.35rem;
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.2;
-            word-break: break-word;
-        }
-
-            .shift-stat-value.money {
-                color: #2458b8;
-            }
-
-            .shift-stat-value.positive {
-                color: #067647;
-            }
-
-            .shift-stat-value.negative {
-                color: #c01048;
-            }
-
-        .shift-note-box {
-            margin-top: 14px;
-            border-radius: 18px;
-            padding: 16px;
-            background: #fbfcfe;
-            border: 1px solid #edf1f5;
-        }
-
-        .shift-note-label {
-            font-size: .8rem;
-            color: #667085;
-            margin-bottom: 8px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .shift-note-text {
-            color: #344054;
-            line-height: 1.65;
-            min-height: 28px;
-            font-weight: 600;
-            white-space: pre-line;
-            word-break: break-word;
-        }
-
-        .shift-table-wrap {
-            border: 1px solid #edf1f5;
-            border-radius: 18px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .shift-table {
-            margin-bottom: 0;
-        }
-
-            .shift-table thead th {
-                background: #f8fafc;
-                font-size: .84rem;
-                font-weight: 800;
-                color: #475467;
-                border-bottom: 1px solid #e9eef5;
-                white-space: nowrap;
-                text-transform: uppercase;
-                letter-spacing: .04em;
-                padding: 14px 16px;
-            }
-
-            .shift-table td,
-            .shift-table th {
-                vertical-align: middle;
-            }
-
-            .shift-table tbody td {
-                padding: 15px 16px;
-                border-top: 1px solid #edf2f7;
-            }
-
-            .shift-table tbody tr:hover {
-                background: #f8fbff;
-            }
-
-        .shift-type-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 126px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            font-size: .82rem;
-            font-weight: 800;
-            line-height: 1;
-        }
-
-            .shift-type-badge.in {
-                background: #eafaf0;
-                color: #18794e;
-            }
-
-            .shift-type-badge.out {
-                background: #fff1f3;
-                color: #c01048;
-            }
-
-        .cash-time {
-            font-weight: 700;
-            color: #344054;
-            font-size: .9rem;
-            line-height: 1.45;
-        }
-
-        .cash-amount {
-            font-size: 1.08rem;
-            font-weight: 900;
-        }
-
-        .cash-reason {
-            font-weight: 700;
-            color: #101828;
-            word-break: break-word;
-        }
-
-        .cash-note {
-            color: #667085;
-            white-space: pre-line;
-            word-break: break-word;
-        }
-
-        .shift-money-positive {
-            color: #067647;
-            font-weight: 800;
-        }
-
-        .shift-money-negative {
-            color: #c01048;
-            font-weight: 800;
-        }
-
-        .shift-pager {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            padding-top: 14px;
-        }
-
-        .shift-pager-info {
-            color: #667085;
-            font-size: .9rem;
-            font-weight: 700;
-        }
-
-        .shift-pager-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .shift-pager-btn {
-            min-height: 40px;
-            border-radius: 12px;
-            font-weight: 800;
-        }
-
-        .shift-modal .modal-dialog {
-            max-width: 1180px;
-        }
-
-        .shift-modal .modal-content {
-            border: 0;
-            border-radius: 24px;
-            overflow: hidden;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, .20);
-            max-height: calc(100vh - 40px);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .shift-modal .modal-header {
-            flex: 0 0 auto;
-            padding: 18px 20px 14px;
-            border-bottom: 1px solid #eef2f6;
-        }
-
-        .shift-modal .modal-title {
-            font-weight: 900;
-            color: #101828;
-        }
-
-        .shift-modal .modal-body {
-            flex: 1 1 auto;
-            overflow-y: auto;
-            padding: 16px 20px 14px;
-        }
-
-        .shift-modal .modal-footer {
-            flex: 0 0 auto;
-            position: sticky;
-            bottom: 0;
-            background: #fff;
-            z-index: 2;
-            padding: 14px 20px 18px;
-            border-top: 1px solid #eef2f6;
-            box-shadow: 0 -8px 20px rgba(15, 23, 42, .04);
-            gap: 10px;
-        }
-
-        .shift-modal-subtitle {
-            margin-top: 6px;
-            color: #667085;
-            font-size: .94rem;
-            font-weight: 600;
-        }
-
-        .shift-form-label {
-            font-weight: 800;
-            color: #344054;
-            margin-bottom: .5rem;
-            font-size: .93rem;
-        }
-
-        .shift-form-caption {
-            font-size: .82rem;
-            color: #667085;
-            margin-top: .4rem;
-            line-height: 1.45;
-        }
-
-        .shift-modal .form-control,
-        .shift-modal .form-select {
-            min-height: 48px;
-            border-radius: 16px;
-            border: 1px solid #d7dee8;
-            box-shadow: none !important;
-            font-size: 1rem;
-            padding: 10px 13px;
-        }
-
-            .shift-modal .form-control:focus,
-            .shift-modal .form-select:focus {
-                border-color: #86b7fe;
-            }
-
-        .shift-modal textarea.form-control {
-            min-height: 88px;
-            resize: vertical;
-        }
-
-        .shift-denom-wrap {
-            border: 1px solid #e7edf5;
-            border-radius: 18px;
-            padding: 12px;
-            background: #fbfcfe;
-        }
-
-        .shift-denom-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0,1fr));
-            gap: 10px;
-        }
-
-        .shift-denom-item {
-            border: 1px solid #e7edf5;
-            border-radius: 14px;
-            background: #fff;
-            padding: 10px 12px;
-        }
-
-        .shift-denom-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-
-        .shift-denom-label {
-            font-size: .9rem;
-            font-weight: 900;
-            color: #101828;
-        }
-
-        .shift-denom-total {
-            font-size: .8rem;
-            font-weight: 800;
-            color: #667085;
-        }
-
-        .shift-stepper {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .shift-stepper-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            border: 1px solid #d7dee8;
-            background: #fff;
-            font-size: 1rem;
-            font-weight: 900;
-            color: #344054;
-        }
-
-        .shift-stepper-input {
-            text-align: center;
-            font-weight: 900;
-            min-height: 38px !important;
-            padding: 8px 10px !important;
-            font-size: 1rem;
-        }
-
-        .shift-header-total {
-            min-width: 200px;
-            padding: 9px 12px;
-            border-radius: 14px;
-            border: 1px solid #d7e5ff;
-            background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
-            text-align: right;
-        }
-
-        .shift-header-total-label {
-            font-size: .76rem;
-            color: #667085;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            margin-bottom: 4px;
-        }
-
-        .shift-header-total-value {
-            font-size: 1.2rem;
-            color: #2458b8;
-            font-weight: 900;
-            line-height: 1.15;
-        }
-
-        .shift-modal-btn {
-            min-height: 48px;
-            border-radius: 14px;
-            min-width: 150px;
-            font-weight: 900;
-        }
-
-        .shift-modal-left-col .mb-3:last-child,
-        .shift-modal-left-col .mb-0:last-child {
-            margin-bottom: 0 !important;
-        }
-
-        .shift-modal-note-compact {
-            min-height: 82px !important;
-        }
-
-        @@media (max-width: 1199.98px) {
-            .shift-mini-summary {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @@media (max-width: 991.98px) {
-            .shift-denom-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .shift-modal .modal-dialog {
-                max-width: calc(100vw - 20px);
-                margin: 10px auto;
-            }
-
-            .shift-modal .modal-content {
-                max-height: calc(100vh - 20px);
-            }
-
-            .shift-modal .modal-body {
-                padding: 14px 14px 12px;
-            }
-
-            .shift-modal .modal-footer {
-                padding: 12px 14px 14px;
-            }
-
-            .shift-header-total {
-                width: 100%;
-                text-align: left;
-            }
-        }
-
-        @@media (max-width: 767.98px) {
-            .shift-stat-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .shift-card .card-body,
-            .shift-panel,
-            .shift-toolbar-card {
-                padding: 16px;
-            }
-
-            .shift-pager {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .shift-pager-actions {
-                width: 100%;
-            }
-
-            .shift-pager-btn {
-                flex: 1;
-            }
-        }
-
-        .shift-close-compare-box {
-            border: 1px solid #e7edf5;
-            border-radius: 18px;
-            background: linear-gradient(180deg, #fbfcfe 0%, #f8fafc 100%);
-            padding: 14px 16px;
-        }
-
-        .shift-close-compare-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 8px 0;
-        }
-
-            .shift-close-compare-row + .shift-close-compare-row {
-                border-top: 1px dashed #e5eaf1;
-            }
-
-            .shift-close-compare-row.total {
-                margin-top: 4px;
-                padding-top: 12px;
-            }
-
-        .shift-close-compare-label {
-            font-size: .9rem;
-            font-weight: 700;
-            color: #475467;
-        }
-
-        .shift-close-compare-value {
-            font-size: 1rem;
-            font-weight: 900;
-            color: #101828;
-            text-align: right;
-        }
-
-            .shift-close-compare-value.expected {
-                color: #2458b8;
-            }
-
-            .shift-close-compare-value.actual {
-                color: #101828;
-            }
-
-            .shift-close-compare-value.match {
-                color: #475467;
-            }
-
-            .shift-close-compare-value.positive {
-                color: #067647;
-            }
-
-            .shift-close-compare-value.negative {
-                color: #c01048;
-            }
-
-        .shift-close-compare-hint {
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px dashed #e5eaf1;
-            font-size: .86rem;
-            font-weight: 700;
-            color: #667085;
-        }
-
-            .shift-close-compare-hint.match {
-                color: #475467;
-            }
-
-            .shift-close-compare-hint.positive {
-                color: #067647;
-            }
-
-            .shift-close-compare-hint.negative {
-                color: #c01048;
-            }
-    </style>
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift.css" asp-append-version="true" />
 }
 
 @section header {
-    <div class="py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-            <h3 class="mb-1 fw-bold">Ca POS</h3>
-            <div class="text-muted">Mở ca, kiểm quỹ, ghi nhận thu chi và đóng ca theo terminal</div>
-        </div>
+    <div class="shift-title-only">
+        <h1>CA LÀM VIỆC</h1>
 
-        <div class="d-flex align-items-center gap-2">
-            <span id="shiftStatusBadge" class="shift-status-pill loading">
-                <i class="bx bx-loader-alt"></i>
-                <span>Đang tải...</span>
-            </span>
-        </div>
     </div>
 }
 
@@ -717,11 +22,15 @@
 <div class="shift-shell">
     @Html.AntiForgeryToken()
 
-    <div class="shift-toolbar-card">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div>
-                <div class="shift-section-title mb-0">Thao tác ca POS</div>
-                <div class="shift-section-sub">Tất cả thao tác mở ca, thu chi và đóng ca đều thực hiện qua popup để thao tác nhanh hơn</div>
+    <div id="posErrorBanner" class="alert alert-warning d-none mt-3 shift-alert-banner" role="alert">
+        <div id="posErrorBannerMessage" class="fw-semibold"></div>
+        <div id="posErrorBannerHint" class="small mt-1"></div>
+    </div>
+
+    <div class="shift-hero-card">
+        <div class="shift-hero-card__content">
+            <div class="shift-hero-card__meta">
+                <div class="shift-hero-card__title">Điều hành ca POS</div>
             </div>
 
             <div class="shift-action-group">
@@ -743,15 +52,43 @@
         </div>
     </div>
 
-    <div id="noOpenShiftSection" class="shift-card mb-3" style="display:none;">
+    <div id="noOpenShiftSection" class="shift-card shift-empty-card mb-3" style="display:none;">
         <div class="card-body">
             <div class="shift-empty">
-                Chưa có ca POS đang mở tại terminal này. Nhấn nút <strong>Mở ca</strong> để bắt đầu làm việc.
+                <div class="shift-empty__icon">
+                    <i class="bx bx-time-five"></i>
+                </div>
+                <div class="shift-empty__title">Chưa có ca POS đang mở</div>
+                <div class="shift-empty__desc">
+                    Terminal này hiện chưa mở ca. Nhấn <strong>Mở ca</strong> để bắt đầu nhận ca và thao tác bán hàng.
+                </div>
             </div>
         </div>
     </div>
 
     <div id="openShiftSection" style="display:none;">
+        <div class="shift-overview-grid">
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mã ca</div>
+                <div id="shiftId" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mã ca hệ thống</div>
+                <div id="shiftCode" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mở lúc</div>
+                <div id="openedAt" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card shift-overview-card--accent">
+                <div class="shift-overview-card__label">Tiền mặt dự kiến cuối ca</div>
+                <div id="closingCashExpected" class="shift-overview-card__value money">0</div>
+            </div>
+        </div>
+
         <div class="shift-tabs-nav">
             <button type="button" class="shift-tab-btn active" data-shift-tab="summaryTab">Thông tin ca hiện tại</button>
             <button type="button" class="shift-tab-btn" data-shift-tab="historyTab">Lịch sử thu / chi tiền mặt</button>
@@ -761,30 +98,13 @@
             <div class="card shift-card">
                 <div class="card-body">
                     <div class="shift-section-head">
-                        <h4 class="shift-section-title">Thông tin ca hiện tại</h4>
-                        <div class="shift-section-sub">
-                            Tổng hợp nhanh tình trạng ca, doanh thu, refund và tiền mặt dự kiến
+                        <div>
+                            <h4 class="shift-section-title">Tổng quan ca hiện tại</h4>
+                            
                         </div>
                     </div>
 
-                    <div class="shift-mini-summary">
-                        <div class="shift-mini-box">
-                            <div class="k">Mã ca</div>
-                            <div id="shiftId" class="v">-</div>
-                        </div>
-
-                        <div class="shift-mini-box">
-                            <div class="k">Shift code</div>
-                            <div id="shiftCode" class="v">-</div>
-                        </div>
-
-                        <div class="shift-mini-box">
-                            <div class="k">Mở lúc</div>
-                            <div id="openedAt" class="v">-</div>
-                        </div>
-                    </div>
-
-                    <div class="shift-stat-grid">
+                    <div class="shift-stat-grid shift-stat-grid--primary">
                         <div class="shift-stat-box">
                             <div class="shift-stat-label">Tiền đầu ca</div>
                             <div id="openingCash" class="shift-stat-value money">0</div>
@@ -800,6 +120,15 @@
                             <div id="nonCashSalesTotal" class="shift-stat-value">0</div>
                         </div>
 
+                        <div class="shift-stat-box accent">
+                            <div class="shift-stat-label">Tiền mặt dự kiến cuối ca</div>
+                            <div id="closingCashExpectedMirror" class="shift-stat-value money">0</div>
+                        </div>
+                    </div>
+
+                    <div class="shift-section-divider"></div>
+
+                    <div class="shift-stat-grid shift-stat-grid--secondary">
                         <div class="shift-stat-box">
                             <div class="shift-stat-label">Hoàn tiền mặt</div>
                             <div id="cashRefundTotal" class="shift-stat-value negative">0</div>
@@ -819,6 +148,7 @@
                             <div class="shift-stat-label">Số giao dịch hoàn</div>
                             <div id="refundCountShift" class="shift-stat-value">0</div>
                         </div>
+
                         <div class="shift-stat-box">
                             <div class="shift-stat-label">Số đơn void</div>
                             <div id="voidCountShift" class="shift-stat-value">0</div>
@@ -833,14 +163,9 @@
                             <div class="shift-stat-label">Chi tiền mặt</div>
                             <div id="cashOutTotal" class="shift-stat-value negative">0</div>
                         </div>
-
-                        <div class="shift-stat-box accent">
-                            <div class="shift-stat-label">Tiền mặt dự kiến cuối ca</div>
-                            <div id="closingCashExpected" class="shift-stat-value money">0</div>
-                        </div>
                     </div>
 
-                    <div class="shift-note-box">
+                    <div class="shift-note-box mt-3">
                         <div class="shift-note-label">Ghi chú mở ca</div>
                         <div id="openNote" class="shift-note-text">-</div>
                     </div>
@@ -852,10 +177,12 @@
             <div class="card shift-card">
                 <div class="card-body">
                     <div class="shift-section-head">
-                        <h4 class="shift-section-title">Lịch sử thu / chi tiền mặt</h4>
-                        <div class="shift-section-sub">
-                            Theo dõi các giao dịch tiền mặt phát sinh trong ca hiện tại
+                        <div>
+                            <h4 class="shift-section-title">Lịch sử thu / chi tiền mặt</h4>
+                           
                         </div>
+
+                        <div id="cashTxnPagerInfo" class="shift-history-counter">0 giao dịch</div>
                     </div>
 
                     <div class="shift-table-wrap">
@@ -880,10 +207,15 @@
                     </div>
 
                     <div class="shift-pager">
-                        <div id="cashTxnPagerInfo" class="shift-pager-info">0 giao dịch</div>
                         <div class="shift-pager-actions">
-                            <button id="btnCashTxnPrev" type="button" class="btn btn-outline-secondary shift-pager-btn">Trang trước</button>
-                            <button id="btnCashTxnNext" type="button" class="btn btn-outline-secondary shift-pager-btn">Trang sau</button>
+                            <button id="btnCashTxnPrev" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                                <i class="bx bx-chevron-left"></i>
+                                <span>Trang trước</span>
+                            </button>
+                            <button id="btnCashTxnNext" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                                <span>Trang sau</span>
+                                <i class="bx bx-chevron-right"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -892,88 +224,239 @@
     </div>
 </div>
 
-<!-- Open Shift Modal -->
-<div class="modal fade shift-modal" id="openShiftModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+<!-- Giữ nguyên 4 modal như file hiện tại -->
+<!-- Open Shift Modal - UI chuẩn 3 cột -->
+<div class="modal fade shift-modal shift-open-cashier-modal" id="openShiftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-open-shift modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title">Mở ca mới</h5>
-                    <div class="shift-modal-subtitle">
-                        Nhập số tờ tiền theo mệnh giá hoặc nhập trực tiếp để lấy tổng tiền đầu ca
+
+            <div class="modal-header shift-open-cashier-header">
+                <div class="shift-open-cashier-title">
+                    <div class="shift-open-cashier-icon">
+                        <i class="bx bx-store-alt"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title">MỞ CA MỚI</h5>
+                        <div class="shift-modal-subtitle">
+                            Nhập số tiền theo mệnh giá hoặc nhập trực tiếp để lấy tổng tiền đầu ca
+                        </div>
                     </div>
                 </div>
+
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-lg-5 shift-modal-left-col">
-                        <div class="mb-3">
-                            <label class="shift-form-label">Kho bán hàng</label>
-                            <select id="ddlWarehouse" class="form-select">
+            <div class="modal-body shift-open-cashier-body">
+                <div class="shift-open-cashier-layout">
+
+                    <!-- CỘT TRÁI -->
+                    <div class="shift-open-left">
+                        <div class="shift-open-block shift-scan-slip-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-barcode-reader"></i>
+                                QUÉT / NHẬP MÃ PHIẾU
+                            </div>
+
+                            <div class="shift-scan-input-wrap">
+                                <input id="txtHandoverSlipBarcode"
+                                       type="text"
+                                       class="form-control shift-scan-input"
+                                       placeholder="Quét hoặc gõ mã phiếu rồi Enter" />
+
+                                <button id="btnLoadHandoverSlip"
+                                        type="button"
+                                        class="btn btn-primary shift-scan-btn">
+                                    Tải
+                                </button>
+                            </div>
+
+                            <input id="selectedHandoverSlipId" type="hidden" />
+
+                            <div id="handoverSlipInfo" class="shift-slip-info" style="display:none;"></div>
+                        </div>
+                        <div class="shift-open-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-home-alt"></i>
+                                KHO BÁN HÀNG
+                            </div>
+
+                            <select id="ddlWarehouse" class="form-select shift-open-select">
                                 <option value="">-- Chọn kho --</option>
                             </select>
-                            <div class="shift-form-caption">
-                                Kho này sẽ là kho xuất bán mặc định trong ca hiện tại.
+
+                            <div class="shift-open-warehouse-note">
+                                <i class="bx bx-check-shield"></i>
+                                <span>Kho này sẽ là kho xuất bán mặc định trong ca hiện tại</span>
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="shift-form-label">Tổng tiền đầu ca</label>
-                            <input id="txtOpeningCash"
-                                   type="number"
-                                   step="0.01"
-                                   class="form-control"
-                                   value="0" />
-                            <div class="shift-form-caption">
-                                Tổng tiền sẽ tự cập nhật theo số tờ tiền bên phải.
-                            </div>
+                        <div class="shift-open-divider"></div>
+
+                        <div class="shift-open-block">
+                            <div class="shift-open-small-label">TỔNG TIỀN ĐẦU CA</div>
+                            <div id="openLeftTotalText" class="shift-open-big-money">0 đ</div>
+                            <div id="openMoneyText" class="shift-open-money-words">Không đồng</div>
                         </div>
 
-                        <div class="mb-0">
-                            <label class="shift-form-label">Ghi chú mở ca</label>
+                        <div class="shift-open-block">
+                            <label class="shift-form-label">
+                                GHI CHÚ MỞ CA <span class="text-muted">(không bắt buộc)</span>
+                            </label>
+
                             <textarea id="txtOpenNote"
-                                      class="form-control shift-modal-note-compact"
-                                      rows="3"
-                                      placeholder="Ví dụ: bàn giao tiền lẻ, tình trạng quầy thu ngân..."></textarea>
+                                      class="form-control shift-open-note"
+                                      maxlength="200"
+                                      rows="4"
+                                      placeholder="Ví dụ: Bàn giao tiền lẻ, tình trạng quầy thu ngân..."></textarea>
+
+                            <div class="shift-note-counter">0/200</div>
+                        </div>
+
+                        <div class="shift-tip-box shift-tip-box-open">
+                            <div class="shift-tip-title">
+                                <i class="bx bx-bulb"></i>
+                                Gợi ý nhập nhanh
+                            </div>
+                            <div class="shift-tip-line">Chọn mệnh giá → nhập số tờ → cộng dồn</div>
+                            <div class="shift-tip-line">Có thể nhập trực tiếp tổng tiền bên phải</div>
+                            <div class="shift-tip-line">Ctrl + Enter để xác nhận mở ca</div>
                         </div>
                     </div>
 
-                    <div class="col-lg-7">
-                        <div class="shift-denom-wrap">
-                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                    <!-- CỘT GIỮA -->
+                    <div class="shift-open-middle">
+                        <div class="shift-open-money-table-card">
+                            <div class="shift-open-money-table-head">
                                 <div>
-                                    <div class="shift-section-title mb-1" style="font-size:1rem;">Nhập số tờ theo mệnh giá</div>
-                                    <div class="shift-form-caption">Tab / Enter để chuyển ô. Ctrl + Enter để xác nhận mở ca.</div>
+                                    <div class="shift-open-block-title mb-0">NHẬP TIỀN THEO MỆNH GIÁ</div>
                                 </div>
 
-                                <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                                    <div class="shift-header-total">
-                                        <div class="shift-header-total-label">Tổng tiền đầu ca</div>
-                                        <div id="openDenomTotalText" class="shift-header-total-value">0</div>
-                                    </div>
-
-                                    <button id="btnResetOpenDenoms" type="button" class="btn btn-outline-secondary btn-sm">
+                                <div class="shift-open-head-actions">
+                                    <button id="btnResetOpenDenoms" type="button" class="btn btn-outline-danger shift-open-action-btn">
+                                        <i class="bx bx-trash"></i>
                                         Xóa tất cả
+                                    </button>
+
+                                    <button id="btnAutoConvertOpenCash" type="button" class="btn btn-outline-primary shift-open-action-btn">
+                                        <i class="bx bx-sparkles"></i>
+                                        Tự động quy đổi
                                     </button>
                                 </div>
                             </div>
 
-                            <div id="openDenomGrid" class="shift-denom-grid"></div>
+                            <div class="shift-open-money-table-header">
+                                <div>Mệnh giá</div>
+                                <div>Số tờ / số lượng</div>
+                                <div>Thành tiền</div>
+                                <div></div>
+                            </div>
+
+                            <div id="openDenomGrid" class="shift-open-money-table-body"></div>
+
+                            <div class="shift-open-quick-row">
+                                <div class="shift-open-quick-title">THIẾT LẬP NHANH</div>
+                                <div class="shift-open-quick-buttons">
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="500000">500K</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="1000000">1M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="2000000">2M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="5000000">5M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="10000000">10M</button>
+                                    <button type="button" class="shift-open-preset-btn custom" data-open-preset="custom">
+                                        TÙY CHỌN
+                                        <i class="bx bx-edit-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT PHẢI -->
+                    <div class="shift-open-right">
+                        <div class="shift-open-direct-card">
+                            <div class="shift-open-block-title">NHẬP TRỰC TIẾP</div>
+
+                            <div class="shift-open-direct-input-wrap">
+                                <input id="txtOpeningCash"
+                                       type="text"
+                                       inputmode="numeric"
+                                       class="form-control shift-open-direct-input"
+                                       value="0" />
+                                <span>đ</span>
+                            </div>
+
+                            <div class="shift-open-direct-hint">
+                                Nhấn Enter để cập nhật tổng tiền đầu ca
+                            </div>
+
+                            <div class="shift-keypad">
+                                <button type="button" data-keypad="7">7</button>
+                                <button type="button" data-keypad="8">8</button>
+                                <button type="button" data-keypad="9">9</button>
+                                <button type="button" data-keypad="back"><i class="bx bx-backspace"></i></button>
+
+                                <button type="button" data-keypad="4">4</button>
+                                <button type="button" data-keypad="5">5</button>
+                                <button type="button" data-keypad="6">6</button>
+                                <button type="button" data-keypad="plus">+</button>
+
+                                <button type="button" data-keypad="1">1</button>
+                                <button type="button" data-keypad="2">2</button>
+                                <button type="button" data-keypad="3">3</button>
+                                <button type="button" data-keypad="minus">−</button>
+
+                                <button type="button" data-keypad="000">000</button>
+                                <button type="button" data-keypad="0">0</button>
+                                <button type="button" data-keypad=",">,</button>
+                                <button type="button" class="clear" data-keypad="clear">C</button>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-summary-card">
+                            <div class="shift-open-block-title">TỔNG KẾT TIỀN ĐẦU CA</div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Số tờ / tiền đã nhập</span>
+                                <strong id="openBillCountText">0 tờ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tổng cộng</span>
+                                <strong id="openSummaryTotalText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Chênh lệch so với nhập trực tiếp</span>
+                                <strong id="openDirectDiffText" class="text-success">0 đ</strong>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-warning-card">
+                            <div class="shift-open-warning-title">
+                                <i class="bx bx-shield-quarter"></i>
+                                MẸO KIỂM SOÁT TIỀN
+                            </div>
+                            <div>Kiểm đếm kỹ trước khi xác nhận</div>
+                            <div>Đối chiếu lại tổng tiền đã nhập</div>
+                            <div>Ca bắt đầu sẽ không thể chỉnh sửa</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">Hủy</button>
-                <button id="btnOpenShiftConfirm" type="button" class="btn btn-primary shift-modal-btn">OK - Nhận ca</button>
+            <div class="modal-footer shift-open-cashier-footer">
+                <button type="button" class="btn shift-open-cancel-btn" data-bs-dismiss="modal">
+                    <i class="bx bx-x"></i>
+                    Hủy
+                </button>
+
+                <button id="btnOpenShiftConfirm" type="button" class="btn shift-open-confirm-btn">
+                    <i class="bx bx-check-circle"></i>
+                    OK - Nhận ca
+                </button>
             </div>
         </div>
     </div>
 </div>
-
 <!-- Cash Transaction Modal -->
 <div class="modal fade shift-modal" id="cashTxnModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -1029,847 +512,223 @@
 </div>
 
 <!-- Close Shift Modal -->
-<div class="modal fade shift-modal" id="closeShiftModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+<!-- Close Shift Modal - UI chuẩn 3 cột -->
+<div class="modal fade shift-modal shift-open-cashier-modal shift-close-cashier-modal" id="closeShiftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-open-shift modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <div>
-                    <h5 class="modal-title">Đóng ca hiện tại</h5>
-                    <div class="shift-modal-subtitle">
-                        Kiểm tiền thực tế cuối ca theo mệnh giá và hoàn tất đối soát
+
+            <div class="modal-header shift-open-cashier-header">
+                <div class="shift-open-cashier-title">
+                    <div class="shift-open-cashier-icon shift-close-icon">
+                        <i class="bx bx-lock-alt"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title">ĐÓNG CA HIỆN TẠI</h5>
+                        <div class="shift-modal-subtitle">
+                            Kiểm tiền cuối ca theo mệnh giá, đối chiếu tiền dự kiến và xác nhận bàn giao
+                        </div>
                     </div>
                 </div>
+
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <div class="modal-body">
-                <div class="row g-3">
-                    <div class="col-lg-5 shift-modal-left-col">
-                        <div class="mb-3">
-                            <label class="shift-form-label">Tiền thực đếm cuối ca</label>
-                            <input id="txtClosingCashActual"
-                                   type="number"
-                                   step="0.01"
-                                   class="form-control"
-                                   value="0" />
-                            <div class="shift-form-caption">
-                                Tổng tiền sẽ tự cập nhật theo số tờ tiền bên phải.
+            <div class="modal-body shift-open-cashier-body">
+                <div class="shift-open-cashier-layout">
+
+                    <!-- CỘT TRÁI -->
+                    <div class="shift-open-left">
+                        <div class="shift-open-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-calculator"></i>
+                                ĐỐI SOÁT CUỐI CA
+                            </div>
+
+                            <div class="shift-close-compare-box">
+                                <div class="shift-close-compare-row">
+                                    <div class="shift-close-compare-label">Tiền dự kiến cuối ca</div>
+                                    <div id="closeExpectedCashText" class="shift-close-compare-value expected">0</div>
+                                </div>
+
+                                <div class="shift-close-compare-row">
+                                    <div class="shift-close-compare-label">Tiền thực đếm</div>
+                                    <div id="closeActualCashText" class="shift-close-compare-value actual">0</div>
+                                </div>
+
+                                <div class="shift-close-compare-row total">
+                                    <div class="shift-close-compare-label">Chênh lệch</div>
+                                    <div id="closeDiffCashText" class="shift-close-compare-value match">0</div>
+                                </div>
+
+                                <div id="closeDiffHint" class="shift-close-compare-hint match">
+                                    Chưa có dữ liệu đối soát.
+                                </div>
                             </div>
                         </div>
 
-                        <div class="shift-close-compare-box mb-3">
-                            <div class="shift-close-compare-row">
-                                <div class="shift-close-compare-label">Tiền dự kiến cuối ca</div>
-                                <div id="closeExpectedCashText" class="shift-close-compare-value">0</div>
-                            </div>
+                        <div class="shift-open-divider"></div>
 
-                            <div class="shift-close-compare-row">
-                                <div class="shift-close-compare-label">Tiền thực đếm</div>
-                                <div id="closeActualCashText" class="shift-close-compare-value">0</div>
-                            </div>
-
-                            <div class="shift-close-compare-row total">
-                                <div class="shift-close-compare-label">Chênh lệch</div>
-                                <div id="closeDiffCashText" class="shift-close-compare-value">0</div>
-                            </div>
-
-                            <div id="closeDiffHint" class="shift-close-compare-hint">
-                                Chưa có dữ liệu đối soát.
-                            </div>
+                        <div class="shift-open-block">
+                            <div class="shift-open-small-label">TỔNG TIỀN THỰC ĐẾM</div>
+                            <div id="closeLeftTotalText" class="shift-open-big-money">0 đ</div>
+                            <div id="closeMoneyText" class="shift-open-money-words">Không đồng</div>
                         </div>
 
-                        <div class="mb-0">
-                            <label class="shift-form-label">Ghi chú đóng ca</label>
+                        <div class="shift-open-block">
+                            <label class="shift-form-label">
+                                GHI CHÚ ĐÓNG CA <span class="text-muted">(nếu có)</span>
+                            </label>
+
                             <textarea id="txtCloseNote"
-                                      class="form-control shift-modal-note-compact"
-                                      rows="3"
-                                      placeholder="Ví dụ: lệch quỹ, bàn giao quỹ, vấn đề cần lưu ý..."></textarea>
+                                      class="form-control shift-open-note"
+                                      maxlength="300"
+                                      rows="4"
+                                      placeholder="Ví dụ: Lệch quỹ, bàn giao tiền, sự cố trong ca..."></textarea>
+                        </div>
+
+                        <div class="shift-open-warning-card">
+                            <div class="shift-open-warning-title">
+                                <i class="bx bx-shield-quarter"></i>
+                                LƯU Ý ĐÓNG CA
+                            </div>
+                            <div>Kiểm đếm kỹ trước khi đóng ca</div>
+                            <div>Nếu lệch quỹ, hệ thống sẽ yêu cầu xác nhận</div>
+                            <div>Số tờ cuối ca sẽ được lưu lại để in phiếu bàn giao</div>
                         </div>
                     </div>
 
-                    <div class="col-lg-7">
-                        <div class="shift-denom-wrap">
-                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-                                <div>
-                                    <div class="shift-section-title mb-1" style="font-size:1rem;">Đếm tiền theo mệnh giá</div>
-                                    <div class="shift-form-caption">Tab / Enter để chuyển ô. Ctrl + Enter để xác nhận đóng ca.</div>
-                                </div>
+                    <!-- CỘT GIỮA -->
+                    <div class="shift-open-middle">
+                        <div class="shift-open-money-table-card">
+                            <div class="shift-open-money-table-head">
+                                <div class="shift-open-block-title mb-0">KIỂM TIỀN THEO MỆNH GIÁ</div>
 
-                                <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                                    <div class="shift-header-total">
-                                        <div class="shift-header-total-label">Tổng tiền thực đếm</div>
-                                        <div id="closeDenomTotalText" class="shift-header-total-value">0</div>
-                                    </div>
-
-                                    <button id="btnResetCloseDenoms" type="button" class="btn btn-outline-secondary btn-sm">
+                                <div class="shift-open-head-actions">
+                                    <button id="btnResetCloseDenoms" type="button" class="btn btn-outline-danger shift-open-action-btn">
+                                        <i class="bx bx-trash"></i>
                                         Xóa tất cả
                                     </button>
                                 </div>
                             </div>
 
-                            <div id="closeDenomGrid" class="shift-denom-grid"></div>
+                            <div class="shift-open-money-table-header">
+                                <div>Mệnh giá</div>
+                                <div>Số tờ / số lượng</div>
+                                <div>Thành tiền</div>
+                                <div></div>
+                            </div>
+
+                            <div id="closeDenomGrid" class="shift-open-money-table-body"></div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT PHẢI -->
+                    <div class="shift-open-right">
+                        <div class="shift-open-direct-card">
+                            <div class="shift-open-block-title">NHẬP TRỰC TIẾP</div>
+
+                            <div class="shift-open-direct-input-wrap">
+                                <input id="txtClosingCashActual"
+                                       type="text"
+                                       inputmode="numeric"
+                                       class="form-control shift-open-direct-input"
+                                       value="0" />
+                                <span>đ</span>
+                            </div>
+
+                            <div class="shift-open-direct-hint">
+                                Có thể nhập tổng tiền thực đếm hoặc dùng bảng mệnh giá
+                            </div>
+                        </div>
+
+                        <div class="shift-open-summary-card">
+                            <div class="shift-open-block-title">TỔNG KẾT ĐÓNG CA</div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Số tờ đã nhập</span>
+                                <strong id="closeBillCountText">0 tờ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tổng thực đếm</span>
+                                <strong id="closeSummaryTotalText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tiền dự kiến</span>
+                                <strong id="closeSummaryExpectedText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Chênh lệch</span>
+                                <strong id="closeSummaryDiffText" class="text-success">0 đ</strong>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">Hủy</button>
-                <button id="btnCloseShift" type="button" class="btn btn-danger shift-modal-btn">OK - Đóng ca</button>
+            <div class="modal-footer shift-open-cashier-footer">
+                <button type="button" class="btn shift-open-cancel-btn" data-bs-dismiss="modal">
+                    <i class="bx bx-x"></i>
+                    Hủy
+                </button>
+
+                <button id="btnCloseShift" type="button" class="btn shift-open-confirm-btn shift-close-confirm-btn">
+                    <i class="bx bx-check-circle"></i>
+                    OK - Đóng ca
+                </button>
             </div>
         </div>
     </div>
 </div>
 
-@section PageScripts {
-    <script>
-        const shiftStatusBadge = document.getElementById('shiftStatusBadge');
-
-        const openShiftSection = document.getElementById('openShiftSection');
-        const noOpenShiftSection = document.getElementById('noOpenShiftSection');
-
-        const btnShowOpenModal = document.getElementById('btnShowOpenModal');
-        const btnShowCashTxnModal = document.getElementById('btnShowCashTxnModal');
-        const btnShowCloseModal = document.getElementById('btnShowCloseModal');
-
-        const shiftId = document.getElementById('shiftId');
-        const shiftCode = document.getElementById('shiftCode');
-        const openedAt = document.getElementById('openedAt');
-        const openingCash = document.getElementById('openingCash');
-        const cashSalesTotal = document.getElementById('cashSalesTotal');
-        const nonCashSalesTotal = document.getElementById('nonCashSalesTotal');
-        const cashRefundTotal = document.getElementById('cashRefundTotal');
-        const nonCashRefundTotal = document.getElementById('nonCashRefundTotal');
-        const refundTotalShift = document.getElementById('refundTotalShift');
-        const refundCountShift = document.getElementById('refundCountShift');
-        const cashInTotal = document.getElementById('cashInTotal');
-        const cashOutTotal = document.getElementById('cashOutTotal');
-        const closingCashExpected = document.getElementById('closingCashExpected');
-        const openNote = document.getElementById('openNote');
-
-        const txtOpeningCash = document.getElementById('txtOpeningCash');
-        const txtOpenNote = document.getElementById('txtOpenNote');
-
-        const cashTxnType = document.getElementById('cashTxnType');
-        const cashTxnAmount = document.getElementById('cashTxnAmount');
-        const cashTxnReason = document.getElementById('cashTxnReason');
-        const cashTxnNote = document.getElementById('cashTxnNote');
-
-        const txtClosingCashActual = document.getElementById('txtClosingCashActual');
-        const txtCloseNote = document.getElementById('txtCloseNote');
-
-        const btnOpenShift = document.getElementById('btnOpenShiftConfirm');
-        const btnAddCashTxn = document.getElementById('btnAddCashTxn');
-        const btnCloseShift = document.getElementById('btnCloseShift');
-
-        const cashTxnBody = document.getElementById('cashTxnBody');
-        const ddlWarehouse = document.getElementById('ddlWarehouse');
-
-        const cashTxnPagerInfo = document.getElementById('cashTxnPagerInfo');
-        const btnCashTxnPrev = document.getElementById('btnCashTxnPrev');
-        const btnCashTxnNext = document.getElementById('btnCashTxnNext');
-
-        const openShiftModalEl = document.getElementById('openShiftModal');
-        const cashTxnModalEl = document.getElementById('cashTxnModal');
-        const closeShiftModalEl = document.getElementById('closeShiftModal');
-
-        const openShiftModal = new bootstrap.Modal(openShiftModalEl);
-        const cashTxnModal = new bootstrap.Modal(cashTxnModalEl);
-        const closeShiftModal = new bootstrap.Modal(closeShiftModalEl);
-
-        const openDenomGrid = document.getElementById('openDenomGrid');
-        const closeDenomGrid = document.getElementById('closeDenomGrid');
-        const openDenomTotalText = document.getElementById('openDenomTotalText');
-        const closeDenomTotalText = document.getElementById('closeDenomTotalText');
-        const btnResetOpenDenoms = document.getElementById('btnResetOpenDenoms');
-        const btnResetCloseDenoms = document.getElementById('btnResetCloseDenoms');
-        const closeExpectedCashText = document.getElementById('closeExpectedCashText');
-        const closeActualCashText = document.getElementById('closeActualCashText');
-        const closeDiffCashText = document.getElementById('closeDiffCashText');
-        const closeDiffHint = document.getElementById('closeDiffHint');
-        const voidCountShift = document.getElementById('voidCountShift');
-
-        const DENOMS = [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000];
-        const PAGE_SIZE = 8;
-
-        let cashTxnAllItems = [];
-
-        let cashTxnPage = 1;
-
-        function parseMoneyText(text) {
-            const raw = (text || '').toString().replace(/\./g, '').replace(/,/g, '').trim();
-            const n = Number(raw || 0);
-            return isNaN(n) ? 0 : n;
-        }
-
-        function getExpectedClosingCashValue() {
-            return parseMoneyText(closingCashExpected.textContent);
-        }
-
-        function renderCloseShiftCompare() {
-            const expected = getExpectedClosingCashValue();
-            const actual = Number(txtClosingCashActual.value || 0);
-            const diff = actual - expected;
-
-            closeExpectedCashText.textContent = formatMoney(expected);
-            closeActualCashText.textContent = formatMoney(actual);
-            closeDiffCashText.textContent = formatMoney(Math.abs(diff));
-
-            closeExpectedCashText.className = 'shift-close-compare-value expected';
-            closeActualCashText.className = 'shift-close-compare-value actual';
-
-            if (diff === 0) {
-                closeDiffCashText.className = 'shift-close-compare-value match';
-                closeDiffHint.className = 'shift-close-compare-hint match';
-                closeDiffHint.textContent = 'Khớp quỹ. Tiền thực đếm đúng bằng tiền dự kiến cuối ca.';
-                return;
-            }
-
-            if (diff > 0) {
-                closeDiffCashText.className = 'shift-close-compare-value positive';
-                closeDiffHint.className = 'shift-close-compare-hint positive';
-                closeDiffHint.textContent = `Thừa quỹ ${formatMoney(diff)}. Tiền thực đếm lớn hơn tiền dự kiến cuối ca.`;
-                return;
-            }
-
-            closeDiffCashText.className = 'shift-close-compare-value negative';
-            closeDiffHint.className = 'shift-close-compare-hint negative';
-            closeDiffHint.textContent = `Thiếu quỹ ${formatMoney(Math.abs(diff))}. Tiền thực đếm nhỏ hơn tiền dự kiến cuối ca.`;
-        }
-
-        function getToken() {
-            const el = document.querySelector('input[name="__RequestVerificationToken"]');
-            return el ? el.value : '';
-        }
-
-        function formatMoney(value) {
-            const n = Number(value || 0);
-            return n.toLocaleString('vi-VN');
-        }
-
-        function formatDateTime(value) {
-            if (!value) return '-';
-            const d = new Date(value);
-            return d.toLocaleString('vi-VN');
-        }
-
-        function showSuccess(msg) {
-            if (window.toastr) toastr.success(msg);
-        }
-
-        function showError(msg) {
-            if (window.toastr) toastr.error(msg || 'Có lỗi xảy ra');
-        }
-
-        async function fetchJson(url, options = {}) {
-            const res = await fetch(url, options);
-            const contentType = res.headers.get('content-type') || '';
-
-            let jsonData = null;
-            let textData = '';
-
-            try {
-                if (contentType.includes('application/json')) {
-                    jsonData = await res.json();
-                } else {
-                    textData = await res.text();
-                }
-            } catch { }
-
-            if (!res.ok) {
-                const msg =
-                    jsonData?.message ||
-                    jsonData?.title ||
-                    jsonData?.error ||
-                    textData ||
-                    `Yêu cầu thất bại (${res.status})`;
-
-                throw new Error(msg);
-            }
-
-            return jsonData ?? textData ?? null;
-        }
-
-        async function postJson(url, data) {
-            return await fetchJson(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'RequestVerificationToken': getToken()
-                },
-                body: JSON.stringify(data || {})
-            });
-        }
-
-        async function withButtonLoading(button, action) {
-            if (!button) return await action();
-            if (button.disabled) return;
-
-            const oldHtml = button.innerHTML;
-            button.disabled = true;
-            button.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Đang xử lý`;
-
-            try {
-                return await action();
-            } finally {
-                button.disabled = false;
-                button.innerHTML = oldHtml;
-            }
-        }
-
-        function getCashTypeText(type) {
-            const val = (type || '').toString().toLowerCase();
-
-            if (val.includes('cashin') || val === '1' || val === 'in') return 'Thu tiền mặt';
-            if (val.includes('cashout') || val === '2' || val === 'out') return 'Chi tiền mặt';
-
-            return type || '-';
-        }
-
-        function setBadgeLoading() {
-            shiftStatusBadge.className = 'shift-status-pill loading';
-            shiftStatusBadge.innerHTML = `<i class="bx bx-loader-alt"></i><span>Đang tải...</span>`;
-        }
-
-        function renderNoOpenShift() {
-            shiftStatusBadge.className = 'shift-status-pill warning';
-            shiftStatusBadge.innerHTML = `<i class="bx bx-error-circle"></i><span>Chưa mở ca</span>`;
-
-            openShiftSection.style.display = 'none';
-            noOpenShiftSection.style.display = '';
-
-            btnShowOpenModal.style.display = '';
-            btnShowCashTxnModal.style.display = 'none';
-            btnShowCloseModal.style.display = 'none';
-        }
-
-        function renderOpenShift(shift) {
-            shiftStatusBadge.className = 'shift-status-pill open';
-            shiftStatusBadge.innerHTML = `<i class="bx bx-check-circle"></i><span>Đang mở ca</span>`;
-
-            noOpenShiftSection.style.display = 'none';
-            openShiftSection.style.display = '';
-
-            btnShowOpenModal.style.display = 'none';
-            btnShowCashTxnModal.style.display = '';
-            btnShowCloseModal.style.display = '';
-
-            shiftId.textContent = shift.id || '-';
-            shiftCode.textContent = shift.shiftCode || '-';
-            openedAt.textContent = formatDateTime(shift.openedAtUtc);
-            openingCash.textContent = formatMoney(shift.openingCash);
-            cashSalesTotal.textContent = formatMoney(shift.cashSalesTotal);
-            nonCashSalesTotal.textContent = formatMoney(shift.nonCashSalesTotal);
-            cashRefundTotal.textContent = formatMoney(shift.cashRefundTotal);
-            nonCashRefundTotal.textContent = formatMoney(shift.nonCashRefundTotal);
-            refundTotalShift.textContent = formatMoney(shift.refundTotal);
-            refundCountShift.textContent = shift.refundCount ?? 0;
-            voidCountShift.textContent = shift.voidCount ?? 0;
-            cashInTotal.textContent = formatMoney(shift.cashInTotal);
-            cashOutTotal.textContent = formatMoney(shift.cashOutTotal);
-            closingCashExpected.textContent = formatMoney(shift.closingCashExpected);
-            openNote.textContent = shift.openNote || '-';
-        }
-
-        function switchShiftTab(tabId) {
-            document.querySelectorAll('.shift-tab-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.shiftTab === tabId);
-            });
-
-            document.querySelectorAll('.shift-tab-pane').forEach(pane => {
-                pane.classList.toggle('active', pane.id === tabId);
-            });
-        }
-
-        document.querySelectorAll('.shift-tab-btn').forEach(btn => {
-            btn.addEventListener('click', function () {
-                switchShiftTab(this.dataset.shiftTab);
-            });
-        });
-
-        function buildDenomGrid(container, prefix) {
-            container.innerHTML = DENOMS.map((value, index) => `
-                <div class="shift-denom-item">
-                    <div class="shift-denom-head">
-                        <div class="shift-denom-label">${formatMoney(value)}đ</div>
-                        <div class="shift-denom-total" id="${prefix}LineTotal_${value}">0</div>
-                    </div>
-                    <div class="shift-stepper">
-                        <button type="button" class="shift-stepper-btn" data-step="down" data-prefix="${prefix}" data-value="${value}">−</button>
-                        <input id="${prefix}Qty_${value}"
-                               data-prefix="${prefix}"
-                               data-denom="${value}"
-                               data-index="${index}"
-                               type="number"
-                               min="0"
-                               step="1"
-                               value="0"
-                               class="form-control shift-stepper-input" />
-                        <button type="button" class="shift-stepper-btn" data-step="up" data-prefix="${prefix}" data-value="${value}">+</button>
-                    </div>
+<div class="modal fade" id="posErrorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pos-error-modal shift-pos-error-modal">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Không thể thực hiện thao tác</h5>
+                    <div class="shift-error-subtitle">Vui lòng kiểm tra thông tin ca POS hiện tại</div>
                 </div>
-            `).join('');
-        }
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
 
-        function getDenomInputs(prefix) {
-            return Array.from(document.querySelectorAll(`input[data-prefix="${prefix}"][data-denom]`))
-                .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index));
-        }
+            <div class="modal-body">
+                <div id="posErrorModalMessage" class="shift-error-message"></div>
+                <div id="posErrorModalHint" class="shift-error-hint"></div>
 
-        function calcDenomTotal(prefix) {
-            let total = 0;
-            getDenomInputs(prefix).forEach(input => {
-                const denom = Number(input.dataset.denom || 0);
-                const qty = Number(input.value || 0);
-                const lineTotal = denom * qty;
-                total += lineTotal;
+                <div id="posErrorModalMeta" class="shift-error-meta"></div>
 
-                const lineEl = document.getElementById(`${prefix}LineTotal_${denom}`);
-                if (lineEl) {
-                    lineEl.textContent = formatMoney(lineTotal);
-                }
+                <div id="posErrorModalActions" class="shift-error-actions"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-light shift-error-close-btn"
+                        data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.page.js" asp-append-version="true"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const source = document.getElementById('closingCashExpected');
+            const mirror = document.getElementById('closingCashExpectedMirror');
+            if (!source || !mirror || !window.MutationObserver) return;
+
+            mirror.textContent = source.textContent || '0';
+
+            const ob = new MutationObserver(function () {
+                mirror.textContent = source.textContent || '0';
             });
 
-            if (prefix === 'open') {
-                openDenomTotalText.textContent = formatMoney(total);
-                txtOpeningCash.value = total;
-            } else if (prefix === 'close') {
-                closeDenomTotalText.textContent = formatMoney(total);
-                txtClosingCashActual.value = total;
-                renderCloseShiftCompare();
-            }
-
-            return total;
-        }
-
-        function resetDenoms(prefix) {
-            getDenomInputs(prefix).forEach(input => input.value = 0);
-            calcDenomTotal(prefix);
-        }
-
-        function focusNextDenomInput(prefix, currentIndex) {
-            const inputs = getDenomInputs(prefix);
-            const next = inputs.find(x => Number(x.dataset.index) === currentIndex + 1);
-            if (next) {
-                next.focus();
-                next.select();
-            }
-        }
-
-        function wireDenomEvents(prefix) {
-            getDenomInputs(prefix).forEach(input => {
-                input.addEventListener('focus', function () {
-                    this.select();
-                });
-
-                input.addEventListener('input', function () {
-                    if (Number(this.value || 0) < 0) this.value = 0;
-                    calcDenomTotal(prefix);
-                });
-
-                input.addEventListener('keydown', function (e) {
-                    const currentIndex = Number(this.dataset.index || 0);
-
-                    if (e.key === 'Enter' && !e.ctrlKey) {
-                        e.preventDefault();
-                        focusNextDenomInput(prefix, currentIndex);
-                        return;
-                    }
-
-                    if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        this.value = Number(this.value || 0) + 1;
-                        calcDenomTotal(prefix);
-                        this.select();
-                        return;
-                    }
-
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        this.value = Math.max(0, Number(this.value || 0) - 1);
-                        calcDenomTotal(prefix);
-                        this.select();
-                    }
-                });
-            });
-
-            document.querySelectorAll(`button[data-prefix="${prefix}"][data-step]`).forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const denom = this.dataset.value;
-                    const input = document.getElementById(`${prefix}Qty_${denom}`);
-                    if (!input) return;
-
-                    const current = Number(input.value || 0);
-                    if (this.dataset.step === 'up') {
-                        input.value = current + 1;
-                    } else {
-                        input.value = Math.max(0, current - 1);
-                    }
-
-                    calcDenomTotal(prefix);
-                    input.focus();
-                    input.select();
-                });
-            });
-        }
-
-        function initDenomPanels() {
-            buildDenomGrid(openDenomGrid, 'open');
-            buildDenomGrid(closeDenomGrid, 'close');
-            wireDenomEvents('open');
-            wireDenomEvents('close');
-            calcDenomTotal('open');
-            calcDenomTotal('close');
-        }
-
-        function focusFirstDenom(prefix) {
-            const first = getDenomInputs(prefix)[0];
-            if (first) {
-                setTimeout(() => {
-                    first.focus();
-                    first.select();
-                }, 120);
-            }
-        }
-
-        function openOpenShiftModal() {
-            resetDenoms('open');
-            txtOpenNote.value = '';
-            openShiftModal.show();
-        }
-
-        function openCashTxnPopup() {
-            cashTxnAmount.value = '0';
-            cashTxnReason.value = '';
-            cashTxnNote.value = '';
-            cashTxnType.value = '1';
-            cashTxnModal.show();
-        }
-
-        function openCloseShiftPopup() {
-            resetDenoms('close');
-            txtCloseNote.value = '';
-            renderCloseShiftCompare();
-            closeShiftModal.show();
-        }
-
-        async function loadWarehouses() {
-            try {
-                const list = await fetchJson('/admin/api/warehouses');
-
-                ddlWarehouse.innerHTML = '<option value="">-- Chọn kho --</option>';
-
-                (list || []).forEach(w => {
-                    const opt = document.createElement('option');
-                    opt.value = w.id;
-                    opt.textContent = `${w.code} - ${w.name}`;
-                    ddlWarehouse.appendChild(opt);
-                });
-
-                if ((list || []).length === 1) {
-                    ddlWarehouse.value = list[0].id;
-                }
-            } catch (err) {
-                showError(err.message);
-            }
-        }
-
-        function renderCashTransactions(items) {
-            cashTxnAllItems = Array.isArray(items) ? items : [];
-            cashTxnPage = 1;
-            renderCashTransactionPage();
-        }
-
-        function renderCashTransactionPage() {
-            const total = cashTxnAllItems.length;
-            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-            cashTxnPage = Math.min(Math.max(1, cashTxnPage), totalPages);
-
-            const start = (cashTxnPage - 1) * PAGE_SIZE;
-            const pageItems = cashTxnAllItems.slice(start, start + PAGE_SIZE);
-
-            if (!pageItems.length) {
-                cashTxnBody.innerHTML = `
-                    <tr>
-                        <td colspan="5" class="text-center text-muted py-4">
-                            Chưa có giao dịch.
-                        </td>
-                    </tr>`;
-            } else {
-                cashTxnBody.innerHTML = pageItems.map(x => {
-                    const isIn = (x.type || '').toString().toLowerCase().includes('in') || x.type == 1;
-
-                    return `
-                        <tr>
-                            <td>
-                                <div class="cash-time">${formatDateTime(x.createdAtUtc)}</div>
-                            </td>
-                            <td>
-                                <span class="shift-type-badge ${isIn ? 'in' : 'out'}">
-                                    ${getCashTypeText(x.type)}
-                                </span>
-                            </td>
-                            <td class="${isIn ? 'shift-money-positive' : 'shift-money-negative'} cash-amount">
-                                ${formatMoney(x.amount)}
-                            </td>
-                            <td class="cash-reason">
-                                ${x.reason || '-'}
-                            </td>
-                            <td class="cash-note">
-                                ${x.note || '-'}
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-
-            if (total === 0) {
-                cashTxnPagerInfo.textContent = '0 giao dịch';
-            } else {
-                const from = start + 1;
-                const to = Math.min(start + PAGE_SIZE, total);
-                cashTxnPagerInfo.textContent = `${from}-${to} / ${total} giao dịch`;
-            }
-
-            btnCashTxnPrev.disabled = cashTxnPage <= 1;
-            btnCashTxnNext.disabled = cashTxnPage >= totalPages;
-        }
-
-        btnCashTxnPrev.addEventListener('click', function () {
-            if (cashTxnPage > 1) {
-                cashTxnPage--;
-                renderCashTransactionPage();
-            }
-        });
-
-        btnCashTxnNext.addEventListener('click', function () {
-            const totalPages = Math.max(1, Math.ceil(cashTxnAllItems.length / PAGE_SIZE));
-            if (cashTxnPage < totalPages) {
-                cashTxnPage++;
-                renderCashTransactionPage();
-            }
-        });
-
-        async function loadCashTransactions() {
-            try {
-                const items = await fetchJson('/admin/pos/shift/cash-transactions');
-                renderCashTransactions(items || []);
-            } catch (err) {
-                renderCashTransactions([]);
-                showError(err.message);
-            }
-        }
-
-        async function loadCurrentShift() {
-            setBadgeLoading();
-
-            try {
-                const shift = await fetchJson('/admin/pos/shift/current');
-
-                if (!shift) {
-                    renderNoOpenShift();
-                    return;
-                }
-
-                renderOpenShift(shift);
-                await loadCashTransactions();
-            } catch (err) {
-                renderNoOpenShift();
-                showError(err.message);
-            }
-        }
-
-        async function openShift() {
-            const warehouseId = parseInt(ddlWarehouse.value || '0');
-
-            if (!warehouseId) {
-                showError('Vui lòng chọn kho bán hàng');
-                return;
-            }
-
-            await withButtonLoading(btnOpenShift, async () => {
-                try {
-                    await postJson('/admin/pos/shift/open', {
-                        warehouseId: warehouseId,
-                        openingCash: parseFloat(txtOpeningCash.value || '0'),
-                        note: txtOpenNote.value || null
-                    });
-
-                    showSuccess('Đã mở ca thành công');
-                    openShiftModal.hide();
-                    await loadCurrentShift();
-                } catch (err) {
-                    showError(err.message);
-                }
-            });
-        }
-
-        async function addCashTransaction() {
-            await withButtonLoading(btnAddCashTxn, async () => {
-                try {
-                    await postJson('/admin/pos/shift/cash-transaction', {
-                        type: parseInt(cashTxnType.value || '0'),
-                        amount: parseFloat(cashTxnAmount.value || '0'),
-                        reason: cashTxnReason.value || null,
-                        note: cashTxnNote.value || null
-                    });
-
-                    showSuccess('Đã ghi nhận thu / chi tiền mặt');
-                    cashTxnModal.hide();
-
-                    await loadCurrentShift();
-                    await loadCashTransactions();
-                    switchShiftTab('historyTab');
-                } catch (err) {
-                    showError(err.message);
-                }
-            });
-        }
-
-        async function closeShift() {
-            await withButtonLoading(btnCloseShift, async () => {
-                try {
-                    await postJson('/admin/pos/shift/close', {
-                        closingCashActual: parseFloat(txtClosingCashActual.value || '0'),
-                        note: txtCloseNote.value || null
-                    });
-
-                    showSuccess('Đã đóng ca thành công');
-                    closeShiftModal.hide();
-                    await loadCurrentShift();
-                } catch (err) {
-                    showError(err.message);
-                }
-            });
-        }
-
-        btnShowOpenModal.addEventListener('click', openOpenShiftModal);
-        btnShowCashTxnModal.addEventListener('click', openCashTxnPopup);
-        btnShowCloseModal.addEventListener('click', openCloseShiftPopup);
-
-        btnOpenShift.addEventListener('click', openShift);
-        btnAddCashTxn.addEventListener('click', addCashTransaction);
-        btnCloseShift.addEventListener('click', closeShift);
-
-        btnResetOpenDenoms.addEventListener('click', function () {
-            resetDenoms('open');
-            focusFirstDenom('open');
-        });
-
-        btnResetCloseDenoms.addEventListener('click', function () {
-            resetDenoms('close');
-            focusFirstDenom('close');
-        });
-
-        txtOpeningCash.addEventListener('focus', function () { this.select(); });
-        txtClosingCashActual.addEventListener('focus', function () { this.select(); });
-        cashTxnAmount.addEventListener('focus', function () { this.select(); });
-
-        txtOpeningCash.addEventListener('input', function () {
-            openDenomTotalText.textContent = formatMoney(this.value || 0);
-        });
-
-        txtClosingCashActual.addEventListener('input', function () {
-            closeDenomTotalText.textContent = formatMoney(this.value || 0);
-            renderCloseShiftCompare();
-        });
-
-        [cashTxnAmount, cashTxnReason, cashTxnNote].forEach(el => {
-            if (!el) return;
-            el.addEventListener('focus', function () {
-                if (this.select) this.select();
-            });
-        });
-
-        cashTxnType.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                cashTxnAmount.focus();
-                cashTxnAmount.select();
-            }
-        });
-
-        cashTxnAmount.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                cashTxnReason.focus();
-                cashTxnReason.select();
-            }
-        });
-
-        cashTxnReason.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                cashTxnNote.focus();
-                cashTxnNote.select();
-            }
-        });
-
-        txtOpenNote.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                openShift();
-            }
-        });
-
-        txtCloseNote.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                closeShift();
-            }
-        });
-
-        openShiftModalEl.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                openShift();
-            }
-        });
-
-        cashTxnModalEl.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                addCashTransaction();
-                return;
-            }
-
-            if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
-                const fields = [cashTxnType, cashTxnAmount, cashTxnReason, cashTxnNote];
-                const currentIndex = fields.indexOf(e.target);
-                if (currentIndex >= 0 && currentIndex < fields.length - 1) {
-                    e.preventDefault();
-                    fields[currentIndex + 1].focus();
-                    if (fields[currentIndex + 1].select) fields[currentIndex + 1].select();
-                }
-            }
-        });
-
-        closeShiftModalEl.addEventListener('keydown', function (e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                closeShift();
-            }
-        });
-
-        openShiftModalEl.addEventListener('shown.bs.modal', function () {
-            focusFirstDenom('open');
-        });
-
-        cashTxnModalEl.addEventListener('shown.bs.modal', function () {
-            setTimeout(() => {
-                cashTxnType.focus();
-            }, 80);
-        });
-
-        closeShiftModalEl.addEventListener('shown.bs.modal', function () {
-            renderCloseShiftCompare();
-            focusFirstDenom('close');
-        });
-
-        document.addEventListener('DOMContentLoaded', async function () {
-            initDenomPanels();
-            await loadWarehouses();
-            await loadCurrentShift();
+            ob.observe(source, { childList: true, subtree: true, characterData: true });
         });
     </script>
 }

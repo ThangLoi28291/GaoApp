@@ -15,6 +15,8 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     [Required]
     [StringLength(50)]
     public string DocumentNo { get; set; } = default!;
+    [StringLength(255)]
+    public string? DocumentTitle { get; set; }
 
     public StockDocumentType Type { get; set; } = StockDocumentType.Receipt;
 
@@ -61,6 +63,22 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     /// </summary>
     [StringLength(1000)]
     public string? ApprovalNote { get; set; }
+    /// <summary>
+    /// Nhân viên đã gửi yêu cầu xin sửa phiếu sau khi đã gửi duyệt.
+    /// Phiếu vẫn ở trạng thái PendingApproval, quản lý quyết định có trả về sửa hay không.
+    /// </summary>
+    public bool HasRevisionRequest { get; set; } = false;
+
+    [StringLength(1000)]
+    public string? RevisionRequestNote { get; set; }
+
+    public DateTime? RevisionRequestedAtUtc { get; set; }
+
+    public int? RevisionRequestedByUserId { get; set; }
+
+    public DateTime? RevisionResolvedAtUtc { get; set; }
+
+    public int? RevisionResolvedByUserId { get; set; }
 
     /// <summary>
     /// Giữ lại để tương thích nghiệp vụ cũ "confirm".
@@ -72,4 +90,15 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
 
     public ICollection<StockDocumentLine> Lines { get; set; }
         = new List<StockDocumentLine>();
+    /// <summary>
+    /// Danh sách hóa đơn XML đầu vào gắn với phiếu nhập này.
+    /// </summary>
+    public ICollection<StockDocumentInputInvoiceMap> InputInvoiceMaps { get; set; }
+        = new List<StockDocumentInputInvoiceMap>();
+
+    /// <summary>
+    /// Danh sách map dòng nhập với dòng XML.
+    /// </summary>
+    public ICollection<StockDocumentLineInputInvoiceMap> LineInputInvoiceMaps { get; set; }
+        = new List<StockDocumentLineInputInvoiceMap>();
 }

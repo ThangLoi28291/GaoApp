@@ -10,6 +10,7 @@ using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Common.POS;
 using GaoApp.Web.Configuration;
 using GaoApp.Web.HealthChecks;
+using GaoApp.Web.Hubs;
 using GaoApp.Web.Middlewares;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -19,7 +20,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
-
 // =========================================================
 // Bootstrap logger:
 // Dùng để bắt log rất sớm khi app mới khởi động,
@@ -70,6 +70,12 @@ try
     });
 
     // =========================================================
+    // SignalR
+    // =========================================================
+
+    builder.Services.AddSignalR();
+    builder.Services.AddScoped<IPosRealtimeNotifier, PosRealtimeNotifier>();
+    // =========================================================
     // 3) FLUENTVALIDATION
     // =========================================================
     builder.Services.AddFluentValidationAutoValidation(options =>
@@ -89,21 +95,71 @@ try
     // 5) WEB-SPECIFIC SERVICES
     // =========================================================
     builder.Services.AddScoped<IPOSRuntimeContextAccessor, POSRuntimeContextAccessor>();
+    builder.Services.AddScoped<ICurrentPOSContext, CurrentPOSContext>();
 
     // =========================================================
     // 6) AUTHENTICATION / AUTHORIZATION
     // =========================================================
     builder.Services
-        .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-        .AddCookie(options =>
-        {
-            options.LoginPath = "/admin/account/login";
-            options.AccessDeniedPath = "/admin/account/access-denied";
+     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+     .AddCookie(options =>
+     {
+         options.LoginPath = "/admin/account/login";
+         options.AccessDeniedPath = "/admin/account/access-denied";
 
-            // Có thể bật thêm nếu muốn hardening hơn:
-            // options.SlidingExpiration = true;
-            // options.ExpireTimeSpan = TimeSpan.FromDays(7);
-        });
+         // Có thể bật thêm nếu muốn hardening hơn:
+         // options.SlidingExpiration = true;
+         // options.ExpireTimeSpan = TimeSpan.FromDays(7);
+
+         options.Events = new CookieAuthenticationEvents
+         {
+             OnRedirectToLogin = context =>
+             {
+                 var path = context.Request.Path.Value ?? string.Empty;
+                 var accept = context.Request.Headers.Accept.ToString();
+                 var requestedWith = context.Request.Headers["X-Requested-With"].ToString();
+
+                 var isApiRequest =
+    path.StartsWith("/admin/pos/", StringComparison.OrdinalIgnoreCase)||
+      path.StartsWith("/admin/api", StringComparison.OrdinalIgnoreCase) ||
+      (!string.IsNullOrWhiteSpace(accept) &&
+       accept.Contains("application/json", StringComparison.OrdinalIgnoreCase)) ||
+      string.Equals(requestedWith, "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
+                 if (isApiRequest)
+                 {
+                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                     return Task.CompletedTask;
+                 }
+
+                 context.Response.Redirect(context.RedirectUri);
+                 return Task.CompletedTask;
+             },
+
+             OnRedirectToAccessDenied = context =>
+             {
+                 var path = context.Request.Path.Value ?? string.Empty;
+                 var accept = context.Request.Headers.Accept.ToString();
+                 var requestedWith = context.Request.Headers["X-Requested-With"].ToString();
+
+                 var isApiRequest =
+                     path.StartsWith("/admin/pos/shift", StringComparison.OrdinalIgnoreCase) ||
+                     path.StartsWith("/admin/api", StringComparison.OrdinalIgnoreCase) ||
+                     (!string.IsNullOrWhiteSpace(accept) &&
+                      accept.Contains("application/json", StringComparison.OrdinalIgnoreCase)) ||
+                     string.Equals(requestedWith, "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
+                 if (isApiRequest)
+                 {
+                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                     return Task.CompletedTask;
+                 }
+
+                 context.Response.Redirect(context.RedirectUri);
+                 return Task.CompletedTask;
+             }
+         };
+     });
 
     builder.Services.AddAuthorization();
 
@@ -127,11 +183,14 @@ try
 
     var app = builder.Build();
 
-    // =========================================================
     // 9) DB MIGRATION + SEED
-    // Chạy trước khi nhận request.
+    // Development: web tự migrate + seed để dev nhanh
+    // Production/Staging: KHÔNG tự migrate, dùng GaoApp.Migrator riêng
     // =========================================================
-    await MigrateAndSeedAsync(app);
+    if (app.Environment.IsDevelopment())
+    {
+        await app.MigrateAndSeedDatabaseAsync();
+    }
 
     // =========================================================
     // 10) GLOBAL EXCEPTION HANDLING
@@ -229,6 +288,8 @@ try
         ResponseWriter = HealthCheckResponseWriter.WriteResponseAsync
     });
 
+    app.MapHub<PosHub>("/hubs/pos");
+    
     // =========================================================
     // 19) DEBUG ENDPOINTS
     // =========================================================
@@ -273,7 +334,10 @@ try
 }
 catch (Exception ex)
 {
+    File.WriteAllText("startup-error.txt", ex.ToString());
+    
     Log.Fatal(ex, "GaoApp.Web terminated unexpectedly");
+    throw;
 }
 finally
 {
@@ -283,46 +347,3 @@ finally
 // =========================================================
 // LOCAL FUNCTIONS
 // =========================================================
-static async Task MigrateAndSeedAsync(WebApplication app)
-{
-    using var scope = app.Services.CreateScope();
-    var services = scope.ServiceProvider;
-
-    try
-    {
-        var db = services.GetRequiredService<AppDbContext>();
-
-        await db.Database.MigrateAsync();
-
-        // =====================================================
-        // LUÔN CHẠY
-        // production-safe seed
-        // =====================================================
-        await SecuritySeedData.SeedPermissionsAsync(db);
-
-        // =====================================================
-        // CHỈ CHẠY DEV
-        // tránh seed user demo ở production
-        // =====================================================
-        if (app.Environment.IsDevelopment())
-        {
-            await SecuritySeedData.SeedUsersAsync(db);
-            await SecuritySeedData.SeedDefaultRolesForAllStoresAsync(db);
-
-            var storeIds = await db.Stores
-                .AsNoTracking()
-                .Select(x => x.Id)
-                .ToListAsync();
-
-            foreach (var storeId in storeIds)
-            {
-                await SecuritySeedData.SeedUserInStoresAsync(db, storeId);
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        Log.Fatal(ex, "Database migration/seed failed");
-        throw;
-    }
-}

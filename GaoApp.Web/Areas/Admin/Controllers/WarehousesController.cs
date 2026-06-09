@@ -1,5 +1,7 @@
-﻿using GaoApp.Application.DTOs.Inventory.Warehouse;
+﻿using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Inventory.Warehouse;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -14,6 +16,39 @@ public class WarehousesController : ControllerBase
     public WarehousesController(IWarehouseService warehouseService)
     {
         _warehouseService = warehouseService;
+    }
+    public class ToggleWarehouseFlagRequest
+    {
+        public bool Value { get; set; }
+    }
+    [HttpPatch("{id:int}/allow-negative")]
+    [Authorize(Policy = PermissionCodes.Inventory.Warehouse.Update)]
+    public async Task<IActionResult> ToggleAllowNegative(
+    int id,
+    [FromBody] ToggleWarehouseFlagRequest request,
+    CancellationToken ct)
+    {
+        var result = await _warehouseService.ToggleAllowNegativeInventoryAsync(id, request.Value, ct);
+        return Ok(result);
+    }
+
+    [HttpPatch("{id:int}/active")]
+    [Authorize(Policy = PermissionCodes.Inventory.Warehouse.Update)]
+    public async Task<IActionResult> ToggleActive(
+        int id,
+        [FromBody] ToggleWarehouseFlagRequest request,
+        CancellationToken ct)
+    {
+        var result = await _warehouseService.ToggleActiveAsync(id, request.Value, ct);
+        return Ok(result);
+    }
+
+    [HttpPatch("{id:int}/default")]
+    [Authorize(Policy = PermissionCodes.Inventory.Warehouse.Update)]
+    public async Task<IActionResult> SetDefault(int id, CancellationToken ct)
+    {
+        var result = await _warehouseService.SetDefaultAsync(id, ct);
+        return Ok(result);
     }
 
     [HttpGet]
@@ -47,7 +82,10 @@ public class WarehousesController : ControllerBase
             results = items.Select(x => new
             {
                 id = x.Id,
-                text = x.Text
+                text = x.Text,
+
+                // Bổ sung để các popup tự chọn kho mặc định
+                isDefault = x.IsDefault
             })
         });
     }

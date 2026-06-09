@@ -85,11 +85,14 @@ public static class PermissionCatalog
             P(PermissionCodes.Inventory.StockDocument.Approve, "Duyệt chứng từ kho", "Inventory", "inventory", "stockdocument", "approve"),
             P(PermissionCodes.Inventory.StockDocument.Cancel,  "Hủy chứng từ kho", "Inventory", "inventory", "stockdocument", "cancel"),
 
-            P(PermissionCodes.Inventory.Adjustment.View,    "Xem điều chỉnh kho", "Inventory", "inventory", "adjustment", "view"),
-            P(PermissionCodes.Inventory.Adjustment.Create,  "Tạo điều chỉnh kho", "Inventory", "inventory", "adjustment", "create"),
-            P(PermissionCodes.Inventory.Adjustment.Update,  "Sửa điều chỉnh kho", "Inventory", "inventory", "adjustment", "update"),
-            P(PermissionCodes.Inventory.Adjustment.Delete,  "Xóa điều chỉnh kho", "Inventory", "inventory", "adjustment", "delete"),
-            P(PermissionCodes.Inventory.Adjustment.Approve, "Duyệt điều chỉnh kho", "Inventory", "inventory", "adjustment", "approve"),
+           P(PermissionCodes.Inventory.Adjustment.View,    "Xem phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "view"),
+P(PermissionCodes.Inventory.Adjustment.Create,  "Tạo phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "create"),
+P(PermissionCodes.Inventory.Adjustment.Update,  "Sửa phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "update"),
+P(PermissionCodes.Inventory.Adjustment.Delete,  "Xóa phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "delete"),
+P(PermissionCodes.Inventory.Adjustment.Submit,  "Gửi duyệt phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "submit"),
+P(PermissionCodes.Inventory.Adjustment.Approve, "Duyệt phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "approve"),
+P(PermissionCodes.Inventory.Adjustment.Reject,  "Từ chối phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "reject"),
+P(PermissionCodes.Inventory.Adjustment.Cancel,  "Hủy phiếu điều chỉnh kho", "Inventory", "inventory", "adjustment", "cancel"),
 
             P(PermissionCodes.Inventory.StockCount.View,    "Xem kiểm kê", "Inventory", "inventory", "stockcount", "view"),
             P(PermissionCodes.Inventory.StockCount.Create,  "Tạo kiểm kê", "Inventory", "inventory", "stockcount", "create"),
@@ -125,10 +128,13 @@ public static class PermissionCatalog
             P(PermissionCodes.Pos.Order.Refund,   "Refund đơn POS", "POS", "pos", "order", "refund"),
             P(PermissionCodes.Pos.Order.Reprint,  "In lại đơn POS", "POS", "pos", "order", "reprint"),
 
+
             P(PermissionCodes.Pos.Shift.View,      "Xem ca POS", "POS", "pos", "shift", "view"),
             P(PermissionCodes.Pos.Shift.Open,      "Mở ca POS", "POS", "pos", "shift", "open"),
             P(PermissionCodes.Pos.Shift.Close,     "Đóng ca POS", "POS", "pos", "shift", "close"),
             P(PermissionCodes.Pos.Shift.Reconcile, "Đối soát ca POS", "POS", "pos", "shift", "reconcile"),
+            P(PermissionCodes.Pos.Shift.TakeOver,   "Tiếp quản ca POS", "POS", "pos", "shift", "takeover"),
+            P(PermissionCodes.Pos.Shift.ForceClose, "Đóng hộ ca POS",   "POS", "pos", "shift", "forceclose"),
 
             P(PermissionCodes.Pos.Payment.View,   "Xem thanh toán POS", "POS", "pos", "payment", "view"),
             P(PermissionCodes.Pos.Payment.Create, "Tạo thanh toán POS", "POS", "pos", "payment", "create"),

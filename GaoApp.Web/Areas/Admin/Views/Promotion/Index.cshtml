@@ -1,0 +1,419 @@
+﻿@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.ViewModels.Promotions
+
+@model PromotionIndexVM
+
+@{
+    ViewData["Title"] = "Khuyến mãi";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section header {
+    <div class="promo-page-header">
+        <div>
+            <div class="promo-kicker">POS / Promotion</div>
+            <h3 class="mb-1 fw-bold">Quản lý khuyến mãi</h3>
+            <div class="text-muted">
+                Tạo chương trình giảm giá sản phẩm, combo và mua X tặng Y.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="button" id="btnOpenCreatePromotion" class="btn btn-primary">
+                <i class="bx bx-plus me-1"></i> Thêm khuyến mãi
+            </button>
+        </div>
+    </div>
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/promotions.page.css" asp-append-version="true" />
+}
+
+<div class="promo-shell"
+     data-search-url="@Url.Action("Search", "Promotion", new { area = "Admin" })"
+     data-get-url="@Url.Action("Get", "Promotion", new { area = "Admin" })"
+     data-save-url="@Url.Action("Save", "Promotion", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleStatus", "Promotion", new { area = "Admin" })"
+     data-delete-url="@Url.Action("DeleteAjax", "Promotion", new { area = "Admin" })"
+     data-duplicate-url="@Url.Action("Duplicate", "Promotion", new { area = "Admin" })"
+     data-search-product-url="/admin/pos/products/search"
+     data-product-units-url="@Url.Action("GetProductUnits", "Promotion", new { area = "Admin" })"
+     data-get-product-url="@Url.Action("GetProductForPromotion", "Promotion", new { area = "Admin" })">
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="promo-stat-card">
+                <div class="promo-stat-icon bg-primary-subtle text-primary">
+                    <i class="bx bx-gift"></i>
+                </div>
+                <div>
+                    <div class="promo-stat-label">Tổng chương trình</div>
+                    <div class="promo-stat-value">@Model.Paged.TotalItems</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="promo-stat-card">
+                <div class="promo-stat-icon bg-success-subtle text-success">
+                    <i class="bx bx-check-shield"></i>
+                </div>
+                <div>
+                    <div class="promo-stat-label">Loại hỗ trợ</div>
+                    <div class="promo-stat-value">3 loại</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="promo-stat-card">
+                <div class="promo-stat-icon bg-warning-subtle text-warning">
+                    <i class="bx bx-bolt-circle"></i>
+                </div>
+                <div>
+                    <div class="promo-stat-label">Áp dụng POS</div>
+                    <div class="promo-stat-value">Tự động</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm promo-filter-card">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label fw-semibold">Loại KM</label>
+                    <select id="ddlType" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="@((int)PromotionType.ProductDiscount)" selected="@(Model.Type == PromotionType.ProductDiscount)">
+                            Giảm sản phẩm
+                        </option>
+                        <option value="@((int)PromotionType.ComboFixedPrice)" selected="@(Model.Type == PromotionType.ComboFixedPrice)">
+                            Combo
+                        </option>
+                        <option value="@((int)PromotionType.BuyXGetY)" selected="@(Model.Type == PromotionType.BuyXGetY)">
+                            Mua X tặng Y
+                        </option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label fw-semibold">Trạng thái</label>
+                    <select id="ddlIsActive" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="true" selected="@(Model.IsActive == true)">Đang bật</option>
+                        <option value="false" selected="@(Model.IsActive == false)">Đã khóa</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label fw-semibold">Nhóm khách</label>
+                    <select id="ddlCustomerTier" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="RETAIL" selected="@(Model.CustomerPriceTier == "RETAIL")">Khách lẻ</option>
+                        <option value="WHOLESALE" selected="@(Model.CustomerPriceTier == "WHOLESALE")">Khách sỉ</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                    <label class="form-label fw-semibold">Tìm kiếm</label>
+                    <div class="promo-search-box">
+                        <i class="bx bx-search"></i>
+                        <input id="txtSearch"
+                               class="form-control"
+                               placeholder="Tên chương trình, ghi chú..."
+                               autocomplete="off"
+                               value="@Model.SearchString" />
+                        <button type="button" id="btnClearSearch" class="promo-clear-search d-none">
+                            <i class="bx bx-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label fw-semibold">Số dòng</label>
+                    <select id="ddlPageSize" class="form-select">
+                        <option value="10" selected="@(Model.PageSize == 10)">10 dòng</option>
+                        <option value="20" selected="@(Model.PageSize == 20)">20 dòng</option>
+                        <option value="50" selected="@(Model.PageSize == 50)">50 dòng</option>
+                        <option value="100" selected="@(Model.PageSize == 100)">100 dòng</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-1 col-md-6 d-grid">
+                    <button type="button" id="btnReload" class="btn btn-label-primary">
+                        <i class="bx bx-refresh"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form id="antiForgeryForm" method="post" class="d-none">
+        @Html.AntiForgeryToken()
+    </form>
+
+    <div id="promotionTableWrapper" class="mt-4">
+        @await Html.PartialAsync("_PromotionTable", Model)
+    </div>
+</div>
+
+<div class="modal fade" id="promotionEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content promo-modal">
+            <div class="modal-header promo-modal-header">
+                <div>
+                    <div class="promo-kicker">Promotion</div>
+                    <h5 class="modal-title fw-bold" id="promotionModalTitle">
+                        Thêm khuyến mãi
+                    </h5>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="promoId" value="0" />
+                <input type="hidden" id="promoRowVersion" value="" />
+
+                <div class="promo-form-grid">
+                    <div class="promo-form-main">
+                        <div class="promo-section">
+                            <div class="promo-section-title">
+                                <i class="bx bx-info-circle"></i>
+                                Thông tin chung
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-lg-8">
+                                    <label class="form-label fw-semibold">Tên chương trình</label>
+                                    <input id="promoName" class="form-control" placeholder="VD: Mua 10 tặng 1 xoài sấy" />
+                                </div>
+
+                                <div class="col-lg-4">
+                                    <label class="form-label fw-semibold">Loại khuyến mãi</label>
+                                    <select id="promoType" class="form-select">
+                                        <option value="1">Giảm giá sản phẩm</option>
+                                        <option value="2">Combo giá cố định</option>
+                                        <option value="3">Mua X tặng Y</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <label class="form-label fw-semibold">Mô tả / ghi chú nội bộ</label>
+                                    <textarea id="promoDescription" class="form-control" rows="2" placeholder="Ghi chú để quản lý dễ nhớ..."></textarea>
+                                </div>
+
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label fw-semibold">Nhóm khách</label>
+                                    <select id="promoCustomerTier" class="form-select">
+                                        <option value="">Tất cả</option>
+                                        <option value="RETAIL">Khách lẻ</option>
+                                        <option value="WHOLESALE">Khách sỉ</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label fw-semibold">Ưu tiên</label>
+                                    <input id="promoPriority" type="number" class="form-control" value="0" />
+                                </div>
+
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label fw-semibold">Bắt đầu</label>
+                                    <input id="promoStartAt" type="datetime-local" class="form-control" />
+                                </div>
+
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label fw-semibold">Kết thúc</label>
+                                    <input id="promoEndAt" type="datetime-local" class="form-control" />
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <label class="promo-switch">
+                                        <input id="promoIsActive" type="checkbox" checked />
+                                        <span></span>
+                                        <strong>Bật chương trình</strong>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="promo-section promo-type-panel" data-panel-type="1">
+                            <div class="promo-section-title">
+                                <i class="bx bx-purchase-tag"></i>
+                                Giảm giá sản phẩm
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Kiểu giảm</label>
+                                    <select id="promoDiscountType" class="form-select">
+                                        <option value="1">Giảm theo %</option>
+                                        <option value="2">Giảm số tiền</option>
+                                    </select>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Giá trị giảm</label>
+                                    <input id="promoDiscountValue" type="number" min="0" class="form-control" value="0" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Số lượng tối thiểu mặc định</label>
+                                    <input id="promoItemMinQtyDefault" type="number" min="1" class="form-control" value="1" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="promo-section promo-type-panel d-none" data-panel-type="2">
+                            <div class="promo-section-title">
+                                <i class="bx bx-package"></i>
+                                Combo giá cố định
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Giá combo</label>
+                                    <input id="promoComboFixedPrice" type="number" min="0" class="form-control" value="0" />
+                                </div>
+
+                                <div class="col-md-8">
+                                    <label class="form-label fw-semibold">Ghi chú hiện trên POS</label>
+                                    <input id="promoComboNote" class="form-control" placeholder="VD: Combo snack 3 món giảm" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="promo-section promo-type-panel d-none" data-panel-type="3">
+                            <div class="promo-section-title">
+                                <i class="bx bx-gift"></i>
+                                Mua X tặng Y
+                            </div>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Mua số lượng</label>
+                                    <input id="promoBuyQuantity" type="number" min="1" class="form-control" value="10" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Tặng số lượng</label>
+                                    <input id="promoGetQuantity" type="number" min="1" class="form-control" value="1" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Cách áp dụng</label>
+                                    <select id="promoRequireGiftQuantityInCart" class="form-select">
+                                        <option value="true">Khách lấy đủ hàng tặng trong giỏ</option>
+                                        <option value="false">Mua đủ là được giảm</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="promo-section">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                <div class="promo-section-title mb-0">
+                                    <i class="bx bx-list-plus"></i>
+                                    Sản phẩm / điều kiện áp dụng
+                                </div>
+
+                                <button type="button" id="btnAddPromoRule" class="btn btn-sm btn-primary">
+                                    <i class="bx bx-plus me-1"></i> Thêm dòng
+                                </button>
+                            </div>
+
+                            <div class="promo-rule-helper" id="promoRuleHelper">
+                                Gõ tên sản phẩm hoặc barcode để chọn. Hệ thống tự lưu ProductId / VariantId / đơn vị quy đổi.
+                            </div>
+
+                            <div class="promo-rule-list" id="promoRuleBody"></div>
+
+                            <div class="promo-rule-note">
+                                Chỉ cần gõ tên sản phẩm / barcode. ProductId, VariantId và mã đơn vị được lưu ngầm để POS tự áp dụng.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="promo-form-side">
+                        <div class="promo-preview-card">
+                            <div class="promo-preview-title">Xem nhanh</div>
+                            <div class="promo-preview-name" id="promoPreviewName">Chưa đặt tên</div>
+                            <div class="promo-preview-type" id="promoPreviewType">Giảm giá sản phẩm</div>
+
+                            <div class="promo-preview-line">
+                                <span>Nhóm khách</span>
+                                <strong id="promoPreviewTier">Tất cả</strong>
+                            </div>
+
+                            <div class="promo-preview-line">
+                                <span>Ưu tiên</span>
+                                <strong id="promoPreviewPriority">0</strong>
+                            </div>
+
+                            <div class="promo-preview-line">
+                                <span>Số dòng áp dụng</span>
+                                <strong id="promoPreviewRuleCount">0</strong>
+                            </div>
+
+                            <div class="promo-preview-warning">
+                                <i class="bx bx-bulb"></i>
+                                POS sẽ tự áp dụng khi sản phẩm trong giỏ thỏa điều kiện.
+                            </div>
+                        </div>
+
+                        <div class="promo-tip-card">
+                            <div class="fw-bold mb-2">Gợi ý dùng ưu tiên</div>
+                            <div class="small text-muted">
+                                Nếu nhiều chương trình cùng khớp một sản phẩm, chương trình có ưu tiên cao hơn sẽ được chọn trước.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer promo-modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                    Hủy
+                </button>
+
+                <button type="button" id="btnSavePromotion" class="btn btn-primary">
+                    <i class="bx bx-save me-1"></i> Lưu chương trình
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="promotionDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content promo-modal">
+            <div class="modal-body text-center p-4">
+                <div class="promo-danger-icon mb-3">
+                    <i class="bx bx-trash"></i>
+                </div>
+
+                <h5 class="fw-bold mb-2">Xóa khuyến mãi?</h5>
+                <div class="text-muted mb-3">
+                    Chương trình <b id="promoDeleteName"></b> sẽ bị xóa khỏi danh sách.
+                </div>
+
+                <input type="hidden" id="promoDeleteId" value="0" />
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-label-secondary w-50" data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+                    <button type="button" class="btn btn-danger w-50" id="btnConfirmDeletePromotion">
+                        Xóa
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/admin/js/promotions.page.js" asp-append-version="true"></script>
+}

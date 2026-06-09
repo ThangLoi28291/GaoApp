@@ -12,4 +12,22 @@ public class OpenShiftRequest
 
     [Range(1, int.MaxValue, ErrorMessage = "Vui lòng chọn kho xuất bán cho ca POS.")]
     public int WarehouseId { get; set; }
+    public List<POSShiftDenominationRequest> Denominations { get; set; } = new();
+    /// <summary>
+    /// Mở ca từ phiếu đã tạo sẵn.
+    /// Ưu tiên dùng SlipId.
+    /// </summary>
+    public int? HandoverSlipId { get; set; }
+
+    /// <summary>
+    /// Hỗ trợ quét barcode.
+    /// Ví dụ:
+    /// POS-HANDOVER:HOS-20260604-0001
+    /// </summary>
+    public string? HandoverBarcodeValue { get; set; }
+}
+public class POSShiftDenominationRequest
+{
+    public int DenominationValue { get; set; }
+    public int Quantity { get; set; }
 }

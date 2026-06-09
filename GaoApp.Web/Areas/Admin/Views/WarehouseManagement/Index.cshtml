@@ -1,0 +1,328 @@
+﻿@{
+    ViewData["Title"] = "Quản lý kho";
+}
+
+<div class="warehouse-page">
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bx bx-store-alt text-primary me-1"></i>
+                Quản lý kho
+            </h3>
+
+            <div class="text-muted">
+                Quản lý kho tổng, kho quầy, cấu hình âm kho và kho mặc định.
+            </div>
+        </div>
+
+        <button type="button"
+                class="btn btn-primary btn-lg shadow-sm"
+                id="btnCreateWarehouse">
+            <i class="bx bx-plus"></i>
+            Thêm kho
+        </button>
+
+    </div>
+
+    <div class="row g-3 mb-4">
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 warehouse-stat-card">
+                <div class="card-body">
+
+                    <div class="warehouse-stat-icon bg-label-primary">
+                        <i class="bx bx-package"></i>
+                    </div>
+
+                    <div class="mt-3 text-muted small">
+                        Tổng kho
+                    </div>
+
+                    <div class="warehouse-stat-value" id="totalWarehouseCount">
+                        --
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 warehouse-stat-card">
+                <div class="card-body">
+
+                    <div class="warehouse-stat-icon bg-label-success">
+                        <i class="bx bx-check-shield"></i>
+                    </div>
+
+                    <div class="mt-3 text-muted small">
+                        Đang hoạt động
+                    </div>
+
+                    <div class="warehouse-stat-value text-success" id="activeWarehouseCount">
+                        --
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 warehouse-stat-card">
+                <div class="card-body">
+
+                    <div class="warehouse-stat-icon bg-label-danger">
+                        <i class="bx bx-error-circle"></i>
+                    </div>
+
+                    <div class="mt-3 text-muted small">
+                        Cho âm kho
+                    </div>
+
+                    <div class="warehouse-stat-value text-danger" id="negativeWarehouseCount">
+                        --
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 warehouse-stat-card">
+                <div class="card-body">
+
+                    <div class="warehouse-stat-icon bg-label-warning">
+                        <i class="bx bx-star"></i>
+                    </div>
+
+                    <div class="mt-3 text-muted small">
+                        Kho mặc định
+                    </div>
+
+                    <div class="warehouse-stat-value text-warning"
+                         id="defaultWarehouseName">
+                        --
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card border-0 shadow-sm">
+
+        <div class="card-body">
+
+            <div class="alert alert-warning border-0 mb-4">
+                <div class="d-flex align-items-start gap-2">
+
+                    <i class="bx bx-error-circle fs-4"></i>
+
+                    <div>
+                        <div class="fw-semibold">
+                            Lưu ý cấu hình âm kho
+                        </div>
+
+                        <div class="small">
+                            Chỉ nên bật “Cho phép âm kho” khi anh thật sự muốn POS vẫn bán dù thiếu tồn.
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="table-responsive">
+
+                <table class="table align-middle warehouse-table" id="warehouseTable">
+
+                    <thead>
+                        <tr>
+                            <th>Mã kho</th>
+                            <th>Tên kho</th>
+                            <th>Vị trí</th>
+                            <th class="text-center">Mặc định</th>
+                            <th class="text-center">Âm kho</th>
+                            <th class="text-center">Trạng thái</th>
+                            <th>Ghi chú</th>
+                            <th class="text-end">Thao tác</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <td colspan="8"
+                                class="text-center text-muted py-5">
+                                Đang tải dữ liệu...
+                            </td>
+                        </tr>
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<div class="modal fade" id="warehouseModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <form id="warehouseForm">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="warehouseModalTitle">Thêm kho</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <input type="hidden" id="warehouseId" value="0" />
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Mã kho <span class="text-danger">*</span></label>
+                            <input type="text" id="warehouseCode" class="form-control" maxlength="50" placeholder="VD: KHO-TONG" />
+                        </div>
+
+                        <div class="col-md-8">
+                            <label class="form-label">Tên kho <span class="text-danger">*</span></label>
+                            <input type="text" id="warehouseName" class="form-control" maxlength="200" placeholder="VD: Kho tổng" />
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label">Vị trí</label>
+                            <input type="text" id="warehouseLocation" class="form-control" maxlength="255" placeholder="VD: Sau quầy bán hàng" />
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label">Ghi chú</label>
+                            <textarea id="warehouseNote" class="form-control" maxlength="500" rows="3"></textarea>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="warehouseIsDefault">
+                                <label class="form-check-label" for="warehouseIsDefault">
+                                    Kho mặc định
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4" id="activeWrapper">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="warehouseIsActive" checked>
+                                <label class="form-check-label" for="warehouseIsActive">
+                                    Đang sử dụng
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="warehouseAllowNegativeInventory">
+                                <label class="form-check-label text-danger" for="warehouseAllowNegativeInventory">
+                                    Cho phép âm kho
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-danger small mt-3 d-none" id="warehouseError"></div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">
+                        Đóng
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveWarehouse">
+                        Lưu kho
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<style>
+
+    .warehouse-stat-card {
+        transition: all .2s ease;
+        border-radius: 18px;
+    }
+
+        .warehouse-stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+    .warehouse-stat-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+    }
+
+    .warehouse-stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .warehouse-table thead th {
+        border: 0 !important;
+        background: #f5f5f9;
+        color: #566a7f;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        font-weight: 700;
+        padding-top: 16px;
+        padding-bottom: 16px;
+    }
+
+    .warehouse-table tbody tr {
+        transition: all .15s ease;
+    }
+
+        .warehouse-table tbody tr:hover {
+            background: rgba(105,108,255,.04);
+        }
+
+    .warehouse-table tbody td {
+        padding-top: 18px;
+        padding-bottom: 18px;
+        border-color: #ebeef0;
+    }
+
+    .warehouse-code {
+        font-weight: 700;
+        color: #566a7f;
+    }
+
+    .warehouse-name {
+        font-weight: 700;
+        font-size: 15px;
+    }
+
+    .warehouse-default-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(105,108,255,.12);
+        color: #696cff;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+
+</style>
+
+@section Scripts {
+    <script src="~/admin/js/warehouse-management.js" asp-append-version="true"></script>
+}

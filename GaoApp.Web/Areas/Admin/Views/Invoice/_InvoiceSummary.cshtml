@@ -1,0 +1,61 @@
+﻿@model GaoApp.Application.DTOs.Invoices.InvoiceHeadDto
+
+<div class="row g-3 mb-3">
+
+    <div class="col-lg-3 col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small">
+                    ORDER
+                </div>
+
+                <div class="fs-4 fw-bold">
+                    #@Model.OrderId
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small">
+                    TỔNG SỐ LƯỢNG
+                </div>
+
+                <div class="fs-4 fw-bold text-primary">
+                    @Model.TotalQuantity.ToString("N2")
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="text-muted small">
+                    TẠM TÍNH
+                </div>
+
+                <div class="fs-4 fw-bold text-primary">
+                    @Model.SubTotal.ToString("N0")
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-3 col-md-6">
+        <div class="card shadow-sm border-0 h-100 bg-danger text-white">
+            <div class="card-body">
+                <div class="small opacity-75">
+                    TỔNG THANH TOÁN
+                </div>
+
+                <div class="fs-3 fw-bold">
+                    @Model.GrandTotal.ToString("N0")
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

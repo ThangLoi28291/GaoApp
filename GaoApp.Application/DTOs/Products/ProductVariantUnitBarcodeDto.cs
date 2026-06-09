@@ -17,6 +17,8 @@ public sealed class ProductVariantUnitBarcodeDto
     public string? Barcode { get; set; }
 
     public BarcodeType BarcodeType { get; set; } = BarcodeType.External;
+    // NEW: chỉ dùng để hiển thị UI, không thay đổi enum/DB
+    public string BarcodeTypeText { get; set; } = "";
 
     public bool IsPrimary { get; set; }
 

@@ -1,0 +1,362 @@
+﻿/* =========================================================
+   STOCK TRANSFER UI
+   Dùng chung cho Index + Detail
+========================================================= */
+
+.st-page {
+    min-height: calc(100vh - 140px);
+}
+
+.st-card {
+    border: 0;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+    overflow: hidden;
+}
+
+    .st-card .card-header {
+        background: #fff;
+        border-bottom: 1px solid #eef2f7;
+        font-weight: 800;
+    }
+
+.st-page-title {
+    font-weight: 900;
+    color: #0f172a;
+}
+
+.st-page-subtitle {
+    color: #64748b;
+}
+
+.st-toolbar {
+    background: #fff;
+    border: 1px solid #eef2f7;
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+}
+
+.st-summary-box {
+    border-radius: 18px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, #ffffff, #f8fafc);
+    border: 1px solid #eef2f7;
+    height: 100%;
+}
+
+.st-summary-title {
+    font-size: .85rem;
+    color: #64748b;
+    margin-bottom: .35rem;
+}
+
+.st-summary-value {
+    font-size: 1.45rem;
+    font-weight: 900;
+    color: #0f172a;
+}
+
+.st-empty {
+    text-align: center;
+    color: #64748b;
+    padding: 26px 0 !important;
+}
+
+.st-row {
+    cursor: pointer;
+}
+
+    .st-row:hover {
+        background: #f8fafc;
+    }
+
+.st-doc-name {
+    font-weight: 900;
+    color: #0f172a;
+}
+
+.st-doc-no {
+    font-size: .82rem;
+    color: #64748b;
+}
+
+.st-note {
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #64748b;
+}
+
+.st-status {
+    border-radius: 999px;
+    padding: .35rem .7rem;
+    font-weight: 800;
+    font-size: .78rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.st-status-draft {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.st-status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.st-status-rejected {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.st-status-confirmed {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.st-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: 14px;
+}
+
+.st-pagination-info {
+    color: #64748b;
+    font-size: .9rem;
+}
+
+.st-modal-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 1.4rem;
+}
+
+.st-quick-detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px dashed #e2e8f0;
+    padding: 10px 0;
+}
+
+.st-quick-detail-label {
+    color: #64748b;
+}
+
+.st-quick-detail-value {
+    font-weight: 800;
+    color: #0f172a;
+    text-align: right;
+}
+
+@media (max-width: 768px) {
+    .st-mobile-hide {
+        display: none !important;
+    }
+
+    .st-toolbar {
+        padding: 12px;
+    }
+
+    .st-summary-value {
+        font-size: 1.2rem;
+    }
+
+    .st-card {
+        border-radius: 16px;
+    }
+
+    .st-table-action {
+        min-width: 88px;
+    }
+}
+/* Toast trắng giống StockCount */
+.st-toast {
+    background: #fff !important;
+    color: #1f2937 !important;
+    border-radius: 18px !important;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .18) !important;
+    min-width: 340px;
+}
+
+    .st-toast .toast-body {
+        background: #fff !important;
+        color: #1f2937 !important;
+    }
+
+.st-toast-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex: 0 0 auto;
+}
+
+.st-toast-success {
+    background: #e8f7ec;
+    color: #067647;
+}
+
+.st-toast-danger {
+    background: #ffe5e5;
+    color: #b42318;
+}
+
+.st-toast-warning {
+    background: #fff4db;
+    color: #b54708;
+}
+
+.st-confirm-modal {
+    border: 0;
+    border-radius: 22px;
+    box-shadow: 0 24px 80px rgba(15, 23, 42, .22);
+}
+
+.st-confirm-box {
+    border-radius: 18px;
+    background: #f8fafc;
+    padding: 16px;
+    color: #334155;
+}
+.st-product-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 260px;
+}
+
+.st-product-img {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    object-fit: cover;
+    background: #f1f5f9;
+    border: 1px solid #e5e7eb;
+    flex: 0 0 auto;
+}
+
+    .st-product-img:hover {
+        transform: scale(2.4);
+        transition: .16s ease;
+        z-index: 20;
+        position: relative;
+        box-shadow: 0 16px 42px rgba(15, 23, 42, .24);
+    }
+
+.st-product-img-placeholder {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: #eef2ff;
+    color: #696cff;
+    border: 1px solid #e0e7ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+}
+
+.st-line-popup {
+    box-shadow: 0 1.25rem 3.5rem rgba(15, 23, 42, .28);
+}
+
+.st-popup-product-img-box {
+    border: 1px solid #edf0f2;
+    border-radius: 18px;
+    background: #f8f9fa;
+    padding: .75rem;
+    text-align: center;
+    min-height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.st-popup-product-img {
+    max-height: 170px;
+    object-fit: contain;
+    border-radius: 14px;
+}
+
+.st-popup-no-img {
+    color: #9ca3af;
+}
+
+.st-popup-product-title {
+    font-weight: 900;
+    color: #212529;
+}
+
+.st-popup-info-box {
+    border: 1px solid #edf0f2;
+    border-radius: 14px;
+    padding: .8rem;
+    background: #fafbfc;
+}
+
+.st-popup-info-label {
+    font-size: .78rem;
+    color: #6c757d;
+    margin-bottom: .15rem;
+}
+
+.st-popup-info-value {
+    font-weight: 900;
+    color: #212529;
+}
+
+#TransferLineModalQty {
+    font-weight: 900;
+    font-size: 1.25rem;
+}
+/* Select2 result: chống ảnh bung to */
+.select2-result-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+}
+
+.select2-result-img {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    min-height: 42px !important;
+    max-height: 42px !important;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #f1f5f9;
+    border: 1px solid #e5e7eb;
+    flex: 0 0 42px;
+}
+
+.select2-result-title {
+    font-weight: 900;
+    color: #0f172a;
+}
+
+.select2-result-meta {
+    font-size: .82rem;
+    color: #64748b;
+    margin-top: .15rem;
+    white-space: normal;
+}

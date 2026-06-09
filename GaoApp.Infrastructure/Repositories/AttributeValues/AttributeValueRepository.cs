@@ -11,7 +11,13 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
     public AttributeValueRepository(AppDbContext db) => _db = db;
 
     public async Task<(IReadOnlyList<AttributeValue> Items, int TotalItems)> GetPagedAsync(
-        int storeId, int? attributeId, string? search, int page, int pageSize, CancellationToken ct = default)
+    int storeId,
+    int? attributeId,
+    bool? status,
+    string? search,
+    int page,
+    int pageSize,
+    CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
@@ -25,14 +31,22 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
         if (attributeId.HasValue && attributeId.Value > 0)
             q = q.Where(x => x.AttributeId == attributeId.Value);
 
+        if (status.HasValue)
+            q = q.Where(x => x.Status == status.Value);
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             search = search.Trim();
-            q = q.Where(x => x.Code.Contains(search) || x.Name.Contains(search));
+            q = q.Where(x =>
+                x.Code.Contains(search) ||
+                x.Name.Contains(search) ||
+                x.Attribute.Name.Contains(search));
         }
 
         var total = await q.CountAsync(ct);
-        var items = await q.OrderByDescending(x => x.Id)
+
+        var items = await q
+            .OrderByDescending(x => x.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
@@ -67,4 +81,20 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
     => _db.Set<AttributeValue>().Remove(entity);
     public Task SaveChangesAsync(CancellationToken ct = default)
         => _db.SaveChangesAsync(ct);
+    public async Task<bool> IsUsedAsync(
+    int storeId,
+    int id,
+    CancellationToken ct = default)
+    {
+        // Nếu DbSet liên kết của bạn tên khác, đổi tại đây.
+        // Mục tiêu: kiểm tra AttributeValue đã được gắn vào biến thể/sản phẩm chưa.
+
+        return await _db.ProductVariantAttributeValues
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.StoreId == storeId &&
+                x.AttributeValueId == id &&
+                !x.IsDeleted,
+                ct);
+    }
 }

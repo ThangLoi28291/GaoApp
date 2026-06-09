@@ -1,28 +1,33 @@
-﻿using GaoApp.Application.Common;
-using GaoApp.Application.Common.Interfaces;
+﻿using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Interfaces.Repositories.POSTerminals;
+using GaoApp.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Web.Middlewares;
 
 public class TerminalResolutionMiddleware : IMiddleware
 {
+    private const string PosDeviceKeyCookieName = "POS_DEVICE_KEY";
+
     private readonly IPOSTerminalRepository _terminalRepository;
     private readonly ICurrentStore _currentStore;
-    private readonly IClientNetworkInfo _clientNetworkInfo;
+    private readonly AppDbContext _db;
 
     public TerminalResolutionMiddleware(
         IPOSTerminalRepository terminalRepository,
         ICurrentStore currentStore,
-        IClientNetworkInfo clientNetworkInfo)
+        AppDbContext db)
     {
         _terminalRepository = terminalRepository;
         _currentStore = currentStore;
-        _clientNetworkInfo = clientNetworkInfo;
+        _db = db;
     }
 
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
-        // reset để tránh request sau giữ dữ liệu cũ
+        // Reset context items cho mỗi request.
+        context.Items["CurrentStoreId"] = null;
+        context.Items["CurrentStoreName"] = null;
         context.Items["CurrentTerminalId"] = null;
         context.Items["CurrentTerminalName"] = null;
         context.Items["CurrentTerminalCode"] = null;
@@ -31,16 +36,28 @@ public class TerminalResolutionMiddleware : IMiddleware
         {
             var storeId = _currentStore.StoreId;
 
-            // chỉ resolve terminal khi đang đứng trong store cụ thể
             if (storeId > 0)
             {
-                var clientIp = _clientNetworkInfo.GetClientIp();
+                var store = await _db.Stores
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        x => x.Id == storeId && x.IsActive,
+                        context.RequestAborted);
 
-                if (!string.IsNullOrWhiteSpace(clientIp))
+                if (store != null)
                 {
-                    var terminal = await _terminalRepository.GetByStoreAndIpAsync(
+                    context.Items["CurrentStoreId"] = store.Id.ToString();
+                    context.Items["CurrentStoreName"] = store.Name;
+                }
+
+                // Resolve terminal bằng Cookie DeviceKey, không dùng IP nữa.
+                var deviceKey = context.Request.Cookies[PosDeviceKeyCookieName];
+
+                if (!string.IsNullOrWhiteSpace(deviceKey))
+                {
+                    var terminal = await _terminalRepository.GetByDeviceKeyAsync(
                         storeId,
-                        clientIp,
+                        deviceKey,
                         context.RequestAborted);
 
                     if (terminal != null)
@@ -54,9 +71,8 @@ public class TerminalResolutionMiddleware : IMiddleware
         }
         catch
         {
-            // Không chặn request nếu resolve terminal lỗi
-            // Login page / page POS vẫn có thể render,
-            // chỉ là phần terminal có thể chưa hiện.
+            // Không chặn request nếu resolve terminal lỗi.
+            // Login page vẫn render để người dùng có thể chọn/ghép lại POS.
         }
 
         await next(context);

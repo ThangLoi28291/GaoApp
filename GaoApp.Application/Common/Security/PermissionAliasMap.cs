@@ -92,5 +92,47 @@ public static class PermissionAliasMap
             [PermissionCodes.Security.User.Delete] = new[] { "User.Delete", "security.user.manage" },
             [PermissionCodes.Security.User.AssignStore] = new[] { "User.AssignStore", "security.user.manage" },
             [PermissionCodes.Security.User.AssignRole] = new[] { "User.AssignRole", "security.user.manage" },
+            // Inventory Adjustment
+            [PermissionCodes.Inventory.Adjustment.View] = new[]
+{
+    "InventoryAdjustment.View",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Create] = new[]
+{
+    "InventoryAdjustment.Create",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Update] = new[]
+{
+    "InventoryAdjustment.Edit",
+    "InventoryAdjustment.Update",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Delete] = new[]
+{
+    "InventoryAdjustment.Delete",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Submit] = new[]
+{
+    "InventoryAdjustment.Submit",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Approve] = new[]
+{
+    "InventoryAdjustment.Approve",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Reject] = new[]
+{
+    "InventoryAdjustment.Reject",
+    "inventory.adjustment.manage"
+},
+            [PermissionCodes.Inventory.Adjustment.Cancel] = new[]
+{
+    "InventoryAdjustment.Cancel",
+    "inventory.adjustment.manage"
+},
         };
 }

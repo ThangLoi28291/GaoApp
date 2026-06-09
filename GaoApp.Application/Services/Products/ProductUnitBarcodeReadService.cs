@@ -6,7 +6,11 @@ using GaoApp.Application.Interfaces.Services.Products;
 namespace GaoApp.Application.Services.Products;
 
 /// <summary>
-/// Service đọc danh sách barcode thuộc về một conversion để hiển thị admin UI.
+/// Service đọc dữ liệu barcode theo đơn vị bán để hiển thị admin UI.
+/// CHỐT:
+/// - Web chỉ gọi service
+/// - Service tự lấy StoreId hiện tại
+/// - Web không gọi repository trực tiếp nữa
 /// </summary>
 public sealed class ProductUnitBarcodeReadService : IProductUnitBarcodeReadService
 {
@@ -21,7 +25,9 @@ public sealed class ProductUnitBarcodeReadService : IProductUnitBarcodeReadServi
         _currentStore = currentStore;
     }
 
-    public async Task<List<ProductVariantUnitBarcodeDto>> GetByConversionIdAsync(int conversionId, CancellationToken ct = default)
+    public async Task<List<ProductVariantUnitBarcodeDto>> GetByConversionIdAsync(
+        int conversionId,
+        CancellationToken ct = default)
     {
         var storeId = _currentStore.StoreId;
 
@@ -38,5 +44,24 @@ public sealed class ProductUnitBarcodeReadService : IProductUnitBarcodeReadServi
             Note = x.Note,
             CreatedAtUtc = x.CreatedAtUtc
         }).ToList();
+    }
+
+    public async Task<ProductUnitBarcodeManagerHeaderDto?> GetManagerHeaderAsync(
+        int conversionId,
+        CancellationToken ct = default)
+    {
+        var storeId = _currentStore.StoreId;
+
+        var conversion = await _barcodeRepository.GetConversionDetailAsync(storeId, conversionId, ct);
+        if (conversion == null)
+            return null;
+
+        return new ProductUnitBarcodeManagerHeaderDto
+        {
+            ProductUnitConversionId = conversion.Id,
+            ProductName = conversion.ProductVariant.Product.Name,
+            VariantSku = conversion.ProductVariant.Sku,
+            UnitName = conversion.Unit?.Name
+        };
     }
 }

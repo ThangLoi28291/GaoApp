@@ -47,6 +47,11 @@ public class CreateProductUnitConversionRequest
     public decimal? Price { get; set; }
 
     /// <summary>
+    /// Giá sỉ riêng cho đơn vị quy đổi: lon/lốc/thùng.
+    /// Null hoặc <= 0 nghĩa là dùng giá lẻ.
+    /// </summary>
+    public decimal? WholesalePrice { get; set; }
+    /// <summary>
     /// Trạng thái hoạt động.
     /// </summary>
     public bool IsActive { get; set; } = true;

@@ -28,4 +28,9 @@ public sealed class OrderListItemDto
     /// Cờ tiện dùng cho UI.
     /// </summary>
     public bool HasAfterSale => ReturnCount > 0 || RefundedTotal > 0;
+    public decimal VoucherDiscountTotal { get; set; }
+
+    public List<OrderRewardVoucherDto> RewardVouchers { get; set; } = new();
+
+    public bool HasVoucher => VoucherDiscountTotal > 0 || RewardVouchers.Count > 0;
 }

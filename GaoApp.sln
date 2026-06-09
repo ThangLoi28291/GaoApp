@@ -24,6 +24,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		ci.yml = ci.yml
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GaoApp.Tests", "GaoApp.Tests\GaoApp.Tests.csproj", "{16FF097F-CE2F-4FFB-BC65-134C46EDFC80}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,6 +52,10 @@ Global
 		{A11A298E-2314-448D-B5C6-EFBDDB92888E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A11A298E-2314-448D-B5C6-EFBDDB92888E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A11A298E-2314-448D-B5C6-EFBDDB92888E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16FF097F-CE2F-4FFB-BC65-134C46EDFC80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16FF097F-CE2F-4FFB-BC65-134C46EDFC80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16FF097F-CE2F-4FFB-BC65-134C46EDFC80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16FF097F-CE2F-4FFB-BC65-134C46EDFC80}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -61,6 +67,7 @@ Global
 		{B333F33B-4172-4DCC-BDD5-310EABF3364F} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{A11A298E-2314-448D-B5C6-EFBDDB92888E} = {3088B3DA-2A03-4DEC-83B2-FEE11A304A6A}
 		{B009A7D1-1D26-4AE7-AB01-F06CCE0F05F5} = {84C014DC-AF57-4159-B9C0-34397D22F404}
+		{16FF097F-CE2F-4FFB-BC65-134C46EDFC80} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {55CA34EA-BC41-434A-93DD-52A7C045B154}

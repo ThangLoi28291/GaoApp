@@ -44,6 +44,30 @@ public class ProductVariantRowDto
     /// Nếu đơn vị bán cụ thể có giá riêng thì ProductUnitConversion.Price sẽ override.
     /// </summary>
     public decimal? Price { get; set; }
+    /// <summary>
+    /// Giá sỉ theo đơn vị gốc của variant.
+    /// Null hoặc <= 0 nghĩa là chưa cấu hình giá sỉ.
+    /// </summary>
+    public decimal? WholesalePrice { get; set; }
+    /// <summary>
+    /// Giá bán lẻ của đơn vị gốc.
+    /// Lấy từ ProductUnitConversion.IsBaseUnit = true.
+    /// Chỉ dùng để hiển thị ngoài bảng variant.
+    /// </summary>
+    public decimal? BaseUnitPrice { get; set; }
+
+    /// <summary>
+    /// Giá sỉ của đơn vị gốc.
+    /// Lấy từ ProductUnitConversion.IsBaseUnit = true.
+    /// Chỉ dùng để hiển thị ngoài bảng variant.
+    /// </summary>
+    public decimal? BaseUnitWholesalePrice { get; set; }
+
+    /// <summary>
+    /// Tên đơn vị gốc để hiển thị.
+    /// Ví dụ: cái, hộp, lon.
+    /// </summary>
+    public string? BaseUnitName { get; set; }
 
     /// <summary>
     /// Variant có đang hoạt động hay không.
@@ -69,4 +93,10 @@ public class ProductVariantRowDto
     /// như đổi tổ hợp thuộc tính, đổi SKU mạnh tay hoặc xóa.
     /// </summary>
     public bool IsLocked { get; set; } = false;
+    /// <summary>
+    /// Cờ hóa đơn đầu vào.
+    /// true: dòng bán của variant này sẽ được đưa vào InvoiceDetail bán ra.
+    /// false: vẫn bán POS bình thường nhưng không đưa vào InvoiceDetail.
+    /// </summary>
+    public bool HasInputInvoice { get; set; } = false;
 }

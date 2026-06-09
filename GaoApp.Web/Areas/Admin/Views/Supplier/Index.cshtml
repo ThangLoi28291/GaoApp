@@ -1,213 +1,165 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.Suppliers
+﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Web.Areas.Admin.ViewModels.Suppliers
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
 @model SupplierIndexVM
 
 @{
     ViewData["Title"] = "Nhà cung cấp";
     Layout = "_ContentNavbarLayout";
+
+    var canCreate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.Supplier.Create)).Succeeded;
 }
 
-@section header {
-    <div class="py-2">
-        <h3 class="mb-0 fw-bold">Danh sách nhà cung cấp</h3>
+@section Header {
+    <div class="sp-page-header">
+        <div>
+            <div class="sp-kicker">Catalog</div>
+            <h3 class="mb-1 fw-bold">Nhà cung cấp</h3>
+            <div class="text-muted">
+                Quản lý thông tin nhà cung cấp, liên hệ, mã số thuế và trạng thái giao dịch.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            @if (canCreate)
+            {
+                <a asp-area="Admin"
+                       asp-controller="Supplier"
+                       asp-action="Create"
+                       class="btn btn-primary">
+                    <i class="bx bx-plus me-1"></i> Thêm nhà cung cấp
+                </a>
+            }
+        </div>
     </div>
 }
 
-<div class="card">
-    <div class="card-body">
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/suppliers.css" asp-append-version="true" />
+}
 
-        <div class="row g-3 align-items-end mb-3">
-            <div class="col-md-5">
-                <label class="form-label">Tìm kiếm</label>
+<div class="sp-shell"
+     data-search-url="@Url.Action("Search", "Supplier", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleStatus", "Supplier", new { area = "Admin" })"
+     data-delete-url="@Url.Action("DeleteAjax", "Supplier", new { area = "Admin" })">
 
-                <div class="position-relative">
-                    <input id="txtSearch"
-                           class="form-control pe-5"
-                           placeholder="Tên / mã / SĐT..."
-                           autocomplete="off"
-                           value="@Model.SearchString" />
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-primary-subtle text-primary">
+                    <i class="bx bx-store-alt"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Tổng nhà cung cấp</div>
+                    <div class="sp-stat-value">@Model.Paged.TotalItems</div>
+                </div>
+            </div>
+        </div>
 
-                    <button type="button"
-                            id="btnClearSearch"
-                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
-                            title="Xóa tìm kiếm"
-                            aria-label="Xóa tìm kiếm"
-                            style="border:0; background:transparent;">
-                        <i class="bx bx-x fs-4"></i>
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-success-subtle text-success">
+                    <i class="bx bx-phone-call"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Thông tin liên hệ</div>
+                    <div class="sp-stat-value">SĐT / Email</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-info-subtle text-info">
+                    <i class="bx bx-search-alt"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Tìm kiếm</div>
+                    <div class="sp-stat-value">Mã / Tên / SĐT</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm sp-filter-card">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-7 col-md-6">
+                    <label class="form-label fw-semibold">Tìm kiếm</label>
+                    <div class="sp-search-box">
+                        <i class="bx bx-search"></i>
+
+                        <input id="txtSearch"
+                               class="form-control"
+                               placeholder="Nhập mã, tên hoặc số điện thoại..."
+                               autocomplete="off"
+                               value="@Model.SearchString" />
+
+                        <button type="button"
+                                id="btnClearSearch"
+                                class="sp-clear-search d-none"
+                                title="Xóa tìm kiếm">
+                            <i class="bx bx-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label fw-semibold">Số dòng</label>
+                    <select id="ddlPageSize" class="form-select">
+                        <option value="10" selected="@(Model.PageSize == 10)">10 dòng</option>
+                        <option value="20" selected="@(Model.PageSize == 20)">20 dòng</option>
+                        <option value="50" selected="@(Model.PageSize == 50)">50 dòng</option>
+                        <option value="100" selected="@(Model.PageSize == 100)">100 dòng</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-2 d-grid">
+                    <button type="button" id="btnReload" class="btn btn-label-primary">
+                        <i class="bx bx-refresh"></i>
                     </button>
                 </div>
             </div>
-
-            <div class="col-md-3">
-                <label class="form-label">Số dòng / trang</label>
-                <select id="ddlPageSize" class="form-select">
-                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
-                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
-                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
-                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
-                </select>
-            </div>
-
-            <div class="col-md-4 text-md-end">
-                <a asp-area="Admin" asp-controller="Supplier" asp-action="Create" class="btn btn-primary">
-                    <i class="bx bx-plus me-1"></i> Thêm nhà cung cấp
-                </a>
-            </div>
         </div>
+    </div>
 
-        <form id="antiForgeryForm" method="post">
-            @Html.AntiForgeryToken()
-        </form>
+    <form id="antiForgeryForm" method="post" class="d-none">
+        @Html.AntiForgeryToken()
+    </form>
 
-        <div id="supplierTableWrapper">
-            @await Html.PartialAsync("_SupplierTable", Model)
-        </div>
-
+    <div id="supplierTableWrapper" class="mt-4">
+        @await Html.PartialAsync("_SupplierTable", Model)
     </div>
 </div>
 
 <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Xác nhận xóa</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
-            </div>
-            <div class="modal-body">
-                Bạn có chắc muốn xóa nhà cung cấp: <b id="deleteName"></b> ?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                <button type="button" class="btn btn-danger" id="btnConfirmDelete">Xóa</button>
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content sp-modal">
+            <div class="modal-body text-center p-4">
+                <div class="sp-danger-icon mb-3">
+                    <i class="bx bx-trash"></i>
+                </div>
+
+                <h5 class="fw-bold mb-2">Xóa nhà cung cấp?</h5>
+                <div class="text-muted mb-3">
+                    Nhà cung cấp <b id="deleteName"></b> sẽ bị xóa khỏi danh sách.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-label-secondary w-50" data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+                    <button type="button" class="btn btn-danger w-50" id="btnConfirmDelete">
+                        Xóa
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 @section PageScripts {
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const txtSearch = document.getElementById('txtSearch');
-            const btnClearSearch = document.getElementById('btnClearSearch');
-            const ddlPageSize = document.getElementById('ddlPageSize');
-            const wrapper = document.getElementById('supplierTableWrapper');
-
-            let typingTimer = null;
-            let deleteId = 0;
-
-            function getToken() {
-                const el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
-                return el ? el.value : '';
-            }
-
-            function updateClearButtonVisibility() {
-                const hasText = (txtSearch.value || '').trim().length > 0;
-                btnClearSearch.classList.toggle('d-none', !hasText);
-            }
-
-            function loadSuppliers(page) {
-                const search = txtSearch.value || '';
-                const pageSize = ddlPageSize.value || 20;
-
-                const url = '@Url.Action("Search", "Supplier", new { area = "Admin" })'
-                    + '?search=' + encodeURIComponent(search)
-                    + '&page=' + (page || 1)
-                    + '&pageSize=' + encodeURIComponent(pageSize);
-
-                fetch(url)
-                    .then(r => r.text())
-                    .then(html => {
-                        wrapper.innerHTML = html;
-                        bindAllTableEvents(); // re-bind after AJAX update
-                    });
-            }
-
-            function debounceLoad() {
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => loadSuppliers(1), 300);
-            }
-
-            function bindPaginationEvents() {
-                wrapper.querySelectorAll('.js-page-link').forEach(a => {
-                    a.onclick = function (e) {
-                        e.preventDefault();
-                        const p = this.getAttribute('data-page');
-                        if (p) loadSuppliers(parseInt(p));
-                    };
-                });
-            }
-
-            function bindToggleStatusEvents() {
-                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
-                    btn.onclick = async function () {
-                        const id = this.getAttribute('data-id');
-                        const token = getToken();
-                        if (!id || !token) return;
-
-                        const res = await fetch('@Url.Action("ToggleStatus", "Supplier", new { area = "Admin" })', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
-                        });
-
-                        const data = await res.json();
-                        (window.toastr ? toastr[data.success ? "success" : "error"](data.message) : alert(data.message));
-
-                        if (data.success) loadSuppliers(1);
-                    };
-                });
-            }
-
-            function bindDeleteEvents() {
-                wrapper.querySelectorAll('.js-delete').forEach(btn => {
-                    btn.onclick = function () {
-                        deleteId = parseInt(this.dataset.id);
-                        document.getElementById('deleteName').textContent = this.dataset.name || '';
-                        new bootstrap.Modal(document.getElementById('deleteModal')).show();
-                    };
-                });
-            }
-
-            function bindAllTableEvents() {
-                bindPaginationEvents();
-                bindToggleStatusEvents();
-                bindDeleteEvents();
-            }
-
-            document.getElementById('btnConfirmDelete')?.addEventListener('click', async function () {
-                if (!deleteId) return;
-
-                const res = await fetch('@Url.Action("DeleteAjax", "Supplier", new { area = "Admin" })', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                    body: `id=${encodeURIComponent(deleteId)}&__RequestVerificationToken=${encodeURIComponent(getToken())}`
-                });
-
-                const data = await res.json();
-                (window.toastr ? toastr[data.success ? "success" : "error"](data.message) : alert(data.message));
-                if (!data.success) return;
-
-                bootstrap.Modal.getInstance(document.getElementById('deleteModal'))?.hide();
-                loadSuppliers(1);
-                deleteId = 0;
-            });
-
-            txtSearch.addEventListener('input', function () {
-                updateClearButtonVisibility();
-                debounceLoad();
-            });
-
-            btnClearSearch.addEventListener('click', function () {
-                txtSearch.value = '';
-                updateClearButtonVisibility();
-                loadSuppliers(1);
-                txtSearch.focus();
-            });
-
-            ddlPageSize.addEventListener('change', () => loadSuppliers(1));
-
-            // init
-            updateClearButtonVisibility();
-            bindAllTableEvents();
-        });
-    </script>
+    <script src="~/admin/js/suppliers.index.js" asp-append-version="true"></script>
 }

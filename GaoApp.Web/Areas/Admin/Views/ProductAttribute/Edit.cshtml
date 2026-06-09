@@ -2,88 +2,172 @@
 @model ProductAttributeEditViewModel
 
 @{
-    ViewData["Title"] = Model.Id == 0 ? "Thêm thuộc tính" : "Cập nhật thuộc tính";
+    var isCreate = Model.Id == 0;
+    ViewData["Title"] = isCreate ? "Thêm thuộc tính sản phẩm" : "Cập nhật thuộc tính sản phẩm";
     Layout = "_ContentNavbarLayout";
 }
 
 @section Header {
-    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
-        <h4 class="fw-bold mb-0">
-            <a asp-area="Admin" asp-controller="ProductAttribute" asp-action="Index" class="text-muted fw-light">
-                Thuộc tính /
+    <div class="pa-page-header">
+        <div>
+            <div class="pa-kicker">Catalog</div>
+            <h3 class="mb-1 fw-bold">@ViewData["Title"]</h3>
+            <div class="text-muted">
+                @(isCreate
+                    ? "Tạo nhóm thuộc tính mới như màu sắc, kích cỡ, dung tích..."
+                    : "Cập nhật thông tin thuộc tính sản phẩm.")
+            </div>
+        </div>
+
+        <div>
+            <a asp-area="Admin"
+                   asp-controller="ProductAttribute"
+                   asp-action="Index"
+                   class="btn btn-label-secondary">
+                <i class="bx bx-arrow-back me-1"></i> Quay lại
             </a>
-            @ViewData["Title"]
-        </h4>
+        </div>
     </div>
 }
 
-<div class="row justify-content-center">
-    <div class="col-md-10 col-lg-8">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Thông tin chi tiết</h5>
-                <small class="text-muted float-end">* là bắt buộc</small>
-            </div>
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/product-attributes.css" asp-append-version="true" />
+}
 
-            <div class="card-body">
-                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+<div class="row justify-content-center">
+    <div class="col-xl-8 col-lg-9">
+
+        <div class="card border-0 shadow-sm pa-edit-card">
+            <div class="card-body p-lg-5">
+
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <div class="pa-edit-icon">
+                        <i class="bx bx-slider-alt"></i>
+                    </div>
+
+                    <div>
+                        <h5 class="mb-1 fw-bold">Thông tin thuộc tính</h5>
+                        <div class="text-muted small">
+                            Các trường có dấu <span class="text-danger">*</span> là bắt buộc.
+                        </div>
+                    </div>
+                </div>
+
+                <div asp-validation-summary="ModelOnly" class="alert alert-danger mb-4"></div>
 
                 <form asp-area="Admin"
                       asp-controller="ProductAttribute"
-                      asp-action="@(Model.Id == 0 ? "Create" : "Edit")"
-                      method="post" novalidate>
+                      asp-action="@(isCreate ? "Create" : "Edit")"
+                      method="post"
+                      novalidate>
+
                     @Html.AntiForgeryToken()
                     @Html.HiddenFor(x => x.Id)
                     @Html.HiddenFor(x => x.RowVersion)
 
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label asp-for="Code" class="form-label"></label>
+                    <div class="row g-4">
+                        <div class="col-md-5">
+                            <label asp-for="Code" class="form-label fw-semibold">
+                                Mã thuộc tính
+                            </label>
 
-                            @if (Model.Id == 0)
+                            @if (isCreate)
                             {
-                                <input asp-for="Code"
-                                       class="form-control text-uppercase"
-                                       placeholder="(Tự sinh nếu để trống)" />
+                                <div class="input-group input-group-lg">
+                                    <span class="input-group-text">
+                                        <i class="bx bx-barcode"></i>
+                                    </span>
+
+                                    <input asp-for="Code"
+                                           class="form-control text-uppercase"
+                                           placeholder="Tự sinh nếu để trống"
+                                           autocomplete="off" />
+                                </div>
+
+                                <div class="form-text">
+                                    Có thể để trống, hệ thống sẽ tự sinh mã.
+                                </div>
                             }
                             else
                             {
-                                <input asp-for="Code" class="form-control text-uppercase" readonly />
+                                <div class="input-group input-group-lg">
+                                    <span class="input-group-text">
+                                        <i class="bx bx-lock-alt"></i>
+                                    </span>
+
+                                    <input asp-for="Code"
+                                           class="form-control text-uppercase"
+                                           readonly />
+                                </div>
+
+                                <div class="form-text">
+                                    Mã đã tạo không nên sửa để tránh ảnh hưởng dữ liệu liên kết.
+                                </div>
                             }
 
-                            <span asp-validation-for="Code" class="text-danger"></span>
+                            <span asp-validation-for="Code" class="text-danger small"></span>
                         </div>
 
-                        <div class="col-md-8">
-                            <label asp-for="Name" class="form-label"></label> <span class="text-danger">*</span>
-                            <input asp-for="Name"
-                                   class="form-control"
-                                   placeholder="Nhập tên thuộc tính..."
-                                   autofocus />
-                            <span asp-validation-for="Name" class="text-danger"></span>
+                        <div class="col-md-7">
+                            <label asp-for="Name" class="form-label fw-semibold">
+                                Tên thuộc tính <span class="text-danger">*</span>
+                            </label>
+
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text">
+                                    <i class="bx bx-text"></i>
+                                </span>
+
+                                <input asp-for="Name"
+                                       class="form-control"
+                                       placeholder="Ví dụ: Màu sắc, Size, Dung tích..."
+                                       autocomplete="off"
+                                       autofocus />
+                            </div>
+
+                            <span asp-validation-for="Name" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="pa-status-panel">
+                                <div>
+                                    <div class="fw-bold mb-1">Trạng thái sử dụng</div>
+                                    <div class="text-muted small">
+                                        Tắt trạng thái nếu không muốn thuộc tính này xuất hiện khi tạo sản phẩm mới.
+                                    </div>
+                                </div>
+
+                                <div class="form-check form-switch pa-big-switch">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           asp-for="Status" />
+
+                                    <label class="form-check-label fw-semibold" asp-for="Status">
+                                        Đang hoạt động
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="mb-4">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" asp-for="Status" />
-                            <label class="form-check-label" asp-for="Status">Đang hoạt động</label>
-                        </div>
-                    </div>
-
-                    <div class="text-end">
-                        <a asp-area="Admin" asp-controller="ProductAttribute" asp-action="Index"
-                           class="btn btn-label-secondary me-2">
+                    <div class="pa-edit-footer mt-5">
+                        <a asp-area="Admin"
+                               asp-controller="ProductAttribute"
+                               asp-action="Index"
+                               class="btn btn-label-secondary">
                             Hủy bỏ
                         </a>
 
                         <button type="submit" class="btn btn-primary">
-                            <i class="bx bx-save me-1"></i> Lưu thông tin
+                            <i class="bx bx-save me-1"></i>
+                            @(isCreate ? "Tạo thuộc tính" : "Lưu thay đổi")
                         </button>
                     </div>
                 </form>
+
             </div>
         </div>
+
     </div>
 </div>
 

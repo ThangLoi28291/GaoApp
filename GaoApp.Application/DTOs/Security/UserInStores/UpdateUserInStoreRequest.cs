@@ -14,4 +14,11 @@ public class UpdateUserInStoreRequest
     public int RoleId { get; set; }
 
     public bool IsActive { get; set; }
+    public string? PhoneNumber { get; set; }
+
+    public string? PositionName { get; set; }
+
+    public DateTime? JoinedDate { get; set; }
+
+    public string? Note { get; set; }
 }

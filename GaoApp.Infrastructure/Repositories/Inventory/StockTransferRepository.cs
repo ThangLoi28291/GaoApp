@@ -95,6 +95,14 @@ public class StockTransferRepository : IStockTransferRepository
             .Include(x => x.FromWarehouse)
             .Include(x => x.ToWarehouse)
             .Include(x => x.Lines)
+                .ThenInclude(x => x.ProductVariant)
+                    .ThenInclude(x => x.Product)
+                        .ThenInclude(x => x.ProductImages)
+                            .ThenInclude(x => x.MediaAsset)
+            .Include(x => x.Lines)
+                .ThenInclude(x => x.ProductVariant)
+                    .ThenInclude(x => x.UnitConversions)
+                        .ThenInclude(x => x.Barcodes)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
@@ -102,6 +110,13 @@ public class StockTransferRepository : IStockTransferRepository
     {
         return await _context.StockTransferLines
             .Include(x => x.StockTransferDocument)
+            .Include(x => x.ProductVariant)
+                .ThenInclude(x => x.Product)
+                    .ThenInclude(x => x.ProductImages)
+                        .ThenInclude(x => x.MediaAsset)
+            .Include(x => x.ProductVariant)
+                .ThenInclude(x => x.UnitConversions)
+                    .ThenInclude(x => x.Barcodes)
             .FirstOrDefaultAsync(x => x.Id == lineId, ct);
     }
 
@@ -170,6 +185,10 @@ public class StockTransferRepository : IStockTransferRepository
     {
         return await _context.ProductVariants
             .Include(x => x.Product)
+                .ThenInclude(x => x.ProductImages)
+                    .ThenInclude(x => x.MediaAsset)
+            .Include(x => x.UnitConversions)
+                .ThenInclude(x => x.Barcodes)
             .FirstOrDefaultAsync(x => x.Id == productVariantId, ct);
     }
 

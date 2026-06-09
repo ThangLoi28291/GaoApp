@@ -9,4 +9,5 @@ public class WarehouseDto
     public string? Note { get; set; }
     public bool IsDefault { get; set; }
     public bool IsActive { get; set; }
+    public bool AllowNegativeInventory { get; set; }
 }

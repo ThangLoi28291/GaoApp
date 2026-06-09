@@ -1,0 +1,262 @@
+﻿@model GaoApp.Web.ViewModels.Invoices.InvoiceIndexViewModel
+
+@{
+    ViewData["Title"] = "Quản lý hóa đơn bán ra";
+}
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">
+            Quản lý hóa đơn bán ra
+        </h3>
+
+        <div>
+            <span class="badge bg-primary">
+                Tổng: @Model.TotalItems
+            </span>
+        </div>
+    </div>
+
+    <!-- FILTER -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+
+            <form method="get">
+
+                <div class="row g-3">
+
+                    <div class="col-md-2">
+                        <label class="form-label">
+                            Từ ngày
+                        </label>
+
+                        <input type="date"
+                               class="form-control"
+                               name="FromDate"
+                               value="@(Model.Query.FromDate?.ToString("yyyy-MM-dd"))" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">
+                            Đến ngày
+                        </label>
+
+                        <input type="date"
+                               class="form-control"
+                               name="ToDate"
+                               value="@(Model.Query.ToDate?.ToString("yyyy-MM-dd"))" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">
+                            OrderId
+                        </label>
+
+                        <input type="number"
+                               class="form-control"
+                               name="OrderId"
+                               value="@Model.Query.OrderId" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">
+                            Keyword
+                        </label>
+
+                        <input type="text"
+                               class="form-control"
+                               name="Keyword"
+                               placeholder="InvoiceNumber / Buyer / OrderNumber"
+                               value="@Model.Query.Keyword" />
+                    </div>
+
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button class="btn btn-primary w-100">
+                            <i class="bx bx-search"></i>
+                            Tìm kiếm
+                        </button>
+                    </div>
+
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="card shadow-sm">
+
+        <div class="table-responsive">
+
+            <table class="table table-hover align-middle mb-0">
+
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Ngày</th>
+                        <th>Order</th>
+                        <th>Invoice</th>
+                        <th>Người mua</th>
+                        <th class="text-end">SL</th>
+                        <th class="text-end">Tạm tính</th>
+                        <th class="text-end">VAT</th>
+                        <th class="text-end">Tổng</th>
+                        <th class="text-center">Auto</th>
+                        <th class="text-center">Manual</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody>
+
+                    @if (!Model.Items.Any())
+                    {
+                        <tr>
+                            <td colspan="12"
+                                class="text-center text-muted py-5">
+                                Chưa có dữ liệu.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var item in Model.Items)
+                        {
+                            <tr>
+
+                                <td>
+                                    <strong>#@item.Id</strong>
+                                </td>
+
+                                <td>
+                                    @item.InvoiceDate.ToString("dd/MM/yyyy HH:mm")
+                                </td>
+
+                                <td>
+                                    <div>
+                                        <strong>
+                                            #@item.OrderId
+                                        </strong>
+                                    </div>
+
+                                    <small class="text-muted">
+                                        @item.OrderNumber
+                                    </small>
+                                </td>
+
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(item.InvoiceNumber))
+                                    {
+                                        <span class="badge bg-success">
+                                            @item.InvoiceNumber
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">
+                                            Chưa phát hành
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @(string.IsNullOrWhiteSpace(item.BuyerName)
+                                        ? "-"
+                                        : item.BuyerName)
+                                </td>
+
+                                <td class="text-end">
+                                    @item.TotalQuantity.ToString("N2")
+                                </td>
+
+                                <td class="text-end text-primary fw-semibold">
+                                    @item.SubTotal.ToString("N0")
+                                </td>
+
+                                <td class="text-end">
+                                    @item.VatAmount.ToString("N0")
+                                </td>
+
+                                <td class="text-end text-danger fw-bold">
+                                    @item.GrandTotal.ToString("N0")
+                                </td>
+
+                                <td class="text-center">
+                                    <span class="badge bg-info">
+                                        @item.AutoLineCount
+                                    </span>
+                                </td>
+
+                                <td class="text-center">
+                                    <span class="badge bg-warning text-dark">
+                                        @item.ManualLineCount
+                                    </span>
+                                </td>
+
+                                <td class="text-end">
+
+                                    <a asp-area="Admin"
+                                           asp-controller="Invoice"
+                                           asp-action="Detail"
+                                           asp-route-id="@item.Id"
+                                           class="btn btn-sm btn-outline-primary">
+
+                                        <i class="bx bx-show"></i>
+
+                                        Chi tiết
+                                    </a>
+
+                                </td>
+
+                            </tr>
+                        }
+                    }
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+    <!-- PAGING -->
+    @if (Model.TotalPages > 1)
+    {
+        <div class="d-flex justify-content-center mt-3">
+
+            <nav>
+
+                <ul class="pagination">
+
+                    @for (var i = 1; i <= Model.TotalPages; i++)
+                    {
+                        <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
+
+                            <a class="page-link"
+                                   href="@Url.Action("Index", new
+                                                               {
+                                                                   page = i,
+                                                                   fromDate = Model.Query.FromDate?.ToString("yyyy-MM-dd"),
+                                                                   toDate = Model.Query.ToDate?.ToString("yyyy-MM-dd"),
+                                                                   orderId = Model.Query.OrderId,
+                                                                   keyword = Model.Query.Keyword
+                                                               })">
+
+                                @i
+
+                            </a>
+
+                        </li>
+                    }
+
+                </ul>
+
+            </nav>
+
+        </div>
+    }
+
+</div>

@@ -42,6 +42,22 @@ public class Product : BaseStoreEntity, IAuditTrackedEntity
     public string? Content { get; set; }
 
     public bool IsActive { get; set; } = true;
+    /// <summary>
+    /// Override cấu hình tích điểm theo sản phẩm.
+    /// null = lấy theo Category.
+    /// true = cho tích.
+    /// false = không tích.
+    /// </summary>
+    public bool? IsRewardEligibleOverride { get; set; }
+
+    /// <summary>
+    /// Nếu bán bằng đơn vị gốc nhưng số lượng đạt ngưỡng lốc/thùng
+    /// thì không tích điểm.
+    /// Ví dụ Pepsi lon mua 6 lon => không tích.
+    /// null hoặc <= 0 = không áp dụng.
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? RewardBulkExcludeQuantity { get; set; }
 
     public ICollection<ProductVariant> Variants { get; set; } = new List<ProductVariant>();
     public ICollection<ProductImage> ProductImages { get; set; } = new List<ProductImage>();

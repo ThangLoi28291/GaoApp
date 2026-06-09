@@ -9,7 +9,9 @@ public class InventoryAdjustmentController : Controller
     [HttpGet("")]
     public IActionResult Index()
     {
-        ViewData["Title"] = "Điều chỉnh kho";
-        return View();
+        return RedirectToAction(
+            "Index",
+            "InventoryAdjustmentDocuments",
+            new { area = "Admin" });
     }
 }

@@ -39,4 +39,7 @@ public static class AttributeValueErrors
 
     public static readonly Error ConcurrencyConflict =
         new("AttributeValue.ConcurrencyConflict", "Dữ liệu đã bị thay đổi bởi người khác. Vui lòng tải lại trang.");
+    public static readonly Error ValueIsUsed = new(
+    "AttributeValue.ValueIsUsed",
+    "Giá trị thuộc tính đang được sử dụng trong sản phẩm, không thể xóa.");
 }

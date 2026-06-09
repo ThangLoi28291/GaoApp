@@ -1,14 +1,16 @@
-﻿using System.Text.Json;
-using GaoApp.Application.Common.Interfaces;
+﻿using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.Returns;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
+using GaoApp.Application.Interfaces.Repositories.Rewards;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Interfaces.Services.Rewards;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Text.Json;
 
 namespace GaoApp.Application.Services.Orders;
 
@@ -39,7 +41,8 @@ public sealed class SalesReturnService : ISalesReturnService
     private readonly ICurrentUser _currentUser;
     private readonly IReturnableValuationFragmentService _returnableValuationFragmentService;
     private readonly IReturnCostAllocator _returnCostAllocator;
-
+    private readonly ICustomerRewardLedgerRepository _rewardLedgers;
+    private readonly IOrderRewardCalculator _orderRewardCalculator;
     public SalesReturnService(
         IUnitOfWork uow,
         IOrderRepository orders,
@@ -53,7 +56,9 @@ public sealed class SalesReturnService : ISalesReturnService
         ICurrentStore currentStore,
         ICurrentUser currentUser,
         IReturnableValuationFragmentService returnableValuationFragmentService,
-        IReturnCostAllocator returnCostAllocator)
+        IReturnCostAllocator returnCostAllocator,
+        ICustomerRewardLedgerRepository rewardLedgers,
+IOrderRewardCalculator orderRewardCalculator)
     {
         _uow = uow;
         _orders = orders;
@@ -68,6 +73,8 @@ public sealed class SalesReturnService : ISalesReturnService
         _currentUser = currentUser;
         _returnableValuationFragmentService = returnableValuationFragmentService;
         _returnCostAllocator = returnCostAllocator;
+        _rewardLedgers = rewardLedgers;
+        _orderRewardCalculator = orderRewardCalculator;
     }
 
     public async Task<SalesReturnDto> CreateAsync(CreateSalesReturnRequest request, CancellationToken ct = default)
@@ -361,6 +368,21 @@ public sealed class SalesReturnService : ISalesReturnService
             //    - cộng tiền theo từng payment
             //    - RefundCount chỉ tăng 1 lần nếu phiếu có hoàn tiền
             // =====================================================
+            var cashRefundAmount = entity.Payments
+     .Where(x => x.Method == PaymentMethod.Cash)
+     .Sum(x => x.Amount);
+
+            if (cashRefundAmount > 0)
+            {
+                currentShift.RecalcExpected();
+
+                if (currentShift.ClosingCashExpected < cashRefundAmount)
+                {
+                    throw new InvalidOperationException(
+                        $"Tiền mặt trong ca không đủ để hoàn tiền. " +
+                        $"Hiện có {currentShift.ClosingCashExpected:n0}đ, cần hoàn {cashRefundAmount:n0}đ.");
+                }
+            }
             foreach (var payment in entity.Payments)
             {
                 currentShift.AddRefundAmount(payment.Amount, payment.Method);
@@ -388,11 +410,15 @@ public sealed class SalesReturnService : ISalesReturnService
             // 11. Gắn note cho order để dễ tra cứu nhanh
             // =====================================================
             var returnNote =
-                $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] {entity.ReturnNumber} - {entity.Reason}";
+     $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] {entity.ReturnNumber} - {entity.Reason}";
 
             order.Note = string.IsNullOrWhiteSpace(order.Note)
                 ? returnNote
                 : $"{order.Note}{Environment.NewLine}{returnNote}";
+
+            // Trừ tích lũy theo đúng các dòng hàng trả có đủ điều kiện tích điểm.
+            // Chỉ trừ những dòng trước đó thuộc nhóm được tích.
+            await ApplyRewardDeductionForSalesReturnAsync(order, entity, ct);
 
             await _salesReturns.SaveChangesAsync(ct);
 
@@ -580,5 +606,50 @@ public sealed class SalesReturnService : ISalesReturnService
     private Task<string> GenerateReturnNumberAsync(CancellationToken ct)
     {
         return Task.FromResult($"RTN-{DateTime.Now:yyyyMMddHHmmss}");
+    }
+    private async Task ApplyRewardDeductionForSalesReturnAsync(
+    Order order,
+    SalesReturn salesReturn,
+    CancellationToken ct)
+    {
+        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+            return;
+
+        if (salesReturn.Id <= 0)
+            return;
+
+        var existed = await _rewardLedgers.HasLedgerForSalesReturnAsync(
+            salesReturn.Id,
+            CustomerRewardLedgerType.ReturnDeducted,
+            ct);
+
+        if (existed)
+            return;
+
+        var calculation = await _orderRewardCalculator.CalculateAsync(order.Id, ct);
+
+        var rewardableOrderLineIds = calculation.Lines
+            .Where(x => x.IsRewardable)
+            .Select(x => x.OrderLineId)
+            .ToHashSet();
+
+        var deductAmount = salesReturn.Lines
+            .Where(x => rewardableOrderLineIds.Contains(x.OrderLineId))
+            .Sum(x => x.RefundLineTotal);
+
+        if (deductAmount <= 0)
+            return;
+
+        await _rewardLedgers.AddAsync(new CustomerRewardLedger
+        {
+            StoreId = order.StoreId,
+            CustomerId = order.CustomerId.Value,
+            Type = CustomerRewardLedgerType.ReturnDeducted,
+            Amount = -deductAmount,
+            OrderId = order.Id,
+            SalesReturnId = salesReturn.Id,
+            ReferenceCode = $"RETURN_{salesReturn.Id}",
+            Description = $"Trừ tích lũy do trả hàng phiếu {salesReturn.ReturnNumber}: {deductAmount:N0}đ"
+        }, ct);
     }
 }

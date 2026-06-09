@@ -95,6 +95,34 @@ public class AppDbContext : DbContext
     public DbSet<OrderInventoryIssueLineAllocation> OrderInventoryIssueLineAllocations => Set<OrderInventoryIssueLineAllocation>();
     public DbSet<InventoryCostLayer> InventoryCostLayers => Set<InventoryCostLayer>();
     public DbSet<InventoryCostLayerAllocation> InventoryCostLayerAllocations => Set<InventoryCostLayerAllocation>();
+    public DbSet<StoreBankAccount> StoreBankAccounts => Set<StoreBankAccount>();
+    public DbSet<PosPaymentQrRequest> PosPaymentQrRequests => Set<PosPaymentQrRequest>();
+    public DbSet<DisplayPromotion> DisplayPromotions => Set<DisplayPromotion>();
+    public DbSet<InputInvoiceHead> InputInvoiceHeads => Set<InputInvoiceHead>();
+    public DbSet<InputInvoiceDetail> InputInvoiceDetails => Set<InputInvoiceDetail>();
+    public DbSet<StockDocumentInputInvoiceMap> StockDocumentInputInvoiceMaps => Set<StockDocumentInputInvoiceMap>();
+    public DbSet<StockDocumentLineInputInvoiceMap> StockDocumentLineInputInvoiceMaps => Set<StockDocumentLineInputInvoiceMap>();
+    public DbSet<InvoiceHead> InvoiceHeads => Set<InvoiceHead>();
+    public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
+    public DbSet<AdminMenuItem> AdminMenuItems => Set<AdminMenuItem>();
+    public DbSet<InventoryAdjustmentDocument> InventoryAdjustmentDocuments => Set<InventoryAdjustmentDocument>();
+    public DbSet<InventoryAdjustmentLine> InventoryAdjustmentLines => Set<InventoryAdjustmentLine>();
+    public DbSet<POSTerminalDevice> POSTerminalDevices => Set<POSTerminalDevice>();
+    public DbSet<RewardSettings> RewardSettings => Set<RewardSettings>();
+    public DbSet<CustomerRewardLedger> CustomerRewardLedgers => Set<CustomerRewardLedger>();
+    public DbSet<CustomerRewardVoucher> CustomerRewardVouchers => Set<CustomerRewardVoucher>();
+    public DbSet<OrderRewardVoucher> OrderRewardVouchers => Set<OrderRewardVoucher>();
+    public DbSet<POSShiftCashDenomination> POSShiftCashDenominations => Set<POSShiftCashDenomination>();
+    public DbSet<POSShiftHandoverSlip> POSShiftHandoverSlips => Set<POSShiftHandoverSlip>();
+
+    public DbSet<POSShiftHandoverSlipDenomination> POSShiftHandoverSlipDenominations => Set<POSShiftHandoverSlipDenomination>();
+    public DbSet<POSShiftClosingSlip> POSShiftClosingSlips => Set<POSShiftClosingSlip>();
+    public DbSet<POSShiftClosingSlipDenomination> POSShiftClosingSlipDenominations => Set<POSShiftClosingSlipDenomination>();
+    public DbSet<ProductBarcodeVerificationRequest> ProductBarcodeVerificationRequests => Set<ProductBarcodeVerificationRequest>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
+    public DbSet<PromotionComboRule> PromotionComboRules => Set<PromotionComboRule>();
+
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -132,6 +160,40 @@ public class AppDbContext : DbContext
                 .WithMany(x => x.Children)
                 .HasForeignKey(x => x.ParentId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<DisplayPromotion>(entity =>
+        {
+            entity.ToTable("DisplayPromotions");
+
+            entity.Property(x => x.Title)
+                .HasMaxLength(250)
+                .IsRequired();
+
+            entity.Property(x => x.Description)
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.MediaType)
+                .HasMaxLength(30)
+                .IsRequired();
+
+            entity.Property(x => x.MediaUrl)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.ButtonText)
+                .HasMaxLength(100);
+
+            entity.Property(x => x.BackgroundColor)
+                .HasMaxLength(30);
+
+            entity.Property(x => x.TextColor)
+                .HasMaxLength(30);
+
+            entity.HasIndex(x => new
+            {
+                x.StoreId,
+                x.IsActive,
+                x.SortOrder
+            });
         });
 
         DisableCascadeDeleteToStore(builder);

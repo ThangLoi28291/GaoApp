@@ -91,6 +91,8 @@ public class TenantResolutionMiddleware
                 if (store != null)
                 {
                     tenantContextWriter.SetStore(store.Id, normalized);
+
+                    BindStoreItems(context, store);
                 }
             }
 
@@ -261,5 +263,11 @@ public class TenantResolutionMiddleware
         };
 
         await context.Response.WriteAsJsonAsync(payload);
+    }
+    private static void BindStoreItems(HttpContext context, dynamic store)
+    {
+        context.Items["CurrentStoreId"] = store.Id.ToString();
+        context.Items["CurrentStoreName"] = store.Name;
+        context.Items["CurrentStoreCode"] = store.Code;
     }
 }

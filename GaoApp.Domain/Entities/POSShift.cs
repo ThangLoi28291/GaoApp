@@ -63,6 +63,9 @@ public class POSShift : BaseStoreEntity, IAuditTrackedEntity
     public decimal RefundTotal => CashRefundTotal + NonCashRefundTotal;
 
     public ICollection<POSShiftCashTransaction> CashTransactions { get; set; } = new List<POSShiftCashTransaction>();
+    public ICollection<POSShiftCashDenomination> CashDenominations { get; set; } = new List<POSShiftCashDenomination>();
+    public ICollection<POSShiftHandoverSlip> HandoverSlips { get; set; } = new List<POSShiftHandoverSlip>();
+    public ICollection<POSShiftClosingSlip> ClosingSlips { get; set; } = new List<POSShiftClosingSlip>();
 
     /// <summary>
     /// QUAN TRỌNG:

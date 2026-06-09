@@ -1,0 +1,20 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _CustomerBox.cshtml
+   Mục đích:
+   - Chứa riêng khu vực thông tin khách hàng của POS
+   - Giữ nguyên id="customerInfoBox" để JavaScript hiện tại tiếp tục render được
+   - Không thay đổi logic chọn/xóa khách hàng, chỉ tách HTML ra khỏi Index.cshtml
+   ========================================================= *@
+
+<div class="card pos-card mb-3">
+    <div class="card-body">
+        @* Tiêu đề khu vực khách hàng *@
+        <div class="pos-section-title">Khách hàng</div>
+
+        @* JS hiện tại sẽ render khách lẻ / khách đã chọn vào đây,
+           nên bắt buộc phải giữ nguyên id="customerInfoBox" *@
+        <div id="customerInfoBox" class="pos-customer-box">
+            <div class="text-muted">Khách lẻ</div>
+        </div>
+    </div>
+</div>

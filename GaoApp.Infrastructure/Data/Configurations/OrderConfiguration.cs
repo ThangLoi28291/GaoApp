@@ -35,8 +35,17 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.Property(x => x.PaidTotal).HasPrecision(18, 2);
         b.Property(x => x.BalanceDue).HasPrecision(18, 2);
         b.Property(x => x.ChangeDue).HasPrecision(18, 2);
+        b.Property(x => x.VoucherDiscountTotal).HasPrecision(18, 2);
 
         b.Property(x => x.Note).HasMaxLength(500);
+        b.Property(x => x.ComboDiscountTotal)
+    .HasPrecision(18, 2);
+
+        b.Property(x => x.ComboPromotionName)
+            .HasMaxLength(200);
+
+        b.Property(x => x.ComboPromotionNote)
+            .HasMaxLength(500);
 
         // ✅ BẮT BUỘC thuộc 1 ca POS
         b.Property(x => x.POSShiftId).IsRequired();

@@ -12,4 +12,7 @@ public interface IWarehouseService
     
 
 Task<List<Select2OptionDto>> SearchSelect2Async(string? term, CancellationToken ct = default);
+    Task<WarehouseDto> ToggleAllowNegativeInventoryAsync(int id, bool allow, CancellationToken ct = default);
+    Task<WarehouseDto> ToggleActiveAsync(int id, bool isActive, CancellationToken ct = default);
+    Task<WarehouseDto> SetDefaultAsync(int id, CancellationToken ct = default);
 }

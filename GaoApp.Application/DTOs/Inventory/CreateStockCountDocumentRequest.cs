@@ -9,6 +9,8 @@ public class CreateStockCountDocumentRequest
 {
     [Range(1, int.MaxValue, ErrorMessage = "WarehouseId không hợp lệ.")]
     public int WarehouseId { get; set; }
+    [StringLength(250)]
+    public string? DocumentName { get; set; }
 
     public DateTime? DocumentDate { get; set; }
 

@@ -22,7 +22,12 @@ public interface IPOSService
 
     Task<OrderDraftDto> GetDraftAsync(int orderId, CancellationToken ct = default);
 
-    Task<OrderDraftDto> AddItemAsync(int orderId, int variantId, decimal qty = 1, CancellationToken ct = default);
+    Task<OrderDraftDto> AddItemAsync(
+      int orderId,
+      int variantId,
+      int? productUnitConversionId = null,
+      decimal qty = 1,
+      CancellationToken ct = default);
 
     Task<OrderDraftDto> AddItemByBarcodeAsync(int orderId, string barcode, decimal qty = 1, CancellationToken ct = default);
 
@@ -74,7 +79,10 @@ public interface IPOSService
 
     Task<List<POSCustomerSearchItemDto>> SearchCustomersForPOSAsync(string keyword, int take = 20, CancellationToken ct = default);
 
-    Task<OrderDraftDto> SetCustomerForCurrentCartAsync(int customerId, CancellationToken ct = default);
+    Task<OrderDraftDto> SetCustomerForCurrentCartAsync(
+       int customerId,
+       bool repriceExistingLines = false,
+       CancellationToken ct = default);
 
     Task<OrderDraftDto> ClearCustomerForCurrentCartAsync(CancellationToken ct = default);
 
@@ -91,4 +99,10 @@ public interface IPOSService
     Task<OrderReceiptDto> RefundCompletedOrderAsync(int orderId, string reason, CancellationToken ct = default);
 
     Task<POSShiftDashboardDto> GetCurrentShiftDashboardAsync(CancellationToken ct = default);
+    Task<OrderDraftDto> ApplyRewardVouchersToCurrentCartAsync(
+    ApplyRewardVouchersRequest request,
+    CancellationToken ct = default);
+
+    Task<OrderDraftDto> ClearRewardVouchersFromCurrentCartAsync(
+        CancellationToken ct = default);
 }

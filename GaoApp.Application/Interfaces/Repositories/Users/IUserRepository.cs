@@ -13,4 +13,9 @@ public interface IUserRepository
     string? keyword,
     int maxResults = 20,
     CancellationToken ct = default);
+    Task<List<User>> GetByIdsAsync(List<int> ids, CancellationToken ct = default);
+    Task<bool> ExistsByUserNameAsync(
+    string userName,
+    CancellationToken ct = default);
+
 }

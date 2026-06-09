@@ -12,4 +12,5 @@ public interface IWarehouseRepository
     Task<bool> ExistsNameAsync(string name, int? excludeId = null, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
     Task ClearDefaultAsync(int? exceptWarehouseId = null, CancellationToken ct = default);
+    Task<string> GenerateNextCodeAsync(CancellationToken ct = default);
 }

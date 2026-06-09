@@ -143,6 +143,7 @@ public class StockTransferService : IStockTransferService
                     LineNo = x.LineNo,
                     ProductVariantId = x.ProductVariantId,
                     UnitId = x.UnitId,
+                    ImageUrl = BuildImageUrl(x.ProductVariant),
                     UnitNameSnapshot = x.UnitNameSnapshot,
                     Factor = x.Factor,
                     Quantity = x.Quantity,
@@ -155,7 +156,35 @@ public class StockTransferService : IStockTransferService
                 .ToList()
         };
     }
+    private static string? BuildImageUrl(ProductVariant? variant)
+    {
+        var product = variant?.Product;
 
+        if (product?.ProductImages == null || !product.ProductImages.Any())
+            return null;
+
+        var image = product.ProductImages
+            .Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.IsPrimary)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .FirstOrDefault();
+
+        var storagePath = image?.MediaAsset?.StoragePath;
+
+        if (string.IsNullOrWhiteSpace(storagePath))
+            return null;
+
+        storagePath = storagePath.Trim();
+
+        if (storagePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            storagePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return storagePath;
+        }
+
+        return "/" + storagePath.TrimStart('/');
+    }
     public async Task UpdateHeaderAsync(int id, UpdateStockTransferHeaderRequest request, CancellationToken ct = default)
     {
         var document = await _stockTransferRepository.GetByIdAsync(id, ct)
@@ -194,7 +223,37 @@ public class StockTransferService : IStockTransferService
             ct);
 
         var factor = resolvedUnit.Factor <= 0 ? 1m : resolvedUnit.Factor;
+        var existingLine = document.Lines.FirstOrDefault(x =>
+    x.ProductVariantId == request.ProductVariantId &&
+    x.UnitId == resolvedUnit.UnitId);
 
+        if (existingLine != null)
+        {
+            existingLine.Quantity += request.Quantity;
+            existingLine.Factor = factor;
+            existingLine.BaseQuantity = existingLine.Quantity * factor;
+            existingLine.UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty;
+            existingLine.BarcodeSnapshot = ResolveBarcodeSnapshot(variant, resolvedUnit.UnitId);
+
+            var incomingNote = request.Note?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(incomingNote))
+            {
+                if (incomingNote.StartsWith("Quét mã:", StringComparison.OrdinalIgnoreCase))
+                {
+                    existingLine.Note = incomingNote;
+                }
+                else
+                {
+                    existingLine.Note = string.IsNullOrWhiteSpace(existingLine.Note)
+                        ? incomingNote
+                        : $"{existingLine.Note} | {incomingNote}";
+                }
+            }
+
+            await _stockTransferRepository.SaveChangesAsync(ct);
+            return existingLine.Id;
+        }
         // QUAN TRỌNG:
         // Không tự lấy từ document.Lines vì có thể đang bị query filter / soft delete che mất.
         // Phải lấy số dòng kế tiếp từ repository để bám đúng dữ liệu DB thực tế.

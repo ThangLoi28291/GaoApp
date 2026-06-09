@@ -5,9 +5,12 @@ using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.ProductAttributes;
 using GaoApp.Web.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using GaoApp.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
+[Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.View)]
 public class ProductAttributeController : BaseAdminController
 {
     private readonly IProductAttributeService _service;
@@ -68,11 +71,13 @@ public class ProductAttributeController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Create)]
     public IActionResult Create()
         => View("Edit", new ProductAttributeEditViewModel { Status = true });
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Create)]
     public async Task<IActionResult> Create(ProductAttributeEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid)
@@ -102,6 +107,7 @@ public class ProductAttributeController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -127,6 +133,7 @@ public class ProductAttributeController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Update)]
     public async Task<IActionResult> Edit(ProductAttributeEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid)
@@ -159,6 +166,7 @@ public class ProductAttributeController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();
@@ -173,6 +181,7 @@ public class ProductAttributeController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId();

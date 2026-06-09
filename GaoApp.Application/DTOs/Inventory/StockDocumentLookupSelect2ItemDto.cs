@@ -68,4 +68,7 @@ public class StockDocumentLookupSelect2ItemDto
     /// Text hiển thị cho Select2.
     /// </summary>
     public string Text { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
+    public decimal? Price { get; set; }
+    public decimal? CostPrice { get; set; }
 }

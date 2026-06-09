@@ -1,33 +1,82 @@
 ﻿namespace GaoApp.Web.Common.Responses;
 
 /// <summary>
-/// Response lỗi chuẩn dùng cho API/AJAX.
+/// Payload lỗi chuẩn trả về cho client.
+/// 
+/// Giữ các field cũ để tương thích ngược,
+/// đồng thời bổ sung các field mới cho POS:
+/// - ErrorCode
+/// - ActionHint
+/// - ErrorType
+/// - Metadata
 /// </summary>
-public class ErrorResponse
+public sealed class ErrorResponse
 {
     /// <summary>
-    /// Đánh dấu request thất bại.
+    /// Luôn false đối với response lỗi.
+    /// Giữ lại để tương thích với các đoạn JS/API cũ.
     /// </summary>
     public bool Success { get; set; } = false;
 
     /// <summary>
-    /// Thông điệp hiển thị cho client.
+    /// Message chính hiển thị cho người dùng cuối.
     /// </summary>
-    public string Message { get; set; } = "Đã xảy ra lỗi hệ thống.";
+    public string Message { get; set; } = "Có lỗi xảy ra.";
 
     /// <summary>
-    /// Mã HTTP status code.
+    /// HTTP status code của response.
     /// </summary>
     public int StatusCode { get; set; }
 
     /// <summary>
-    /// TraceId để đối chiếu log.
+    /// TraceId để truy vết log.
     /// </summary>
     public string? TraceId { get; set; }
 
     /// <summary>
-    /// Chỉ nên bật ở môi trường Development.
-    /// Không trả chi tiết nội bộ ra Production.
+    /// Detail kỹ thuật. Chỉ nên hiện trong môi trường dev nếu cần.
     /// </summary>
     public string? Detail { get; set; }
+
+    /// <summary>
+    /// Mã lỗi chuẩn, đặc biệt dùng cho frontend POS.
+    /// Ví dụ:
+    /// - POS_SHIFT_NOT_OPEN
+    /// - POS_SHIFT_OPENED_BY_ANOTHER_USER
+    /// </summary>
+    public string? ErrorCode { get; set; }
+
+    /// <summary>
+    /// Gợi ý thao tác tiếp theo cho người dùng.
+    /// Ví dụ:
+    /// - "Vui lòng mở ca trước khi thực hiện thao tác này."
+    /// - "Hãy xử lý hết đơn giữ trước khi đóng ca."
+    /// </summary>
+    public string? ActionHint { get; set; }
+
+    /// <summary>
+    /// Loại lỗi chuẩn để frontend biết nên toast / modal / banner.
+    /// Ví dụ:
+    /// - validation
+    /// - business_rule
+    /// - ownership
+    /// - context
+    /// - permission
+    /// - authentication
+    /// - state_conflict
+    /// - technical
+    /// </summary>
+    public string? ErrorType { get; set; }
+
+    /// <summary>
+    /// Dữ liệu phụ cho frontend.
+    /// Có thể chứa:
+    /// - heldOrderCount
+    /// - shiftCode
+    /// - ownerUserName
+    /// - canTakeOver
+    /// - currentDraftId
+    /// ...
+    /// </summary>
+    public object? Metadata { get; set; }
 }
