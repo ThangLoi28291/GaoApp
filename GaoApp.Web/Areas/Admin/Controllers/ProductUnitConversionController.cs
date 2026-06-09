@@ -1,10 +1,12 @@
 ﻿using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Products;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
+[Authorize]
 public class ProductUnitConversionController : Controller
 {
     private readonly IProductUnitConversionService _productUnitConversionService;

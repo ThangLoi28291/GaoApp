@@ -8,6 +8,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/warehouses")]
+[Authorize]
 [ApiController]
 public class WarehousesController : ControllerBase
 {

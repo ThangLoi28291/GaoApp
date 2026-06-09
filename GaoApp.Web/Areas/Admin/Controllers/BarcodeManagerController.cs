@@ -1,11 +1,13 @@
 ﻿using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Web.Areas.Admin.ViewModels.Products;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/barcode-manager")]
+[Authorize]
 public sealed class BarcodeManagerController : Controller
 {
     private readonly IProductUnitBarcodeReadService _barcodeReadService;

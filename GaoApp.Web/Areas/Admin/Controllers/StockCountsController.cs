@@ -8,6 +8,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/stock-counts")]
+[Authorize]
 [ApiController]
 public class StockCountsController : ControllerBase
 {

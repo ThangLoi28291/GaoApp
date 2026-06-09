@@ -1,11 +1,13 @@
 ﻿using GaoApp.Application.DTOs.Returns;
 using GaoApp.Application.Interfaces.Services.Orders;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos/returns")]
+[Authorize]
 public class POSReturnController : Controller
 {
     private readonly ISalesReturnService _salesReturnService;

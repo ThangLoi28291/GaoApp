@@ -1,11 +1,13 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Web.ViewModels.Invoices;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
+[Authorize]
 public class InvoiceController : Controller
 {
     private readonly IInvoiceService _invoiceService;

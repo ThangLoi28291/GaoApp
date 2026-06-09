@@ -7,6 +7,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
 [Route("admin/pos-shift/handover-slip-print")]
+
 public class POSShiftHandoverSlipPrintPageController : Controller
 {
     [HttpGet("")]

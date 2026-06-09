@@ -128,3 +128,63 @@ Khi sửa combo cần kiểm tra phân bổ giảm giá vào từng dòng để 
 - Không query promotion từng dòng nếu có thể load promotion active một lần theo StoreId/time/type.
 - Ưu tiên xử lý trên lines đã loaded trong draft.
 - Index `Promotions` đã có theo StoreId/Type/Active/Start/End/IsDeleted.
+- ## 2026-06-09 - Fix apply promotion lần đầu trong POS
+
+### Trạng thái
+
+Đã sửa lỗi promotion giảm tiền / giảm % không áp dụng khi sản phẩm mới được thêm vào giỏ với số lượng 1.
+
+### Nguyên nhân
+
+* Dòng hàng mới trong POS được tạo trong memory, chưa save DB.
+* `OrderLine.StoreId` lúc này có thể bằng `0`.
+* `PromotionEngine` kiểm tra `line.StoreId <= 0` nên bỏ qua promotion.
+* Khi quét/cộng số lượng lần sau, line đã được lưu nên có `StoreId`, vì vậy promotion mới chạy đúng.
+
+### Cách sửa
+
+* Trong `POSService`, khi thêm hoặc merge dòng hàng phải đảm bảo `OrderLine.StoreId = order.StoreId`.
+* Trong `PromotionEngine`, dùng `effectiveStoreId`:
+
+  * Ưu tiên `line.StoreId` nếu có.
+  * Nếu chưa có thì fallback sang `order.StoreId`.
+* Không bỏ qua promotion chỉ vì line mới chưa được EF gán StoreId.
+
+### DB lưu snapshot promotion
+
+Các cột promotion cần tồn tại trên `OrderLines`:
+
+* `OriginalUnitPrice`
+* `PromotionDiscount`
+* `PromotionId`
+* `PromotionName`
+* `PromotionType`
+* `PromotionBuyQuantity`
+* `PromotionGiftQuantity`
+* `IsPromotionGift`
+* `GiftPromotionId`
+* `GiftSourceLineId`
+* `GiftPromotionName`
+* `GiftPromotionNote`
+* `ComboPromotionId`
+* `ComboPromotionName`
+* `ComboPromotionNote`
+* `ComboAllocatedDiscount`
+
+Các cột tổng promotion/combo cần tồn tại trên `Orders`:
+
+* `PromotionDiscountTotal`
+* `ComboDiscountTotal`
+* `ComboPromotionId`
+* `ComboPromotionName`
+* `ComboPromotionNote`
+
+### Cần test lại
+
+1. Giảm tiền sản phẩm, mua số lượng 1.
+2. Giảm % sản phẩm, mua số lượng 1.
+3. Tăng số lượng lên 2, 3, 4.
+4. Đổi đơn vị áp dụng: tất cả đơn vị / đơn vị quy đổi cụ thể.
+5. Chốt đơn và kiểm tra dữ liệu lưu trong `OrderLines`.
+6. Reload lại đơn nháp và kiểm tra promotion vẫn đúng.
+

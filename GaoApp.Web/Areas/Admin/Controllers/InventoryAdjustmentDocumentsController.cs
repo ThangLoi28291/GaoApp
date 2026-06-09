@@ -6,6 +6,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/inventory-adjustment-documents")]
+
 [Authorize(Policy = PermissionCodes.Inventory.Adjustment.View)]
 public class InventoryAdjustmentDocumentsController : Controller
 {

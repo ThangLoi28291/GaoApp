@@ -1,10 +1,19 @@
 ﻿using System.Security.Claims;
 using GaoApp.Application.Common;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers
 {
+    /// <summary>
+    /// Base controller cho toàn bộ khu vực Admin.
+    /// 
+    /// Quan trọng:
+    /// - Mọi controller kế thừa BaseAdminController mặc định bắt buộc đăng nhập.
+    /// - Controller nào cần public, ví dụ Login, phải dùng [AllowAnonymous] riêng.
+    /// </summary>
     [Area("Admin")]
+    [Authorize]
     public abstract class BaseAdminController : Controller
     {
         protected void ToastSuccess(string msg) => TempData["Success"] = msg;
@@ -20,6 +29,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers
             get
             {
                 var tenant = HttpContext.RequestServices.GetRequiredService<ITenantContext>();
+
                 if (tenant.StoreId == null)
                     throw new InvalidOperationException("StoreId chưa được resolve. Hãy truy cập bằng subdomain store.");
 

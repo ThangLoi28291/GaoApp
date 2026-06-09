@@ -8,6 +8,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [ApiController]
+[Authorize]
 [Route("admin/api/inventory-adjustment-documents")]
 public class InventoryAdjustmentDocumentsApiController : ControllerBase
 {

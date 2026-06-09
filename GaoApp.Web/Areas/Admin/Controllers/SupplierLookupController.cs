@@ -1,11 +1,13 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Interfaces.Services.Suppliers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/suppliers")]
+[Authorize]
 [ApiController]
 public class SupplierLookupController : ControllerBase
 {

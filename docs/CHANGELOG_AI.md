@@ -37,3 +37,41 @@ File này dùng để ghi ngắn gọn sau mỗi lần hoàn thành chức năng
 - Copy thư mục `docs` vào source.
 - Commit Git.
 - Từ các lần sau, sau khi PASS một chức năng thì cập nhật file này.
+
+## 2026-06-09 - Promotion/POS
+
+### Đã làm
+
+* Sửa lỗi promotion giảm tiền / giảm % không áp dụng ngay khi mua số lượng 1.
+* Nguyên nhân: `OrderLine` mới thêm vào giỏ chưa có `StoreId`, trong khi `PromotionEngine` kiểm tra `line.StoreId <= 0` nên bỏ qua promotion ở lần đầu.
+* Đã bổ sung gán `StoreId = order.StoreId` khi thêm hoặc merge dòng hàng trong POS.
+* Đã điều chỉnh `PromotionEngine` dùng `effectiveStoreId` từ `line.StoreId` hoặc fallback từ `order.StoreId`.
+* Bổ sung SQL tạo/cập nhật các cột lưu snapshot promotion trên `OrderLines` và tổng promotion/combo trên `Orders`.
+
+### File liên quan
+
+* `GaoApp.Application/Services/Orders/POSService.cs`
+* `GaoApp.Application/Services/Promotions/PromotionEngine.cs`
+* SQL Server:
+
+  * `dbo.OrderLines`
+  * `dbo.Orders`
+
+### Cần test
+
+* Tạo giỏ mới, quét sản phẩm có giảm tiền 1 lần, kiểm tra promotion áp dụng ngay.
+* Tạo giỏ mới, quét sản phẩm có giảm % 1 lần, kiểm tra promotion áp dụng ngay.
+* Quét tiếp số lượng 2 trở lên, kiểm tra tiền giảm nhân đúng theo số lượng.
+* Reload lại giỏ, kiểm tra promotion vẫn hiển thị đúng.
+* Chốt đơn, kiểm tra dữ liệu promotion được lưu trong `OrderLines`.
+* Kiểm tra Buy X Get Y nếu có: dòng hàng tặng giá 0, không làm tăng `GrandTotal`.
+
+### Lưu ý cho lần chat sau
+
+* Khi sửa Promotion/POS cần kiểm tra `StoreId` của `OrderLine` mới tạo trước khi gọi `PromotionEngine`.
+* Promotion nên được áp sau khi giá bán/đơn vị bán đã được xác định.
+* Không query promotion từng dòng; ưu tiên load active promotions một lần rồi xử lý trên lines đã loaded.
+
+
+- Khóa endpoint debug `/__tenant` và `/__tenant-hash`, chỉ cho chạy ở môi trường Development.
+- Giữ `/ping` vì không trả dữ liệu nhạy cảm.

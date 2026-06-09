@@ -15,7 +15,6 @@ using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Invoices;
-using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Interfaces.Services.Promotions;
@@ -739,6 +738,8 @@ IPromotionRepository promotionRepository)
 
         if (existing != null)
         {
+            if (existing.StoreId <= 0 && order.StoreId > 0)
+                existing.StoreId = order.StoreId;
             existing.Quantity += qty;
             existing.BaseQuantity += baseQtyToAdd;
             existing.Multiplier = multiplier;
@@ -757,6 +758,7 @@ IPromotionRepository promotionRepository)
 
         order.Lines.Add(new OrderLine
         {
+            StoreId = order.StoreId,
             OrderId = order.Id,
             ProductId = lookup.ProductId,
             VariantId = lookup.ProductVariantId,
@@ -1630,6 +1632,8 @@ IPromotionRepository promotionRepository)
    sellingInfo.ProductUnitConversionId);
         if (existing != null)
         {
+            if (existing.StoreId <= 0 && order.StoreId > 0)
+                existing.StoreId = order.StoreId;
             existing.Quantity += qty;
             existing.BaseQuantity += ComputeBaseQuantity(qty, sellingInfo.Multiplier);
             existing.Multiplier = sellingInfo.Multiplier;
@@ -1648,6 +1652,7 @@ IPromotionRepository promotionRepository)
         {
             order.Lines.Add(new OrderLine
             {
+                StoreId = order.StoreId,
                 OrderId = order.Id,
                 ProductId = variant.ProductId,
                 VariantId = variant.Id,

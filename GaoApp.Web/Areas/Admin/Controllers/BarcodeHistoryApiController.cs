@@ -1,10 +1,12 @@
 ﻿using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Products;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers.Api;
 
 [Area("Admin")]
+[Authorize]
 [ApiController]
 [Route("admin/api/barcode-history")]
 public sealed class BarcodeHistoryApiController : ControllerBase

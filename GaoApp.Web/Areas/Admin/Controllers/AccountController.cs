@@ -12,6 +12,7 @@ using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.Account;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -41,6 +42,7 @@ public class AccountController : Controller
     }
 
     [HttpGet("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login(string? returnUrl = null, CancellationToken ct = default)
     {
         var vm = await BuildLoginVmAsync(returnUrl, ct);
@@ -48,6 +50,7 @@ public class AccountController : Controller
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(LoginVm vm, CancellationToken ct)
     {
@@ -147,6 +150,7 @@ public class AccountController : Controller
     }
 
     [HttpGet("logout")]
+    [Authorize]
     public async Task<IActionResult> Logout()
     {
         await _auditLogService.WriteAsync(new WriteAuditLogRequest
@@ -162,6 +166,7 @@ public class AccountController : Controller
     }
 
     [HttpGet("access-denied")]
+    [AllowAnonymous]
     public IActionResult AccessDenied(string? returnUrl = null)
     {
         ViewBag.ReturnUrl = returnUrl;

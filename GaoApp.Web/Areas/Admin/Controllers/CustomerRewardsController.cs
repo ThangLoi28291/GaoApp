@@ -9,6 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/customers")]
+[Authorize]
 [ApiController]
 public sealed class CustomerRewardsController : ControllerBase
 {

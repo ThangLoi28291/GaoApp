@@ -1,12 +1,14 @@
 ﻿using GaoApp.Application.DTOs.Display;
 using GaoApp.Application.Interfaces.Services.Display;
-using Microsoft.AspNetCore.Mvc;
 using GaoApp.Web.Hubs;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
+[Authorize]
 public class DisplayPromotionController : Controller
 {
     private readonly IDisplayPromotionService _service;

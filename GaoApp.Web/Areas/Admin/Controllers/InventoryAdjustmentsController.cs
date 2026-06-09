@@ -1,12 +1,14 @@
 ﻿using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Products;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/inventory-adjustments")]
+[Authorize]
 [ApiController]
 public class InventoryAdjustmentsController : ControllerBase
 {

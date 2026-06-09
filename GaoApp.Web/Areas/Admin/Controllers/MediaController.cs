@@ -1,12 +1,14 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Media;
 using GaoApp.Application.Interfaces.Services.Media;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/media")]
+[Authorize]
 public class MediaController : Controller
 {
     private readonly ITempUploadService _temp;

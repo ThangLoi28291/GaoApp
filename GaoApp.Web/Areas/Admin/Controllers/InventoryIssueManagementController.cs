@@ -2,6 +2,7 @@
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Domain.Enums;
 using GaoApp.Web.Areas.Admin.ViewModels.Orders;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
@@ -9,6 +10,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/inventory-issues")]
+[Authorize]
 public class InventoryIssueManagementController : Controller
 {
     private readonly IOrderInventoryIssueService _issueService;

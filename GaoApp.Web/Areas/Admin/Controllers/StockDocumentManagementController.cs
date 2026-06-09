@@ -11,7 +11,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/stock-documents")]
-
+[Authorize]
 public class StockDocumentManagementController : Controller
 {
     private readonly IStockDocumentService _stockDocumentService;

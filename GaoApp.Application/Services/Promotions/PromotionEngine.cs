@@ -38,8 +38,18 @@ public sealed class PromotionEngine : IPromotionEngine
 
         ClearProductPromotionSnapshot(line);
 
-        if (line.StoreId <= 0)
+        var effectiveStoreId = line.StoreId > 0
+       ? line.StoreId
+       : order.StoreId;
+
+        if (effectiveStoreId <= 0)
             return;
+
+        if (order.StoreId > 0 && effectiveStoreId != order.StoreId)
+            return;
+
+        if (line.StoreId <= 0)
+            line.StoreId = effectiveStoreId;
 
         if (line.ProductId <= 0 || line.VariantId <= 0)
             return;
@@ -50,7 +60,7 @@ public sealed class PromotionEngine : IPromotionEngine
         var originalUnitPrice = line.UnitPrice;
 
         var promotions = await _promotionRepository
-            .GetActiveProductDiscountPromotionsAsync(line.StoreId, ct);
+      .GetActiveProductDiscountPromotionsAsync(effectiveStoreId, ct);
 
         if (!promotions.Any())
             return;
@@ -858,8 +868,18 @@ public sealed class PromotionEngine : IPromotionEngine
         if (line.IsPromotionGift)
             return;
 
-        if (line.StoreId <= 0)
+        var effectiveStoreId = line.StoreId > 0
+     ? line.StoreId
+     : order.StoreId;
+
+        if (effectiveStoreId <= 0)
             return;
+
+        if (order.StoreId > 0 && effectiveStoreId != order.StoreId)
+            return;
+
+        if (line.StoreId <= 0)
+            line.StoreId = effectiveStoreId;
 
         if (line.ProductId <= 0 || line.VariantId <= 0)
             return;

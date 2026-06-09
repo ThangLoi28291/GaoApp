@@ -289,29 +289,36 @@ try
     });
 
     app.MapHub<PosHub>("/hubs/pos");
-    
+
     // =========================================================
     // 19) DEBUG ENDPOINTS
     // =========================================================
+    // /ping có thể giữ lại để kiểm tra app còn sống.
+    // Endpoint này không trả dữ liệu nhạy cảm.
     app.MapGet("/ping", () => Results.Text("pong"));
 
-    app.MapGet("/__tenant-hash", (HttpContext ctx, ITenantContext t) =>
-        Results.Json(new
-        {
-            Host = ctx.Request.Host.ToString(),
-            Scheme = ctx.Request.Scheme,
-            t.StoreId,
-            t.Subdomain,
-            t.IsHostAdmin
-        }));
+    // Các endpoint debug tenant chỉ mở ở Development.
+    // Không mở Production/Staging để tránh lộ StoreId/Subdomain/Host.
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapGet("/__tenant-hash", (HttpContext ctx, ITenantContext t) =>
+            Results.Json(new
+            {
+                Host = ctx.Request.Host.ToString(),
+                Scheme = ctx.Request.Scheme,
+                t.StoreId,
+                t.Subdomain,
+                t.IsHostAdmin
+            }));
 
-    app.MapGet("/__tenant", (TenantContext t) =>
-        Results.Json(new
-        {
-            t.IsHostAdmin,
-            t.Subdomain,
-            t.StoreId
-        }));
+        app.MapGet("/__tenant", (TenantContext t) =>
+            Results.Json(new
+            {
+                t.IsHostAdmin,
+                t.Subdomain,
+                t.StoreId
+            }));
+    }
 
     // =========================================================
     // 20) ROUTES
