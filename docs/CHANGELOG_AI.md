@@ -1,3 +1,26 @@
+
+## 2026-06-09
+
+### Security / Admin Authorization
+
+Đã làm:
+- Thêm `[Authorize]` vào `BaseAdminController` để toàn bộ controller kế thừa Admin base mặc định bắt đăng nhập.
+- Bổ sung `[Authorize]` cho các controller Admin dạng `Controller` chưa kế thừa `BaseAdminController`.
+- Bổ sung `[Authorize]` cho các API Admin dạng `ControllerBase`.
+- Thêm `[AllowAnonymous]` cho `AccountController.Login` và `AccountController.AccessDenied`.
+- Thêm `[Authorize]` cho `AccountController.Logout`.
+- Khóa endpoint debug `/__tenant` và `/__tenant-hash`, chỉ cho chạy trong môi trường Development.
+- Giữ `/ping` vì không trả dữ liệu nhạy cảm.
+
+Đã test:
+- Chưa đăng nhập vào `/admin/pos` bị chuyển về login.
+- Chưa đăng nhập vào `/admin/api/...` không trả dữ liệu.
+- Trang `/admin/account/login` vẫn vào được.
+- Sau khi đăng nhập, POS/Admin vẫn hoạt động.
+
+Cần kiểm tra khi publish IIS:
+- Môi trường Production không truy cập được `/__tenant`.
+- Môi trường Production không truy cập được `/__tenant-hash`.
 # GaoApp - AI Changelog
 
 File này dùng để ghi ngắn gọn sau mỗi lần hoàn thành chức năng. Không cần tạo file mới cho từng chức năng.
@@ -75,3 +98,5 @@ File này dùng để ghi ngắn gọn sau mỗi lần hoàn thành chức năng
 
 - Khóa endpoint debug `/__tenant` và `/__tenant-hash`, chỉ cho chạy ở môi trường Development.
 - Giữ `/ping` vì không trả dữ liệu nhạy cảm.
+
+
