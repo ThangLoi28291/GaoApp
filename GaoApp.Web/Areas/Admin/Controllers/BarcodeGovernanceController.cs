@@ -7,6 +7,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers.Api;
 
 [Area("Admin")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
 [ApiController]
 [Route("admin/api/barcodes")]
 public sealed class BarcodeGovernanceController : ControllerBase

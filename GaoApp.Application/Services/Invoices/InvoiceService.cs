@@ -62,7 +62,16 @@ public class InvoiceService : IInvoiceService
             VatAmount = 0,
             GrandTotal = 0,
 
-            Note = "Tạo khung hóa đơn bán ra từ POS order. Chưa sinh dòng chi tiết."
+            ProviderCode = "VIETTEL",
+            ProviderStatus = InvoiceProviderStatus.LocalDraft,
+            TransactionUuid = Guid.NewGuid().ToString(),
+
+            SupplierTaxCode = "0100109106-509",
+            InvoiceType = "1",
+            TemplateCode = "1/002",
+            InvoiceSeries = "C26THA",
+
+            Note = null
         };
 
         await _invoiceRepository.AddInvoiceHeadAsync(invoiceHead, ct);
@@ -72,8 +81,8 @@ public class InvoiceService : IInvoiceService
     }
 
     public async Task<Result<InvoiceHeadDto>> GenerateDetailsFromOrderLinesAsync(
-        int orderId,
-        CancellationToken ct = default)
+     int orderId,
+     CancellationToken ct = default)
     {
         if (orderId <= 0)
         {
@@ -89,12 +98,17 @@ public class InvoiceService : IInvoiceService
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound(
-                 
                     "Không tìm thấy đơn hàng để sinh chi tiết hóa đơn."));
         }
 
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByOrderIdAsync(orderId, ct);
-
+        if (invoiceHead.IsLocked)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.Validation(
+                    "Invoice.Locked",
+                    "Hóa đơn đã khóa, không thể sinh lại dòng chi tiết."));
+        }
         if (invoiceHead == null)
         {
             var createResult = await CreateInvoiceHeadFromOrderAsync(orderId, ct);
@@ -108,18 +122,38 @@ public class InvoiceService : IInvoiceService
             {
                 return Result<InvoiceHeadDto>.Failure(
                     Error.Failure(
-                       
                         "Không tạo được InvoiceHead."));
             }
         }
 
+        // GHI CHÚ:
+        // Invoice đã khóa thì không được sinh thêm dòng tự động từ POS.
+        // Nếu không chặn, hóa đơn đã khóa vẫn có thể bị thay đổi tổng tiền.
+        if (invoiceHead.IsLocked)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.Validation(
+                    "Invoice.Locked",
+                    "Hóa đơn đã khóa, không thể sinh thêm chi tiết từ POS."));
+        }
+
         var existedOrderLineIds = invoiceHead.Details
-            .Where(x => x.OrderLineId.HasValue)
+            .Where(x => !x.IsDeleted && x.OrderLineId.HasValue)
             .Select(x => x.OrderLineId!.Value)
             .ToHashSet();
 
+        // GHI CHÚ:
+        // Chỉ lấy các OrderLine:
+        // - chưa từng sinh InvoiceDetail;
+        // - có Variant;
+        // - Variant có HasInputInvoice = true.
+        //
+        // Đây là nghiệp vụ chính:
+        // Hàng chưa có hóa đơn đầu vào vẫn bán POS bình thường,
+        // nhưng không đưa vào InvoiceDetail bán ra.
         var eligibleLines = order.Lines
             .Where(x =>
+                !x.IsDeleted &&
                 !existedOrderLineIds.Contains(x.Id) &&
                 x.VariantId > 0 &&
                 x.Variant != null &&
@@ -128,7 +162,12 @@ public class InvoiceService : IInvoiceService
 
         if (!eligibleLines.Any())
         {
+            // GHI CHÚ:
+            // Không có dòng mới thì vẫn tính lại tổng để đảm bảo header khớp detail.
+            // Sau khi tính lại phải SaveChanges để lưu DB.
             RecalculateInvoiceHead(invoiceHead);
+
+            await _invoiceRepository.SaveChangesAsync(ct);
 
             return Result<InvoiceHeadDto>.Success(MapToDto(invoiceHead));
         }
@@ -156,6 +195,9 @@ public class InvoiceService : IInvoiceService
                     UnitPrice = unitPrice,
                     Amount = amount,
 
+                    // GHI CHÚ:
+                    // Giai đoạn hiện tại để VAT = 0.
+                    // Nếu sau này xuất hóa đơn GTGT thật thì phải lấy VAT theo Tax/Product.
                     VatRate = 0,
                     VatAmount = 0,
                     TotalAmount = amount,
@@ -174,7 +216,6 @@ public class InvoiceService : IInvoiceService
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound(
-                    
                     "Không tìm thấy hóa đơn sau khi sinh chi tiết."));
         }
 
@@ -194,14 +235,6 @@ public class InvoiceService : IInvoiceService
                 Error.Validation(
                     "Invoice.InvalidInvoiceHeadId",
                     "InvoiceHeadId không hợp lệ."));
-        }
-
-        if (string.IsNullOrWhiteSpace(request.ItemName))
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.ItemNameRequired",
-                    "Tên hàng hóa/dịch vụ không được để trống."));
         }
 
         if (request.Quantity <= 0)
@@ -230,6 +263,19 @@ public class InvoiceService : IInvoiceService
 
         var invoiceHead = await _invoiceRepository
             .GetInvoiceHeadWithDetailsByIdAsync(request.InvoiceHeadId, ct);
+
+        // GHI CHÚ:
+        // Phải check null trước khi check IsLocked.
+        // Nếu hóa đơn không tồn tại mà gọi invoiceHead.IsLocked sẽ lỗi NullReferenceException.
+        if (invoiceHead == null)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.NotFound(
+                    "Không tìm thấy hóa đơn bán ra."));
+        }
+
+        // GHI CHÚ:
+        // Hóa đơn đã khóa thì không cho thêm dòng manual.
         if (invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -238,13 +284,9 @@ public class InvoiceService : IInvoiceService
                     "Hóa đơn đã khóa, không thể thêm dòng manual."));
         }
 
-        if (invoiceHead == null)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.NotFound(
-                   
-                    "Không tìm thấy hóa đơn bán ra."));
-        }
+        // GHI CHÚ:
+        // Nếu người dùng chọn sản phẩm, hệ thống tự lấy tên/đơn vị/giá.
+        // Vì vậy đoạn này phải chạy trước validate ItemName.
         if (request.ProductVariantId.HasValue && request.ProductVariantId.Value > 0)
         {
             var variant = await _productVariantRepository.GetActiveWithProductAsync(
@@ -255,7 +297,6 @@ public class InvoiceService : IInvoiceService
             {
                 return Result<InvoiceHeadDto>.Failure(
                     Error.NotFound(
-                      
                         "Không tìm thấy sản phẩm được chọn."));
             }
 
@@ -276,6 +317,17 @@ public class InvoiceService : IInvoiceService
                 request.UnitPrice = variant.Price ?? variant.Product?.BasePrice ?? 0m;
             }
         }
+
+        // GHI CHÚ:
+        // Validate ItemName sau khi đã có cơ hội tự fill từ ProductVariant.
+        if (string.IsNullOrWhiteSpace(request.ItemName))
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.Validation(
+                    "Invoice.ItemNameRequired",
+                    "Tên hàng hóa/dịch vụ không được để trống."));
+        }
+
         var amount = request.Quantity * request.UnitPrice;
         var vatAmount = amount * request.VatRate / 100m;
         var totalAmount = amount + vatAmount;
@@ -284,7 +336,13 @@ public class InvoiceService : IInvoiceService
         {
             InvoiceHeadId = invoiceHead.Id,
 
+            // GHI CHÚ:
+            // Dòng manual không sinh từ POS OrderLine nên OrderLineId = null.
             OrderLineId = null,
+
+            // GHI CHÚ:
+            // Có thể null nếu thêm dòng tự do.
+            // Có giá trị nếu chọn sản phẩm từ hệ thống.
             ProductVariantId = request.ProductVariantId,
 
             SourceType = InvoiceDetailSourceType.Manual,
@@ -302,11 +360,15 @@ public class InvoiceService : IInvoiceService
             VatAmount = vatAmount,
             TotalAmount = totalAmount,
 
-            Note = request.Note
+            Note = string.IsNullOrWhiteSpace(request.Note)
+                ? null
+                : request.Note.Trim()
         };
 
         invoiceHead.Details.Add(detail);
 
+        // GHI CHÚ:
+        // Sau khi thêm dòng, phải tính lại tổng header từ detail.
         RecalculateInvoiceHead(invoiceHead);
 
         await _invoiceRepository.SaveChangesAsync(ct);
@@ -345,10 +407,28 @@ public class InvoiceService : IInvoiceService
             LockedAtUtc = entity.LockedAtUtc,
             LockedByUserId = entity.LockedByUserId,
             LockReason = entity.LockReason,
+            TransactionUuid = entity.TransactionUuid,
+            ProviderCode = entity.ProviderCode,
+            SupplierTaxCode = entity.SupplierTaxCode,
+            InvoiceType = entity.InvoiceType,
+            TemplateCode = entity.TemplateCode,
+            InvoiceSeries = entity.InvoiceSeries,
+            ProviderStatus = entity.ProviderStatus,
+            ProviderInvoiceNo = entity.ProviderInvoiceNo,
+            ProviderTransactionId = entity.ProviderTransactionId,
+            ReservationCode = entity.ReservationCode,
+            CodeOfTax = entity.CodeOfTax,
+            IssuedAtUtc = entity.IssuedAtUtc,
+            LastSyncedAtUtc = entity.LastSyncedAtUtc,
+            LastErrorCode = entity.LastErrorCode,
+            LastErrorMessage = entity.LastErrorMessage,
+            PdfFilePath = entity.PdfFilePath,
+            ZipFilePath = entity.ZipFilePath,
             Details = entity.Details
-                .OrderBy(x => x.Id)
-                .Select(MapDetailToDto)
-                .ToList()
+    .Where(x => !x.IsDeleted)
+    .OrderBy(x => x.Id)
+    .Select(MapDetailToDto)
+    .ToList()
         };
     }
 
@@ -380,13 +460,19 @@ public class InvoiceService : IInvoiceService
         var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
 
         var (items, total) = await _invoiceRepository.QueryInvoiceHeadsAsync(
-            query.FromDate,
-            query.ToDate,
-            query.OrderId,
-            query.Keyword,
-            page,
-            pageSize,
-            ct);
+     query.FromDate,
+     query.ToDate,
+     query.OrderId,
+     query.Keyword,
+     query.DisplayMode,
+
+     // GHI CHÚ:
+     // Truyền kiểu sắp xếp người dùng chọn từ màn hình.
+     query.SortMode,
+
+     page,
+     pageSize,
+     ct);
 
         var dtoItems = items.Select(x => new InvoiceListItemDto
         {
@@ -400,10 +486,17 @@ public class InvoiceService : IInvoiceService
             SubTotal = x.SubTotal,
             VatAmount = x.VatAmount,
             GrandTotal = x.GrandTotal,
+
+            // GHI CHÚ:
+            // Đưa trạng thái khóa ra ngoài list để hiển thị badge và lọc dễ hơn.
+            IsLocked = x.IsLocked,
+
             DetailCount = x.Details.Count(d => !d.IsDeleted),
+
             AutoLineCount = x.Details.Count(d =>
                 !d.IsDeleted &&
                 d.SourceType == GaoApp.Domain.Enums.InvoiceDetailSourceType.FromOrderLine),
+
             ManualLineCount = x.Details.Count(d =>
                 !d.IsDeleted &&
                 d.SourceType == GaoApp.Domain.Enums.InvoiceDetailSourceType.Manual)
@@ -509,21 +602,27 @@ public class InvoiceService : IInvoiceService
         }
 
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
-            detail.InvoiceHeadId,
-            ct);
+     detail.InvoiceHeadId,
+     ct);
+
+        // GHI CHÚ:
+        // Phải kiểm tra null trước.
+        // Nếu invoiceHead null mà gọi invoiceHead.IsLocked thì sẽ lỗi NullReferenceException.
+        if (invoiceHead == null)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.NotFound(
+                    "Không tìm thấy hóa đơn bán ra."));
+        }
+
+        // GHI CHÚ:
+        // Hóa đơn đã khóa thì không cho xóa dòng manual.
         if (invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.Validation(
                     "Invoice.Locked",
                     "Hóa đơn đã khóa, không thể xóa dòng manual."));
-        }
-        if (invoiceHead == null)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.NotFound(
-                   
-                    "Không tìm thấy hóa đơn bán ra."));
         }
 
         detail.IsDeleted = true;
@@ -602,21 +701,26 @@ public class InvoiceService : IInvoiceService
         }
 
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
-            detail.InvoiceHeadId,
-            ct);
+     detail.InvoiceHeadId,
+     ct);
+
+        // GHI CHÚ:
+        // Kiểm tra null trước để tránh NullReferenceException.
+        if (invoiceHead == null)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.NotFound(
+                    "Không tìm thấy hóa đơn bán ra."));
+        }
+
+        // GHI CHÚ:
+        // Hóa đơn đã khóa thì không cho sửa dòng manual.
         if (invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.Validation(
                     "Invoice.Locked",
                     "Hóa đơn đã khóa, không thể sửa dòng manual."));
-        }
-        if (invoiceHead == null)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.NotFound(
-                
-                    "Không tìm thấy hóa đơn bán ra."));
         }
 
         var activeDetail = invoiceHead.Details

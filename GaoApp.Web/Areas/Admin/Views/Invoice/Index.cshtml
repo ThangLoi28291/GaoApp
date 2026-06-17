@@ -1,8 +1,76 @@
-﻿@model GaoApp.Web.ViewModels.Invoices.InvoiceIndexViewModel
+﻿@using GaoApp.Application.DTOs.Invoices
+@using GaoApp.Domain.Enums
+@model GaoApp.Web.ViewModels.Invoices.InvoiceIndexViewModel
 
 @{
     ViewData["Title"] = "Quản lý hóa đơn bán ra";
+
+    var q = Model.Query ?? new InvoiceListQueryDto();
 }
+
+<style>
+    .invoice-row-empty {
+        opacity: .72;
+    }
+
+        .invoice-row-empty td {
+            color: #8a94a6;
+        }
+
+    .invoice-row-has-lines {
+        background: #fff;
+    }
+
+    .invoice-filter-card {
+        border: 0;
+        border-radius: 12px;
+    }
+
+    .invoice-table th {
+        white-space: nowrap;
+        font-size: 13px;
+        text-transform: uppercase;
+    }
+
+    .invoice-table td {
+        vertical-align: middle;
+    }
+
+    .invoice-money {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .invoice-badge-count {
+        min-width: 32px;
+        display: inline-block;
+    }
+
+    .invoice-filter-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        margin-bottom: 12px;
+    }
+
+    .invoice-reset-link {
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    @@media (max-width: 768px) {
+        .invoice-table th,
+        .invoice-table td {
+            font-size: 13px;
+        }
+
+        .invoice-table .btn {
+            padding: .25rem .5rem;
+            font-size: 12px;
+        }
+    }
+</style>
 
 <div class="container-fluid">
 
@@ -12,19 +80,27 @@
         </h3>
 
         <div>
-            <span class="badge bg-primary">
-                Tổng: @Model.TotalItems
+            <span class="badge bg-primary px-3 py-2">
+                Tổng: @Model.TotalItems.ToString("N0")
             </span>
         </div>
     </div>
 
     <!-- FILTER -->
-    <div class="card shadow-sm mb-3">
+    <div class="card shadow-sm mb-3 invoice-filter-card">
         <div class="card-body">
 
-            <form method="get">
+            <form method="get"
+                  asp-area="Admin"
+                  asp-controller="Invoice"
+                  asp-action="Index">
 
-                <div class="row g-3">
+                <div class="invoice-filter-title">
+                    Bộ lọc hóa đơn
+                </div>
+
+                <!-- HÀNG 1: LỌC CƠ BẢN -->
+                <div class="row g-3 align-items-end">
 
                     <div class="col-md-2">
                         <label class="form-label">
@@ -34,7 +110,7 @@
                         <input type="date"
                                class="form-control"
                                name="FromDate"
-                               value="@(Model.Query.FromDate?.ToString("yyyy-MM-dd"))" />
+                               value="@(q.FromDate?.ToString("yyyy-MM-dd"))" />
                     </div>
 
                     <div class="col-md-2">
@@ -45,7 +121,7 @@
                         <input type="date"
                                class="form-control"
                                name="ToDate"
-                               value="@(Model.Query.ToDate?.ToString("yyyy-MM-dd"))" />
+                               value="@(q.ToDate?.ToString("yyyy-MM-dd"))" />
                     </div>
 
                     <div class="col-md-2">
@@ -56,10 +132,10 @@
                         <input type="number"
                                class="form-control"
                                name="OrderId"
-                               value="@Model.Query.OrderId" />
+                               value="@q.OrderId" />
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-6">
                         <label class="form-label">
                             Keyword
                         </label>
@@ -68,14 +144,134 @@
                                class="form-control"
                                name="Keyword"
                                placeholder="InvoiceNumber / Buyer / OrderNumber"
-                               value="@Model.Query.Keyword" />
+                               value="@q.Keyword" />
                     </div>
 
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button class="btn btn-primary w-100">
+                </div>
+
+                <!-- HÀNG 2: HIỂN THỊ + SẮP XẾP -->
+                <div class="row g-3 align-items-end mt-1">
+
+                    <div class="col-md-4">
+                        <label class="form-label">
+                            Hiển thị
+                        </label>
+
+                        <select name="DisplayMode" class="form-select">
+                            <option value="@((int)InvoiceListDisplayMode.All)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.All ? "selected" : null)">
+                                Tất cả
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.HasQuantity)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasQuantity ? "selected" : null)">
+                                Có số lượng
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.Empty)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Empty ? "selected" : null)">
+                                0 / Chưa có dòng
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.Locked)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Locked ? "selected" : null)">
+                                Đã khóa
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.Unlocked)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Unlocked ? "selected" : null)">
+                                Chưa khóa
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.HasAutoLines)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasAutoLines ? "selected" : null)">
+                                Có dòng Auto
+                            </option>
+
+                            <option value="@((int)InvoiceListDisplayMode.HasManualLines)"
+                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasManualLines ? "selected" : null)">
+                                Có dòng Manual
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">
+                            Sắp xếp
+                        </label>
+
+                        <select name="SortMode" class="form-select">
+                            <option value="@((int)InvoiceListSortMode.OrderIdDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.OrderIdDesc ? "selected" : null)">
+                                OrderId mới nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.HasLinesThenOrderIdDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.HasLinesThenOrderIdDesc ? "selected" : null)">
+                                Có SP trước, OrderId mới
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.OrderIdAsc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.OrderIdAsc ? "selected" : null)">
+                                OrderId cũ nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.InvoiceDateDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.InvoiceDateDesc ? "selected" : null)">
+                                Ngày hóa đơn mới nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.InvoiceDateAsc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.InvoiceDateAsc ? "selected" : null)">
+                                Ngày hóa đơn cũ nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.GrandTotalDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.GrandTotalDesc ? "selected" : null)">
+                                Tổng tiền cao nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.GrandTotalAsc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.GrandTotalAsc ? "selected" : null)">
+                                Tổng tiền thấp nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.QuantityDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.QuantityDesc ? "selected" : null)">
+                                Số lượng nhiều nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.QuantityAsc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.QuantityAsc ? "selected" : null)">
+                                Số lượng ít nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.AutoLineCountDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.AutoLineCountDesc ? "selected" : null)">
+                                Auto nhiều nhất
+                            </option>
+
+                            <option value="@((int)InvoiceListSortMode.ManualLineCountDesc)"
+                                    selected="@(q.SortMode == InvoiceListSortMode.ManualLineCountDesc ? "selected" : null)">
+                                Manual nhiều nhất
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2 d-grid">
+                        <button type="submit" class="btn btn-primary">
                             <i class="bx bx-search"></i>
                             Tìm kiếm
                         </button>
+                    </div>
+
+                    <div class="col-md-2 d-grid">
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="Index"
+                               class="btn btn-outline-secondary invoice-reset-link">
+                            Làm mới
+                        </a>
                     </div>
 
                 </div>
@@ -90,7 +286,7 @@
 
         <div class="table-responsive">
 
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle mb-0 invoice-table">
 
                 <thead class="table-light">
                     <tr>
@@ -111,7 +307,7 @@
 
                 <tbody>
 
-                    @if (!Model.Items.Any())
+                    @if (Model.Items == null || !Model.Items.Any())
                     {
                         <tr>
                             <td colspan="12"
@@ -124,7 +320,9 @@
                     {
                         foreach (var item in Model.Items)
                         {
-                            <tr>
+                            var hasLines = item.TotalQuantity > 0 || item.DetailCount > 0;
+
+                            <tr class="@(hasLines ? "invoice-row-has-lines" : "invoice-row-empty")">
 
                                 <td>
                                     <strong>#@item.Id</strong>
@@ -159,6 +357,19 @@
                                             Chưa phát hành
                                         </span>
                                     }
+
+                                    @if (item.IsLocked)
+                                    {
+                                        <span class="badge bg-danger ms-1">
+                                            Đã khóa
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-muted border ms-1">
+                                            Chưa khóa
+                                        </span>
+                                    }
                                 </td>
 
                                 <td>
@@ -167,30 +378,30 @@
                                         : item.BuyerName)
                                 </td>
 
-                                <td class="text-end">
+                                <td class="text-end invoice-money">
                                     @item.TotalQuantity.ToString("N2")
                                 </td>
 
-                                <td class="text-end text-primary fw-semibold">
+                                <td class="text-end text-primary fw-semibold invoice-money">
                                     @item.SubTotal.ToString("N0")
                                 </td>
 
-                                <td class="text-end">
+                                <td class="text-end invoice-money">
                                     @item.VatAmount.ToString("N0")
                                 </td>
 
-                                <td class="text-end text-danger fw-bold">
+                                <td class="text-end text-danger fw-bold invoice-money">
                                     @item.GrandTotal.ToString("N0")
                                 </td>
 
                                 <td class="text-center">
-                                    <span class="badge bg-info">
+                                    <span class="badge bg-info invoice-badge-count">
                                         @item.AutoLineCount
                                     </span>
                                 </td>
 
                                 <td class="text-center">
-                                    <span class="badge bg-warning text-dark">
+                                    <span class="badge bg-warning text-dark invoice-badge-count">
                                         @item.ManualLineCount
                                     </span>
                                 </td>
@@ -204,7 +415,6 @@
                                            class="btn btn-sm btn-outline-primary">
 
                                         <i class="bx bx-show"></i>
-
                                         Chi tiết
                                     </a>
 
@@ -239,10 +449,13 @@
                                    href="@Url.Action("Index", new
                                                                {
                                                                    page = i,
-                                                                   fromDate = Model.Query.FromDate?.ToString("yyyy-MM-dd"),
-                                                                   toDate = Model.Query.ToDate?.ToString("yyyy-MM-dd"),
-                                                                   orderId = Model.Query.OrderId,
-                                                                   keyword = Model.Query.Keyword
+                                                                   pageSize = q.PageSize,
+                                                                   fromDate = q.FromDate?.ToString("yyyy-MM-dd"),
+                                                                   toDate = q.ToDate?.ToString("yyyy-MM-dd"),
+                                                                   orderId = q.OrderId,
+                                                                   keyword = q.Keyword,
+                                                                   displayMode = (int)q.DisplayMode,
+                                                                   sortMode = (int)q.SortMode
                                                                })">
 
                                 @i

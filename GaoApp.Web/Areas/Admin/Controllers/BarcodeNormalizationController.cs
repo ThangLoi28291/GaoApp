@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
-[Route("admin/barcode-normalization")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
+[Route("admin/barcode-normalization")]
+
 public class BarcodeNormalizationController : Controller
 {
     private readonly IProductBarcodeVerificationService _service;

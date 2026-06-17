@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -95,13 +96,15 @@ public class InvoiceRepository : IInvoiceRepository
         return _db.SaveChangesAsync(ct);
     }
     public async Task<(List<InvoiceHead> Items, int Total)> QueryInvoiceHeadsAsync(
-    DateTime? fromDate,
-    DateTime? toDate,
-    int? orderId,
-    string? keyword,
-    int page,
-    int pageSize,
-    CancellationToken ct = default)
+        DateTime? fromDate,
+        DateTime? toDate,
+        int? orderId,
+        string? keyword,
+        InvoiceListDisplayMode displayMode,
+        InvoiceListSortMode sortMode,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         if (page <= 0) page = 1;
         if (pageSize <= 0) pageSize = 20;
@@ -136,14 +139,135 @@ public class InvoiceRepository : IInvoiceRepository
             query = query.Where(x =>
                 (x.InvoiceNumber != null && x.InvoiceNumber.Contains(keyword)) ||
                 (x.BuyerName != null && x.BuyerName.Contains(keyword)) ||
-                (x.Order != null && x.Order.OrderNumber != null && x.Order.OrderNumber.Contains(keyword)));
+                (x.Order != null &&
+                 x.Order.OrderNumber != null &&
+                 x.Order.OrderNumber.Contains(keyword)));
+        }
+
+        // =========================================================
+        // FILTER HIỂN THỊ
+        // =========================================================
+        switch (displayMode)
+        {
+            case InvoiceListDisplayMode.HasQuantity:
+                query = query.Where(x =>
+                    x.Details.Any(d =>
+                        !d.IsDeleted &&
+                        d.Quantity > 0));
+                break;
+
+            case InvoiceListDisplayMode.Empty:
+                query = query.Where(x =>
+                    !x.Details.Any(d =>
+                        !d.IsDeleted &&
+                        d.Quantity > 0));
+                break;
+
+            case InvoiceListDisplayMode.Locked:
+                query = query.Where(x => x.IsLocked);
+                break;
+
+            case InvoiceListDisplayMode.Unlocked:
+                query = query.Where(x => !x.IsLocked);
+                break;
+
+            case InvoiceListDisplayMode.HasAutoLines:
+                query = query.Where(x =>
+                    x.Details.Any(d =>
+                        !d.IsDeleted &&
+                        d.SourceType == InvoiceDetailSourceType.FromOrderLine));
+                break;
+
+            case InvoiceListDisplayMode.HasManualLines:
+                query = query.Where(x =>
+                    x.Details.Any(d =>
+                        !d.IsDeleted &&
+                        d.SourceType == InvoiceDetailSourceType.Manual));
+                break;
+
+            case InvoiceListDisplayMode.All:
+            default:
+                break;
         }
 
         var total = await query.CountAsync(ct);
 
-        var items = await query
-            .OrderByDescending(x => x.InvoiceDate)
-            .ThenByDescending(x => x.Id)
+        // =========================================================
+        // SORT DANH SÁCH
+        // =========================================================
+        // GHI CHÚ:
+        // Phần này cho phép người dùng chọn nhiều kiểu sắp xếp.
+        // Mặc định là HasLinesThenOrderIdDesc:
+        // - Có sản phẩm lên trước.
+        // - Sau đó OrderId mới nhất lên trước.
+        IOrderedQueryable<InvoiceHead> orderedQuery = sortMode switch
+        {
+            InvoiceListSortMode.HasLinesThenOrderIdDesc => query
+                .OrderByDescending(x =>
+                    x.Details.Any(d =>
+                        !d.IsDeleted &&
+                        d.Quantity > 0))
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.OrderIdDesc => query
+                .OrderByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.OrderIdAsc => query
+                .OrderBy(x => x.OrderId)
+                .ThenBy(x => x.Id),
+
+            InvoiceListSortMode.InvoiceDateDesc => query
+                .OrderByDescending(x => x.InvoiceDate)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.InvoiceDateAsc => query
+                .OrderBy(x => x.InvoiceDate)
+                .ThenBy(x => x.Id),
+
+            InvoiceListSortMode.GrandTotalDesc => query
+                .OrderByDescending(x => x.GrandTotal)
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.GrandTotalAsc => query
+                .OrderBy(x => x.GrandTotal)
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.QuantityDesc => query
+                .OrderByDescending(x => x.TotalQuantity)
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.QuantityAsc => query
+                .OrderBy(x => x.TotalQuantity)
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.AutoLineCountDesc => query
+                .OrderByDescending(x => x.Details.Count(d =>
+                    !d.IsDeleted &&
+                    d.SourceType == InvoiceDetailSourceType.FromOrderLine))
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            InvoiceListSortMode.ManualLineCountDesc => query
+                .OrderByDescending(x => x.Details.Count(d =>
+                    !d.IsDeleted &&
+                    d.SourceType == InvoiceDetailSourceType.Manual))
+                .ThenByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id),
+
+            // GHI CHÚ:
+            // Mặc định cuối cùng: OrderId mới nhất.
+            _ => query
+                .OrderByDescending(x => x.OrderId)
+                .ThenByDescending(x => x.Id)
+        };
+
+        var items = await orderedQuery
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

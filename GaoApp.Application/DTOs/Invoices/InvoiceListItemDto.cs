@@ -27,4 +27,9 @@ public class InvoiceListItemDto
     public int AutoLineCount { get; set; }
 
     public int ManualLineCount { get; set; }
+
+    /// <summary>
+    /// Dùng để hiển thị badge "Đã khóa" / "Chưa khóa" ngoài danh sách.
+    /// </summary>
+    public bool IsLocked { get; set; }
 }

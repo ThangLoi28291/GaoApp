@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
-[Route("admin/api/customers")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
 [ApiController]
+[Route("admin/api/customers")]
+
 public sealed class CustomerRewardsController : ControllerBase
 {
     private readonly ICustomerRewardService _customerRewardService;

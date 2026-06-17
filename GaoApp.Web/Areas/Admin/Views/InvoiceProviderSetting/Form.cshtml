@@ -1,0 +1,579 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Application.DTOs.Invoices.UpsertInvoiceProviderSettingRequest
+
+@{
+    var isEdit = Model.Id > 0;
+    ViewData["Title"] = isEdit ? "Sửa cấu hình hóa đơn điện tử" : "Thêm cấu hình hóa đơn điện tử";
+    var actionName = isEdit ? "Edit" : "Create";
+}
+
+<style>
+    .invoice-provider-form .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .invoice-provider-form .setting-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .invoice-provider-form .card-header {
+        background: #fff;
+    }
+
+    .form-section-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .form-section-title i {
+            font-size: 20px;
+        }
+
+    .help-text {
+        font-size: 12px;
+        color: #8a94a6;
+    }
+
+    .required-mark {
+        color: #ff3e1d;
+        font-weight: 700;
+    }
+
+    .password-wrap {
+        position: relative;
+    }
+
+    .password-toggle-btn {
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        transform: translateY(-50%);
+        border: 0;
+        background: transparent;
+        color: #697a8d;
+        padding: 4px 8px;
+    }
+
+    .password-wrap input {
+        padding-right: 46px;
+    }
+
+    .preview-box {
+        background: #f8f9fa;
+        border: 1px dashed #d9dee3;
+        border-radius: 12px;
+        padding: 14px;
+    }
+
+    .preview-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 5px 0;
+        border-bottom: 1px solid #edf0f2;
+    }
+
+        .preview-row:last-child {
+            border-bottom: 0;
+        }
+
+    .preview-label {
+        color: #697a8d;
+        white-space: nowrap;
+    }
+
+    .preview-value {
+        font-weight: 600;
+        text-align: right;
+        word-break: break-word;
+    }
+
+    @@media (max-width: 768px) {
+        .invoice-provider-form .page-header {
+            gap: 12px;
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+
+        .preview-row {
+            display: block;
+        }
+
+        .preview-value {
+            text-align: left;
+        }
+    }
+</style>
+
+<div class="container-fluid invoice-provider-form">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
+        <div>
+            <h3 class="mb-1 page-title">
+                @ViewData["Title"]
+            </h3>
+
+            <div class="text-muted">
+                Khai báo tài khoản API, MST, mẫu hóa đơn và ký hiệu để kết nối Viettel SInvoice.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="InvoiceProviderSetting"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bx bx-arrow-back"></i>
+            Quay lại
+        </a>
+    </div>
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bx bx-error-circle me-1"></i>
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    <form asp-area="Admin"
+          asp-controller="InvoiceProviderSetting"
+          asp-action="@actionName"
+          method="post">
+
+        @Html.AntiForgeryToken()
+
+        <input type="hidden" asp-for="Id" />
+
+        <div class="row g-3">
+
+            <div class="col-lg-8">
+
+                <!-- THÔNG TIN KẾT NỐI -->
+                <div class="card shadow-sm mb-3 setting-card">
+                    <div class="card-header fw-semibold">
+                        <div class="form-section-title">
+                            <i class="bx bx-link-alt"></i>
+                            <span>Thông tin kết nối</span>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+
+                        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                        <div class="row g-3">
+
+                            <div class="col-md-3">
+                                <label asp-for="ProviderCode" class="form-label">
+                                    Nhà cung cấp <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="ProviderCode"
+                                       class="form-control"
+                                       placeholder="VIETTEL" />
+
+                                <span asp-validation-for="ProviderCode" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    Giai đoạn này dùng VIETTEL.
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="AuthMode" class="form-label">
+                                    Kiểu xác thực <span class="required-mark">*</span>
+                                </label>
+
+                                <select asp-for="AuthMode" class="form-select">
+                                    <option value="@((int)InvoiceProviderAuthMode.BasicAuth)">
+                                        Basic Auth
+                                    </option>
+
+                                    <option value="@((int)InvoiceProviderAuthMode.TokenLogin)">
+                                        Token Login
+                                    </option>
+                                </select>
+
+                                <span asp-validation-for="AuthMode" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    Tài khoản hiện tại nên dùng Basic Auth.
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">
+                                    Môi trường
+                                </label>
+
+                                <select asp-for="IsProduction" class="form-select">
+                                    <option value="false">Test</option>
+                                    <option value="true">Production</option>
+                                </select>
+
+                                <div class="help-text">
+                                    Test trước, thật sau.
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="SupplierTaxCode" class="form-label">
+                                    MST phát hành <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="SupplierTaxCode"
+                                       class="form-control"
+                                       placeholder="0100109106-509" />
+
+                                <span asp-validation-for="SupplierTaxCode" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-12">
+                                <label asp-for="BaseUrl" class="form-label">
+                                    BaseUrl API <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="BaseUrl"
+                                       class="form-control"
+                                       placeholder="https://api-vinvoice.viettel.vn/services/einvoiceapplication/api" />
+
+                                <span asp-validation-for="BaseUrl" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    Không cần nhập dấu / cuối URL.
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Username" class="form-label">
+                                    Username <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="Username"
+                                       class="form-control"
+                                       autocomplete="username"
+                                       placeholder="0100109106-509" />
+
+                                <span asp-validation-for="Username" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Password" class="form-label">
+                                    Password <span class="required-mark">*</span>
+                                </label>
+
+                                <div class="password-wrap">
+                                    <input asp-for="Password"
+                                           id="txtInvoiceProviderPassword"
+                                           class="form-control"
+                                           type="password"
+                                           autocomplete="new-password"
+                                           placeholder="Mật khẩu API Viettel" />
+
+                                    <button type="button"
+                                            class="password-toggle-btn"
+                                            onclick="toggleInvoicePassword()"
+                                            title="Hiện/ẩn mật khẩu">
+                                        <i class="bx bx-show"></i>
+                                    </button>
+                                </div>
+
+                                <span asp-validation-for="Password" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    Không chụp màn hình có mật khẩu khi gửi hỗ trợ.
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- THÔNG TIN MẪU HÓA ĐƠN -->
+                <div class="card shadow-sm mb-3 setting-card">
+                    <div class="card-header fw-semibold">
+                        <div class="form-section-title">
+                            <i class="bx bx-receipt"></i>
+                            <span>Thông tin mẫu hóa đơn</span>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+
+                        <div class="row g-3">
+
+                            <div class="col-md-3">
+                                <label asp-for="InvoiceType" class="form-label">
+                                    Loại hóa đơn <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="InvoiceType"
+                                       class="form-control"
+                                       placeholder="VD: 1" />
+
+                                <span asp-validation-for="InvoiceType" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    TT78 thường dùng 1.
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="TemplateCode" class="form-label">
+                                    Mẫu hóa đơn <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="TemplateCode"
+                                       class="form-control"
+                                       placeholder="VD: 1/002" />
+
+                                <span asp-validation-for="TemplateCode" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="InvoiceSeries" class="form-label">
+                                    Ký hiệu hóa đơn <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="InvoiceSeries"
+                                       class="form-control"
+                                       placeholder="VD: C26THA" />
+
+                                <span asp-validation-for="InvoiceSeries" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="CurrencyCode" class="form-label">
+                                    Tiền tệ <span class="required-mark">*</span>
+                                </label>
+
+                                <input asp-for="CurrencyCode"
+                                       class="form-control"
+                                       placeholder="VND" />
+
+                                <span asp-validation-for="CurrencyCode" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="ExchangeRate" class="form-label">
+                                    Tỷ giá
+                                </label>
+
+                                <input asp-for="ExchangeRate"
+                                       class="form-control"
+                                       inputmode="decimal" />
+
+                                <span asp-validation-for="ExchangeRate" class="text-danger"></span>
+
+                                <div class="help-text">
+                                    VND để 1.
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label asp-for="PaymentMethodName" class="form-label">
+                                    Phương thức thanh toán
+                                </label>
+
+                                <select asp-for="PaymentMethodName" class="form-select">
+                                    <option value="TM">TM</option>
+                                    <option value="CK">CK</option>
+                                    <option value="TM/CK">TM/CK</option>
+                                    <option value="Tiền mặt">Tiền mặt</option>
+                                    <option value="Chuyển khoản">Chuyển khoản</option>
+                                    <option value="Tiền mặt/Chuyển khoản">Tiền mặt/Chuyển khoản</option>
+                                </select>
+
+                                <span asp-validation-for="PaymentMethodName" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">
+                                    Cho khách tra cứu
+                                </label>
+
+                                <select asp-for="CusGetInvoiceRight" class="form-select">
+                                    <option value="true">Có</option>
+                                    <option value="false">Không</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">
+                                    Thanh toán mặc định
+                                </label>
+
+                                <select asp-for="DefaultPaymentStatus" class="form-select">
+                                    <option value="true">Đã thanh toán</option>
+                                    <option value="false">Chưa thanh toán</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">
+                                    Trạng thái cấu hình
+                                </label>
+
+                                <select asp-for="IsActive" class="form-select">
+                                    <option value="true">Đang dùng</option>
+                                    <option value="false">Tắt</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-12">
+                                <label asp-for="Note" class="form-label">
+                                    Ghi chú
+                                </label>
+
+                                <textarea asp-for="Note"
+                                          class="form-control"
+                                          rows="3"
+                                          placeholder="Ghi chú nội bộ, ví dụ: tài khoản test Viettel, mẫu dùng cho cửa hàng..."></textarea>
+
+                                <span asp-validation-for="Note" class="text-danger"></span>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CỘT XEM NHANH -->
+            <div class="col-lg-4">
+
+                <div class="card shadow-sm mb-3 setting-card">
+                    <div class="card-header fw-semibold">
+                        <div class="form-section-title">
+                            <i class="bx bx-check-shield"></i>
+                            <span>Kiểm tra trước khi lưu</span>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="preview-box">
+                            <div class="preview-row">
+                                <span class="preview-label">Nhà cung cấp</span>
+                                <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.ProviderCode) ? "VIETTEL" : Model.ProviderCode)</span>
+                            </div>
+
+                            <div class="preview-row">
+                                <span class="preview-label">Xác thực</span>
+                                <span class="preview-value">
+                                    @(Model.AuthMode == InvoiceProviderAuthMode.TokenLogin ? "Token Login" : "Basic Auth")
+                                </span>
+                            </div>
+
+                            <div class="preview-row">
+                                <span class="preview-label">MST</span>
+                                <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.SupplierTaxCode) ? "-" : Model.SupplierTaxCode)</span>
+                            </div>
+
+                            <div class="preview-row">
+                                <span class="preview-label">Mẫu</span>
+                                <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.TemplateCode) ? "-" : Model.TemplateCode)</span>
+                            </div>
+
+                            <div class="preview-row">
+                                <span class="preview-label">Ký hiệu</span>
+                                <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.InvoiceSeries) ? "-" : Model.InvoiceSeries)</span>
+                            </div>
+
+                            <div class="preview-row">
+                                <span class="preview-label">Tiền tệ</span>
+                                <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.CurrencyCode) ? "VND" : Model.CurrencyCode)</span>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <div class="fw-semibold mb-1">
+                                Lưu ý
+                            </div>
+                            <div>
+                                Với tài khoản Viettel hiện tại, chọn <strong>Basic Auth</strong>.
+                                Nút test kết nối sẽ gọi API an toàn, không phát hành hóa đơn.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm setting-card">
+                    <div class="card-header fw-semibold">
+                        <div class="form-section-title">
+                            <i class="bx bx-list-check"></i>
+                            <span>Checklist Phase 2</span>
+                        </div>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <i class="bx bx-check text-success"></i>
+                            BaseUrl đúng Viettel API
+                        </div>
+
+                        <div class="mb-2">
+                            <i class="bx bx-check text-success"></i>
+                            Username/password gọi API được
+                        </div>
+
+                        <div class="mb-2">
+                            <i class="bx bx-check text-success"></i>
+                            MST khớp tài khoản
+                        </div>
+
+                        <div class="mb-2">
+                            <i class="bx bx-check text-success"></i>
+                            TemplateCode đúng, ví dụ 1/002
+                        </div>
+
+                        <div class="mb-0">
+                            <i class="bx bx-check text-success"></i>
+                            InvoiceSeries đúng, ví dụ C26THA
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+            <a asp-area="Admin"
+                   asp-controller="InvoiceProviderSetting"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                Hủy
+            </a>
+
+            <button type="submit" class="btn btn-primary">
+                <i class="bx bx-save"></i>
+                Lưu cấu hình
+            </button>
+        </div>
+
+    </form>
+
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        function toggleInvoicePassword() {
+            const input = document.getElementById('txtInvoiceProviderPassword');
+
+            if (!input) {
+                return;
+            }
+
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+    </script>
+}

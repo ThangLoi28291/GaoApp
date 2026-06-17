@@ -1,4 +1,5 @@
 ﻿using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Interfaces.Repositories.Invoices;
 
@@ -41,13 +42,19 @@ public interface IInvoiceRepository
     Task SaveChangesAsync(
         CancellationToken ct = default);
     Task<(List<InvoiceHead> Items, int Total)> QueryInvoiceHeadsAsync(
-    DateTime? fromDate,
-    DateTime? toDate,
-    int? orderId,
-    string? keyword,
-    int page,
-    int pageSize,
-    CancellationToken ct = default);
+        DateTime? fromDate,
+        DateTime? toDate,
+        int? orderId,
+        string? keyword,
+        InvoiceListDisplayMode displayMode,
+
+        // GHI CHÚ:
+        // Thêm SortMode để người dùng chọn kiểu sắp xếp trên màn hình.
+        InvoiceListSortMode sortMode,
+
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
 
     Task<InvoiceHead?> GetInvoiceHeadDetailAsync(
         int invoiceHeadId,

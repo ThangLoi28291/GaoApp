@@ -7,6 +7,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
 public class ProductUnitConversionController : Controller
 {
     private readonly IProductUnitConversionService _productUnitConversionService;

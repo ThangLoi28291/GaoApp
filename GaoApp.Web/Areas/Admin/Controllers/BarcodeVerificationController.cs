@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
-[Route("admin/api/stock-documents/{stockDocumentId:int}/barcode-verification")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
 [ApiController]
+[Route("admin/api/stock-documents/{stockDocumentId:int}/barcode-verification")]
+
 public class BarcodeVerificationController : ControllerBase
 {
     private readonly IProductBarcodeVerificationService _service;

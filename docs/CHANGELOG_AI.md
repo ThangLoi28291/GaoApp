@@ -99,4 +99,85 @@ File này dùng để ghi ngắn gọn sau mỗi lần hoàn thành chức năng
 - Khóa endpoint debug `/__tenant` và `/__tenant-hash`, chỉ cho chạy ở môi trường Development.
 - Giữ `/ping` vì không trả dữ liệu nhạy cảm.
 
+## 2026-06-18
+
+### INVOICE - Tích hợp Viettel SInvoice
+
+Đã hoàn thiện các phần chính của module hóa đơn điện tử Viettel SInvoice.
+
+Đã làm:
+
+* Tạo nền dữ liệu tích hợp nhà cung cấp hóa đơn điện tử.
+* Thêm cấu hình nhà cung cấp Viettel SInvoice dùng Basic Auth.
+* Xây dựng payload JSON đúng cấu trúc Viettel.
+* Hỗ trợ xem JSON Viettel trước khi phát hành.
+* Hỗ trợ preview PDF nháp từ Viettel.
+* Ghi log các lần gọi API preview.
+* Phát hành hóa đơn thật lên Viettel.
+* Lưu số hóa đơn Viettel sau khi phát hành thành công.
+* Lưu các thông tin trả về từ Viettel:
+
+  * ProviderInvoiceNo
+  * ProviderTransactionId
+  * ReservationCode
+  * CodeOfTax
+  * IssuedAtUtc
+* Khóa hóa đơn sau khi phát hành để chống sửa sai dữ liệu.
+* Tải PDF chính thức từ Viettel.
+* Tải ZIP/XML chính thức từ Viettel.
+* Lưu đường dẫn file PDF/XML vào InvoiceHead:
+
+  * PdfFilePath
+  * ZipFilePath
+* Thêm chức năng tra cứu hóa đơn theo TransactionUuid.
+* Dùng tra cứu UUID để xử lý trường hợp phát hành bị HTTP 500 / TIMEOUT / không rõ kết quả.
+* Chống phát hành trùng hóa đơn:
+
+  * Đã phát hành thì ẩn nút phát hành.
+  * Nếu lỗi không rõ kết quả thì bắt buộc tra cứu UUID trước khi phát hành lại.
+  * Nếu đã có số hóa đơn Viettel thì không cho phát hành lại.
+* Hoàn thiện UI an toàn cho màn ViettelPayload:
+
+  * Hiển thị trạng thái Viettel.
+  * Ẩn PDF nháp sau khi đã phát hành.
+  * Chỉ hiện nút tải PDF/XML khi hóa đơn đã phát hành.
+  * Hiện nút gửi email khi hóa đơn đã phát hành.
+* Thêm chức năng gửi email hóa đơn cho khách qua Viettel.
+* Hỗ trợ nhập nhiều email, cách nhau bằng dấu chấm phẩy.
+* Ghi log gửi email hóa đơn.
+* Thêm màn quản trị log tích hợp:
+
+  * Danh sách log Viettel.
+  * Lọc theo ngày.
+  * Lọc theo InvoiceHeadId.
+  * Lọc theo OrderId.
+  * Lọc theo ActionType.
+  * Lọc theo thành công / lỗi.
+  * Xem chi tiết RequestBody / ResponseBody.
+  * Copy request/response để debug.
+
+Tạm bỏ qua:
+
+* Phase 6: Tạo hóa đơn nháp Viettel.
+* Phase 11: Cập nhật / hủy trạng thái thanh toán Viettel.
+
+File / khu vực liên quan:
+
+* InvoiceHead
+* InvoiceDetail
+* InvoiceProviderSetting
+* InvoiceIntegrationLog
+* InvoiceController
+* InvoiceIntegrationLogController
+* ViettelInvoicePayloadBuilder
+* ViettelInvoiceIssueService
+* ViettelInvoiceSyncService
+* ViettelOfficialFileService
+* ViettelInvoiceEmailService
+* ViettelPayload.cshtml
+* Detail.cshtml
+* InvoiceIntegrationLog/Index.cshtml
+* InvoiceIntegrationLog/Detail.cshtml
+
+
 

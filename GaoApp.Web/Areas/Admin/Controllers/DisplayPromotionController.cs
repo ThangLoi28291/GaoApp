@@ -9,6 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Authorize]
+[AutoValidateAntiforgeryToken]
 public class DisplayPromotionController : Controller
 {
     private readonly IDisplayPromotionService _service;

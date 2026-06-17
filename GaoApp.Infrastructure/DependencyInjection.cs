@@ -30,6 +30,7 @@ using GaoApp.Application.Interfaces.Repositories.Taxes;
 using GaoApp.Application.Interfaces.Repositories.Units;
 using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Audit;
+using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Infrastructure.Caching;
 using GaoApp.Infrastructure.Data;
@@ -64,6 +65,7 @@ using GaoApp.Infrastructure.Repositories.Taxes;
 using GaoApp.Infrastructure.Repositories.Units;
 using GaoApp.Infrastructure.Repositories.Users;
 using GaoApp.Infrastructure.Services.Audit;
+using GaoApp.Infrastructure.Services.Invoices;
 using GaoApp.Infrastructure.Services.Orders;
 using GaoApp.Infrastructure.Storage;
 using GaoApp.Infrastructure.Tenant;
@@ -172,6 +174,35 @@ public static class DependencyInjection
         services.AddScoped<IPOSPaymentQrRequestRepository, POSPaymentQrRequestRepository>();
         services.AddScoped<IDisplayPromotionRepository, DisplayPromotionRepository>();
         services.AddScoped<IPromotionRepository, PromotionRepository>();
+
+        services.AddScoped<IInvoiceProviderSettingRepository, InvoiceProviderSettingRepository>();
+        services.AddHttpClient<IViettelInvoiceAuthClient, ViettelInvoiceAuthClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddHttpClient<IViettelInvoicePreviewClient, ViettelInvoicePreviewClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddScoped<IInvoiceIntegrationLogRepository, InvoiceIntegrationLogRepository>();
+        services.AddHttpClient<IViettelInvoiceIssueClient, ViettelInvoiceIssueClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddScoped<IInvoiceFileStorage, InvoiceFileStorage>();
+
+        services.AddHttpClient<IViettelOfficialFileClient, ViettelOfficialFileClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddHttpClient<IViettelInvoiceLookupClient, ViettelInvoiceLookupClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
+        services.AddHttpClient<IViettelInvoiceEmailClient, ViettelInvoiceEmailClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(90);
+        });
         // =========================================================
         // REWARDS
         // =========================================================

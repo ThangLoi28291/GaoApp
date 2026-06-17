@@ -1,0 +1,344 @@
+﻿@using GaoApp.Domain.Enums
+@model List<GaoApp.Application.DTOs.Invoices.InvoiceProviderSettingListItemDto>
+
+@{
+    ViewData["Title"] = "Cấu hình hóa đơn điện tử";
+}
+
+<style>
+    .invoice-provider-page .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .invoice-provider-page .setting-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .invoice-provider-page .table th {
+        white-space: nowrap;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #697a8d;
+        letter-spacing: .03em;
+    }
+
+    .invoice-provider-page .table td {
+        vertical-align: middle;
+    }
+
+    .provider-url {
+        max-width: 420px;
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .provider-actions {
+        min-width: 250px;
+    }
+
+    .provider-badge {
+        min-width: 82px;
+        display: inline-block;
+    }
+
+    .provider-note {
+        max-width: 240px;
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    @@media (max-width: 768px) {
+        .invoice-provider-page .page-header {
+            gap: 12px;
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+
+        .provider-actions {
+            min-width: 220px;
+        }
+
+        .provider-url {
+            max-width: 260px;
+        }
+    }
+</style>
+
+<div class="container-fluid invoice-provider-page">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
+        <div>
+            <h3 class="mb-1 page-title">
+                Cấu hình hóa đơn điện tử
+            </h3>
+
+            <div class="text-muted">
+                Quản lý tài khoản kết nối Viettel SInvoice, mẫu hóa đơn và ký hiệu phát hành.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="InvoiceProviderSetting"
+               asp-action="Create"
+               class="btn btn-primary">
+            <i class="bx bx-plus"></i>
+            Thêm cấu hình
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bx bx-check-circle me-1"></i>
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bx bx-error-circle me-1"></i>
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    <div class="alert alert-info d-flex align-items-start gap-2">
+        <i class="bx bx-info-circle fs-4"></i>
+        <div>
+            <div class="fw-semibold">Phase 2 - Cấu hình và test kết nối</div>
+            <div>
+                Giai đoạn này chỉ dùng để cấu hình Viettel SInvoice và test API an toàn.
+                Chưa phát hành hóa đơn thật.
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm setting-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-semibold">Danh sách cấu hình</div>
+                <small class="text-muted">
+                    Nên để 1 cấu hình Viettel đang dùng cho mỗi bộ MST + mẫu + ký hiệu.
+                </small>
+            </div>
+
+            <span class="badge bg-primary">
+                Tổng: @(Model?.Count ?? 0)
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Nhà cung cấp</th>
+                        <th>Xác thực</th>
+                        <th>Môi trường</th>
+                        <th>MST</th>
+                        <th>Mẫu / Ký hiệu</th>
+                        <th>Tài khoản</th>
+                        <th>Thanh toán</th>
+                        <th>Trạng thái</th>
+                        <th>Ghi chú</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (Model == null || !Model.Any())
+                    {
+                        <tr>
+                            <td colspan="11" class="text-center text-muted py-5">
+                                <div class="mb-2">
+                                    <i class="bx bx-receipt fs-1"></i>
+                                </div>
+                                Chưa có cấu hình hóa đơn điện tử.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var item in Model)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>#@item.Id</strong>
+                                </td>
+
+                                <td>
+                                    <div class="fw-semibold">
+                                        @item.ProviderCode
+                                    </div>
+
+                                    <small class="text-muted provider-url"
+                                           title="@item.BaseUrl">
+                                        @item.BaseUrl
+                                    </small>
+                                </td>
+
+                                <td>
+                                    @if (item.AuthMode == InvoiceProviderAuthMode.BasicAuth)
+                                    {
+                                        <span class="badge bg-primary provider-badge">
+                                            Basic Auth
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary provider-badge">
+                                            Token Login
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @if (item.IsProduction)
+                                    {
+                                        <span class="badge bg-danger provider-badge">
+                                            Production
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info provider-badge">
+                                            Test
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="fw-semibold">
+                                        @item.SupplierTaxCode
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <div>
+                                        <span class="badge bg-light text-dark border">
+                                            Mẫu: @item.TemplateCode
+                                        </span>
+                                    </div>
+
+                                    <div class="mt-1">
+                                        <span class="badge bg-light text-dark border">
+                                            Ký hiệu: @item.InvoiceSeries
+                                        </span>
+                                    </div>
+
+                                    <small class="text-muted">
+                                        Loại HĐ: @item.InvoiceType
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <div class="fw-semibold">
+                                        @item.Username
+                                    </div>
+
+                                    <small class="text-muted">
+                                        API User
+                                    </small>
+                                </td>
+
+                                <td>
+                                    <span class="badge bg-light text-dark border">
+                                        @item.PaymentMethodName
+                                    </span>
+                                </td>
+
+                                <td>
+                                    @if (item.IsActive)
+                                    {
+                                        <span class="badge bg-success provider-badge">
+                                            Đang dùng
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary provider-badge">
+                                            Tắt
+                                        </span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(item.Note))
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="provider-note"
+                                              title="@item.Note">
+                                            @item.Note
+                                        </span>
+                                    }
+                                </td>
+
+                                <td class="text-end provider-actions">
+                                    <form asp-area="Admin"
+                                          asp-controller="InvoiceProviderSetting"
+                                          asp-action="TestLogin"
+                                          asp-route-id="@item.Id"
+                                          method="post"
+                                          class="d-inline">
+                                        @Html.AntiForgeryToken()
+
+                                        <button type="submit"
+                                                class="btn btn-sm btn-outline-success"
+                                                title="Gọi getCustomFields và getInvoices để kiểm tra kết nối">
+                                            <i class="bx bx-plug"></i>
+                                            Test kết nối
+                                        </button>
+                                    </form>
+
+                                    <a asp-area="Admin"
+                                           asp-controller="InvoiceProviderSetting"
+                                           asp-action="Edit"
+                                           asp-route-id="@item.Id"
+                                           class="btn btn-sm btn-outline-primary">
+                                        <i class="bx bx-edit"></i>
+                                        Sửa
+                                    </a>
+
+                                    <form asp-area="Admin"
+                                          asp-controller="InvoiceProviderSetting"
+                                          asp-action="ToggleActive"
+                                          asp-route-id="@item.Id"
+                                          method="post"
+                                          class="d-inline">
+                                        @Html.AntiForgeryToken()
+
+                                        <button type="submit"
+                                                class="btn btn-sm @(item.IsActive ? "btn-outline-warning" : "btn-outline-secondary")"
+                                                onclick="return confirm('@(item.IsActive ? "Tắt cấu hình này?" : "Bật cấu hình này?")');">
+                                            @if (item.IsActive)
+                                            {
+                                                <text><i class="bx bx-pause-circle"></i> Tắt</text>
+                                            }
+                                            else
+                                            {
+                                                <text><i class="bx bx-play-circle"></i> Bật</text>
+                                            }
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>

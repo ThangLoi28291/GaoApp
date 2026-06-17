@@ -1,4 +1,5 @@
 ﻿using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -6,62 +7,78 @@ namespace GaoApp.Infrastructure.Data.Configurations;
 
 public class InvoiceDetailConfiguration : IEntityTypeConfiguration<InvoiceDetail>
 {
-    public void Configure(EntityTypeBuilder<InvoiceDetail> builder)
+    public void Configure(EntityTypeBuilder<InvoiceDetail> b)
     {
-        builder.ToTable("InvoiceDetails");
+        b.ToTable("InvoiceDetails");
 
-        builder.HasKey(x => x.Id);
+        b.HasKey(x => x.Id);
 
-        builder.Property(x => x.ItemName)
-            .HasMaxLength(250)
+        b.Property(x => x.StoreId)
             .IsRequired();
 
-        builder.Property(x => x.UnitName)
+        b.Property(x => x.InvoiceHeadId)
+            .IsRequired();
+
+        b.Property(x => x.SourceType)
+            .HasConversion<byte>()
+            .IsRequired();
+
+        b.Property(x => x.ItemName)
+            .IsRequired()
+            .HasMaxLength(250);
+
+        b.Property(x => x.UnitName)
             .HasMaxLength(100);
 
-        builder.Property(x => x.Note)
-            .HasMaxLength(500);
-
-        builder.Property(x => x.Quantity)
+        b.Property(x => x.Quantity)
             .HasPrecision(18, 3);
 
-        builder.Property(x => x.UnitPrice)
+        b.Property(x => x.UnitPrice)
             .HasPrecision(18, 2);
 
-        builder.Property(x => x.Amount)
+        b.Property(x => x.Amount)
             .HasPrecision(18, 2);
 
-        builder.Property(x => x.VatRate)
-            .HasPrecision(5, 2);
+        b.Property(x => x.VatRate)
+            .HasPrecision(9, 2);
 
-        builder.Property(x => x.VatAmount)
+        b.Property(x => x.VatAmount)
             .HasPrecision(18, 2);
 
-        builder.Property(x => x.TotalAmount)
+        b.Property(x => x.TotalAmount)
             .HasPrecision(18, 2);
 
-        builder.Property(x => x.SourceType)
-            .HasConversion<int>()
-            .IsRequired();
+        b.Property(x => x.Note)
+            .HasMaxLength(500);
 
-        builder.HasOne(x => x.OrderLine)
+        // FK InvoiceDetail -> InvoiceHead
+        b.HasOne(x => x.InvoiceHead)
+            .WithMany(x => x.Details)
+            .HasForeignKey(x => x.InvoiceHeadId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // FK InvoiceDetail -> OrderLine
+        b.HasOne(x => x.OrderLine)
             .WithMany()
             .HasForeignKey(x => x.OrderLineId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.NoAction);
 
-        builder.HasOne(x => x.ProductVariant)
+        // FK InvoiceDetail -> ProductVariant
+        b.HasOne(x => x.ProductVariant)
             .WithMany()
             .HasForeignKey(x => x.ProductVariantId)
-            .IsRequired(false)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.NoAction);
 
-        builder.HasIndex(x => new { x.StoreId, x.InvoiceHeadId });
+        // Không cho sinh trùng dòng hóa đơn từ cùng 1 OrderLine.
+        // Chỉ áp dụng khi OrderLineId có giá trị và dòng chưa bị xóa mềm.
+        b.HasIndex(x => new { x.StoreId, x.InvoiceHeadId, x.OrderLineId })
+            .IsUnique()
+            .HasFilter("[OrderLineId] IS NOT NULL AND [IsDeleted] = 0");
 
-        builder.HasIndex(x => new { x.StoreId, x.OrderLineId });
+        b.HasIndex(x => new { x.StoreId, x.InvoiceHeadId, x.IsDeleted });
 
-        builder.HasIndex(x => new { x.StoreId, x.ProductVariantId });
+        b.HasIndex(x => new { x.StoreId, x.SourceType, x.IsDeleted });
 
-        builder.HasIndex(x => new { x.StoreId, x.SourceType });
+        b.HasIndex(x => new { x.StoreId, x.ProductVariantId, x.IsDeleted });
     }
 }

@@ -130,6 +130,14 @@ public static class DependencyInjection
         services.AddScoped<IOrderRewardCalculator, OrderRewardCalculator>();
         services.AddScoped<IPOSShiftHandoverSlipService, POSShiftHandoverSlipService>();
         services.AddScoped<IPOSShiftClosingSlipService, POSShiftClosingSlipService>();
+        services.AddScoped<IInvoiceProviderSettingService, InvoiceProviderSettingService>();
+        services.AddScoped<IViettelInvoicePayloadBuilder, ViettelInvoicePayloadBuilder>();
+        services.AddScoped<IViettelInvoicePreviewService, ViettelInvoicePreviewService>();
+        services.AddScoped<IViettelInvoiceIssueService, ViettelInvoiceIssueService>();
+        services.AddScoped<IViettelOfficialFileService, ViettelOfficialFileService>();
+        services.AddScoped<IViettelInvoiceSyncService, ViettelInvoiceSyncService>();
+        services.AddScoped<IInvoiceIntegrationLogService, InvoiceIntegrationLogService>();
+        services.AddScoped<IViettelInvoiceEmailService, ViettelInvoiceEmailService>();
 
 
         services.AddScoped<IBarcodeHistoryService, BarcodeHistoryService>();

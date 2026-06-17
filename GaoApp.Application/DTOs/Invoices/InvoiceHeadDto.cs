@@ -1,4 +1,6 @@
-﻿namespace GaoApp.Application.DTOs.Invoices;
+﻿using GaoApp.Domain.Enums;
+
+namespace GaoApp.Application.DTOs.Invoices;
 
 public class InvoiceHeadDto
 {
@@ -32,6 +34,38 @@ public class InvoiceHeadDto
     public int? LockedByUserId { get; set; }
 
     public string? LockReason { get; set; }
+    public string? TransactionUuid { get; set; }
+
+    public string? ProviderCode { get; set; }
+
+    public string? SupplierTaxCode { get; set; }
+
+    public string? InvoiceType { get; set; }
+
+    public string? TemplateCode { get; set; }
+
+    public string? InvoiceSeries { get; set; }
 
     public List<InvoiceDetailDto> Details { get; set; } = new();
+    public InvoiceProviderStatus ProviderStatus { get; set; } = InvoiceProviderStatus.LocalDraft;
+
+    public string? ProviderInvoiceNo { get; set; }
+
+    public string? ProviderTransactionId { get; set; }
+
+    public string? ReservationCode { get; set; }
+
+    public string? CodeOfTax { get; set; }
+
+    public DateTime? IssuedAtUtc { get; set; }
+
+    public DateTime? LastSyncedAtUtc { get; set; }
+
+    public string? LastErrorCode { get; set; }
+
+    public string? LastErrorMessage { get; set; }
+
+    public string? PdfFilePath { get; set; }
+
+    public string? ZipFilePath { get; set; }
 }

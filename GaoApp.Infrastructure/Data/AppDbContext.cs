@@ -122,6 +122,9 @@ public class AppDbContext : DbContext
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionItem> PromotionItems => Set<PromotionItem>();
     public DbSet<PromotionComboRule> PromotionComboRules => Set<PromotionComboRule>();
+    public DbSet<InvoiceProviderSetting> InvoiceProviderSettings => Set<InvoiceProviderSetting>();
+
+    public DbSet<InvoiceIntegrationLog> InvoiceIntegrationLogs => Set<InvoiceIntegrationLog>();
 
 
     protected override void OnModelCreating(ModelBuilder builder)

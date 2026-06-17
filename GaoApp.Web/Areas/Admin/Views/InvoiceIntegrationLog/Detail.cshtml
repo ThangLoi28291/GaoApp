@@ -1,0 +1,283 @@
+﻿@model GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogDetailDto
+
+@{
+    ViewData["Title"] = "Chi tiết log tích hợp";
+
+    string FormatBody(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        return value;
+    }
+}
+
+<style>
+    .log-detail-page .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .log-detail-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .meta-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf0f2;
+    }
+
+        .meta-row:last-child {
+            border-bottom: 0;
+        }
+
+    .meta-label {
+        color: #697a8d;
+        white-space: nowrap;
+    }
+
+    .meta-value {
+        font-weight: 600;
+        text-align: right;
+        word-break: break-word;
+    }
+
+    .body-box {
+        background: #111827;
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 180px;
+        max-height: 560px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+
+    @@media (max-width: 768px) {
+        .log-detail-page .page-header {
+            gap: 12px;
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+
+        .meta-row {
+            display: block;
+        }
+
+        .meta-value {
+            text-align: left;
+        }
+    }
+</style>
+
+<div class="container-fluid log-detail-page">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
+        <div>
+            <h3 class="mb-1 page-title">
+                Chi tiết log tích hợp #@Model.Id
+            </h3>
+
+            <div class="text-muted">
+                Xem RequestBody / ResponseBody để debug API Viettel.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <a asp-area="Admin"
+                   asp-controller="Invoice"
+                   asp-action="ViettelPayload"
+                   asp-route-id="@Model.InvoiceHeadId"
+                   class="btn btn-outline-info">
+                Về hóa đơn
+            </a>
+
+            <a asp-area="Admin"
+                   asp-controller="InvoiceIntegrationLog"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                Quay lại log
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+
+        <div class="col-lg-5">
+            <div class="card shadow-sm log-detail-card h-100">
+                <div class="card-header bg-white fw-semibold">
+                    Thông tin log
+                </div>
+
+                <div class="card-body">
+                    <div class="meta-row">
+                        <span class="meta-label">LogId</span>
+                        <span class="meta-value">#@Model.Id</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">InvoiceHead</span>
+                        <span class="meta-value">
+                            <a asp-area="Admin"
+                                   asp-controller="Invoice"
+                                   asp-action="ViettelPayload"
+                                   asp-route-id="@Model.InvoiceHeadId">
+                                #@Model.InvoiceHeadId
+                            </a>
+                        </span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">OrderId</span>
+                        <span class="meta-value">@(Model.OrderId?.ToString() ?? "-")</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">Số hóa đơn</span>
+                        <span class="meta-value">
+                            @(string.IsNullOrWhiteSpace(Model.ProviderInvoiceNo)
+                                ? Model.InvoiceNumber ?? "-"
+                                : Model.ProviderInvoiceNo)
+                        </span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">Action</span>
+                        <span class="meta-value">
+                            @Model.ActionName
+                            <br />
+                            <small class="text-muted">@Model.ActionType</small>
+                        </span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">Kết quả</span>
+                        <span class="meta-value">
+                            @if (Model.IsSuccess)
+                            {
+                                <span class="badge bg-success">OK</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">Lỗi</span>
+                            }
+                        </span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">StartedAtUtc</span>
+                        <span class="meta-value">@Model.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">FinishedAtUtc</span>
+                        <span class="meta-value">@(Model.FinishedAtUtc?.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">Duration</span>
+                        <span class="meta-value">@(Model.DurationMs?.ToString("N0") ?? "-") ms</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">ErrorCode</span>
+                        <span class="meta-value text-danger">@(Model.ErrorCode ?? "-")</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">ErrorMessage</span>
+                        <span class="meta-value text-danger">@(Model.ErrorMessage ?? "-")</span>
+                    </div>
+
+                    <div class="meta-row">
+                        <span class="meta-label">RequestUrl</span>
+                        <span class="meta-value">@Model.RequestUrl</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card shadow-sm log-detail-card h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <div class="fw-semibold">
+                        RequestBody
+                    </div>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            onclick="copyText('requestBody')">
+                        Copy
+                    </button>
+                </div>
+
+                <div class="card-body">
+                    @if (string.IsNullOrWhiteSpace(Model.RequestBody))
+                    {
+                        <div class="text-muted">
+                            Không có RequestBody.
+                        </div>
+                    }
+                    else
+                    {
+                        <pre id="requestBody" class="body-box">@FormatBody(Model.RequestBody)</pre>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card shadow-sm log-detail-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">
+                ResponseBody
+            </div>
+
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary"
+                    onclick="copyText('responseBody')">
+                Copy
+            </button>
+        </div>
+
+        <div class="card-body">
+            @if (string.IsNullOrWhiteSpace(Model.ResponseBody))
+            {
+                <div class="text-muted">
+                    Không có ResponseBody.
+                </div>
+            }
+            else
+            {
+                <pre id="responseBody" class="body-box">@FormatBody(Model.ResponseBody)</pre>
+            }
+        </div>
+    </div>
+
+</div>
+
+@section Scripts {
+    <script>
+        function copyText(id) {
+            const el = document.getElementById(id);
+
+            if (!el) {
+                alert('Không có nội dung để copy.');
+                return;
+            }
+
+            navigator.clipboard.writeText(el.innerText)
+                .then(() => alert('Đã copy.'))
+                .catch(() => alert('Không copy được. Hãy bôi đen và copy thủ công.'));
+        }
+    </script>
+}
