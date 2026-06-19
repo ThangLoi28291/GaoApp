@@ -64,4 +64,16 @@ public interface IInvoiceRepository
     CancellationToken ct = default);
 
     void UpdateInvoiceHead(InvoiceHead invoiceHead);
+    Task<List<InvoiceHead>> GetByTransactionUuidsAsync(
+       List<string> transactionUuids,
+       CancellationToken ct = default);
+
+    Task<List<InvoiceHead>> GetByProviderInvoiceNosAsync(
+        List<string> providerInvoiceNos,
+        CancellationToken ct = default);
+
+    Task<List<InvoiceHead>> GetInvoiceHeadsForDashboardAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        CancellationToken ct = default);
 }

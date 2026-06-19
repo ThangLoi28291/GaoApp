@@ -203,6 +203,11 @@ public static class DependencyInjection
         {
             client.Timeout = TimeSpan.FromSeconds(90);
         });
+        services.AddHttpClient<IViettelInvoiceListClient, ViettelInvoiceListClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(120);
+        });
+        services.AddScoped<IInvoiceCorrectionRepository, InvoiceCorrectionRepository>();
         // =========================================================
         // REWARDS
         // =========================================================

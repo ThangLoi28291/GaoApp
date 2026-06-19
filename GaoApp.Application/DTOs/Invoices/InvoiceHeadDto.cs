@@ -68,4 +68,44 @@ public class InvoiceHeadDto
     public string? PdfFilePath { get; set; }
 
     public string? ZipFilePath { get; set; }
+    public int? OriginalInvoiceHeadId { get; set; }
+
+    public string? OriginalInvoiceNo { get; set; }
+
+    public DateTime? OriginalInvoiceIssuedAtUtc { get; set; }
+
+    public InvoiceCorrectionType? CorrectionType { get; set; }
+
+    public string? AdjustedNote { get; set; }
+
+    public string? AdditionalReferenceDesc { get; set; }
+
+    public DateTime? AdditionalReferenceDateUtc { get; set; }
+
+
+    public bool IsCorrectionInvoice =>
+    OriginalInvoiceHeadId.HasValue || CorrectionType.HasValue;
+
+    public bool IsReplacementInvoice =>
+        CorrectionType == InvoiceCorrectionType.Replacement;
+
+    public bool IsAdjustmentAmountInvoice =>
+        CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
+
+    public bool IsAdjustmentInfoInvoice =>
+        CorrectionType == InvoiceCorrectionType.AdjustmentInfo;
+
+    public string CorrectionTypeName
+    {
+        get
+        {
+            return CorrectionType switch
+            {
+                InvoiceCorrectionType.Replacement => "Hóa đơn thay thế",
+                InvoiceCorrectionType.AdjustmentAmount => "Hóa đơn điều chỉnh tiền",
+                InvoiceCorrectionType.AdjustmentInfo => "Hóa đơn điều chỉnh thông tin",
+                _ => string.Empty
+            };
+        }
+    }
 }

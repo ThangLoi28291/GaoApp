@@ -1,6 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
-using GaoApp.Web.ViewModels.Invoices;
+using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,13 +17,15 @@ public class InvoiceController : Controller
     private readonly IViettelOfficialFileService _viettelOfficialFileService;
     private readonly IViettelInvoiceSyncService _viettelInvoiceSyncService;
     private readonly IViettelInvoiceEmailService _viettelInvoiceEmailService;
+    private readonly IInvoiceCorrectionService _invoiceCorrectionService;
     public InvoiceController(IInvoiceService invoiceService, 
         IViettelInvoicePayloadBuilder viettelPayloadBuilder, 
         IViettelInvoicePreviewService viettelPreviewService, 
         IViettelInvoiceIssueService viettelIssueService, 
         IViettelOfficialFileService viettelOfficialFileService,
         IViettelInvoiceSyncService viettelInvoiceSyncService,
-        IViettelInvoiceEmailService viettelInvoiceEmailService)
+        IViettelInvoiceEmailService viettelInvoiceEmailService,
+        IInvoiceCorrectionService invoiceCorrectionService)
     {
         _invoiceService = invoiceService;
         _viettelPayloadBuilder = viettelPayloadBuilder;
@@ -32,6 +34,7 @@ public class InvoiceController : Controller
         _viettelOfficialFileService = viettelOfficialFileService;
         _viettelInvoiceSyncService = viettelInvoiceSyncService;
         _viettelInvoiceEmailService = viettelInvoiceEmailService;
+        _invoiceCorrectionService = invoiceCorrectionService;
     }
 
     [HttpGet]
@@ -89,6 +92,16 @@ public class InvoiceController : Controller
             TempData["Error"] = result.Error?.Message;
             return RedirectToAction(nameof(Detail), new { id });
         }
+        var historyResult = await _invoiceCorrectionService.GetHistoryAsync(id, ct);
+
+        ViewBag.CorrectionHistory = historyResult.IsSuccess
+            ? historyResult.Value
+            : new InvoiceCorrectionHistoryDto
+            {
+                CurrentInvoiceHeadId = id,
+                OriginalInvoiceHeadId = id,
+                IsCurrentOriginal = true
+            };
 
         return View("ViettelPayload", result.Value);
     }
@@ -273,7 +286,16 @@ public class InvoiceController : Controller
     CancellationToken ct)
     {
         var result = await _invoiceService.GetInvoiceDetailAsync(id, ct);
+        var historyResult = await _invoiceCorrectionService.GetHistoryAsync(id, ct);
 
+        ViewBag.CorrectionHistory = historyResult.IsSuccess
+            ? historyResult.Value
+            : new InvoiceCorrectionHistoryDto
+            {
+                CurrentInvoiceHeadId = id,
+                OriginalInvoiceHeadId = id,
+                IsCurrentOriginal = true
+            };
         if (!result.IsSuccess)
         {
             TempData["Error"] = result.Error?.Message;
@@ -285,6 +307,7 @@ public class InvoiceController : Controller
         {
             Invoice = result.Value
         };
+
 
         return View(vm);
     }

@@ -533,3 +533,532 @@ Dự kiến:
 * Tổng số hóa đơn chưa tải PDF/XML.
 * Tổng số email đã gửi.
 * Thống kê theo ngày/tháng.
+---
+
+# Hóa đơn điện tử Viettel SInvoice
+
+## Mục tiêu
+
+Module Invoice hiện hỗ trợ hóa đơn bán ra điện tử qua Viettel SInvoice, gồm các nhóm chức năng:
+
+* Tạo hóa đơn bán ra từ đơn POS sau khi hoàn tất thanh toán.
+* Xem JSON payload trước khi phát hành.
+* Preview hóa đơn nháp.
+* Phát hành hóa đơn thật lên Viettel.
+* Tra cứu hóa đơn theo `transactionUuid`.
+* Tải PDF/XML hóa đơn chính thức.
+* Gửi email hóa đơn cho khách.
+* Đồng bộ danh sách hóa đơn từ Viettel.
+* Dashboard theo dõi hóa đơn điện tử.
+* Xử lý sai sót hóa đơn: thay thế, điều chỉnh tiền, điều chỉnh thông tin.
+
+## Văn bản nghiệp vụ đang áp dụng
+
+Ghi nhận theo quy định hiện hành từ 01/06/2025:
+
+* Nghị định 70/2025/NĐ-CP sửa đổi, bổ sung Nghị định 123/2020/NĐ-CP về hóa đơn, chứng từ.
+* Thông tư 32/2025/TT-BTC hướng dẫn thực hiện Nghị định 123/2020/NĐ-CP và Nghị định 70/2025/NĐ-CP.
+
+## Entity chính
+
+### InvoiceHead
+
+Hóa đơn bán ra của GaoApp.
+
+Các nhóm trường quan trọng:
+
+* Thông tin hóa đơn nội bộ:
+
+  * `OrderId`
+  * `InvoiceNumber`
+  * `InvoiceDate`
+  * `BuyerName`
+  * `BuyerTaxCode`
+  * `BuyerAddress`
+  * `SubTotal`
+  * `VatAmount`
+  * `GrandTotal`
+  * `IsLocked`
+
+* Thông tin tích hợp Viettel:
+
+  * `ProviderCode`
+  * `ProviderStatus`
+  * `TransactionUuid`
+  * `SupplierTaxCode`
+  * `InvoiceType`
+  * `TemplateCode`
+  * `InvoiceSeries`
+  * `ProviderInvoiceNo`
+  * `ProviderTransactionId`
+  * `ReservationCode`
+  * `CodeOfTax`
+  * `IssuedAtUtc`
+  * `LastSyncedAtUtc`
+  * `LastErrorCode`
+  * `LastErrorMessage`
+  * `PdfFilePath`
+  * `ZipFilePath`
+
+* Thông tin xử lý sai sót:
+
+  * `OriginalInvoiceHeadId`
+  * `CorrectionType`
+  * `OriginalInvoiceNo`
+  * `OriginalInvoiceIssuedAtUtc`
+  * `AdjustedNote`
+  * `AdditionalReferenceDesc`
+  * `AdditionalReferenceDateUtc`
+
+### InvoiceDetail
+
+Dòng hàng của hóa đơn bán ra.
+
+Các trường quan trọng:
+
+* `InvoiceHeadId`
+* `OrderLineId`
+* `ProductVariantId`
+* `SourceType`
+* `ItemName`
+* `UnitName`
+* `Quantity`
+* `UnitPrice`
+* `Amount`
+* `VatRate`
+* `VatAmount`
+* `TotalAmount`
+* `Note`
+
+### InvoiceProviderSetting
+
+Cấu hình nhà cung cấp hóa đơn điện tử.
+
+Các trường quan trọng:
+
+* `ProviderCode`
+* `AuthMode`
+* `IsProduction`
+* `BaseUrl`
+* `Username`
+* `Password`
+* `SupplierTaxCode`
+* `InvoiceType`
+* `TemplateCode`
+* `InvoiceSeries`
+* `CurrencyCode`
+* `ExchangeRate`
+* `PaymentMethodName`
+* `CusGetInvoiceRight`
+* `DefaultPaymentStatus`
+* `IsActive`
+
+Ghi chú bảo mật:
+
+* Không hiển thị mật khẩu Viettel trên UI.
+* Không ghi mật khẩu/token vào log.
+* Production cần dùng DataProtection để mã hóa mật khẩu cấu hình.
+
+### InvoiceCorrectionCase
+
+Hồ sơ xử lý sai sót hóa đơn.
+
+Các trường quan trọng:
+
+* `OriginalInvoiceHeadId`
+* `NewInvoiceHeadId`
+* `Type`
+* `Status`
+* `Reason`
+* `AgreementDocumentNo`
+* `AgreementDateUtc`
+* `IssuedAtUtc`
+* `LastErrorCode`
+* `LastErrorMessage`
+
+## Enum quan trọng
+
+### InvoiceProviderStatus
+
+* `LocalDraft`: hóa đơn nội bộ.
+* `ReadyToIssue`: sẵn sàng phát hành.
+* `Previewed`: đã preview nháp.
+* `Issuing`: đang phát hành.
+* `Issued`: đã phát hành.
+* `IssuedWaitingNumber`: đã gửi nhưng đang chờ tra cứu số hóa đơn.
+* `IssueFailed`: phát hành lỗi.
+* `PdfDownloaded`: đã tải PDF.
+* `ZipDownloaded`: đã tải ZIP/XML.
+* `EmailSent`: đã gửi email.
+
+### InvoiceCorrectionType
+
+* `Replacement`: hóa đơn thay thế.
+* `AdjustmentAmount`: hóa đơn điều chỉnh tiền.
+* `AdjustmentInfo`: hóa đơn điều chỉnh thông tin.
+
+### InvoiceCorrectionStatus
+
+* `Draft`: nháp.
+* `ReadyToIssue`: sẵn sàng phát hành.
+* `Issuing`: đang phát hành.
+* `Issued`: đã phát hành.
+* `Failed`: lỗi.
+* `Cancelled`: đã hủy.
+
+---
+
+# Luồng phát hành Viettel
+
+## 1. Tạo hóa đơn bán ra từ POS
+
+Sau khi đơn POS hoàn tất, hệ thống tạo `InvoiceHead` và `InvoiceDetail`.
+
+Điểm cần kiểm tra:
+
+* Mỗi đơn POS chỉ có một hóa đơn gốc chưa xóa mềm.
+* Hóa đơn gốc có `OriginalInvoiceHeadId = NULL`.
+* Các hóa đơn thay thế/điều chỉnh được phép dùng cùng `OrderId`, nhưng phải có `OriginalInvoiceHeadId`.
+
+Index quan trọng:
+
+* Unique `{StoreId, OrderId}` chỉ áp dụng cho hóa đơn gốc.
+* Filter nên là:
+
+  * `IsDeleted = 0`
+  * `OriginalInvoiceHeadId IS NULL`
+
+## 2. Xem JSON Viettel
+
+Màn `ViettelPayload` dùng để kiểm tra payload trước khi phát hành.
+
+Cần kiểm tra:
+
+* `supplierTaxCode`
+* `templateCode`
+* `invoiceSeries`
+* `transactionUuid`
+* `generalInvoiceInfo`
+* `buyerInfo`
+* `itemInfo`
+* `summarizeInfo`
+
+## 3. Phát hành hóa đơn
+
+Khi phát hành:
+
+* Nếu chưa có `TransactionUuid`, hệ thống tự sinh UUID.
+* Trạng thái chuyển sang `Issuing`.
+* Gửi payload sang Viettel.
+* Nếu thành công:
+
+  * `ProviderStatus = Issued` hoặc `IssuedWaitingNumber`
+  * Lưu `ProviderInvoiceNo`
+  * Lưu `ProviderTransactionId`
+  * Lưu `ReservationCode`
+  * Lưu `CodeOfTax`
+  * Lưu `IssuedAtUtc`
+  * Khóa hóa đơn nội bộ.
+* Nếu lỗi:
+
+  * `ProviderStatus = IssueFailed`
+  * Lưu `LastErrorCode`
+  * Lưu `LastErrorMessage`
+
+## 4. Tra cứu UUID
+
+Dùng khi phát hành bị timeout hoặc HTTP 500 chưa rõ kết quả.
+
+Quy tắc:
+
+* Nếu `ProviderStatus = Issuing` hoặc `IssuedWaitingNumber`, không cho phát hành lại ngay.
+* Phải tra cứu theo `TransactionUuid` trước.
+* Nếu Viettel trả về hóa đơn đã phát hành thì đồng bộ lại `ProviderInvoiceNo`, `CodeOfTax`, `IssuedAtUtc`.
+
+## 5. Tải PDF/XML chính thức
+
+Sau khi hóa đơn đã phát hành, hệ thống tải file chính thức từ Viettel.
+
+Cần đảm bảo snapshot cấu hình đúng lúc phát hành:
+
+* `SupplierTaxCode`
+* `InvoiceType`
+* `TemplateCode`
+* `InvoiceSeries`
+
+Không phụ thuộc cấu hình hiện tại nếu sau này đổi mẫu/ký hiệu.
+
+---
+
+# Xử lý sai sót hóa đơn
+
+## Nguyên tắc chung
+
+Hóa đơn đã phát hành không sửa trực tiếp. Khi phát hiện sai phải xử lý bằng một trong các hình thức:
+
+* Thông báo sai sót.
+* Hóa đơn điều chỉnh.
+* Hóa đơn thay thế.
+
+Trong GaoApp hiện đã triển khai:
+
+* Hóa đơn thay thế.
+* Hóa đơn điều chỉnh tiền.
+* Hóa đơn điều chỉnh thông tin.
+
+## Khi nào dùng điều chỉnh tiền
+
+Dùng `AdjustmentAmount` khi sai về giá trị hàng hóa/dịch vụ.
+
+Các trường hợp thường gặp:
+
+* Sai số lượng.
+* Sai đơn giá.
+* Sai thành tiền.
+* Sai thuế suất.
+* Sai tiền thuế.
+* Khách trả hàng.
+* Giảm giá sau bán.
+* Bổ sung phần chênh lệch tăng/giảm.
+
+Quy tắc dữ liệu:
+
+* Điều chỉnh tăng: dòng điều chỉnh mang giá trị tăng.
+* Điều chỉnh giảm: dòng điều chỉnh mang giá trị giảm.
+* Payload Viettel dùng `isIncreaseItem` để xác định tăng/giảm.
+* `GrandTotal` của hóa đơn điều chỉnh tiền phải khác 0.
+
+## Khi nào dùng điều chỉnh thông tin
+
+Dùng `AdjustmentInfo` khi cần sửa thông tin nhưng không làm thay đổi tiền.
+
+Các trường hợp thường gặp:
+
+* Sai thông tin người mua.
+* Sai ghi chú.
+* Sai thông tin tham chiếu.
+* Sai thông tin không ảnh hưởng tiền, thuế, hàng hóa.
+
+Quy tắc dữ liệu trong GaoApp:
+
+* Không copy lại toàn bộ dòng hàng gốc.
+* Tạo một dòng mô tả:
+
+  * `ItemName = Điều chỉnh thông tin hóa đơn ...`
+  * `Quantity = 0`
+  * `UnitPrice = 0`
+  * `Amount = 0`
+  * `VatAmount = 0`
+  * `TotalAmount = 0`
+* `GrandTotal` có thể bằng 0.
+* Payload vẫn phải có dòng `itemInfo` hợp lệ để Viettel nhận.
+
+## Khi nào dùng thay thế
+
+Dùng `Replacement` khi muốn lập lại một hóa đơn mới thay cho hóa đơn cũ.
+
+Các trường hợp thường gặp:
+
+* Sai nhiều dòng hàng.
+* Sai toàn bộ thông tin người mua cần lập lại rõ ràng.
+* Sai nghiêm trọng làm hóa đơn cũ khó đối chiếu.
+* Muốn hóa đơn mới là bộ dữ liệu đúng đầy đủ.
+
+Quy tắc dữ liệu:
+
+* Hóa đơn thay thế copy dữ liệu từ hóa đơn gốc.
+* Người dùng có thể sửa lại thông tin trước khi phát hành.
+* Hóa đơn thay thế phải có `GrandTotal > 0`.
+* Payload Viettel phải có thông tin hóa đơn bị thay thế:
+
+  * `originalInvoiceId`
+  * `originalTemplateCode`
+  * `originalInvoiceIssueDate`
+
+---
+
+# Quy tắc số lần xử lý sai sót
+
+## Điều chỉnh được nhiều lần
+
+Một hóa đơn hiện hành có thể có nhiều hóa đơn điều chỉnh.
+
+Mô hình:
+
+```text
+F0 + DC1 + DC2 + DC3
+```
+
+Áp dụng cho:
+
+* Điều chỉnh tiền nhiều lần.
+* Điều chỉnh thông tin nhiều lần.
+
+## Thay thế đi theo chuỗi
+
+Một hóa đơn chỉ có một hóa đơn thay thế trực tiếp.
+
+Mô hình đúng:
+
+```text
+F0 -> TT1 -> TT2 -> TT3
+```
+
+Nếu `F0` đã được thay thế bởi `TT1`, không xử lý tiếp trên `F0`. Phải mở `TT1`.
+
+Nếu `TT1` sai, lập `TT2` thay thế cho `TT1`.
+
+## Không chuyển phương án tùy tiện
+
+Quy tắc hệ thống đang áp dụng:
+
+* Nếu lần đầu đã điều chỉnh thì các lần sau tiếp tục điều chỉnh trên hóa đơn hiện hành.
+* Nếu đã thay thế thì xử lý tiếp trên hóa đơn thay thế mới nhất.
+* Không lập hồ sơ xử lý sai sót trực tiếp từ hóa đơn điều chỉnh.
+* Không tạo hồ sơ mới nếu đang có hồ sơ `Draft`, `ReadyToIssue`, `Issuing`, hoặc `Failed` chưa xử lý.
+
+---
+
+# Màn hình quản trị
+
+## ViettelPayload
+
+Dùng để:
+
+* Xem JSON payload.
+* Preview PDF nháp.
+* Phát hành hóa đơn thật.
+* Tra cứu UUID.
+* Tải PDF/XML.
+* Gửi email hóa đơn.
+* Tạo hồ sơ xử lý sai sót.
+* Xem lịch sử xử lý sai sót.
+
+## Invoice Detail
+
+Dùng để:
+
+* Xem thông tin hóa đơn nội bộ.
+* Xem trạng thái Viettel.
+* Xem danh sách dòng hóa đơn.
+* Xem lịch sử hóa đơn gốc → thay thế/điều chỉnh.
+
+## InvoiceCorrection
+
+Dùng để:
+
+* Tạo hóa đơn thay thế.
+* Tạo hóa đơn điều chỉnh tiền.
+* Tạo hóa đơn điều chỉnh thông tin.
+* Ghi lý do sai sót.
+* Ghi số văn bản/thỏa thuận.
+* Ghi ngày văn bản/thỏa thuận.
+
+---
+
+# Test bắt buộc khi sửa Invoice
+
+## Test phát hành hóa đơn gốc
+
+* Tạo đơn POS.
+* Hoàn tất thanh toán.
+* Kiểm tra `InvoiceHead`.
+* Xem JSON.
+* Preview nháp.
+* Phát hành thật.
+* Tra cứu UUID.
+* Tải PDF/XML.
+* Gửi email.
+
+## Test thay thế
+
+* Chọn hóa đơn đã phát hành, có `CodeOfTax`.
+* Tạo hóa đơn thay thế.
+* Kiểm tra payload có:
+
+  * `adjustmentType = 3`
+  * `adjustmentInvoiceType = 1`
+  * `originalInvoiceId`
+  * `originalTemplateCode`
+* Phát hành thành công.
+* Kiểm tra `InvoiceCorrectionCases.Status = Issued`.
+* Quay lại hóa đơn cũ, hệ thống phải chặn xử lý tiếp trên hóa đơn đã bị thay thế.
+* Mở hóa đơn thay thế, tạo thay thế tiếp được.
+
+## Test điều chỉnh tiền
+
+* Tạo điều chỉnh tăng.
+* Tạo điều chỉnh giảm.
+* Kiểm tra payload có `isIncreaseItem`.
+* Phát hành thành công.
+* Kiểm tra được lập nhiều lần.
+* Kiểm tra không cho đổi sang thay thế nếu lần đầu đã điều chỉnh.
+
+## Test điều chỉnh thông tin
+
+* Tạo điều chỉnh thông tin.
+* Kiểm tra không copy dòng hàng gốc.
+* Kiểm tra có một dòng mô tả điều chỉnh.
+* Tổng tiền bằng 0.
+* Phát hành thành công.
+* Kiểm tra được lập nhiều lần.
+
+## Test chống treo hồ sơ
+
+* Tạo một hồ sơ điều chỉnh nháp.
+* Chưa phát hành.
+* Tạo hồ sơ mới trên cùng hóa đơn.
+* Kỳ vọng bị chặn.
+
+## Test bảo mật
+
+* Không log mật khẩu Viettel.
+* Không hiển thị mật khẩu Viettel trên UI.
+* Chỉ ADMIN được sửa cấu hình Viettel.
+* Log request/response không chứa thông tin nhạy cảm không cần thiết.
+
+---
+
+# File chính đã tham gia module
+
+## Domain
+
+* `GaoApp.Domain/Entities/InvoiceHead.cs`
+* `GaoApp.Domain/Entities/InvoiceDetail.cs`
+* `GaoApp.Domain/Entities/InvoiceProviderSetting.cs`
+* `GaoApp.Domain/Entities/InvoiceIntegrationLog.cs`
+* `GaoApp.Domain/Entities/InvoiceCorrectionCase.cs`
+* `GaoApp.Domain/Enums/InvoiceProviderStatus.cs`
+* `GaoApp.Domain/Enums/InvoiceCorrectionType.cs`
+* `GaoApp.Domain/Enums/InvoiceCorrectionStatus.cs`
+
+## Application
+
+* `GaoApp.Application/Services/Invoices/InvoiceService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoicePayloadBuilder.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoiceIssueService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoicePreviewService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoiceFileService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoiceLookupService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoiceEmailService.cs`
+* `GaoApp.Application/Services/Invoices/InvoiceCorrectionService.cs`
+* `GaoApp.Application/Interfaces/Repositories/Invoices/IInvoiceRepository.cs`
+* `GaoApp.Application/Interfaces/Repositories/Invoices/IInvoiceCorrectionRepository.cs`
+* `GaoApp.Application/Interfaces/Services/Invoices/IInvoiceCorrectionService.cs`
+
+## Infrastructure
+
+* `GaoApp.Infrastructure/Repositories/Invoices/InvoiceRepository.cs`
+* `GaoApp.Infrastructure/Repositories/Invoices/InvoiceCorrectionRepository.cs`
+* `GaoApp.Infrastructure/Persistence/Configurations/Invoices/InvoiceHeadConfiguration.cs`
+* `GaoApp.Infrastructure/Persistence/Configurations/Invoices/InvoiceCorrectionCaseConfiguration.cs`
+
+## Web
+
+* `GaoApp.Web/Areas/Admin/Controllers/InvoiceController.cs`
+* `GaoApp.Web/Areas/Admin/Controllers/InvoiceCorrectionController.cs`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/Detail.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/ViettelPayload.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/InvoiceCorrection/Create.cshtml`
+

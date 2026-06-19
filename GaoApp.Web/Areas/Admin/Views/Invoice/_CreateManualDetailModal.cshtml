@@ -1,15 +1,17 @@
-﻿@model GaoApp.Web.ViewModels.Invoices.CreateManualInvoiceDetailViewModel
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.CreateManualInvoiceDetailViewModel
 
 <form id="manualDetailForm"
       asp-area="Admin"
       asp-controller="Invoice"
       asp-action="CreateManualDetail"
-      method="post">
+      method="post"
+      data-is-adjustment-amount-invoice="@Model.IsAdjustmentAmountInvoice.ToString().ToLower()">
 
     @Html.AntiForgeryToken()
 
     <input type="hidden" asp-for="InvoiceHeadId" />
     <input type="hidden" asp-for="ProductVariantId" id="manualProductVariantId" />
+    <input type="hidden" asp-for="IsAdjustmentAmountInvoice" />
 
     <div class="modal-header">
         <div>
@@ -26,6 +28,22 @@
     </div>
 
     <div class="modal-body">
+
+        @if (Model.IsAdjustmentAmountInvoice)
+        {
+            <div class="alert alert-warning small mb-3">
+                <div class="fw-semibold">
+                    Hóa đơn điều chỉnh tiền
+                </div>
+                <div>
+                    Được phép nhập số lượng âm để điều chỉnh giảm.
+                    Ví dụ: <strong>-1</strong> × <strong>36.000</strong> = <strong>-36.000</strong>.
+                </div>
+                <div>
+                    Đơn giá vẫn nhập số dương. Muốn giảm tiền thì nhập <strong>số lượng âm</strong>.
+                </div>
+            </div>
+        }
 
         <div class="mb-3">
             <label class="form-label fw-semibold">
@@ -71,13 +89,39 @@
             </div>
 
             <div class="col-md-4">
-                <label class="form-label fw-semibold">Số lượng</label>
-                <input asp-for="Quantity"
-                       id="manualQuantity"
-                       type="number"
-                       step="0.001"
-                       min="0.001"
-                       class="form-control" />
+                <label class="form-label fw-semibold">
+                    Số lượng
+                    @if (Model.IsAdjustmentAmountInvoice)
+                    {
+                        <span class="text-danger">(cho phép âm)</span>
+                    }
+                </label>
+
+                @if (Model.IsAdjustmentAmountInvoice)
+                {
+                    <input asp-for="Quantity"
+                           id="manualQuantity"
+                           type="number"
+                           step="0.001"
+                           class="form-control"
+                           placeholder="VD: -1 để điều chỉnh giảm"
+                           required />
+
+                    <div class="form-text text-warning">
+                        Nhập số âm nếu điều chỉnh giảm. Không được nhập 0.
+                    </div>
+                }
+                else
+                {
+                    <input asp-for="Quantity"
+                           id="manualQuantity"
+                           type="number"
+                           step="0.001"
+                           min="0.001"
+                           class="form-control"
+                           placeholder="VD: 1"
+                           required />
+                }
             </div>
 
             <div class="col-md-4">
@@ -87,7 +131,16 @@
                        type="number"
                        step="1"
                        min="0"
-                       class="form-control" />
+                       class="form-control"
+                       placeholder="VD: 36000"
+                       required />
+
+                @if (Model.IsAdjustmentAmountInvoice)
+                {
+                    <div class="form-text">
+                        Đơn giá nhập số dương.
+                    </div>
+                }
             </div>
         </div>
 
@@ -99,13 +152,15 @@
                        type="number"
                        step="0.01"
                        min="0"
+                       max="100"
                        class="form-control" />
             </div>
 
             <div class="col-md-8">
                 <label class="form-label fw-semibold">Ghi chú</label>
                 <input asp-for="Note"
-                       class="form-control" />
+                       class="form-control"
+                       placeholder="Ghi chú dòng điều chỉnh, nếu có" />
             </div>
         </div>
 
@@ -125,3 +180,20 @@
         </button>
     </div>
 </form>
+
+@if (Model.IsAdjustmentAmountInvoice)
+{
+    <script>
+        (function () {
+            const quantityInput = document.getElementById('manualQuantity');
+
+            if (!quantityInput) {
+                return;
+            }
+
+            quantityInput.removeAttribute('min');
+            quantityInput.setAttribute('step', '0.001');
+            quantityInput.setAttribute('placeholder', 'VD: -1 để điều chỉnh giảm');
+        })();
+    </script>
+}

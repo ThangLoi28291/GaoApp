@@ -22,6 +22,28 @@
         const page = document.getElementById("invoiceDetailPage");
         return page?.getAttribute("data-is-locked") === "true";
     }
+    function isAdjustmentAmountInvoice() {
+        const page = document.getElementById("invoiceDetailPage");
+        return page?.getAttribute("data-is-adjustment-amount-invoice") === "true";
+    }
+
+    function applyManualQuantityRule() {
+        const quantityInput = document.getElementById("manualQuantity");
+
+        if (!quantityInput) {
+            return;
+        }
+
+        if (isAdjustmentAmountInvoice()) {
+            quantityInput.removeAttribute("min");
+            quantityInput.setAttribute("step", "0.001");
+            quantityInput.setAttribute("placeholder", "VD: -1 để điều chỉnh giảm");
+        } else {
+            quantityInput.setAttribute("min", "0.001");
+            quantityInput.setAttribute("step", "0.001");
+            quantityInput.setAttribute("placeholder", "VD: 1");
+        }
+    }
 
     function escapeHtml(value) {
         return String(value ?? "")
@@ -159,6 +181,8 @@
 
         modalContent.innerHTML = await response.text();
 
+        applyManualQuantityRule();
+
         bindManualForm();
         bindManualProductSearch();
 
@@ -209,14 +233,23 @@
         const noteCell = row.querySelector("[data-manual-display='note']");
 
         if (quantityCell) {
+            const minAttr = isAdjustmentAmountInvoice()
+                ? ""
+                : `min="0.001"`;
+
+            const placeholderAttr = isAdjustmentAmountInvoice()
+                ? `placeholder="VD: -1"`
+                : `placeholder="VD: 1"`;
+
             quantityCell.innerHTML = `
-                <input type="number"
-                       class="form-control form-control-sm text-end manual-edit-input"
-                       data-manual-edit-field="quantity"
-                       min="0.001"
-                       step="0.001"
-                       value="${escapeHtml(quantity)}" />
-            `;
+        <input type="number"
+               class="form-control form-control-sm text-end manual-edit-input"
+               data-manual-edit-field="quantity"
+               ${minAttr}
+               step="0.001"
+               ${placeholderAttr}
+               value="${escapeHtml(quantity)}" />
+    `;
         }
 
         if (unitPriceCell) {
@@ -320,8 +353,13 @@
         const vatRate = Number(row.querySelector("[data-manual-edit-field='vatRate']")?.value || 0);
         const note = row.querySelector("[data-manual-edit-field='note']")?.value || "";
 
-        if (quantity <= 0) {
-            showError("Số lượng phải lớn hơn 0.");
+        if (quantity === 0) {
+            showError("Số lượng không được bằng 0.");
+            return;
+        }
+
+        if (!isAdjustmentAmountInvoice() && quantity < 0) {
+            showError("Chỉ hóa đơn điều chỉnh tiền mới được nhập số lượng âm.");
             return;
         }
 
@@ -409,7 +447,37 @@
                 showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
                 return;
             }
+            const quantityInput = document.getElementById("manualQuantity");
+            const unitPriceInput = document.getElementById("manualUnitPrice");
+            const vatRateInput = document.getElementById("manualVatRate");
 
+            const quantity = Number(quantityInput?.value || 0);
+            const unitPrice = Number(unitPriceInput?.value || 0);
+            const vatRate = Number(vatRateInput?.value || 0);
+
+            if (quantity === 0) {
+                showError("Số lượng không được bằng 0.");
+                quantityInput?.focus();
+                return;
+            }
+
+            if (!isAdjustmentAmountInvoice() && quantity < 0) {
+                showError("Chỉ hóa đơn điều chỉnh tiền mới được nhập số lượng âm.");
+                quantityInput?.focus();
+                return;
+            }
+
+            if (unitPrice < 0) {
+                showError("Đơn giá không được âm. Muốn điều chỉnh giảm thì nhập số lượng âm.");
+                unitPriceInput?.focus();
+                return;
+            }
+
+            if (vatRate < 0 || vatRate > 100) {
+                showError("VAT không hợp lệ.");
+                vatRateInput?.focus();
+                return;
+            }
             const submitButton = form.querySelector("button[type='submit']");
             const oldText = submitButton ? submitButton.innerHTML : "";
 

@@ -137,6 +137,23 @@ public class ViettelGeneralInvoiceInfoDto
 
     [JsonPropertyName("validation")]
     public int? Validation { get; set; }
+    [JsonPropertyName("adjustedNote")]
+    public string? AdjustedNote { get; set; }
+
+    [JsonPropertyName("adjustmentInvoiceType")]
+    public string? AdjustmentInvoiceType { get; set; }
+
+    [JsonPropertyName("originalInvoiceId")]
+    public string? OriginalInvoiceId { get; set; }
+
+    [JsonPropertyName("originalInvoiceIssueDate")]
+    public long? OriginalInvoiceIssueDate { get; set; }
+
+    [JsonPropertyName("additionalReferenceDesc")]
+    public string? AdditionalReferenceDesc { get; set; }
+
+    [JsonPropertyName("additionalReferenceDate")]
+    public long? AdditionalReferenceDate { get; set; }
 }
 
 public class ViettelBuyerInfoDto
@@ -218,6 +235,11 @@ public class ViettelItemInfoDto
 
     [JsonPropertyName("expDate")]
     public string? ExpDate { get; set; } = "";
+    [JsonPropertyName("isIncreaseItem")]
+    public bool? IsIncreaseItem { get; set; }
+
+    [JsonPropertyName("adjustmentTaxAmount")]
+    public int? AdjustmentTaxAmount { get; set; }
 }
 
 public class ViettelMetadataDto

@@ -102,13 +102,7 @@ public class InvoiceService : IInvoiceService
         }
 
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByOrderIdAsync(orderId, ct);
-        if (invoiceHead.IsLocked)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.Locked",
-                    "Hóa đơn đã khóa, không thể sinh lại dòng chi tiết."));
-        }
+
         if (invoiceHead == null)
         {
             var createResult = await CreateInvoiceHeadFromOrderAsync(orderId, ct);
@@ -124,6 +118,14 @@ public class InvoiceService : IInvoiceService
                     Error.Failure(
                         "Không tạo được InvoiceHead."));
             }
+        }
+
+        if (invoiceHead.IsLocked)
+        {
+            return Result<InvoiceHeadDto>.Failure(
+                Error.Validation(
+                    "Invoice.Locked",
+                    "Hóa đơn đã khóa, không thể sinh thêm chi tiết từ POS."));
         }
 
         // GHI CHÚ:
@@ -226,8 +228,8 @@ public class InvoiceService : IInvoiceService
         return Result<InvoiceHeadDto>.Success(MapToDto(updatedInvoice));
     }
     public async Task<Result<InvoiceHeadDto>> AddManualDetailAsync(
-    CreateManualInvoiceDetailRequest request,
-    CancellationToken ct = default)
+        CreateManualInvoiceDetailRequest request,
+        CancellationToken ct = default)
     {
         if (request.InvoiceHeadId <= 0)
         {
@@ -237,36 +239,9 @@ public class InvoiceService : IInvoiceService
                     "InvoiceHeadId không hợp lệ."));
         }
 
-        if (request.Quantity <= 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.QuantityInvalid",
-                    "Số lượng phải lớn hơn 0."));
-        }
-
-        if (request.UnitPrice < 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.UnitPriceInvalid",
-                    "Đơn giá không được âm."));
-        }
-
-        if (request.VatRate < 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.VatRateInvalid",
-                    "Thuế suất VAT không được âm."));
-        }
-
         var invoiceHead = await _invoiceRepository
             .GetInvoiceHeadWithDetailsByIdAsync(request.InvoiceHeadId, ct);
 
-        // GHI CHÚ:
-        // Phải check null trước khi check IsLocked.
-        // Nếu hóa đơn không tồn tại mà gọi invoiceHead.IsLocked sẽ lỗi NullReferenceException.
         if (invoiceHead == null)
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -274,8 +249,6 @@ public class InvoiceService : IInvoiceService
                     "Không tìm thấy hóa đơn bán ra."));
         }
 
-        // GHI CHÚ:
-        // Hóa đơn đã khóa thì không cho thêm dòng manual.
         if (invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -284,9 +257,6 @@ public class InvoiceService : IInvoiceService
                     "Hóa đơn đã khóa, không thể thêm dòng manual."));
         }
 
-        // GHI CHÚ:
-        // Nếu người dùng chọn sản phẩm, hệ thống tự lấy tên/đơn vị/giá.
-        // Vì vậy đoạn này phải chạy trước validate ItemName.
         if (request.ProductVariantId.HasValue && request.ProductVariantId.Value > 0)
         {
             var variant = await _productVariantRepository.GetActiveWithProductAsync(
@@ -318,8 +288,6 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        // GHI CHÚ:
-        // Validate ItemName sau khi đã có cơ hội tự fill từ ProductVariant.
         if (string.IsNullOrWhiteSpace(request.ItemName))
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -328,23 +296,22 @@ public class InvoiceService : IInvoiceService
                     "Tên hàng hóa/dịch vụ không được để trống."));
         }
 
-        var amount = request.Quantity * request.UnitPrice;
-        var vatAmount = amount * request.VatRate / 100m;
-        var totalAmount = amount + vatAmount;
+        var validation = ValidateManualAmountInput(
+            invoiceHead,
+            request.Quantity,
+            request.UnitPrice,
+            request.VatRate);
+
+        if (!validation.IsSuccess)
+        {
+            return Result<InvoiceHeadDto>.Failure(validation.Error!);
+        }
 
         var detail = new InvoiceDetail
         {
             InvoiceHeadId = invoiceHead.Id,
-
-            // GHI CHÚ:
-            // Dòng manual không sinh từ POS OrderLine nên OrderLineId = null.
             OrderLineId = null,
-
-            // GHI CHÚ:
-            // Có thể null nếu thêm dòng tự do.
-            // Có giá trị nếu chọn sản phẩm từ hệ thống.
             ProductVariantId = request.ProductVariantId,
-
             SourceType = InvoiceDetailSourceType.Manual,
 
             ItemName = request.ItemName.Trim(),
@@ -354,27 +321,85 @@ public class InvoiceService : IInvoiceService
 
             Quantity = request.Quantity,
             UnitPrice = request.UnitPrice,
-            Amount = amount,
-
             VatRate = request.VatRate,
-            VatAmount = vatAmount,
-            TotalAmount = totalAmount,
 
             Note = string.IsNullOrWhiteSpace(request.Note)
                 ? null
                 : request.Note.Trim()
         };
 
+        RecalculateInvoiceDetail(detail);
+
         invoiceHead.Details.Add(detail);
 
-        // GHI CHÚ:
-        // Sau khi thêm dòng, phải tính lại tổng header từ detail.
         RecalculateInvoiceHead(invoiceHead);
 
         await _invoiceRepository.SaveChangesAsync(ct);
 
         return Result<InvoiceHeadDto>.Success(MapToDto(invoiceHead));
     }
+
+    private static bool IsAmountAdjustmentInvoice(InvoiceHead invoiceHead)
+    {
+        return invoiceHead.CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
+    }
+
+    private static Result<bool> ValidateManualAmountInput(
+        InvoiceHead invoiceHead,
+        decimal quantity,
+        decimal unitPrice,
+        decimal vatRate)
+    {
+        if (quantity == 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.QuantityInvalid",
+                    "Số lượng không được bằng 0."));
+        }
+
+        if (!IsAmountAdjustmentInvoice(invoiceHead) && quantity < 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.NegativeQuantityNotAllowed",
+                    "Chỉ hóa đơn điều chỉnh tiền mới được nhập số lượng âm."));
+        }
+
+        if (unitPrice < 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.UnitPriceInvalid",
+                    "Đơn giá không được âm. Muốn điều chỉnh giảm thì nhập số lượng âm."));
+        }
+
+        if (vatRate < 0 || vatRate > 100)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.VatRateInvalid",
+                    "Thuế suất VAT không hợp lệ."));
+        }
+
+        return Result<bool>.Success(true);
+    }
+
+    private static void RecalculateInvoiceDetail(InvoiceDetail detail)
+    {
+        detail.Amount = Math.Round(
+            detail.Quantity * detail.UnitPrice,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        detail.VatAmount = Math.Round(
+            detail.Amount * detail.VatRate / 100m,
+            2,
+            MidpointRounding.AwayFromZero);
+
+        detail.TotalAmount = detail.Amount + detail.VatAmount;
+    }
+
     private static void RecalculateInvoiceHead(InvoiceHead invoiceHead)
     {
         var activeDetails = invoiceHead.Details
@@ -386,7 +411,6 @@ public class InvoiceService : IInvoiceService
         invoiceHead.VatAmount = activeDetails.Sum(x => x.VatAmount);
         invoiceHead.GrandTotal = activeDetails.Sum(x => x.TotalAmount);
     }
-
     private static InvoiceHeadDto MapToDto(InvoiceHead entity)
     {
         return new InvoiceHeadDto
@@ -424,6 +448,13 @@ public class InvoiceService : IInvoiceService
             LastErrorMessage = entity.LastErrorMessage,
             PdfFilePath = entity.PdfFilePath,
             ZipFilePath = entity.ZipFilePath,
+            OriginalInvoiceHeadId = entity.OriginalInvoiceHeadId,
+            OriginalInvoiceNo = entity.OriginalInvoiceNo,
+            OriginalInvoiceIssuedAtUtc = entity.OriginalInvoiceIssuedAtUtc,
+            CorrectionType = entity.CorrectionType,
+            AdjustedNote = entity.AdjustedNote,
+            AdditionalReferenceDesc = entity.AdditionalReferenceDesc,
+            AdditionalReferenceDateUtc = entity.AdditionalReferenceDateUtc,
             Details = entity.Details
     .Where(x => !x.IsDeleted)
     .OrderBy(x => x.Id)
@@ -645,8 +676,8 @@ public class InvoiceService : IInvoiceService
         return Result<InvoiceHeadDto>.Success(MapToDto(updatedInvoice));
     }
     public async Task<Result<InvoiceHeadDto>> UpdateManualDetailAsync(
-    UpdateManualInvoiceDetailRequest request,
-    CancellationToken ct = default)
+       UpdateManualInvoiceDetailRequest request,
+       CancellationToken ct = default)
     {
         if (request.InvoiceDetailId <= 0)
         {
@@ -654,30 +685,6 @@ public class InvoiceService : IInvoiceService
                 Error.Validation(
                     "Invoice.InvalidDetailId",
                     "InvoiceDetailId không hợp lệ."));
-        }
-
-        if (request.Quantity <= 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.QuantityInvalid",
-                    "Số lượng phải lớn hơn 0."));
-        }
-
-        if (request.UnitPrice < 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.UnitPriceInvalid",
-                    "Đơn giá không được âm."));
-        }
-
-        if (request.VatRate < 0)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.VatRateInvalid",
-                    "VAT không được âm."));
         }
 
         var detail = await _invoiceRepository.GetInvoiceDetailByIdAsync(
@@ -688,7 +695,6 @@ public class InvoiceService : IInvoiceService
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound(
-          
                     "Không tìm thấy dòng hóa đơn."));
         }
 
@@ -701,11 +707,9 @@ public class InvoiceService : IInvoiceService
         }
 
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
-     detail.InvoiceHeadId,
-     ct);
+            detail.InvoiceHeadId,
+            ct);
 
-        // GHI CHÚ:
-        // Kiểm tra null trước để tránh NullReferenceException.
         if (invoiceHead == null)
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -713,8 +717,6 @@ public class InvoiceService : IInvoiceService
                     "Không tìm thấy hóa đơn bán ra."));
         }
 
-        // GHI CHÚ:
-        // Hóa đơn đã khóa thì không cho sửa dòng manual.
         if (invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Failure(
@@ -730,23 +732,29 @@ public class InvoiceService : IInvoiceService
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound(
-                
                     "Dòng hóa đơn đã bị xóa."));
         }
 
-        var amount = request.Quantity * request.UnitPrice;
-        var vatAmount = amount * request.VatRate / 100m;
-        var totalAmount = amount + vatAmount;
+        var validation = ValidateManualAmountInput(
+            invoiceHead,
+            request.Quantity,
+            request.UnitPrice,
+            request.VatRate);
+
+        if (!validation.IsSuccess)
+        {
+            return Result<InvoiceHeadDto>.Failure(validation.Error!);
+        }
 
         activeDetail.Quantity = request.Quantity;
         activeDetail.UnitPrice = request.UnitPrice;
-        activeDetail.Amount = amount;
         activeDetail.VatRate = request.VatRate;
-        activeDetail.VatAmount = vatAmount;
-        activeDetail.TotalAmount = totalAmount;
+
         activeDetail.Note = string.IsNullOrWhiteSpace(request.Note)
             ? null
             : request.Note.Trim();
+
+        RecalculateInvoiceDetail(activeDetail);
 
         RecalculateInvoiceHead(invoiceHead);
 
@@ -760,7 +768,6 @@ public class InvoiceService : IInvoiceService
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound(
-                   
                     "Không tìm thấy hóa đơn sau khi cập nhật."));
         }
 

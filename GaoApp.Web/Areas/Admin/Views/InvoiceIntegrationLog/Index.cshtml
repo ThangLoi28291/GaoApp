@@ -82,7 +82,13 @@
                 Theo dõi các lần gọi API Viettel: preview, phát hành, tra cứu UUID, tải PDF/XML.
             </div>
         </div>
-
+        <a asp-area="Admin"
+               asp-controller="InvoiceIntegrationLog"
+               asp-action="Cleanup"
+               class="btn btn-outline-danger">
+            <i class="bx bx-trash"></i>
+            Dọn log
+        </a>
         <a asp-area="Admin"
                asp-controller="Invoice"
                asp-action="Index"

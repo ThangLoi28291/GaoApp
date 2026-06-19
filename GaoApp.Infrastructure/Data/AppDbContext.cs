@@ -125,6 +125,7 @@ public class AppDbContext : DbContext
     public DbSet<InvoiceProviderSetting> InvoiceProviderSettings => Set<InvoiceProviderSetting>();
 
     public DbSet<InvoiceIntegrationLog> InvoiceIntegrationLogs => Set<InvoiceIntegrationLog>();
+    public DbSet<InvoiceCorrectionCase> InvoiceCorrectionCases => Set<InvoiceCorrectionCase>();
 
 
     protected override void OnModelCreating(ModelBuilder builder)

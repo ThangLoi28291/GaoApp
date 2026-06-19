@@ -23,4 +23,12 @@ public interface IInvoiceIntegrationLogRepository
         CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
+    Task<List<InvoiceIntegrationLog>> GetLogsForDashboardAsync(
+    DateTime fromDate,
+    DateTime toDate,
+    CancellationToken ct = default);
+    Task<InvoiceIntegrationLogCleanupResultDto> CleanupAsync(
+    InvoiceIntegrationLogCleanupRequestDto request,
+    DateTime nowUtc,
+    CancellationToken ct = default);
 }

@@ -179,5 +179,114 @@ File / khu vực liên quan:
 * InvoiceIntegrationLog/Index.cshtml
 * InvoiceIntegrationLog/Detail.cshtml
 
+# CHANGELOG_AI
+
+## 2026-06-19
+
+### Invoice / Viettel SInvoice
+
+Đã hoàn thiện Phase 16 - Xử lý sai sót hóa đơn điện tử.
+
+#### Đã làm
+
+* Thêm luồng lập hóa đơn thay thế.
+* Thêm luồng lập hóa đơn điều chỉnh tiền.
+* Thêm luồng lập hóa đơn điều chỉnh thông tin.
+* Bổ sung entity/hồ sơ `InvoiceCorrectionCase`.
+* Bổ sung liên kết hóa đơn gốc và hóa đơn xử lý sai sót qua:
+
+  * `OriginalInvoiceHeadId`
+  * `CorrectionType`
+  * `OriginalInvoiceNo`
+  * `OriginalInvoiceIssuedAtUtc`
+* Cho phép hóa đơn thay thế/điều chỉnh dùng chung `OrderId` với hóa đơn gốc bằng cách chỉnh unique index hóa đơn gốc.
+* Build payload Viettel cho hóa đơn thay thế:
+
+  * `adjustmentType = 3`
+  * `adjustmentInvoiceType = 1`
+  * Có thông tin hóa đơn bị thay thế.
+* Build payload Viettel cho hóa đơn điều chỉnh tiền:
+
+  * `adjustmentType = 5`
+  * `adjustmentInvoiceType = 2`
+  * Có `isIncreaseItem` để phân biệt tăng/giảm.
+  * Cho phép giá trị điều chỉnh âm/dương theo nghiệp vụ.
+* Build payload Viettel cho hóa đơn điều chỉnh thông tin:
+
+  * Không copy dòng hàng gốc.
+  * Tạo một dòng mô tả điều chỉnh thông tin.
+  * Cho phép tổng tiền bằng 0.
+* Sửa validate phát hành:
+
+  * Hóa đơn gốc/thay thế phải có tổng tiền hợp lệ.
+  * Hóa đơn điều chỉnh tiền phải có tổng tiền khác 0.
+  * Hóa đơn điều chỉnh thông tin được phép tổng tiền bằng 0.
+* Tự động cập nhật trạng thái hồ sơ xử lý sai sót:
+
+  * Khi phát hành: `Issuing`.
+  * Khi lỗi: `Failed`.
+  * Khi thành công: `Issued`.
+* Thêm màn hiển thị lịch sử xử lý sai sót:
+
+  * Hóa đơn gốc nhìn thấy các hóa đơn thay thế/điều chỉnh.
+  * Hóa đơn con nhìn thấy hóa đơn gốc.
+  * Có nút mở chi tiết và JSON Viettel.
+* Chốt quy tắc nghiệp vụ Phase 16.8:
+
+  * Điều chỉnh tiền/thông tin được lập nhiều lần.
+  * Thay thế đi theo chuỗi: hóa đơn gốc → thay thế lần 1 → thay thế lần 2.
+  * Không xử lý tiếp trên hóa đơn đã bị thay thế.
+  * Không xử lý sai sót trực tiếp từ hóa đơn điều chỉnh.
+  * Không chuyển từ điều chỉnh sang thay thế trên cùng hóa đơn nếu lần đầu đã điều chỉnh.
+  * Không tạo nhiều hồ sơ `Draft`, `ReadyToIssue`, `Issuing`, `Failed` treo song song.
+
+#### File chính đã sửa/thêm
+
+* `GaoApp.Domain/Entities/InvoiceHead.cs`
+* `GaoApp.Domain/Entities/InvoiceDetail.cs`
+* `GaoApp.Domain/Entities/InvoiceCorrectionCase.cs`
+* `GaoApp.Domain/Enums/InvoiceCorrectionType.cs`
+* `GaoApp.Domain/Enums/InvoiceCorrectionStatus.cs`
+* `GaoApp.Application/DTOs/Invoices/InvoiceCorrectionDtos.cs`
+* `GaoApp.Application/DTOs/Invoices/InvoiceCorrectionHistoryDtos.cs`
+* `GaoApp.Application/Interfaces/Repositories/Invoices/IInvoiceCorrectionRepository.cs`
+* `GaoApp.Application/Interfaces/Services/Invoices/IInvoiceCorrectionService.cs`
+* `GaoApp.Application/Services/Invoices/InvoiceCorrectionService.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoicePayloadBuilder.cs`
+* `GaoApp.Application/Services/Invoices/ViettelInvoiceIssueService.cs`
+* `GaoApp.Infrastructure/Repositories/Invoices/InvoiceCorrectionRepository.cs`
+* `GaoApp.Infrastructure/Persistence/Configurations/Invoices/InvoiceHeadConfiguration.cs`
+* `GaoApp.Infrastructure/Persistence/Configurations/Invoices/InvoiceCorrectionCaseConfiguration.cs`
+* `GaoApp.Web/Areas/Admin/Controllers/InvoiceController.cs`
+* `GaoApp.Web/Areas/Admin/Controllers/InvoiceCorrectionController.cs`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/Detail.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/ViettelPayload.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml`
+* `GaoApp.Web/Areas/Admin/Views/InvoiceCorrection/Create.cshtml`
+
+#### Test đã pass
+
+* Phát hành hóa đơn gốc Viettel.
+* Tra cứu UUID sau phát hành.
+* Tải PDF/XML chính thức.
+* Gửi email hóa đơn.
+* Lập hóa đơn thay thế.
+* Lập hóa đơn điều chỉnh tiền tăng.
+* Lập hóa đơn điều chỉnh tiền giảm.
+* Lập hóa đơn điều chỉnh thông tin tổng tiền bằng 0.
+* Tự động cập nhật `InvoiceCorrectionCases.Status`.
+* Hiển thị lịch sử hóa đơn gốc và hóa đơn xử lý sai sót.
+* Chặn tạo hồ sơ sai quy tắc nghiệp vụ.
+
+#### Ghi chú nghiệp vụ
+
+* Căn cứ vận hành từ 01/06/2025:
+
+  * Nghị định 70/2025/NĐ-CP.
+  * Thông tư 32/2025/TT-BTC.
+* Hóa đơn đã phát hành không sửa trực tiếp.
+* Điều chỉnh được lập nhiều lần.
+* Thay thế đi theo chuỗi.
+* Hóa đơn đã bị thay thế không còn là hóa đơn hiện hành để xử lý tiếp.
 
 

@@ -30,5 +30,8 @@ public enum InvoiceIntegrationActionType
 
     UpdatePrintStatus = 12,
 
-    CancelInvoice = 13
+    CancelInvoice = 13,
+    SyncInvoiceList = 14,
+    IssueReplacementInvoice = 15,
+    IssueAdjustmentInvoice = 16
 }

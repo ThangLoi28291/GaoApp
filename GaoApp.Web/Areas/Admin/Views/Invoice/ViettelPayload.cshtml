@@ -13,6 +13,21 @@
         Model.CanDownloadOfficialFiles ||
         Model.CanViewSavedPdf ||
         Model.CanDownloadSavedZip;
+    var generalInvoiceInfo = Model.Payload?.GeneralInvoiceInfo;
+
+    var isCorrectionPayload =
+        generalInvoiceInfo != null &&
+        !string.IsNullOrWhiteSpace(generalInvoiceInfo.AdjustmentType) &&
+        generalInvoiceInfo.AdjustmentType != "1";
+
+    var correctionTypeName = generalInvoiceInfo?.AdjustmentType switch
+    {
+        "3" => "Hóa đơn thay thế",
+        "5" when generalInvoiceInfo?.AdjustmentInvoiceType == "1" => "Hóa đơn điều chỉnh tiền",
+        "5" when generalInvoiceInfo?.AdjustmentInvoiceType == "2" => "Hóa đơn điều chỉnh thông tin",
+        _ => string.Empty
+    };
+    var correctionHistory = ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
 }
 
 <style>
@@ -297,6 +312,52 @@
                     Gửi email hóa đơn
                 </button>
             }
+            @if (Model.IsIssued && !isCorrectionPayload)
+            {
+                <div class="btn-group">
+                    <button type="button"
+                            class="btn btn-outline-danger dropdown-toggle"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        Xử lý sai sót
+                    </button>
+
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item"
+                                   asp-area="Admin"
+                                   asp-controller="InvoiceCorrection"
+                                   asp-action="Create"
+                                   asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                   asp-route-type="Replacement">
+                                Lập hóa đơn thay thế
+                            </a>
+                        </li>
+
+                        <li>
+                            <a class="dropdown-item"
+                                   asp-area="Admin"
+                                   asp-controller="InvoiceCorrection"
+                                   asp-action="Create"
+                                   asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                   asp-route-type="AdjustmentAmount">
+                                Lập hóa đơn điều chỉnh tiền
+                            </a>
+                        </li>
+
+                        <li>
+                            <a class="dropdown-item"
+                                   asp-area="Admin"
+                                   asp-controller="InvoiceCorrection"
+                                   asp-action="Create"
+                                   asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                   asp-route-type="AdjustmentInfo">
+                                Lập hóa đơn điều chỉnh thông tin
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            }
             @if (Model.CanViewSavedPdf)
             {
                 <a asp-area="Admin"
@@ -366,7 +427,46 @@
             </div>
         </div>
     </div>
+    @await Html.PartialAsync(
+    "~/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml",
+    correctionHistory)
+    @if (isCorrectionPayload)
+    {
+        <div class="alert alert-warning d-flex align-items-start gap-2">
+            <i class="bx bx-git-branch fs-4"></i>
 
+            <div>
+                <div class="fw-semibold">
+                    @correctionTypeName
+                </div>
+
+                <div>
+                    Hóa đơn gốc:
+                    <strong>@generalInvoiceInfo?.OriginalInvoiceId</strong>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(generalInvoiceInfo?.AdjustedNote))
+                {
+                    <div>
+                        Lý do:
+                        <strong>@generalInvoiceInfo.AdjustedNote</strong>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(generalInvoiceInfo?.AdditionalReferenceDesc))
+                {
+                    <div>
+                        Văn bản:
+                        <strong>@generalInvoiceInfo.AdditionalReferenceDesc</strong>
+                    </div>
+                }
+
+                <div class="small text-muted mt-2">
+                    Dữ liệu này sẽ được gửi sang Viettel trong nhóm generalInvoiceInfo.
+                </div>
+            </div>
+        </div>
+    }
     @if (!string.IsNullOrWhiteSpace(Model.IssueBlockReason) && !Model.CanIssue && !Model.IsIssued)
     {
         <div class="alert alert-warning d-flex align-items-start gap-2">
@@ -516,10 +616,23 @@
 
                         <div class="payload-meta-row">
                             <span class="payload-meta-label">Thanh toán</span>
-                            <span class="payload-meta-value payload-money text-danger">
+                            <span class="payload-meta-value payload-money @(Model.TotalAmountWithTax < 0 ? "text-danger" : "text-primary")">
                                 @Model.TotalAmountWithTax.ToString("N0")
                             </span>
                         </div>
+
+                        @if (isCorrectionPayload && Model.TotalAmountWithTax < 0)
+                        {
+                            <div class="small text-danger mt-2">
+                                Đây là hóa đơn điều chỉnh giảm tiền.
+                            </div>
+                        }
+                        else if (isCorrectionPayload && Model.TotalAmountWithTax > 0)
+                        {
+                            <div class="small text-success mt-2">
+                                Đây là hóa đơn điều chỉnh/thay thế có tổng tiền dương.
+                            </div>
+                        }
                     </div>
                 </div>
 

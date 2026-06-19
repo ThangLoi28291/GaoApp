@@ -128,6 +128,9 @@ public class InvoiceIntegrationLogService : IInvoiceIntegrationLogService
             InvoiceIntegrationActionType.CancelPaymentStatus => "Hủy thanh toán",
             InvoiceIntegrationActionType.UpdatePrintStatus => "Cập nhật trạng thái in",
             InvoiceIntegrationActionType.CancelInvoice => "Hủy hóa đơn",
+            InvoiceIntegrationActionType.SyncInvoiceList => "Đồng bộ danh sách",
+            InvoiceIntegrationActionType.IssueReplacementInvoice => "Phát hành hóa đơn thay thế",
+            InvoiceIntegrationActionType.IssueAdjustmentInvoice => "Phát hành hóa đơn điều chỉnh",
             _ => actionType.ToString()
         };
     }

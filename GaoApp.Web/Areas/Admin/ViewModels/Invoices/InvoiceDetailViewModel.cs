@@ -1,6 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 
-namespace GaoApp.Web.ViewModels.Invoices;
+namespace GaoApp.Web.Areas.Admin.ViewModels.Invoices;
 
 public class InvoiceDetailViewModel
 {

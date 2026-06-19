@@ -1,4 +1,4 @@
-﻿namespace GaoApp.Web.ViewModels.Invoices;
+﻿namespace GaoApp.Web.Areas.Admin.ViewModels.Invoices;
 
 public class CreateManualInvoiceDetailViewModel
 {
@@ -18,4 +18,5 @@ public class CreateManualInvoiceDetailViewModel
     public decimal VatRate { get; set; }
 
     public string? Note { get; set; }
+    public bool IsAdjustmentAmountInvoice { get; set; }
 }

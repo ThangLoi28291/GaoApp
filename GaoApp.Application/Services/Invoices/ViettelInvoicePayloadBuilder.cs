@@ -17,9 +17,9 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
     private readonly IInvoiceIntegrationLogRepository _logRepository;
 
     public ViettelInvoicePayloadBuilder(
-       IInvoiceService invoiceService,
-       IInvoiceProviderSettingRepository settingRepository,
-       IInvoiceIntegrationLogRepository logRepository)
+        IInvoiceService invoiceService,
+        IInvoiceProviderSettingRepository settingRepository,
+        IInvoiceIntegrationLogRepository logRepository)
     {
         _invoiceService = invoiceService;
         _settingRepository = settingRepository;
@@ -57,8 +57,27 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
 
         var warnings = new List<string>();
 
+        var isCorrectionInvoice =
+            invoice.OriginalInvoiceHeadId.HasValue ||
+            invoice.CorrectionType.HasValue;
+
+        var isAdjustmentAmountInvoice =
+            invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
+
+        var isAdjustmentInfoInvoice =
+            invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo;
+
+        // Quan trọng:
+        // - Hóa đơn thường / thay thế / điều chỉnh tiền: dòng phải có Quantity != 0.
+        // - Hóa đơn điều chỉnh thông tin: được phép Quantity = 0, Total = 0,
+        //   vì chỉ điều chỉnh thông tin, không phát sinh tiền.
         var activeDetails = invoice.Details
-            .Where(x => x.Quantity > 0 && !string.IsNullOrWhiteSpace(x.ItemName))
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.ItemName) &&
+                (
+                    x.Quantity != 0 ||
+                    isAdjustmentInfoInvoice
+                ))
             .OrderBy(x => x.Id)
             .ToList();
 
@@ -88,15 +107,36 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
                     "TransactionUuid phải có độ dài từ 10 đến 36 ký tự."));
         }
 
-        if (invoice.GrandTotal <= 0)
+        if (!isCorrectionInvoice && invoice.GrandTotal <= 0)
         {
             return Result<ViettelInvoicePayloadResultDto>.Failure(
                 Error.Validation(
                     "Invoice.TotalInvalid",
-                    "Tổng tiền hóa đơn phải lớn hơn 0."));
+                    "Tổng tiền hóa đơn gốc phải lớn hơn 0."));
         }
 
-        var itemInfo = BuildItemInfo(activeDetails, warnings);
+        if (invoice.CorrectionType == InvoiceCorrectionType.Replacement &&
+            invoice.GrandTotal <= 0)
+        {
+            return Result<ViettelInvoicePayloadResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.ReplacementTotalInvalid",
+                    "Tổng tiền hóa đơn thay thế phải lớn hơn 0."));
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount &&
+            invoice.GrandTotal == 0)
+        {
+            return Result<ViettelInvoicePayloadResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.AdjustmentAmountTotalInvalid",
+                    "Tổng tiền hóa đơn điều chỉnh tiền không được bằng 0."));
+        }
+
+        var itemInfo = BuildItemInfo(
+            activeDetails,
+            warnings,
+            invoice.CorrectionType);
 
         var totalAmountWithoutTax = RoundVnd(itemInfo.Sum(x => x.ItemTotalAmountWithoutTax));
         var totalTaxAmount = RoundVnd(itemInfo.Sum(x => x.TaxAmount));
@@ -131,29 +171,68 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             });
         }
 
+        ViettelCorrectionInfo correctionInfo;
+
+        try
+        {
+            correctionInfo = BuildCorrectionInfo(invoice);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result<ViettelInvoicePayloadResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.CorrectionInfoInvalid",
+                    ex.Message));
+        }
+
         var payload = new ViettelInvoicePayloadDto
         {
             GeneralInvoiceInfo = new ViettelGeneralInvoiceInfoDto
             {
-                InvoiceType = string.IsNullOrWhiteSpace(setting.InvoiceType) ? "1" : setting.InvoiceType.Trim(),
+                InvoiceType = string.IsNullOrWhiteSpace(setting.InvoiceType)
+                    ? "1"
+                    : setting.InvoiceType.Trim(),
+
                 TemplateCode = setting.TemplateCode.Trim(),
                 InvoiceSeries = setting.InvoiceSeries.Trim(),
-                CurrencyCode = string.IsNullOrWhiteSpace(setting.CurrencyCode) ? "VND" : setting.CurrencyCode.Trim(),
-                AdjustmentType = "1",
+
+                CurrencyCode = string.IsNullOrWhiteSpace(setting.CurrencyCode)
+                    ? "VND"
+                    : setting.CurrencyCode.Trim(),
+
+                AdjustmentType = correctionInfo.AdjustmentType,
+                AdjustmentInvoiceType = correctionInfo.AdjustmentInvoiceType,
+                OriginalInvoiceId = correctionInfo.OriginalInvoiceId,
+                OriginalInvoiceIssueDate = correctionInfo.OriginalInvoiceIssueDate,
+                AdjustedNote = correctionInfo.AdjustedNote,
+                AdditionalReferenceDesc = correctionInfo.AdditionalReferenceDesc,
+                AdditionalReferenceDate = correctionInfo.AdditionalReferenceDate,
+
                 PaymentStatus = setting.DefaultPaymentStatus,
                 CusGetInvoiceRight = setting.CusGetInvoiceRight,
                 TransactionUuid = transactionUuid,
-                InvoiceIssuedDate = null,
-                InvoiceNote = invoiceNote,
-                Validation = null
+
+                InvoiceIssuedDate = isCorrectionInvoice
+                    ? DateTimeOffset.Now.ToUnixTimeMilliseconds()
+                    : null,
+
+                InvoiceNote = string.IsNullOrWhiteSpace(invoice.Note)
+                    ? null
+                    : TrimMax(invoice.Note, 500),
+
+                Validation = 0
             },
 
             BuyerInfo = new ViettelBuyerInfoDto
             {
                 BuyerName = buyerName,
                 BuyerLegalName = null,
-                BuyerTaxCode = string.IsNullOrWhiteSpace(invoice.BuyerTaxCode) ? null : invoice.BuyerTaxCode.Trim(),
-                BuyerAddressLine = string.IsNullOrWhiteSpace(invoice.BuyerAddress) ? null : invoice.BuyerAddress.Trim()
+                BuyerTaxCode = string.IsNullOrWhiteSpace(invoice.BuyerTaxCode)
+                    ? null
+                    : invoice.BuyerTaxCode.Trim(),
+                BuyerAddressLine = string.IsNullOrWhiteSpace(invoice.BuyerAddress)
+                    ? null
+                    : invoice.BuyerAddress.Trim()
             },
 
             SellerInfo = new { },
@@ -169,7 +248,6 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             },
 
             ItemInfo = itemInfo,
-
             Metadata = metadata,
 
             SummarizeInfo = new ViettelSummarizeInfoDto
@@ -186,19 +264,31 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             TaxBreakdowns = taxBreakdowns
         };
 
-        if (invoice.SubTotal != totalAmountWithoutTax)
+        var expectedSubTotal = isAdjustmentAmountInvoice
+            ? RoundVnd(Math.Abs(invoice.SubTotal))
+            : invoice.SubTotal;
+
+        var expectedVatAmount = isAdjustmentAmountInvoice
+            ? RoundVnd(Math.Abs(invoice.VatAmount))
+            : invoice.VatAmount;
+
+        var expectedGrandTotal = isAdjustmentAmountInvoice
+            ? RoundVnd(Math.Abs(invoice.GrandTotal))
+            : invoice.GrandTotal;
+
+        if (expectedSubTotal != totalAmountWithoutTax)
         {
             warnings.Add(
                 $"SubTotal trên InvoiceHead ({invoice.SubTotal:N0}) khác tổng dòng build JSON ({totalAmountWithoutTax:N0}).");
         }
 
-        if (invoice.VatAmount != totalTaxAmount)
+        if (expectedVatAmount != totalTaxAmount)
         {
             warnings.Add(
                 $"VatAmount trên InvoiceHead ({invoice.VatAmount:N0}) khác tổng VAT build JSON ({totalTaxAmount:N0}).");
         }
 
-        if (invoice.GrandTotal != totalAmountWithTax)
+        if (expectedGrandTotal != totalAmountWithTax)
         {
             warnings.Add(
                 $"GrandTotal trên InvoiceHead ({invoice.GrandTotal:N0}) khác tổng tiền build JSON ({totalAmountWithTax:N0}).");
@@ -214,9 +304,9 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             });
 
         var latestLogs = await _logRepository.GetLatestByInvoiceHeadAsync(
-    invoiceHeadId,
-    20,
-    ct);
+            invoiceHeadId,
+            20,
+            ct);
 
         var isIssued = IsIssuedLike(invoice);
         var requiresUuidSyncBeforeIssue = IsProcessingOrUnclear(invoice);
@@ -226,41 +316,46 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             isIssued,
             requiresUuidSyncBeforeIssue);
 
-        var canIssue =
-            !isIssued &&
-            !requiresUuidSyncBeforeIssue &&
-            invoice.GrandTotal > 0 &&
-            invoice.Details.Any(x => x.Quantity > 0);
+        var canIssue = CanIssueInvoice(
+            invoice,
+            isIssued,
+            requiresUuidSyncBeforeIssue);
 
         var hasOfficialPdf = !string.IsNullOrWhiteSpace(invoice.PdfFilePath);
         var hasOfficialZip = !string.IsNullOrWhiteSpace(invoice.ZipFilePath);
         var canSendEmail = isIssued;
+
         var result = new ViettelInvoicePayloadResultDto
         {
             InvoiceHeadId = invoice.Id,
             OrderId = invoice.OrderId,
             OrderNumber = invoice.InvoiceNumber,
+
             SupplierTaxCode = setting.SupplierTaxCode,
             TemplateCode = setting.TemplateCode,
             InvoiceSeries = setting.InvoiceSeries,
             TransactionUuid = transactionUuid,
+
             TotalAmountWithoutTax = totalAmountWithoutTax,
             TotalTaxAmount = totalTaxAmount,
             TotalAmountWithTax = totalAmountWithTax,
+
             Warnings = warnings,
             Payload = payload,
             Json = json,
+
             ProviderStatus = (int)invoice.ProviderStatus,
             ProviderStatusName = GetProviderStatusName(invoice.ProviderStatus),
             ProviderStatusBadgeClass = GetProviderStatusBadgeClass(invoice.ProviderStatus),
             ProviderInvoiceNo = invoice.ProviderInvoiceNo,
+
             LastErrorCode = invoice.LastErrorCode,
             LastErrorMessage = invoice.LastErrorMessage,
             IssuedAtUtc = invoice.IssuedAtUtc,
             LastSyncedAtUtc = invoice.LastSyncedAtUtc,
             PdfFilePath = invoice.PdfFilePath,
             ZipFilePath = invoice.ZipFilePath,
-           
+
             CanSendEmail = canSendEmail,
             IsIssued = isIssued,
             HasOfficialPdf = hasOfficialPdf,
@@ -274,6 +369,7 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             CanDownloadSavedZip = hasOfficialZip,
             RequiresUuidSyncBeforeIssue = requiresUuidSyncBeforeIssue,
             IssueBlockReason = issueBlockReason,
+
             Logs = latestLogs.Select(x => new InvoiceIntegrationLogItemDto
             {
                 Id = x.Id,
@@ -290,6 +386,158 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
 
         return Result<ViettelInvoicePayloadResultDto>.Success(result);
     }
+
+    private static bool CanIssueInvoice(
+        InvoiceHeadDto invoice,
+        bool isIssued,
+        bool requiresUuidSyncBeforeIssue)
+    {
+        if (isIssued)
+            return false;
+
+        if (requiresUuidSyncBeforeIssue)
+            return false;
+
+        if (invoice.ProviderStatus == InvoiceProviderStatus.Issuing)
+            return false;
+
+        var hasValidDetails = invoice.Details != null &&
+            invoice.Details.Any(x =>
+                !string.IsNullOrWhiteSpace(x.ItemName) &&
+                (
+                    x.Quantity != 0 ||
+                    invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo
+                ));
+
+        if (!hasValidDetails)
+            return false;
+
+        var isCorrectionInvoice =
+            invoice.OriginalInvoiceHeadId.HasValue ||
+            invoice.CorrectionType.HasValue;
+
+        if (!isCorrectionInvoice)
+            return invoice.GrandTotal > 0;
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.Replacement)
+            return invoice.GrandTotal > 0;
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount)
+            return invoice.GrandTotal != 0;
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo)
+            return true;
+
+        return false;
+    }
+
+    private static ViettelCorrectionInfo BuildCorrectionInfo(InvoiceHeadDto invoice)
+    {
+        if (!invoice.CorrectionType.HasValue)
+        {
+            return new ViettelCorrectionInfo
+            {
+                AdjustmentType = "1"
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(invoice.OriginalInvoiceNo))
+        {
+            throw new InvalidOperationException("Hóa đơn thay thế/điều chỉnh thiếu số hóa đơn gốc.");
+        }
+
+        if (!invoice.OriginalInvoiceIssuedAtUtc.HasValue)
+        {
+            throw new InvalidOperationException("Hóa đơn thay thế/điều chỉnh thiếu ngày phát hành hóa đơn gốc.");
+        }
+
+        if (string.IsNullOrWhiteSpace(invoice.AdjustedNote))
+        {
+            throw new InvalidOperationException("Hóa đơn thay thế/điều chỉnh thiếu lý do sai sót.");
+        }
+
+        if (string.IsNullOrWhiteSpace(invoice.AdditionalReferenceDesc))
+        {
+            throw new InvalidOperationException("Hóa đơn thay thế/điều chỉnh thiếu thông tin văn bản thỏa thuận.");
+        }
+
+        if (!invoice.AdditionalReferenceDateUtc.HasValue)
+        {
+            throw new InvalidOperationException("Hóa đơn thay thế/điều chỉnh thiếu ngày văn bản thỏa thuận.");
+        }
+
+        var result = new ViettelCorrectionInfo
+        {
+            OriginalInvoiceId = NormalizeOriginalInvoiceNo(invoice.OriginalInvoiceNo),
+            OriginalInvoiceIssueDate = ToUnixMilliseconds(invoice.OriginalInvoiceIssuedAtUtc.Value),
+            AdjustedNote = TrimMax(invoice.AdjustedNote, 255),
+            AdditionalReferenceDesc = TrimMax(invoice.AdditionalReferenceDesc, 225),
+            AdditionalReferenceDate = ToUnixMilliseconds(invoice.AdditionalReferenceDateUtc.Value)
+        };
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.Replacement)
+        {
+            result.AdjustmentType = "3";
+            result.AdjustmentInvoiceType = null;
+            return result;
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount)
+        {
+            result.AdjustmentType = "5";
+            result.AdjustmentInvoiceType = "1";
+            return result;
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo)
+        {
+            result.AdjustmentType = "5";
+            result.AdjustmentInvoiceType = "2";
+            return result;
+        }
+
+        throw new InvalidOperationException($"Loại hóa đơn xử lý sai sót không hợp lệ: {invoice.CorrectionType}");
+    }
+
+    private static long ToUnixMilliseconds(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+
+        return new DateTimeOffset(utc).ToUnixTimeMilliseconds();
+    }
+
+    private static string NormalizeOriginalInvoiceNo(string? value)
+    {
+        value = (value ?? string.Empty).Trim();
+
+        value = new string(value
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
+
+        return value.Length <= 15
+            ? value
+            : value[^15..];
+    }
+
+    private class ViettelCorrectionInfo
+    {
+        public string AdjustmentType { get; set; } = "1";
+
+        public string? AdjustmentInvoiceType { get; set; }
+
+        public string? OriginalInvoiceId { get; set; }
+
+        public long? OriginalInvoiceIssueDate { get; set; }
+
+        public string? AdjustedNote { get; set; }
+
+        public string? AdditionalReferenceDesc { get; set; }
+
+        public long? AdditionalReferenceDate { get; set; }
+    }
+
     private static string GetActionName(InvoiceIntegrationActionType actionType)
     {
         return actionType switch
@@ -300,9 +548,13 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             InvoiceIntegrationActionType.DownloadPdf => "Tải PDF chính thức",
             InvoiceIntegrationActionType.DownloadZip => "Tải ZIP/XML",
             InvoiceIntegrationActionType.SendEmail => "Gửi email",
+            InvoiceIntegrationActionType.SyncInvoiceList => "Đồng bộ danh sách",
+            InvoiceIntegrationActionType.IssueReplacementInvoice => "Phát hành hóa đơn thay thế",
+            InvoiceIntegrationActionType.IssueAdjustmentInvoice => "Phát hành hóa đơn điều chỉnh",
             _ => actionType.ToString()
         };
     }
+
     private static bool IsIssuedLike(InvoiceHeadDto invoice)
     {
         if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
@@ -367,14 +619,38 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             return "Lần phát hành trước chưa rõ kết quả. Cần bấm Tra cứu UUID trước khi phát hành lại.";
         }
 
-        if (invoice.GrandTotal <= 0)
-        {
-            return "Không được phát hành hóa đơn có tổng tiền bằng 0.";
-        }
+        var hasValidDetails = invoice.Details != null &&
+            invoice.Details.Any(x =>
+                !string.IsNullOrWhiteSpace(x.ItemName) &&
+                (
+                    x.Quantity != 0 ||
+                    invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo
+                ));
 
-        if (invoice.Details == null || !invoice.Details.Any(x => x.Quantity > 0))
+        if (!hasValidDetails)
         {
             return "Hóa đơn chưa có dòng chi tiết.";
+        }
+
+        var isCorrectionInvoice =
+            invoice.OriginalInvoiceHeadId.HasValue ||
+            invoice.CorrectionType.HasValue;
+
+        if (!isCorrectionInvoice && invoice.GrandTotal <= 0)
+        {
+            return "Hóa đơn gốc phải có tổng tiền lớn hơn 0.";
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.Replacement &&
+            invoice.GrandTotal <= 0)
+        {
+            return "Hóa đơn thay thế phải có tổng tiền lớn hơn 0.";
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount &&
+            invoice.GrandTotal == 0)
+        {
+            return "Hóa đơn điều chỉnh tiền phải có tổng tiền khác 0.";
         }
 
         return string.Empty;
@@ -422,52 +698,127 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
 
     private static List<ViettelItemInfoDto> BuildItemInfo(
         List<InvoiceDetailDto> details,
-        List<string> warnings)
+        List<string> warnings,
+        InvoiceCorrectionType? correctionType)
     {
         var result = new List<ViettelItemInfoDto>();
 
         var lineNo = 1;
 
+        var isAdjustmentAmountInvoice =
+            correctionType == InvoiceCorrectionType.AdjustmentAmount;
+
+        var isAdjustmentInfoInvoice =
+            correctionType == InvoiceCorrectionType.AdjustmentInfo;
+
         foreach (var detail in details)
         {
-            var quantity = detail.Quantity;
-            var unitPrice = RoundVnd(detail.UnitPrice);
-            var amount = RoundVnd(detail.Amount);
-            var taxRate = detail.VatRate;
-            var taxAmount = RoundVnd(detail.VatAmount);
-            var totalAmount = RoundVnd(detail.TotalAmount);
+            var originalQuantity = detail.Quantity;
+            var originalUnitPrice = detail.UnitPrice;
+            var originalAmount = detail.Amount;
+            var originalTaxAmount = detail.VatAmount;
+            var originalTotalAmount = detail.TotalAmount;
 
-            if (amount != RoundVnd(quantity * unitPrice))
+            bool? isIncreaseItem = null;
+            int? adjustmentTaxAmount = null;
+
+            decimal quantity;
+            decimal unitPrice;
+            decimal amount;
+            decimal taxAmount;
+            decimal totalAmount;
+
+            if (isAdjustmentAmountInvoice)
             {
-                warnings.Add(
-                    $"Dòng #{detail.Id}: Amount ({amount:N0}) khác Quantity x UnitPrice ({RoundVnd(quantity * unitPrice):N0}).");
+                // Viettel không muốn dòng điều chỉnh giảm truyền số âm.
+                // Gửi số dương + isIncreaseItem = false.
+                isIncreaseItem = originalTotalAmount >= 0;
+                adjustmentTaxAmount = 1;
+
+                quantity = Math.Abs(originalQuantity);
+                unitPrice = RoundVnd(Math.Abs(originalUnitPrice));
+                amount = RoundVnd(Math.Abs(originalAmount));
+                taxAmount = RoundVnd(Math.Abs(originalTaxAmount));
+                totalAmount = RoundVnd(Math.Abs(originalTotalAmount));
+
+                if (quantity == 0)
+                {
+                    warnings.Add($"Dòng #{detail.Id}: hóa đơn điều chỉnh tiền có số lượng bằng 0.");
+                }
+            }
+            else if (isAdjustmentInfoInvoice)
+            {
+                // Điều chỉnh thông tin: không phát sinh tiền.
+                // Vẫn gửi 1 dòng mô tả để PDF nhìn rõ nghiệp vụ.
+                quantity = 0;
+                unitPrice = 0;
+                amount = 0;
+                taxAmount = 0;
+                totalAmount = 0;
+            }
+            else
+            {
+                quantity = originalQuantity;
+                unitPrice = RoundVnd(originalUnitPrice);
+                amount = RoundVnd(originalAmount);
+                taxAmount = RoundVnd(originalTaxAmount);
+                totalAmount = RoundVnd(originalTotalAmount);
             }
 
-            if (totalAmount != amount + taxAmount)
+            if (!isAdjustmentInfoInvoice)
             {
-                warnings.Add(
-                    $"Dòng #{detail.Id}: TotalAmount ({totalAmount:N0}) khác Amount + VAT ({(amount + taxAmount):N0}).");
+                var expectedAmount = RoundVnd(quantity * unitPrice);
+
+                if (amount != expectedAmount)
+                {
+                    warnings.Add(
+                        $"Dòng #{detail.Id}: Amount ({amount:N0}) khác Quantity x UnitPrice ({expectedAmount:N0}).");
+                }
+
+                if (totalAmount != amount + taxAmount)
+                {
+                    warnings.Add(
+                        $"Dòng #{detail.Id}: TotalAmount ({totalAmount:N0}) khác Amount + VAT ({(amount + taxAmount):N0}).");
+                }
             }
 
             result.Add(new ViettelItemInfoDto
             {
                 LineNumber = lineNo++,
                 Selection = 1,
-                ItemCode = detail.ProductVariantId.HasValue ? detail.ProductVariantId.Value.ToString() : null,
+
+                ItemCode = detail.ProductVariantId.HasValue
+                    ? detail.ProductVariantId.Value.ToString()
+                    : null,
+
                 ItemName = TrimMax(detail.ItemName, 500),
-                UnitName = string.IsNullOrWhiteSpace(detail.UnitName) ? null : TrimMax(detail.UnitName, 300),
+
+                UnitName = string.IsNullOrWhiteSpace(detail.UnitName)
+                    ? null
+                    : TrimMax(detail.UnitName, 300),
+
                 UnitPrice = unitPrice,
                 Quantity = quantity,
+
                 ItemTotalAmountWithoutTax = amount,
                 ItemTotalAmountWithTax = totalAmount,
                 ItemTotalAmountAfterDiscount = amount,
-                TaxPercentage = taxRate,
+
+                TaxPercentage = detail.VatRate,
                 TaxAmount = taxAmount,
+
                 Discount = 0,
                 ItemDiscount = 0,
-                ItemNote = string.IsNullOrWhiteSpace(detail.Note) ? null : TrimMax(detail.Note, 500),
+
+                ItemNote = string.IsNullOrWhiteSpace(detail.Note)
+                    ? null
+                    : TrimMax(detail.Note, 500),
+
                 BatchNo = "",
-                ExpDate = ""
+                ExpDate = "",
+
+                IsIncreaseItem = isIncreaseItem,
+                AdjustmentTaxAmount = adjustmentTaxAmount
             });
         }
 
@@ -487,6 +838,7 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             ? value
             : value[..maxLength];
     }
+
     private static string? NormalizeInvoiceNote(string? note)
     {
         if (string.IsNullOrWhiteSpace(note))
@@ -524,6 +876,12 @@ public static class VietnameseMoneyText
 
         if (rounded == 0)
             return "Không đồng";
+
+        if (rounded < 0)
+        {
+            var positiveWords = ReadNumber(Math.Abs(rounded));
+            return Capitalize("âm " + positiveWords + " đồng chẵn");
+        }
 
         var words = ReadNumber(rounded);
 
@@ -614,5 +972,4 @@ public static class VietnameseMoneyText
 
         return char.ToUpper(value[0]) + value[1..];
     }
-   
 }

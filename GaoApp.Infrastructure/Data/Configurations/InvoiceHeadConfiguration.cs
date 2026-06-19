@@ -21,11 +21,16 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
         b.Property(x => x.OrderId)
             .IsRequired();
 
-        // Một Order chỉ nên có 1 InvoiceHead active.
-        // Dùng filter IsDeleted để sau này nếu soft delete vẫn không bị kẹt unique.
+        // =====================================================
+        // UNIQUE HÓA ĐƠN GỐC THEO ORDER
+        // =====================================================
+        // Một Order chỉ nên có 1 InvoiceHead gốc active.
+        // Nhưng hóa đơn thay thế / điều chỉnh vẫn có thể dùng cùng OrderId.
+        // Vì vậy unique chỉ áp dụng cho hóa đơn gốc:
+        // OriginalInvoiceHeadId IS NULL.
         b.HasIndex(x => new { x.StoreId, x.OrderId })
             .IsUnique()
-            .HasFilter("[IsDeleted] = 0");
+            .HasFilter("[IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL");
 
         // InvoiceNumber nội bộ hoặc số hóa đơn sau khi phát hành.
         b.Property(x => x.InvoiceNumber)
@@ -80,7 +85,7 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
         b.Property(x => x.TransactionUuid)
             .HasMaxLength(36);
 
-        // transactionUuid phải unique trong 1 store nếu có giá trị.
+        // TransactionUuid phải unique trong 1 store nếu có giá trị.
         // Đây là mã chống tạo trùng hóa đơn khi gọi Viettel.
         b.HasIndex(x => new { x.StoreId, x.TransactionUuid })
             .IsUnique()
@@ -124,6 +129,37 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.ZipFilePath)
             .HasMaxLength(500);
+
+        // =====================================================
+        // PHASE 16 - HÓA ĐƠN THAY THẾ / ĐIỀU CHỈNH
+        // =====================================================
+
+        b.Property(x => x.CorrectionType)
+            .HasConversion<byte?>();
+
+        b.Property(x => x.OriginalInvoiceNo)
+            .HasMaxLength(50);
+
+        b.Property(x => x.AdjustedNote)
+            .HasMaxLength(255);
+
+        b.Property(x => x.AdditionalReferenceDesc)
+            .HasMaxLength(255);
+
+        // Hóa đơn thay thế / điều chỉnh trỏ về hóa đơn gốc.
+        b.HasOne(x => x.OriginalInvoiceHead)
+            .WithMany(x => x.CorrectionInvoices)
+            .HasForeignKey(x => x.OriginalInvoiceHeadId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Index hỗ trợ tìm tất cả hóa đơn xử lý sai sót của 1 hóa đơn gốc.
+        b.HasIndex(x => new { x.StoreId, x.OriginalInvoiceHeadId, x.IsDeleted });
+
+        b.HasIndex(x => new { x.StoreId, x.CorrectionType, x.IsDeleted });
+
+        // =====================================================
+        // INDEX PHỤC VỤ TRA CỨU
+        // =====================================================
 
         b.HasIndex(x => new { x.StoreId, x.ProviderStatus, x.IsDeleted });
 

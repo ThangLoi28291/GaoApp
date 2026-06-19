@@ -405,6 +405,168 @@ Dự kiến:
 \- Giới hạn quyền mở khóa hóa đơn đã tạo
 
 ```
+---
+
+# Invoice / E-invoice Roadmap
+
+## Đã hoàn thành
+
+### Phase 1 - Nền dữ liệu hóa đơn
+
+* Tạo `InvoiceHead`.
+* Tạo `InvoiceDetail`.
+* Sinh hóa đơn bán ra từ đơn POS.
+* Map hóa đơn với đơn hàng.
+
+Trạng thái: PASS
+
+### Phase 2 - Cấu hình Viettel SInvoice
+
+* Tạo cấu hình nhà cung cấp hóa đơn điện tử.
+* Hỗ trợ Basic Auth.
+* Lưu thông tin mẫu số, ký hiệu, MST nhà cung cấp.
+* Chuẩn bị bảo mật cấu hình production.
+
+Trạng thái: PASS
+
+### Phase 3 - Build payload Viettel
+
+* Build JSON hóa đơn gốc.
+* Build thông tin người mua.
+* Build dòng hàng.
+* Build tổng tiền.
+* Build thuế.
+
+Trạng thái: PASS
+
+### Phase 4 - Preview nháp
+
+* Tạo preview PDF nháp từ Viettel.
+* Hiển thị trong màn quản trị.
+
+Trạng thái: PASS
+
+### Phase 5 - Log tích hợp
+
+* Lưu log request/response.
+* Theo dõi thời gian gọi API.
+* Lưu lỗi phát hành/preview/tra cứu.
+
+Trạng thái: PASS
+
+### Phase 7 - Phát hành hóa đơn thật
+
+* Gửi hóa đơn thật lên Viettel.
+* Lưu số hóa đơn.
+* Lưu mã tra cứu, mã CQT, transaction.
+* Khóa hóa đơn sau phát hành.
+
+Trạng thái: PASS
+
+### Phase 8 - Tải PDF/XML chính thức
+
+* Tải PDF.
+* Tải ZIP/XML.
+* Lưu đường dẫn file vào `InvoiceHead`.
+
+Trạng thái: PASS
+
+### Phase 9 - Tra cứu UUID
+
+* Tra cứu hóa đơn theo `TransactionUuid`.
+* Dùng khi phát hành timeout hoặc chưa rõ kết quả.
+* Đồng bộ lại trạng thái phát hành.
+
+Trạng thái: PASS
+
+### Phase 10 - Gửi email hóa đơn
+
+* Gửi hóa đơn cho khách qua API Viettel.
+* Lưu trạng thái gửi email.
+
+Trạng thái: PASS
+
+### Phase 13 - Màn quản trị log tích hợp
+
+* Xem log theo hóa đơn.
+* Xem request/response.
+* Xem lỗi tích hợp.
+
+Trạng thái: PASS
+
+### Phase 14 - Dọn log định kỳ
+
+* Có quy trình dọn log cũ.
+* Giữ log quan trọng cho đối soát.
+
+Trạng thái: PASS
+
+### Phase 15 - Chống bấm nhầm / phát hành trùng
+
+* Chặn phát hành hóa đơn đã có số.
+* Chặn phát hành lại khi cần tra cứu UUID.
+* Cảnh báo trạng thái nguy hiểm.
+* UI an toàn hơn.
+
+Trạng thái: PASS
+
+### Phase 16 - Xử lý sai sót hóa đơn
+
+* 16.1 Dữ liệu nền thay thế / điều chỉnh: PASS
+* 16.2 Tạo hóa đơn thay thế / điều chỉnh: PASS
+* 16.3 Điều chỉnh tiền tăng/giảm: PASS
+* 16.4 Phát hành hóa đơn thay thế / điều chỉnh: PASS
+* 16.5 Điều chỉnh thông tin không copy dòng sản phẩm gốc: PASS
+* 16.6 Tự động cập nhật trạng thái hồ sơ xử lý sai sót: PASS
+* 16.7 Hiển thị lịch sử xử lý sai sót: PASS
+* 16.8 Chặn tạo sai quy tắc nghiệp vụ: PASS
+* 16.9 Cập nhật tài liệu module và changelog: PASS
+
+Trạng thái tổng: PASS
+
+### Phase 17 - Đồng bộ danh sách hóa đơn từ Viettel
+
+* Đồng bộ danh sách hóa đơn phát hành từ Viettel.
+* Hỗ trợ đối soát trạng thái.
+
+Trạng thái: PASS
+
+### Phase 18 - Dashboard hóa đơn điện tử
+
+* Tổng quan hóa đơn phát hành.
+* Theo dõi lỗi.
+* Theo dõi hóa đơn chưa tải PDF/XML.
+
+Trạng thái: PASS
+
+### Phase 20 - Bảo mật production
+
+* Không hiển thị mật khẩu API.
+* Không log thông tin nhạy cảm.
+* Chuẩn bị mã hóa mật khẩu bằng DataProtection.
+* Phân quyền ADMIN cho cấu hình.
+
+Trạng thái: PASS
+
+## Việc nên làm sau
+
+### Phase 19 - Đối soát nâng cao
+
+* Đối soát hóa đơn GaoApp với hóa đơn Viettel.
+* Cảnh báo hóa đơn local thiếu số Viettel.
+* Cảnh báo hóa đơn Viettel không có trong GaoApp.
+* Cảnh báo lệch mẫu số/ký hiệu/ngày/tổng tiền.
+
+Trạng thái: TODO
+
+### Phase 21 - Báo cáo kế toán hóa đơn
+
+* Báo cáo hóa đơn bán ra theo ngày/tháng.
+* Báo cáo hóa đơn điều chỉnh/thay thế.
+* Xuất Excel.
+* Lọc theo khách hàng/MST/trạng thái.
+
+Trạng thái: TODO
 
 
 

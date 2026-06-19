@@ -128,6 +128,46 @@ public class InvoiceHead : BaseStoreEntity
     /// </summary>
     [StringLength(500)]
     public string? ZipFilePath { get; set; }
+    /// <summary>
+    /// Hóa đơn gốc nếu đây là hóa đơn thay thế / điều chỉnh.
+    /// Null nghĩa là hóa đơn gốc bình thường.
+    /// </summary>
+    public int? OriginalInvoiceHeadId { get; set; }
+
+    public InvoiceHead? OriginalInvoiceHead { get; set; }
+
+    public ICollection<InvoiceHead> CorrectionInvoices { get; set; } = new List<InvoiceHead>();
+
+    /// <summary>
+    /// Loại hóa đơn xử lý sai sót: thay thế / điều chỉnh tiền / điều chỉnh thông tin.
+    /// </summary>
+    public InvoiceCorrectionType? CorrectionType { get; set; }
+
+    /// <summary>
+    /// Số hóa đơn gốc gửi sang Viettel ở originalInvoiceId.
+    /// Nên lưu snapshot để sau này hóa đơn gốc có thay đổi cũng không mất dấu.
+    /// </summary>
+    public string? OriginalInvoiceNo { get; set; }
+
+    /// <summary>
+    /// Ngày phát hành hóa đơn gốc gửi sang Viettel ở originalInvoiceIssueDate.
+    /// </summary>
+    public DateTime? OriginalInvoiceIssuedAtUtc { get; set; }
+
+    /// <summary>
+    /// Lý do sai sót gửi sang Viettel ở adjustedNote.
+    /// </summary>
+    public string? AdjustedNote { get; set; }
+
+    /// <summary>
+    /// Thông tin văn bản thỏa thuận gửi sang Viettel ở additionalReferenceDesc.
+    /// </summary>
+    public string? AdditionalReferenceDesc { get; set; }
+
+    /// <summary>
+    /// Ngày văn bản thỏa thuận gửi sang Viettel ở additionalReferenceDate.
+    /// </summary>
+    public DateTime? AdditionalReferenceDateUtc { get; set; }
 
     public ICollection<InvoiceIntegrationLog> IntegrationLogs { get; set; } = new List<InvoiceIntegrationLog>();
 

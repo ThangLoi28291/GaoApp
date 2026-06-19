@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Interfaces.Repositories.Invoices;
+﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
@@ -296,5 +297,65 @@ public class InvoiceRepository : IInvoiceRepository
     public void UpdateInvoiceHead(InvoiceHead invoiceHead)
     {
         _db.InvoiceHeads.Update(invoiceHead);
+    }
+    public async Task<List<InvoiceHead>> GetByTransactionUuidsAsync(
+        List<string> transactionUuids,
+        CancellationToken ct = default)
+    {
+        transactionUuids = transactionUuids
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!transactionUuids.Any())
+            return new List<InvoiceHead>();
+
+        return await _db.InvoiceHeads
+            .Where(x =>
+                !x.IsDeleted &&
+                x.TransactionUuid != null &&
+                transactionUuids.Contains(x.TransactionUuid))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<InvoiceHead>> GetByProviderInvoiceNosAsync(
+        List<string> providerInvoiceNos,
+        CancellationToken ct = default)
+    {
+        providerInvoiceNos = providerInvoiceNos
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!providerInvoiceNos.Any())
+            return new List<InvoiceHead>();
+
+        return await _db.InvoiceHeads
+            .Where(x =>
+                !x.IsDeleted &&
+                (
+                    x.ProviderInvoiceNo != null && providerInvoiceNos.Contains(x.ProviderInvoiceNo) ||
+                    x.InvoiceNumber != null && providerInvoiceNos.Contains(x.InvoiceNumber)
+                ))
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<InvoiceHead>> GetInvoiceHeadsForDashboardAsync(
+        DateTime fromDate,
+        DateTime toDate,
+        CancellationToken ct = default)
+    {
+        var from = fromDate.Date;
+        var toExclusive = toDate.Date.AddDays(1);
+
+        return await _db.InvoiceHeads
+            .AsNoTracking()
+            .Where(x =>
+                !x.IsDeleted &&
+                x.InvoiceDate >= from &&
+                x.InvoiceDate < toExclusive)
+            .ToListAsync(ct);
     }
 }

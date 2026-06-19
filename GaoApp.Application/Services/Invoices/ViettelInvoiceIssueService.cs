@@ -3,6 +3,7 @@ using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Invoices;
@@ -11,17 +12,20 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
 {
     private readonly IInvoiceRepository _invoiceRepository;
     private readonly IInvoiceProviderSettingRepository _settingRepository;
+    private readonly IInvoiceCorrectionRepository _correctionRepository;
     private readonly IViettelInvoicePayloadBuilder _payloadBuilder;
     private readonly IViettelInvoiceIssueClient _issueClient;
 
     public ViettelInvoiceIssueService(
         IInvoiceRepository invoiceRepository,
         IInvoiceProviderSettingRepository settingRepository,
+        IInvoiceCorrectionRepository correctionRepository,
         IViettelInvoicePayloadBuilder payloadBuilder,
         IViettelInvoiceIssueClient issueClient)
     {
         _invoiceRepository = invoiceRepository;
         _settingRepository = settingRepository;
+        _correctionRepository = correctionRepository;
         _payloadBuilder = payloadBuilder;
         _issueClient = issueClient;
     }
@@ -33,16 +37,22 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
         if (invoiceHeadId <= 0)
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Invoice.InvalidInvoiceHeadId", "InvoiceHeadId không hợp lệ."));
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
         }
 
-        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(invoiceHeadId, ct);
+        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
+            invoiceHeadId,
+            ct);
 
         if (invoice == null)
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
+
+        var correctionCase = await GetCorrectionCaseIfAnyAsync(invoice, ct);
 
         if (IsAlreadyIssued(invoice))
         {
@@ -60,35 +70,61 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
                     "Lần phát hành trước chưa rõ kết quả. Vui lòng bấm Tra cứu UUID trước khi phát hành lại."));
         }
 
-        if (invoice.GrandTotal <= 0)
+        var amountValidation = ValidateInvoiceAmountBeforeIssue(invoice);
+        if (!amountValidation.IsSuccess)
         {
-            return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Invoice.TotalInvalid", "Không được phát hành hóa đơn có tổng tiền bằng 0."));
+            await MarkCorrectionFailedAsync(
+                correctionCase,
+                amountValidation.Error?.Code,
+                amountValidation.Error?.Message,
+                ct);
+
+            return Result<ViettelInvoiceIssueResultDto>.Failure(amountValidation.Error!);
         }
 
-        if (!invoice.Details.Any(x => !x.IsDeleted && x.Quantity > 0))
+        var detailValidation = ValidateInvoiceDetailsBeforeIssue(invoice);
+        if (!detailValidation.IsSuccess)
         {
-            return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Invoice.NoDetails", "Hóa đơn chưa có dòng chi tiết."));
+            await MarkCorrectionFailedAsync(
+                correctionCase,
+                detailValidation.Error?.Code,
+                detailValidation.Error?.Message,
+                ct);
+
+            return Result<ViettelInvoiceIssueResultDto>.Failure(detailValidation.Error!);
         }
 
         if (string.IsNullOrWhiteSpace(invoice.TransactionUuid))
         {
-            invoice.TransactionUuid = Guid.NewGuid().ToString();
+            invoice.TransactionUuid = Guid.NewGuid().ToString("D");
         }
 
         var setting = await _settingRepository.GetActiveViettelAsync(ct);
 
         if (setting == null)
         {
+            await MarkCorrectionFailedAsync(
+                correctionCase,
+                "InvoiceProvider.NotConfigured",
+                "Chưa có cấu hình Viettel đang dùng.",
+                ct);
+
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("InvoiceProvider.NotConfigured", "Chưa có cấu hình Viettel đang dùng."));
+                Error.Validation(
+                    "InvoiceProvider.NotConfigured",
+                    "Chưa có cấu hình Viettel đang dùng."));
         }
 
         var payloadResult = await _payloadBuilder.BuildAsync(invoiceHeadId, ct);
 
         if (!payloadResult.IsSuccess)
         {
+            await MarkCorrectionFailedAsync(
+                correctionCase,
+                payloadResult.Error?.Code,
+                payloadResult.Error?.Message,
+                ct);
+
             return Result<ViettelInvoiceIssueResultDto>.Failure(payloadResult.Error!);
         }
 
@@ -96,6 +132,8 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
         invoice.LastErrorCode = null;
         invoice.LastErrorMessage = null;
         invoice.LastSyncedAtUtc = DateTime.UtcNow;
+
+        MarkCorrectionIssuing(correctionCase);
 
         await _invoiceRepository.SaveChangesAsync(ct);
 
@@ -116,6 +154,11 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             invoice.LastErrorMessage = issueResult.Error?.Message;
             invoice.LastSyncedAtUtc = DateTime.UtcNow;
 
+            MarkCorrectionFailed(
+                correctionCase,
+                issueResult.Error?.Code,
+                issueResult.Error?.Message);
+
             await _invoiceRepository.SaveChangesAsync(ct);
 
             return issueResult;
@@ -130,6 +173,11 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             invoice.LastErrorMessage = issue.ErrorMessage;
             invoice.LastSyncedAtUtc = DateTime.UtcNow;
 
+            MarkCorrectionFailed(
+                correctionCase,
+                issue.ErrorCode,
+                issue.ErrorMessage);
+
             await _invoiceRepository.SaveChangesAsync(ct);
 
             return Result<ViettelInvoiceIssueResultDto>.Failure(
@@ -138,9 +186,22 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
                     issue.ErrorMessage ?? "Viettel phát hành hóa đơn thất bại."));
         }
 
+        var issuedAtUtc = DateTime.UtcNow;
+
         invoice.ProviderStatus = string.IsNullOrWhiteSpace(issue.InvoiceNo)
             ? InvoiceProviderStatus.IssuedWaitingNumber
             : InvoiceProviderStatus.Issued;
+
+        // Lưu snapshot cấu hình Viettel đúng thời điểm phát hành.
+        invoice.ProviderCode = "VIETTEL";
+        invoice.SupplierTaxCode = setting.SupplierTaxCode;
+
+        invoice.InvoiceType = string.IsNullOrWhiteSpace(setting.InvoiceType)
+            ? "1"
+            : setting.InvoiceType.Trim();
+
+        invoice.TemplateCode = setting.TemplateCode.Trim();
+        invoice.InvoiceSeries = setting.InvoiceSeries.Trim();
 
         invoice.ProviderInvoiceNo = issue.InvoiceNo;
         invoice.ProviderTransactionId = issue.TransactionId;
@@ -152,22 +213,157 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             invoice.InvoiceNumber = issue.InvoiceNo;
         }
 
-        invoice.IssuedAtUtc = DateTime.UtcNow;
-        invoice.LastSyncedAtUtc = DateTime.UtcNow;
+        invoice.IssuedAtUtc = issuedAtUtc;
+        invoice.LastSyncedAtUtc = issuedAtUtc;
         invoice.LastErrorCode = null;
         invoice.LastErrorMessage = null;
 
         invoice.IsLocked = true;
-        invoice.LockedAtUtc ??= DateTime.UtcNow;
+        invoice.LockedAtUtc ??= issuedAtUtc;
         invoice.LockReason = string.IsNullOrWhiteSpace(issue.InvoiceNo)
             ? "Đã gửi phát hành Viettel, đang chờ số hóa đơn."
             : $"Đã phát hành Viettel. Số hóa đơn: {issue.InvoiceNo}.";
+
+        MarkCorrectionIssued(
+            correctionCase,
+            issuedAtUtc);
 
         await _invoiceRepository.SaveChangesAsync(ct);
 
         return Result<ViettelInvoiceIssueResultDto>.Success(issue);
     }
-    private static bool IsAlreadyIssued(GaoApp.Domain.Entities.InvoiceHead invoice)
+
+    private async Task<InvoiceCorrectionCase?> GetCorrectionCaseIfAnyAsync(
+        InvoiceHead invoice,
+        CancellationToken ct)
+    {
+        var isCorrectionInvoice =
+            invoice.OriginalInvoiceHeadId.HasValue ||
+            invoice.CorrectionType.HasValue;
+
+        if (!isCorrectionInvoice)
+            return null;
+
+        return await _correctionRepository.GetByNewInvoiceHeadIdAsync(
+            invoice.Id,
+            ct);
+    }
+
+    private static void MarkCorrectionIssuing(
+        InvoiceCorrectionCase? correctionCase)
+    {
+        if (correctionCase == null)
+            return;
+
+        correctionCase.Status = InvoiceCorrectionStatus.Issuing;
+        correctionCase.LastErrorCode = null;
+        correctionCase.LastErrorMessage = null;
+    }
+
+    private static void MarkCorrectionFailed(
+        InvoiceCorrectionCase? correctionCase,
+        string? errorCode,
+        string? errorMessage)
+    {
+        if (correctionCase == null)
+            return;
+
+        correctionCase.Status = InvoiceCorrectionStatus.Failed;
+        correctionCase.LastErrorCode = errorCode;
+        correctionCase.LastErrorMessage = errorMessage;
+    }
+
+    private static void MarkCorrectionIssued(
+        InvoiceCorrectionCase? correctionCase,
+        DateTime issuedAtUtc)
+    {
+        if (correctionCase == null)
+            return;
+
+        correctionCase.Status = InvoiceCorrectionStatus.Issued;
+        correctionCase.IssuedAtUtc = issuedAtUtc;
+        correctionCase.LastErrorCode = null;
+        correctionCase.LastErrorMessage = null;
+    }
+
+    private async Task MarkCorrectionFailedAsync(
+        InvoiceCorrectionCase? correctionCase,
+        string? errorCode,
+        string? errorMessage,
+        CancellationToken ct)
+    {
+        if (correctionCase == null)
+            return;
+
+        MarkCorrectionFailed(
+            correctionCase,
+            errorCode,
+            errorMessage);
+
+        await _invoiceRepository.SaveChangesAsync(ct);
+    }
+
+    private static Result<bool> ValidateInvoiceAmountBeforeIssue(InvoiceHead invoice)
+    {
+        var isCorrectionInvoice =
+            invoice.OriginalInvoiceHeadId.HasValue ||
+            invoice.CorrectionType.HasValue;
+
+        if (!isCorrectionInvoice && invoice.GrandTotal <= 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.TotalInvalid",
+                    "Hóa đơn gốc phải có tổng tiền lớn hơn 0."));
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.Replacement &&
+            invoice.GrandTotal <= 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.ReplacementTotalInvalid",
+                    "Hóa đơn thay thế phải có tổng tiền lớn hơn 0."));
+        }
+
+        if (invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount &&
+            invoice.GrandTotal == 0)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.AdjustmentAmountTotalInvalid",
+                    "Hóa đơn điều chỉnh tiền phải có tổng tiền khác 0."));
+        }
+
+        return Result<bool>.Success(true);
+    }
+
+    private static Result<bool> ValidateInvoiceDetailsBeforeIssue(InvoiceHead invoice)
+    {
+        var isAdjustmentInfoInvoice =
+            invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo;
+
+        var hasValidDetails = invoice.Details
+            .Where(x => !x.IsDeleted)
+            .Any(x =>
+                !string.IsNullOrWhiteSpace(x.ItemName) &&
+                (
+                    x.Quantity != 0 ||
+                    isAdjustmentInfoInvoice
+                ));
+
+        if (!hasValidDetails)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "Invoice.NoDetails",
+                    "Hóa đơn chưa có dòng chi tiết hợp lệ để phát hành."));
+        }
+
+        return Result<bool>.Success(true);
+    }
+
+    private static bool IsAlreadyIssued(InvoiceHead invoice)
     {
         if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
             return true;
@@ -179,7 +375,7 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             InvoiceProviderStatus.EmailSent;
     }
 
-    private static bool MustSyncUuidBeforeIssue(GaoApp.Domain.Entities.InvoiceHead invoice)
+    private static bool MustSyncUuidBeforeIssue(InvoiceHead invoice)
     {
         if (invoice.ProviderStatus == InvoiceProviderStatus.Issuing)
             return true;

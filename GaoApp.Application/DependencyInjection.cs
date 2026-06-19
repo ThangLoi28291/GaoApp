@@ -138,6 +138,10 @@ public static class DependencyInjection
         services.AddScoped<IViettelInvoiceSyncService, ViettelInvoiceSyncService>();
         services.AddScoped<IInvoiceIntegrationLogService, InvoiceIntegrationLogService>();
         services.AddScoped<IViettelInvoiceEmailService, ViettelInvoiceEmailService>();
+        services.AddScoped<IViettelInvoiceListSyncService, ViettelInvoiceListSyncService>();
+        services.AddScoped<IInvoiceDashboardService, InvoiceDashboardService>();
+        services.AddScoped<IInvoiceIntegrationLogCleanupService, InvoiceIntegrationLogCleanupService>();
+        services.AddScoped<IInvoiceCorrectionService, InvoiceCorrectionService>();
 
 
         services.AddScoped<IBarcodeHistoryService, BarcodeHistoryService>();

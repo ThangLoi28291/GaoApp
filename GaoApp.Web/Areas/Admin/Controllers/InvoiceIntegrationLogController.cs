@@ -1,7 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
-using GaoApp.Web.ViewModels.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -10,13 +9,15 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class InvoiceIntegrationLogController : Controller
 {
     private readonly IInvoiceIntegrationLogService _logService;
+    private readonly IInvoiceIntegrationLogCleanupService _cleanupService;
 
     public InvoiceIntegrationLogController(
-        IInvoiceIntegrationLogService logService)
+       IInvoiceIntegrationLogService logService,
+       IInvoiceIntegrationLogCleanupService cleanupService)
     {
         _logService = logService;
+        _cleanupService = cleanupService;
     }
-
     [HttpGet]
     public async Task<IActionResult> Index(
         [FromQuery] InvoiceIntegrationLogQueryDto query,
@@ -61,5 +62,56 @@ public class InvoiceIntegrationLogController : Controller
         }
 
         return View(result.Value);
+    }
+    [HttpGet]
+    public async Task<IActionResult> Cleanup(CancellationToken ct)
+    {
+        var request = new InvoiceIntegrationLogCleanupRequestDto
+        {
+            DryRun = true
+        };
+
+        var result = await _cleanupService.CleanupAsync(request, ct);
+
+        return View(new InvoiceIntegrationLogCleanupViewModel
+        {
+            Request = request,
+            Result = result.IsSuccess ? result.Value : null
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Cleanup(
+        InvoiceIntegrationLogCleanupRequestDto request,
+        string submitMode,
+        CancellationToken ct)
+    {
+        request.DryRun = !string.Equals(
+            submitMode,
+            "execute",
+            StringComparison.OrdinalIgnoreCase);
+
+        var result = await _cleanupService.CleanupAsync(request, ct);
+
+        if (!result.IsSuccess)
+        {
+            TempData["Error"] = result.Error?.Message ?? "Dọn log thất bại.";
+
+            return View(new InvoiceIntegrationLogCleanupViewModel
+            {
+                Request = request
+            });
+        }
+
+        TempData["Success"] = request.DryRun
+            ? "Đã xem trước số log có thể dọn."
+            : $"Đã dọn {result.Value.DeletedCount:N0} log.";
+
+        return View(new InvoiceIntegrationLogCleanupViewModel
+        {
+            Request = request,
+            Result = result.Value
+        });
     }
 }

@@ -1,0 +1,345 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIntegrationLogCleanupViewModel
+
+@{
+    ViewData["Title"] = "Dọn log tích hợp";
+
+    var req = Model.Request;
+    var result = Model.Result;
+}
+
+<style>
+    .cleanup-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .cleanup-table th {
+        white-space: nowrap;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #697a8d;
+    }
+
+    .cleanup-table td {
+        vertical-align: middle;
+    }
+
+    .stat-box {
+        border: 1px solid #edf0f2;
+        border-radius: 14px;
+        padding: 16px;
+        background: #fff;
+        height: 100%;
+    }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.1;
+    }
+
+    .stat-label {
+        color: #697a8d;
+        font-size: 13px;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h3 class="mb-1 fw-bold">
+                Dọn log tích hợp
+            </h3>
+
+            <div class="text-muted">
+                Dọn các log Viettel cũ để giảm dung lượng bảng InvoiceIntegrationLogs.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <a asp-area="Admin"
+                   asp-controller="InvoiceIntegrationLog"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                Danh sách log
+            </a>
+
+            <a asp-area="Admin"
+                   asp-controller="InvoiceDashboard"
+                   asp-action="Index"
+                   class="btn btn-outline-primary">
+                Dashboard hóa đơn
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">
+            @TempData["Success"]
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">
+            @TempData["Error"]
+        </div>
+    }
+
+    <div class="alert alert-warning">
+        <div class="fw-semibold">Nguyên tắc an toàn</div>
+        <div>
+            Mặc định chỉ dọn log thành công. Log phát hành hóa đơn, tra cứu UUID và hủy hóa đơn được giữ dài hạn.
+            Trước khi dọn thật, hãy bấm “Xem trước”.
+        </div>
+    </div>
+
+    <div class="card shadow-sm cleanup-card mb-3">
+        <div class="card-header bg-white fw-semibold">
+            Chính sách lưu log
+        </div>
+
+        <div class="card-body">
+            <form method="post"
+                  asp-area="Admin"
+                  asp-controller="InvoiceIntegrationLog"
+                  asp-action="Cleanup">
+                @Html.AntiForgeryToken()
+
+                <div class="row g-3">
+
+                    <div class="col-md-3">
+                        <label class="form-label">BuildPayload thành công giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="BuildPayloadSuccessDays"
+                                   value="@req.BuildPayloadSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Preview nháp thành công giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="PreviewDraftSuccessDays"
+                                   value="@req.PreviewDraftSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Gửi email thành công giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="SendEmailSuccessDays"
+                                   value="@req.SendEmailSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Đồng bộ danh sách giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="SyncInvoiceListSuccessDays"
+                                   value="@req.SyncInvoiceListSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Tải PDF/XML thành công giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="DownloadFileSuccessDays"
+                                   value="@req.DownloadFileSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Log phụ thành công giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="OtherSuccessDays"
+                                   value="@req.OtherSuccessDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Log lỗi cũ giữ</label>
+                        <div class="input-group">
+                            <input type="number"
+                                   name="FailedLogDays"
+                                   value="@req.FailedLogDays"
+                                   class="form-control"
+                                   min="1" />
+                            <span class="input-group-text">ngày</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Tối đa xóa mỗi lần</label>
+                        <input type="number"
+                               name="MaxRowsPerRun"
+                               value="@req.MaxRowsPerRun"
+                               class="form-control"
+                               min="1"
+                               max="50000" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <input type="hidden" name="IncludeFailedLogs" value="false" />
+
+                        <div class="form-check mt-2">
+                            <input type="checkbox"
+                                   class="form-check-input"
+                                   id="IncludeFailedLogs"
+                                   name="IncludeFailedLogs"
+                                   value="true"
+                                   checked="@req.IncludeFailedLogs" />
+
+                            <label class="form-check-label" for="IncludeFailedLogs">
+                                Cho phép dọn cả log lỗi cũ không quan trọng
+                            </label>
+                        </div>
+
+                        <div class="form-text">
+                            Không nên bật nếu chưa chắc. Log lỗi giúp debug lỗi Viettel.
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 text-end align-self-end">
+                        <button type="submit"
+                                name="submitMode"
+                                value="preview"
+                                class="btn btn-outline-primary">
+                            Xem trước
+                        </button>
+
+                        <button type="submit"
+                                name="submitMode"
+                                value="execute"
+                                class="btn btn-danger"
+                                onclick="return confirm('Xác nhận dọn log? Thao tác này sẽ xóa mềm các log cũ theo chính sách.');">
+                            Dọn log
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if (result != null)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <div class="stat-box">
+                    <div class="stat-value">@result.TotalCandidates.ToString("N0")</div>
+                    <div class="stat-label">Log có thể dọn</div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="stat-box">
+                    <div class="stat-value text-danger">@result.DeletedCount.ToString("N0")</div>
+                    <div class="stat-label">Đã dọn lần này</div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="stat-box">
+                    <div class="stat-value">@result.MaxRowsPerRun.ToString("N0")</div>
+                    <div class="stat-label">Giới hạn mỗi lần</div>
+                </div>
+            </div>
+        </div>
+
+        @if (result.Messages.Any())
+        {
+            <div class="alert alert-light border">
+                @foreach (var message in result.Messages)
+                {
+                    <div>@message</div>
+                }
+            </div>
+        }
+
+        <div class="card shadow-sm cleanup-card">
+            <div class="card-header bg-white fw-semibold">
+                Chi tiết theo chính sách
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover cleanup-table mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Chính sách</th>
+                            <th>Action</th>
+                            <th>Kết quả</th>
+                            <th>Giữ</th>
+                            <th>Xóa trước UTC</th>
+                            <th class="text-end">Có thể dọn</th>
+                            <th class="text-end">Đã dọn</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!result.Rows.Any())
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Không có dữ liệu.
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            foreach (var row in result.Rows)
+                            {
+                                <tr>
+                                    <td>@row.PolicyName</td>
+                                    <td>
+                                        <small>@row.ActionNames</small>
+                                    </td>
+                                    <td>
+                                        @if (row.IsSuccess)
+                                        {
+                                            <span class="badge bg-success">Thành công</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Lỗi</span>
+                                        }
+                                    </td>
+                                    <td>@row.RetentionDays ngày</td>
+                                    <td>@row.DeleteBeforeUtc.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td class="text-end fw-semibold">@row.CandidateCount.ToString("N0")</td>
+                                    <td class="text-end text-danger fw-semibold">@row.DeletedCount.ToString("N0")</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+</div>
