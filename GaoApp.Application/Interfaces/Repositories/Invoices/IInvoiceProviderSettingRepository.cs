@@ -8,7 +8,19 @@ public interface IInvoiceProviderSettingRepository
 
     Task<InvoiceProviderSetting?> GetByIdAsync(int id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Lấy cấu hình Viettel active mới nhất.
+    /// Bản cũ giữ lại để không làm lỗi code hiện tại.
+    /// </summary>
     Task<InvoiceProviderSetting?> GetActiveViettelAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Lấy cấu hình Viettel active theo cửa hàng.
+    /// Dùng cho tạo InvoiceHead để tránh lấy nhầm cấu hình store khác.
+    /// </summary>
+    Task<InvoiceProviderSetting?> GetActiveViettelAsync(
+        int storeId,
+        CancellationToken ct = default);
 
     Task<bool> ExistsDuplicateAsync(
         int id,

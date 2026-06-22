@@ -31,7 +31,9 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
         if (request.InvoiceHeadId <= 0)
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Invoice.InvalidInvoiceHeadId", "InvoiceHeadId không hợp lệ."));
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
         }
 
         var buyerEmail = NormalizeEmails(request.BuyerEmail);
@@ -39,14 +41,17 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
         if (string.IsNullOrWhiteSpace(buyerEmail))
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Invoice.BuyerEmailRequired", "Vui lòng nhập email người nhận."));
+                Error.Validation(
+                    "Invoice.BuyerEmailRequired",
+                    "Vui lòng nhập email người nhận."));
         }
 
         var emailValidate = ValidateEmails(buyerEmail);
 
         if (!emailValidate.IsSuccess)
         {
-            return Result<ViettelInvoiceSendEmailResultDto>.Failure(emailValidate.Error!);
+            return Result<ViettelInvoiceSendEmailResultDto>.Failure(
+                emailValidate.Error!);
         }
 
         var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
@@ -75,12 +80,28 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
                     "Hóa đơn chưa có TransactionUuid, không thể gửi email Viettel."));
         }
 
-        var setting = await _settingRepository.GetActiveViettelAsync(ct);
+        var setting = await _settingRepository.GetActiveViettelAsync(
+            invoice.StoreId,
+            ct);
 
         if (setting == null)
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("InvoiceProvider.NotConfigured", "Chưa có cấu hình Viettel đang dùng."));
+                Error.Validation(
+                    "InvoiceProvider.NotConfigured",
+                    "Chưa có cấu hình Viettel đang dùng."));
+        }
+
+        var supplierTaxCode = FirstNonEmpty(
+            invoice.SupplierTaxCode,
+            setting.SupplierTaxCode);
+
+        if (string.IsNullOrWhiteSpace(supplierTaxCode))
+        {
+            return Result<ViettelInvoiceSendEmailResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.SupplierTaxCodeMissing",
+                    "Hóa đơn thiếu MST phát hành, không thể gửi email Viettel."));
         }
 
         var sent = await _emailClient.SendEmailToCustomerAsync(
@@ -89,7 +110,7 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
             username: setting.Username,
             password: setting.Password,
             authMode: setting.AuthMode,
-            supplierTaxCode: setting.SupplierTaxCode,
+            supplierTaxCode: supplierTaxCode,
             transactionUuid: invoice.TransactionUuid,
             buyerEmail: buyerEmail,
             providerInvoiceNo: invoice.ProviderInvoiceNo,
@@ -97,6 +118,10 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
 
         if (!sent.IsSuccess)
         {
+            invoice.EmailStatus = InvoiceEmailSendStatus.Failed;
+            invoice.LastEmailTo = buyerEmail;
+            invoice.LastEmailErrorMessage = sent.Error?.Message;
+
             invoice.LastErrorCode = sent.Error?.Code;
             invoice.LastErrorMessage = sent.Error?.Message;
             invoice.LastSyncedAtUtc = DateTime.UtcNow;
@@ -106,7 +131,16 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
             return sent;
         }
 
-        invoice.ProviderStatus = InvoiceProviderStatus.EmailSent;
+        invoice.EmailStatus = InvoiceEmailSendStatus.Sent;
+        invoice.EmailSentAtUtc = DateTime.UtcNow;
+        invoice.LastEmailTo = buyerEmail;
+        invoice.EmailSendCount += 1;
+        invoice.LastEmailErrorMessage = null;
+
+        // Sau Phase 21.9:
+        // ProviderStatus không nên đổi sang EmailSent nữa.
+        // EmailStatus đã phản ánh trạng thái gửi email riêng.
+
         invoice.LastSyncedAtUtc = DateTime.UtcNow;
         invoice.LastErrorCode = null;
         invoice.LastErrorMessage = null;
@@ -128,8 +162,10 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
             InvoiceProviderStatus.EmailSent;
     }
 
-    private static string NormalizeEmails(string value)
+    private static string NormalizeEmails(string? value)
     {
+        value ??= string.Empty;
+
         var parts = value
             .Split(new[] { ';', ',', ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim())
@@ -151,7 +187,9 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
         if (!emails.Any())
         {
             return Result<bool>.Failure(
-                Error.Validation("Invoice.BuyerEmailRequired", "Vui lòng nhập email người nhận."));
+                Error.Validation(
+                    "Invoice.BuyerEmailRequired",
+                    "Vui lòng nhập email người nhận."));
         }
 
         foreach (var email in emails)
@@ -170,5 +208,16 @@ public class ViettelInvoiceEmailService : IViettelInvoiceEmailService
         }
 
         return Result<bool>.Success(true);
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
     }
 }

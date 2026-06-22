@@ -118,7 +118,11 @@ public static class DependencyInjection
         services.AddScoped<IStockTransferService, StockTransferService>();
         services.AddScoped<IStockDocumentLookupService, StockDocumentLookupService>();
         services.AddScoped<IInputInvoiceXmlService, InputInvoiceXmlService>();
+        services.AddScoped<IInvoiceReadService, InvoiceReadService>();
+        services.AddScoped<IInvoiceCommandService, InvoiceCommandService>();
+        services.AddScoped<IInvoiceBuyerService, InvoiceBuyerService>();
         services.AddScoped<IInvoiceService, InvoiceService>();
+        services.AddScoped<IInvoiceViettelDashboardService, InvoiceViettelDashboardService>();
         services.AddScoped<IAdminMenuService, AdminMenuService>();
         services.AddScoped<IInventoryCostSuggestionService, InventoryCostSuggestionService>();
 
@@ -142,6 +146,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceDashboardService, InvoiceDashboardService>();
         services.AddScoped<IInvoiceIntegrationLogCleanupService, InvoiceIntegrationLogCleanupService>();
         services.AddScoped<IInvoiceCorrectionService, InvoiceCorrectionService>();
+
 
 
         services.AddScoped<IBarcodeHistoryService, BarcodeHistoryService>();

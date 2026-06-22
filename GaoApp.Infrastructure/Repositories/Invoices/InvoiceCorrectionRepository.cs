@@ -97,6 +97,61 @@ public class InvoiceCorrectionRepository : IInvoiceCorrectionRepository
             .OrderByDescending(x => x.Id)
             .ToListAsync(ct);
     }
+    public async Task<InvoiceCorrectionCase?> GetUnfinishedCaseByOriginalAsync(
+    int originalInvoiceHeadId,
+    CancellationToken ct = default)
+    {
+        return await _db.InvoiceCorrectionCases
+            .Include(x => x.NewInvoiceHead)
+            .Where(x =>
+                !x.IsDeleted &&
+                x.OriginalInvoiceHeadId == originalInvoiceHeadId &&
+                (
+                    x.Status == InvoiceCorrectionStatus.Draft ||
+                    x.Status == InvoiceCorrectionStatus.ReadyToIssue ||
+                    x.Status == InvoiceCorrectionStatus.Issuing ||
+                    x.Status == InvoiceCorrectionStatus.Failed
+                ))
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<InvoiceCorrectionCase?> GetActiveReplacementCaseByOriginalAsync(
+        int originalInvoiceHeadId,
+        CancellationToken ct = default)
+    {
+        return await _db.InvoiceCorrectionCases
+            .Include(x => x.NewInvoiceHead)
+            .Where(x =>
+                !x.IsDeleted &&
+                x.OriginalInvoiceHeadId == originalInvoiceHeadId &&
+                x.Type == InvoiceCorrectionType.Replacement &&
+                x.Status != InvoiceCorrectionStatus.Cancelled &&
+                (
+                    x.NewInvoiceHead == null ||
+                    !x.NewInvoiceHead.IsDeleted
+                ))
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<InvoiceCorrectionCase>> GetActiveCasesByOriginalAsync(
+        int originalInvoiceHeadId,
+        CancellationToken ct = default)
+    {
+        return await _db.InvoiceCorrectionCases
+            .Include(x => x.NewInvoiceHead)
+            .Where(x =>
+                !x.IsDeleted &&
+                x.OriginalInvoiceHeadId == originalInvoiceHeadId &&
+                x.Status != InvoiceCorrectionStatus.Cancelled &&
+                (
+                    x.NewInvoiceHead == null ||
+                    !x.NewInvoiceHead.IsDeleted
+                ))
+            .OrderBy(x => x.Id)
+            .ToListAsync(ct);
+    }
 
     public Task SaveChangesAsync(CancellationToken ct = default)
     {

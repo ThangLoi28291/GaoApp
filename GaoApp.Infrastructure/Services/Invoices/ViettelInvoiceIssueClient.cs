@@ -6,11 +6,8 @@ using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -40,31 +37,41 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
         if (invoiceHeadId <= 0)
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Viettel.InvoiceHeadIdInvalid", "InvoiceHeadId không hợp lệ."));
+                Error.Validation(
+                    "Viettel.InvoiceHeadIdInvalid",
+                    "InvoiceHeadId không hợp lệ."));
         }
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Viettel.BaseUrlRequired", "BaseUrl Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.BaseUrlRequired",
+                    "BaseUrl Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(username))
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Viettel.UsernameRequired", "Username Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.UsernameRequired",
+                    "Username Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(password))
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Viettel.PasswordRequired", "Password Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.PasswordRequired",
+                    "Password Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(supplierTaxCode))
         {
             return Result<ViettelInvoiceIssueResultDto>.Failure(
-                Error.Validation("Viettel.SupplierTaxCodeRequired", "MST phát hành không được trống."));
+                Error.Validation(
+                    "Viettel.SupplierTaxCodeRequired",
+                    "MST phát hành không được trống."));
         }
 
         if (authMode != InvoiceProviderAuthMode.BasicAuth)
@@ -75,20 +82,15 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                     "Phát hành hiện dùng Basic Auth theo tài khoản Viettel của bạn. Vui lòng chọn Basic Auth."));
         }
 
+        var normalizedBaseUrl = ViettelClientHelper.NormalizeBaseUrl(baseUrl);
+
         var url =
-            $"{baseUrl.TrimEnd('/')}/InvoiceAPI/InvoiceWS/createInvoice/{Uri.EscapeDataString(supplierTaxCode.Trim())}";
+            $"{normalizedBaseUrl}/InvoiceAPI/InvoiceWS/createInvoice/{Uri.EscapeDataString(supplierTaxCode.Trim())}";
 
         var startedAtUtc = DateTime.UtcNow;
         var sw = Stopwatch.StartNew();
 
-        var requestBodyJson = JsonSerializer.Serialize(
-            payload,
-            new JsonSerializerOptions
-            {
-                WriteIndented = false,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+        var requestBodyJson = ViettelClientHelper.SerializeJson(payload);
 
         try
         {
@@ -96,7 +98,10 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
 
             request.Headers.Accept.Clear();
             request.Headers.Accept.ParseAdd("application/json");
-            request.Headers.Authorization = BuildBasicAuthHeader(username, password);
+
+            request.Headers.Authorization = ViettelClientHelper.BuildBasicAuthHeader(
+                username,
+                password);
 
             request.Content = new StringContent(
                 requestBodyJson,
@@ -117,21 +122,21 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                     IsSuccess = false,
                     ErrorCode = $"HTTP_{(int)response.StatusCode}",
                     ErrorMessage = $"Viettel phát hành thất bại. HTTP {(int)response.StatusCode}.",
-                    RawResponse = Trim(responseText, 10000),
+                    RawResponse = ViettelClientHelper.Trim(responseText, 10000),
                     DurationMs = sw.ElapsedMilliseconds
                 };
 
                 await WriteIssueLogAsync(
-                    invoiceHeadId,
-                    url,
-                    requestBodyJson,
-                    responseText,
-                    false,
-                    failDto.ErrorCode,
-                    failDto.ErrorMessage,
-                    startedAtUtc,
-                    sw.ElapsedMilliseconds,
-                    ct);
+                    invoiceHeadId: invoiceHeadId,
+                    requestUrl: url,
+                    requestBody: requestBodyJson,
+                    responseBody: responseText,
+                    isSuccess: false,
+                    errorCode: failDto.ErrorCode,
+                    errorMessage: failDto.ErrorMessage,
+                    startedAtUtc: startedAtUtc,
+                    durationMs: sw.ElapsedMilliseconds,
+                    ct: ct);
 
                 return Result<ViettelInvoiceIssueResultDto>.Success(failDto);
             }
@@ -142,16 +147,16 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 sw.ElapsedMilliseconds);
 
             await WriteIssueLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                responseText,
-                parsed.IsSuccess,
-                parsed.ErrorCode,
-                parsed.ErrorMessage,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                ct);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: responseText,
+                isSuccess: parsed.IsSuccess,
+                errorCode: parsed.ErrorCode,
+                errorMessage: parsed.ErrorMessage,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: ct);
 
             return Result<ViettelInvoiceIssueResultDto>.Success(parsed);
         }
@@ -162,16 +167,16 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             var message = "Gọi Viettel phát hành timeout. Cần tra cứu lại bằng transactionUuid trước khi bấm phát hành lại.";
 
             await WriteIssueLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                null,
-                false,
-                "TIMEOUT",
-                message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "TIMEOUT",
+                errorMessage: message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceIssueResultDto>.Success(
                 new ViettelInvoiceIssueResultDto
@@ -188,16 +193,16 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             sw.Stop();
 
             await WriteIssueLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                null,
-                false,
-                "EXCEPTION",
-                ex.Message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "EXCEPTION",
+                errorMessage: ex.Message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceIssueResultDto>.Success(
                 new ViettelInvoiceIssueResultDto
@@ -234,17 +239,15 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             using var doc = JsonDocument.Parse(responseText);
             var root = doc.RootElement;
 
-            var errorCode = FindStringProperty(root, "errorCode")
-                ?? FindStringProperty(root, "code");
+            var errorCode =
+                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
+                ViettelClientHelper.FindStringProperty(root, "code");
 
-            var description = FindStringProperty(root, "description")
-                ?? FindStringProperty(root, "message");
+            var description =
+                ViettelClientHelper.FindStringProperty(root, "description") ??
+                ViettelClientHelper.FindStringProperty(root, "message");
 
-            var isError =
-                !string.IsNullOrWhiteSpace(errorCode) &&
-                !string.Equals(errorCode, "null", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(errorCode, "200", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(errorCode, "OK", StringComparison.OrdinalIgnoreCase);
+            var isError = !ViettelClientHelper.IsViettelSuccessCode(errorCode);
 
             if (isError)
             {
@@ -256,32 +259,31 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                     ErrorMessage = string.IsNullOrWhiteSpace(description)
                         ? "Viettel trả lỗi phát hành."
                         : description,
-                    RawResponse = Trim(responseText, 10000),
+                    RawResponse = ViettelClientHelper.Trim(responseText, 10000),
                     DurationMs = durationMs
                 };
             }
 
             var invoiceNo =
-                FindStringProperty(root, "invoiceNo")
-                ?? FindStringProperty(root, "invoiceNumber");
+                ViettelClientHelper.FindStringProperty(root, "invoiceNo") ??
+                ViettelClientHelper.FindStringProperty(root, "invoiceNumber");
 
             var transactionId =
-                FindStringProperty(root, "transactionID")
-                ?? FindStringProperty(root, "transactionId")
-                ?? FindStringProperty(root, "transactionIDStr")
-                ?? FindStringProperty(root, "invoiceId");
+                ViettelClientHelper.FindStringProperty(root, "transactionID") ??
+                ViettelClientHelper.FindStringProperty(root, "transactionId") ??
+                ViettelClientHelper.FindStringProperty(root, "transactionIDStr") ??
+                ViettelClientHelper.FindStringProperty(root, "invoiceId");
 
             var reservationCode =
-                FindStringProperty(root, "reservationCode");
+                ViettelClientHelper.FindStringProperty(root, "reservationCode");
 
             var codeOfTax =
-                FindStringProperty(root, "codeOfTax");
+                ViettelClientHelper.FindStringProperty(root, "codeOfTax");
 
-            var success = !string.IsNullOrWhiteSpace(invoiceNo)
-                          || !string.IsNullOrWhiteSpace(transactionId)
-                          || string.IsNullOrWhiteSpace(errorCode)
-                          || string.Equals(errorCode, "null", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(errorCode, "200", StringComparison.OrdinalIgnoreCase);
+            var success =
+                !string.IsNullOrWhiteSpace(invoiceNo) ||
+                !string.IsNullOrWhiteSpace(transactionId) ||
+                ViettelClientHelper.IsViettelSuccessCode(errorCode);
 
             return new ViettelInvoiceIssueResultDto
             {
@@ -293,7 +295,7 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 CodeOfTax = codeOfTax,
                 ErrorCode = success ? null : errorCode,
                 ErrorMessage = success ? null : description,
-                RawResponse = Trim(responseText, 10000),
+                RawResponse = ViettelClientHelper.Trim(responseText, 10000),
                 DurationMs = durationMs
             };
         }
@@ -305,7 +307,7 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 IsSuccess = false,
                 ErrorCode = "PARSE_ERROR",
                 ErrorMessage = $"Không đọc được response Viettel: {ex.Message}",
-                RawResponse = Trim(responseText, 10000),
+                RawResponse = ViettelClientHelper.Trim(responseText, 10000),
                 DurationMs = durationMs
             };
         }
@@ -329,12 +331,12 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.IssueInvoice,
-                RequestUrl = TrimNullable(requestUrl, 500),
-                RequestBody = TrimNullable(requestBody, 10000),
-                ResponseBody = TrimNullable(responseBody, 10000),
+                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
+                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
+                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
                 IsSuccess = isSuccess,
-                ErrorCode = TrimNullable(errorCode, 100),
-                ErrorMessage = TrimNullable(errorMessage, 1000),
+                ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
+                ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
                 StartedAtUtc = startedAtUtc,
                 FinishedAtUtc = DateTime.UtcNow,
                 DurationMs = durationMs
@@ -347,101 +349,5 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
         {
             // Không để lỗi ghi log làm hỏng kết quả phát hành.
         }
-    }
-
-    private static AuthenticationHeaderValue BuildBasicAuthHeader(
-        string username,
-        string password)
-    {
-        var rawCredential = $"{username.Trim()}:{password}";
-        var base64Credential = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawCredential));
-
-        return new AuthenticationHeaderValue("Basic", base64Credential);
-    }
-
-    private static bool TryFindProperty(
-        JsonElement element,
-        string propertyName,
-        out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(prop.Value, propertyName, out value))
-                    return true;
-            }
-        }
-
-        if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
-            }
-        }
-
-        value = default;
-        return false;
-    }
-
-    private static string? FindStringProperty(
-        JsonElement element,
-        string propertyName)
-    {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
-
-        if (value.ValueKind == JsonValueKind.String)
-            return value.GetString();
-
-        if (value.ValueKind == JsonValueKind.Number)
-            return value.ToString();
-
-        if (value.ValueKind == JsonValueKind.True)
-            return "true";
-
-        if (value.ValueKind == JsonValueKind.False)
-            return "false";
-
-        if (value.ValueKind == JsonValueKind.Null)
-            return null;
-
-        return value.ToString();
-    }
-
-    private static string Trim(
-        string? value,
-        int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
-    }
-
-    private static string? TrimNullable(
-        string? value,
-        int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
     }
 }

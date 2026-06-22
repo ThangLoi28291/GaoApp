@@ -2,6 +2,7 @@
 using GaoApp.Application.Common.Abstractions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.AdminMenus;
 using GaoApp.Application.Interfaces.Repositories.AttributeValues;
@@ -208,6 +209,24 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(120);
         });
         services.AddScoped<IInvoiceCorrectionRepository, InvoiceCorrectionRepository>();
+        services.Configure<TaxCodeLookupOptions>(
+    configuration.GetSection("TaxCodeLookup"));
+
+        services.AddHttpClient<ITaxCodeLookupService, VietQrTaxCodeLookupService>((sp, client) =>
+        {
+            var options = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<TaxCodeLookupOptions>>()
+                .Value;
+
+            client.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
+
+            var timeoutSeconds = options.TimeoutSeconds <= 0
+                ? 10
+                : options.TimeoutSeconds;
+
+            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        });
+        services.AddScoped<IInvoiceBuyerProfileRepository, InvoiceBuyerProfileRepository>();
         // =========================================================
         // REWARDS
         // =========================================================

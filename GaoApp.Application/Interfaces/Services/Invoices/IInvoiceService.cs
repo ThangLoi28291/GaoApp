@@ -40,4 +40,14 @@ public interface IInvoiceService
     Task<Result<InvoiceHeadDto>> UnlockInvoiceAsync(
         UnlockInvoiceRequest request,
         CancellationToken ct = default);
+    Task<Result<InvoiceHeadDto>> UpdateBuyerInfoAsync(
+     UpdateInvoiceBuyerInfoRequest request,
+     CancellationToken ct = default);
+
+    Task<Result<InvoiceBuyerLookupDto>> LookupBuyerByTaxCodeAsync(
+        int invoiceHeadId,
+        string buyerType,
+        string taxCode,
+        CancellationToken ct = default);
+
 }

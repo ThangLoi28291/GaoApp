@@ -51,21 +51,33 @@ public class ViettelInvoiceSyncService : IViettelInvoiceSyncService
                     "Hóa đơn chưa có TransactionUuid, không thể tra cứu Viettel."));
         }
 
-        var setting = await _settingRepository.GetActiveViettelAsync(ct);
+        var setting = await _settingRepository.GetActiveViettelAsync(
+       invoice.StoreId,
+       ct);
 
         if (setting == null)
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
                 Error.Validation("InvoiceProvider.NotConfigured", "Chưa có cấu hình Viettel đang dùng."));
         }
+        var supplierTaxCode = FirstNonEmpty(
+    invoice.SupplierTaxCode,
+    setting.SupplierTaxCode);
 
+        if (string.IsNullOrWhiteSpace(supplierTaxCode))
+        {
+            return Result<ViettelInvoiceLookupResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.SupplierTaxCodeMissing",
+                    "Hóa đơn thiếu MST phát hành, không thể tra cứu Viettel."));
+        }
         var lookup = await _lookupClient.SearchByTransactionUuidAsync(
             invoiceHeadId: invoiceHeadId,
             baseUrl: setting.BaseUrl,
             username: setting.Username,
             password: setting.Password,
             authMode: setting.AuthMode,
-            supplierTaxCode: setting.SupplierTaxCode,
+           supplierTaxCode: supplierTaxCode,
             transactionUuid: invoice.TransactionUuid,
             ct: ct);
 
@@ -168,5 +180,15 @@ public class ViettelInvoiceSyncService : IViettelInvoiceSyncService
             result.ErrorMessage ??
             "Không tìm thấy hóa đơn trên Viettel theo transactionUuid. Có thể phát hành lại bằng UUID cũ.";
         invoice.LastSyncedAtUtc = DateTime.UtcNow;
+    }
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
     }
 }

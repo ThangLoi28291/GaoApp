@@ -358,4 +358,219 @@ public class InvoiceRepository : IInvoiceRepository
                 x.InvoiceDate < toExclusive)
             .ToListAsync(ct);
     }
+    public async Task<InvoiceHead?> GetLatestBuyerInfoByTaxCodeAsync(
+     int storeId,
+     string taxCode,
+     CancellationToken ct = default)
+    {
+        taxCode = (taxCode ?? string.Empty).Trim();
+
+        if (storeId <= 0 || string.IsNullOrWhiteSpace(taxCode))
+            return null;
+
+        return await _db.InvoiceHeads
+            .AsNoTracking()
+            .Where(x =>
+                x.StoreId == storeId &&
+                !x.IsDeleted &&
+                x.BuyerTaxCode != null &&
+                x.BuyerTaxCode == taxCode)
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+    public async Task<(ViettelInvoiceDashboardSummaryDto Summary, List<InvoiceHead> Items, int Total)> QueryViettelDashboardAsync(
+    ViettelInvoiceDashboardQueryDto query,
+    CancellationToken ct = default)
+    {
+        query ??= new ViettelInvoiceDashboardQueryDto();
+
+        var page = query.Page <= 0 ? 1 : query.Page;
+        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+
+        var baseQuery = _db.InvoiceHeads
+            .Include(x => x.Order)
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .Where(x =>
+                x.ProviderCode == null ||
+                x.ProviderCode == "" ||
+                x.ProviderCode == "VIETTEL")
+            .AsQueryable();
+
+        if (query.FromDate.HasValue)
+        {
+            var from = query.FromDate.Value.Date;
+            baseQuery = baseQuery.Where(x => x.InvoiceDate >= from);
+        }
+
+        if (query.ToDate.HasValue)
+        {
+            var toExclusive = query.ToDate.Value.Date.AddDays(1);
+            baseQuery = baseQuery.Where(x => x.InvoiceDate < toExclusive);
+        }
+
+        var keyword = query.Keyword?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            baseQuery = baseQuery.Where(x =>
+                (x.InvoiceNumber != null && x.InvoiceNumber.Contains(keyword)) ||
+                (x.ProviderInvoiceNo != null && x.ProviderInvoiceNo.Contains(keyword)) ||
+                (x.TransactionUuid != null && x.TransactionUuid.Contains(keyword)) ||
+                (x.BuyerName != null && x.BuyerName.Contains(keyword)) ||
+                (x.BuyerLegalName != null && x.BuyerLegalName.Contains(keyword)) ||
+                (x.BuyerTaxCode != null && x.BuyerTaxCode.Contains(keyword)) ||
+                (x.Order != null &&
+                 x.Order.OrderNumber != null &&
+                 x.Order.OrderNumber.Contains(keyword)));
+        }
+
+        var summary = new ViettelInvoiceDashboardSummaryDto
+        {
+            TotalInvoices = await baseQuery.CountAsync(ct),
+            IssuedCount = await WhereIssuedLike(baseQuery).CountAsync(ct),
+            MissingPdfCount = await WhereIssuedMissingPdf(baseQuery).CountAsync(ct),
+            MissingZipXmlCount = await WhereIssuedMissingZipXml(baseQuery).CountAsync(ct),
+            MissingEmailCount = await WhereIssuedMissingEmail(baseQuery).CountAsync(ct),
+            PdfFailedCount = await baseQuery.CountAsync(x =>
+                x.OfficialPdfStatus == InvoiceFileDownloadStatus.Failed, ct),
+            ZipXmlFailedCount = await baseQuery.CountAsync(x =>
+                x.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Failed, ct),
+            EmailFailedCount = await baseQuery.CountAsync(x =>
+                x.EmailStatus == InvoiceEmailSendStatus.Failed, ct),
+            UuidNeedSyncCount = await WhereUuidNeedSync(baseQuery).CountAsync(ct),
+            IssueFailedCount = await baseQuery.CountAsync(x =>
+                x.ProviderStatus == InvoiceProviderStatus.IssueFailed, ct),
+            CompleteCount = await WhereIssuedComplete(baseQuery).CountAsync(ct)
+        };
+
+        var filteredQuery = ApplyDashboardFilter(
+            baseQuery,
+            query.Filter);
+
+        var total = await filteredQuery.CountAsync(ct);
+
+        var items = await filteredQuery
+            .OrderByDescending(x => x.InvoiceDate)
+            .ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (summary, items, total);
+    }
+
+    private static IQueryable<InvoiceHead> ApplyDashboardFilter(
+        IQueryable<InvoiceHead> query,
+        ViettelInvoiceDashboardFilter filter)
+    {
+        return filter switch
+        {
+            ViettelInvoiceDashboardFilter.IssuedMissingPdf =>
+                WhereIssuedMissingPdf(query),
+
+            ViettelInvoiceDashboardFilter.IssuedMissingZipXml =>
+                WhereIssuedMissingZipXml(query),
+
+            ViettelInvoiceDashboardFilter.IssuedMissingEmail =>
+                WhereIssuedMissingEmail(query),
+
+            ViettelInvoiceDashboardFilter.PdfFailed =>
+                query.Where(x => x.OfficialPdfStatus == InvoiceFileDownloadStatus.Failed),
+
+            ViettelInvoiceDashboardFilter.ZipXmlFailed =>
+                query.Where(x => x.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Failed),
+
+            ViettelInvoiceDashboardFilter.EmailFailed =>
+                query.Where(x => x.EmailStatus == InvoiceEmailSendStatus.Failed),
+
+            ViettelInvoiceDashboardFilter.UuidNeedSync =>
+                WhereUuidNeedSync(query),
+
+            ViettelInvoiceDashboardFilter.IssueFailed =>
+                query.Where(x => x.ProviderStatus == InvoiceProviderStatus.IssueFailed),
+
+            ViettelInvoiceDashboardFilter.IssuedComplete =>
+                WhereIssuedComplete(query),
+
+            ViettelInvoiceDashboardFilter.All or _ =>
+                query
+        };
+    }
+
+    private static IQueryable<InvoiceHead> WhereIssuedLike(
+        IQueryable<InvoiceHead> query)
+    {
+        var issuedStatuses = new[]
+        {
+        InvoiceProviderStatus.Issued,
+        InvoiceProviderStatus.PdfDownloaded,
+        InvoiceProviderStatus.ZipDownloaded,
+        InvoiceProviderStatus.EmailSent
+    };
+
+        return query.Where(x =>
+            (x.ProviderInvoiceNo != null && x.ProviderInvoiceNo != "") ||
+            issuedStatuses.Contains(x.ProviderStatus));
+    }
+
+    private static IQueryable<InvoiceHead> WhereIssuedMissingPdf(
+        IQueryable<InvoiceHead> query)
+    {
+        return WhereIssuedLike(query)
+            .Where(x =>
+                x.OfficialPdfStatus != InvoiceFileDownloadStatus.Downloaded &&
+                (x.PdfFilePath == null || x.PdfFilePath == ""));
+    }
+
+    private static IQueryable<InvoiceHead> WhereIssuedMissingZipXml(
+        IQueryable<InvoiceHead> query)
+    {
+        return WhereIssuedLike(query)
+            .Where(x =>
+                x.OfficialZipXmlStatus != InvoiceFileDownloadStatus.Downloaded &&
+                (x.ZipFilePath == null || x.ZipFilePath == ""));
+    }
+
+    private static IQueryable<InvoiceHead> WhereIssuedMissingEmail(
+        IQueryable<InvoiceHead> query)
+    {
+        return WhereIssuedLike(query)
+            .Where(x => x.EmailStatus != InvoiceEmailSendStatus.Sent);
+    }
+
+    private static IQueryable<InvoiceHead> WhereIssuedComplete(
+        IQueryable<InvoiceHead> query)
+    {
+        return WhereIssuedLike(query)
+            .Where(x =>
+                (
+                    x.OfficialPdfStatus == InvoiceFileDownloadStatus.Downloaded ||
+                    (x.PdfFilePath != null && x.PdfFilePath != "")
+                ) &&
+                (
+                    x.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Downloaded ||
+                    (x.ZipFilePath != null && x.ZipFilePath != "")
+                ) &&
+                x.EmailStatus == InvoiceEmailSendStatus.Sent);
+    }
+
+    private static IQueryable<InvoiceHead> WhereUuidNeedSync(
+        IQueryable<InvoiceHead> query)
+    {
+        return query.Where(x =>
+            x.ProviderStatus == InvoiceProviderStatus.Issuing ||
+            x.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber ||
+            (
+                x.ProviderStatus == InvoiceProviderStatus.IssueFailed &&
+                (
+                    x.LastErrorCode == "TIMEOUT" ||
+                    x.LastErrorCode == "HTTP_500" ||
+                    x.LastErrorCode == "VIETTEL_SERVER_500" ||
+                    (x.LastErrorCode != null && x.LastErrorCode.StartsWith("HTTP_5")) ||
+                    (x.LastErrorMessage != null && x.LastErrorMessage.Contains("timeout")) ||
+                    (x.LastErrorMessage != null && x.LastErrorMessage.Contains("HTTP 500"))
+                )
+            ));
+    }
 }

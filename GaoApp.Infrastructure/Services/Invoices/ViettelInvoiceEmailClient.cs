@@ -6,11 +6,8 @@ using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -42,13 +39,17 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
         if (invoiceHeadId <= 0)
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.InvoiceHeadIdInvalid", "InvoiceHeadId không hợp lệ."));
+                Error.Validation(
+                    "Viettel.InvoiceHeadIdInvalid",
+                    "InvoiceHeadId không hợp lệ."));
         }
 
         if (authMode != InvoiceProviderAuthMode.BasicAuth)
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.AuthModeUnsupported", "Gửi email Viettel hiện dùng Basic Auth."));
+                Error.Validation(
+                    "Viettel.AuthModeUnsupported",
+                    "Gửi email Viettel hiện dùng Basic Auth."));
         }
 
         if (string.IsNullOrWhiteSpace(baseUrl) ||
@@ -59,7 +60,9 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             string.IsNullOrWhiteSpace(buyerEmail))
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.RequiredMissing", "Thiếu thông tin để gửi email hóa đơn Viettel."));
+                Error.Validation(
+                    "Viettel.RequiredMissing",
+                    "Thiếu thông tin để gửi email hóa đơn Viettel."));
         }
 
         var normalizedEmail = NormalizeEmails(buyerEmail);
@@ -67,10 +70,15 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
         if (string.IsNullOrWhiteSpace(normalizedEmail))
         {
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.BuyerEmailRequired", "Email người nhận không được trống."));
+                Error.Validation(
+                    "Viettel.BuyerEmailRequired",
+                    "Email người nhận không được trống."));
         }
 
-        var url = $"{baseUrl.TrimEnd('/')}/InvoiceAPI/InvoiceUtilsWS/sendEmailToCustomer";
+        var normalizedBaseUrl = ViettelClientHelper.NormalizeBaseUrl(baseUrl);
+
+        var url =
+            $"{normalizedBaseUrl}/InvoiceAPI/InvoiceUtilsWS/sendEmailToCustomer";
 
         var body = new
         {
@@ -79,14 +87,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             buyerEmail = normalizedEmail
         };
 
-        var requestBodyJson = JsonSerializer.Serialize(
-            body,
-            new JsonSerializerOptions
-            {
-                WriteIndented = false,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-            });
+        var requestBodyJson = ViettelClientHelper.SerializeJson(body);
 
         var startedAtUtc = DateTime.UtcNow;
         var sw = Stopwatch.StartNew();
@@ -97,7 +98,10 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
 
             request.Headers.Accept.Clear();
             request.Headers.Accept.ParseAdd("application/json");
-            request.Headers.Authorization = BuildBasicAuthHeader(username, password);
+
+            request.Headers.Authorization = ViettelClientHelper.BuildBasicAuthHeader(
+                username,
+                password);
 
             request.Content = new StringContent(
                 requestBodyJson,
@@ -113,21 +117,21 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             if (!response.IsSuccessStatusCode)
             {
                 await WriteLogAsync(
-                    invoiceHeadId,
-                    url,
-                    requestBodyJson,
-                    raw,
-                    false,
-                    $"HTTP_{(int)response.StatusCode}",
-                    $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}.",
-                    startedAtUtc,
-                    sw.ElapsedMilliseconds,
-                    ct);
+                    invoiceHeadId: invoiceHeadId,
+                    requestUrl: url,
+                    requestBody: requestBodyJson,
+                    responseBody: raw,
+                    isSuccess: false,
+                    errorCode: $"HTTP_{(int)response.StatusCode}",
+                    errorMessage: $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}.",
+                    startedAtUtc: startedAtUtc,
+                    durationMs: sw.ElapsedMilliseconds,
+                    ct: ct);
 
                 return Result<ViettelInvoiceSendEmailResultDto>.Failure(
                     Error.Validation(
                         "Viettel.SendEmailHttpFailed",
-                        $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {Trim(raw, 1000)}"));
+                        $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
             }
 
             var parsed = ParseResponse(
@@ -139,16 +143,16 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 sw.ElapsedMilliseconds);
 
             await WriteLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                raw,
-                parsed.IsSuccess,
-                parsed.IsSuccess ? null : parsed.Code,
-                parsed.IsSuccess ? null : parsed.Message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                ct);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: raw,
+                isSuccess: parsed.IsSuccess,
+                errorCode: parsed.IsSuccess ? null : parsed.Code,
+                errorMessage: parsed.IsSuccess ? null : parsed.Message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: ct);
 
             if (!parsed.IsSuccess)
             {
@@ -165,38 +169,42 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             sw.Stop();
 
             await WriteLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                null,
-                false,
-                "TIMEOUT",
-                "Gửi email Viettel timeout.",
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "TIMEOUT",
+                errorMessage: "Gửi email Viettel timeout.",
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.SendEmailTimeout", "Gửi email Viettel timeout. Thử lại sau."));
+                Error.Validation(
+                    "Viettel.SendEmailTimeout",
+                    "Gửi email Viettel timeout. Thử lại sau."));
         }
         catch (Exception ex)
         {
             sw.Stop();
 
             await WriteLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyJson,
-                null,
-                false,
-                "EXCEPTION",
-                ex.Message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyJson,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "EXCEPTION",
+                errorMessage: ex.Message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
-                Error.Validation("Viettel.SendEmailException", $"Lỗi gửi email Viettel: {ex.Message}"));
+                Error.Validation(
+                    "Viettel.SendEmailException",
+                    $"Lỗi gửi email Viettel: {ex.Message}"));
         }
     }
 
@@ -230,16 +238,17 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             var root = doc.RootElement;
 
             var code =
-                FindStringProperty(root, "code")
-                ?? FindStringProperty(root, "errorCode");
+                ViettelClientHelper.FindStringProperty(root, "code") ??
+                ViettelClientHelper.FindStringProperty(root, "errorCode");
 
             var message =
-                FindStringProperty(root, "message")
-                ?? FindStringProperty(root, "description");
+                ViettelClientHelper.FindStringProperty(root, "message") ??
+                ViettelClientHelper.FindStringProperty(root, "description");
 
             var isSuccess =
                 string.Equals(code, "200", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(message, "OK", StringComparison.OrdinalIgnoreCase);
+                string.Equals(message, "OK", StringComparison.OrdinalIgnoreCase) ||
+                ViettelClientHelper.IsViettelSuccessCode(code);
 
             return new ViettelInvoiceSendEmailResultDto
             {
@@ -250,7 +259,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 ProviderInvoiceNo = providerInvoiceNo,
                 Code = code,
                 Message = message,
-                RawResponse = Trim(raw, 10000),
+                RawResponse = ViettelClientHelper.Trim(raw, 10000),
                 DurationMs = durationMs
             };
         }
@@ -265,7 +274,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 ProviderInvoiceNo = providerInvoiceNo,
                 Code = "PARSE_ERROR",
                 Message = $"Không đọc được response gửi email: {ex.Message}",
-                RawResponse = Trim(raw, 10000),
+                RawResponse = ViettelClientHelper.Trim(raw, 10000),
                 DurationMs = durationMs
             };
         }
@@ -289,12 +298,12 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.SendEmail,
-                RequestUrl = TrimNullable(requestUrl, 500),
-                RequestBody = TrimNullable(requestBody, 10000),
-                ResponseBody = TrimNullable(responseBody, 10000),
+                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
+                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
+                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
                 IsSuccess = isSuccess,
-                ErrorCode = TrimNullable(errorCode, 100),
-                ErrorMessage = TrimNullable(errorMessage, 1000),
+                ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
+                ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
                 StartedAtUtc = startedAtUtc,
                 FinishedAtUtc = DateTime.UtcNow,
                 DurationMs = durationMs
@@ -309,16 +318,6 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
         }
     }
 
-    private static AuthenticationHeaderValue BuildBasicAuthHeader(
-        string username,
-        string password)
-    {
-        var rawCredential = $"{username.Trim()}:{password}";
-        var base64Credential = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawCredential));
-
-        return new AuthenticationHeaderValue("Basic", base64Credential);
-    }
-
     private static string NormalizeEmails(string value)
     {
         var parts = value
@@ -329,87 +328,5 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             .ToList();
 
         return string.Join(";", parts);
-    }
-
-    private static bool TryFindProperty(
-        JsonElement element,
-        string propertyName,
-        out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(prop.Value, propertyName, out value))
-                    return true;
-            }
-        }
-
-        if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
-            }
-        }
-
-        value = default;
-        return false;
-    }
-
-    private static string? FindStringProperty(
-        JsonElement element,
-        string propertyName)
-    {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
-
-        if (value.ValueKind == JsonValueKind.String)
-            return value.GetString();
-
-        if (value.ValueKind == JsonValueKind.Number)
-            return value.ToString();
-
-        if (value.ValueKind == JsonValueKind.True)
-            return "true";
-
-        if (value.ValueKind == JsonValueKind.False)
-            return "false";
-
-        if (value.ValueKind == JsonValueKind.Null)
-            return null;
-
-        return value.ToString();
-    }
-
-    private static string Trim(string? value, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
-    }
-
-    private static string? TrimNullable(string? value, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
     }
 }

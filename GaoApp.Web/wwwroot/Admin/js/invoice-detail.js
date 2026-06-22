@@ -7,11 +7,14 @@
     const summaryBox = document.getElementById("invoiceSummaryBox");
     const manualLinesBox = document.getElementById("manualLinesBox");
     const deleteModalElement = document.getElementById("deleteManualDetailModal");
-    const deleteModal = deleteModalElement ? new bootstrap.Modal(deleteModalElement) : null;
 
-    if (!modalElement || !modalContent) return;
+    const modal = modalElement && modalContent && window.bootstrap
+        ? new bootstrap.Modal(modalElement)
+        : null;
 
-    const modal = new bootstrap.Modal(modalElement);
+    const deleteModal = deleteModalElement && window.bootstrap
+        ? new bootstrap.Modal(deleteModalElement)
+        : null;
 
     let searchTimer = null;
     let searchSeq = 0;
@@ -22,27 +25,18 @@
         const page = document.getElementById("invoiceDetailPage");
         return page?.getAttribute("data-is-locked") === "true";
     }
+
     function isAdjustmentAmountInvoice() {
         const page = document.getElementById("invoiceDetailPage");
         return page?.getAttribute("data-is-adjustment-amount-invoice") === "true";
     }
 
-    function applyManualQuantityRule() {
-        const quantityInput = document.getElementById("manualQuantity");
+    function getInvoiceHeadId() {
+        const page = document.getElementById("invoiceDetailPage");
 
-        if (!quantityInput) {
-            return;
-        }
-
-        if (isAdjustmentAmountInvoice()) {
-            quantityInput.removeAttribute("min");
-            quantityInput.setAttribute("step", "0.001");
-            quantityInput.setAttribute("placeholder", "VD: -1 để điều chỉnh giảm");
-        } else {
-            quantityInput.setAttribute("min", "0.001");
-            quantityInput.setAttribute("step", "0.001");
-            quantityInput.setAttribute("placeholder", "VD: 1");
-        }
+        return openButton?.getAttribute("data-invoice-head-id")
+            || page?.getAttribute("data-invoice-head-id")
+            || "";
     }
 
     function escapeHtml(value) {
@@ -63,11 +57,511 @@
         alert(message || "Có lỗi xảy ra.");
     }
 
-    function getInvoiceHeadId() {
-        const page = document.getElementById("invoiceDetailPage");
-        return openButton?.getAttribute("data-invoice-head-id")
-            || page?.getAttribute("data-invoice-head-id")
-            || "";
+    async function readResponseOnce(response) {
+        const contentType = response.headers.get("content-type") || "";
+
+        if (contentType.includes("application/json")) {
+            const json = await response.json();
+
+            return {
+                json,
+                text: "",
+                message: json?.message || ""
+            };
+        }
+
+        const text = await response.text();
+
+        return {
+            json: null,
+            text,
+            message: text || ""
+        };
+    }
+
+    // =====================================================
+    // BUYER INFO - PHASE 21.2.2.3
+    // =====================================================
+
+    function bindBuyerInfoEvents() {
+        const form = document.getElementById("buyerInfoForm");
+
+        if (!form) {
+            return;
+        }
+
+        const typeRadios = form.querySelectorAll(".buyer-type-radio");
+        const lookupButton = document.getElementById("btnLookupBuyerTaxCode");
+        const saveButton = document.getElementById("btnSaveBuyerInfo");
+        const taxCodeInput = document.getElementById("buyerTaxCode");
+
+        typeRadios.forEach(function (radio) {
+            radio.addEventListener("change", function () {
+                applyBuyerTypeUi();
+            });
+        });
+
+        lookupButton?.addEventListener("click", function () {
+            lookupBuyerByTaxCode();
+        });
+
+        taxCodeInput?.addEventListener("keydown", function (event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                lookupBuyerByTaxCode();
+            }
+        });
+
+        saveButton?.addEventListener("click", function () {
+            saveBuyerInfo();
+        });
+
+        applyBuyerTypeUi();
+    }
+
+    function getSelectedBuyerType() {
+        const checked = document.querySelector('input[name="BuyerType"]:checked');
+
+        return checked ? checked.value : "NoInvoice";
+    }
+
+    function applyBuyerTypeUi() {
+        const buyerType = getSelectedBuyerType();
+
+        const fieldsWrap = document.querySelector(".buyer-fields");
+        const taxCodeWrap = document.querySelector(".buyer-tax-code-wrap");
+        const nameWrap = document.querySelector(".buyer-name-wrap");
+        const legalNameWrap = document.querySelector(".buyer-legal-name-wrap");
+        const phoneWrap = document.querySelector(".buyer-phone-wrap");
+        const nameLabel = document.getElementById("buyerNameLabel");
+
+        const taxCodeInput = document.getElementById("buyerTaxCode");
+        const buyerNameInput = document.getElementById("buyerName");
+        const legalNameInput = document.getElementById("buyerLegalName");
+        const addressInput = document.getElementById("buyerAddress");
+        const emailInput = document.getElementById("buyerEmail");
+        const phoneInput = document.getElementById("buyerPhone");
+        const saveToProfileInput = document.getElementById("buyerSaveToProfile");
+
+        hideBuyerMessage();
+
+        if (!fieldsWrap) {
+            return;
+        }
+
+        if (buyerType === "NoInvoice") {
+            fieldsWrap.classList.add("opacity-50");
+
+            taxCodeWrap?.classList.add("d-none");
+            nameWrap?.classList.add("d-none");
+            legalNameWrap?.classList.add("d-none");
+            phoneWrap?.classList.add("d-none");
+
+            clearBuyerInput(taxCodeInput);
+            clearBuyerInput(buyerNameInput);
+            clearBuyerInput(legalNameInput);
+            clearBuyerInput(addressInput);
+            clearBuyerInput(emailInput);
+            clearBuyerInput(phoneInput);
+
+            setBuyerInputsDisabled(true);
+
+            if (saveToProfileInput) {
+                saveToProfileInput.checked = false;
+                saveToProfileInput.disabled = true;
+            }
+
+            return;
+        }
+
+        fieldsWrap.classList.remove("opacity-50");
+
+        taxCodeWrap?.classList.remove("d-none");
+        nameWrap?.classList.remove("d-none");
+        phoneWrap?.classList.remove("d-none");
+
+        setBuyerInputsDisabled(false);
+
+        if (saveToProfileInput) {
+            saveToProfileInput.disabled = false;
+            saveToProfileInput.checked = true;
+        }
+
+        if (buyerType === "Individual") {
+            if (nameLabel) {
+                nameLabel.innerHTML = 'Tên khách hàng <span class="text-danger">*</span>';
+            }
+
+            legalNameWrap?.classList.add("d-none");
+            clearBuyerInput(legalNameInput);
+            return;
+        }
+
+        if (buyerType === "Business") {
+            if (nameLabel) {
+                nameLabel.textContent = "Người liên hệ / người mua";
+            }
+
+            legalNameWrap?.classList.remove("d-none");
+        }
+    }
+
+    function setBuyerInputsDisabled(disabled) {
+        const ids = [
+            "buyerTaxCode",
+            "buyerName",
+            "buyerLegalName",
+            "buyerAddress",
+            "buyerEmail",
+            "buyerPhone"
+        ];
+
+        ids.forEach(function (id) {
+            const input = document.getElementById(id);
+
+            if (input) {
+                input.disabled = disabled;
+            }
+        });
+    }
+
+    function clearBuyerInput(input) {
+        if (input) {
+            input.value = "";
+        }
+    }
+
+    async function lookupBuyerByTaxCode() {
+        const form = document.getElementById("buyerInfoForm");
+
+        if (!form) {
+            return;
+        }
+
+        const lookupUrl = form.dataset.lookupUrl;
+        const invoiceHeadId = document.getElementById("buyerInvoiceHeadId")?.value || "";
+        const buyerType = getSelectedBuyerType();
+        const taxCodeInput = document.getElementById("buyerTaxCode");
+        const lookupButton = document.getElementById("btnLookupBuyerTaxCode");
+
+        const taxCode = (taxCodeInput?.value || "").trim();
+
+        hideBuyerMessage();
+
+        if (buyerType === "NoInvoice") {
+            showBuyerMessage("info", "Không lấy hóa đơn thì không cần tra cứu thông tin người mua.");
+            return;
+        }
+
+        if (!taxCode) {
+            showBuyerMessage("warning", "Vui lòng nhập MST/mã định danh để tra cứu.");
+            taxCodeInput?.focus();
+            return;
+        }
+
+        if (!isBuyerTaxCodeClientValid(taxCode)) {
+            showBuyerMessage("warning", "MST/mã định danh chỉ cho phép chữ, số, dấu gạch ngang và tối đa 20 ký tự.");
+            taxCodeInput?.focus();
+            return;
+        }
+
+        if (!lookupUrl) {
+            showBuyerMessage("danger", "Thiếu đường dẫn tra cứu người mua.");
+            return;
+        }
+
+        const url = new URL(lookupUrl, window.location.origin);
+
+        url.searchParams.set("invoiceHeadId", invoiceHeadId);
+        url.searchParams.set("buyerType", buyerType);
+        url.searchParams.set("taxCode", taxCode);
+
+        const oldText = lookupButton ? lookupButton.innerHTML : "";
+
+        try {
+            if (lookupButton) {
+                lookupButton.disabled = true;
+                lookupButton.innerHTML = "Đang tra...";
+            }
+
+            const response = await fetch(url.toString(), {
+                method: "GET",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            });
+
+            const data = await readResponseOnce(response);
+            const json = data.json;
+
+            if (!response.ok || !json?.success) {
+                showBuyerMessage(
+                    "warning",
+                    json?.message || data.message || "Không tìm thấy thông tin người mua trong nội bộ. Bạn có thể tự nhập."
+                );
+                return;
+            }
+
+            fillBuyerInfoFromLookup(json);
+
+            showBuyerMessage(
+                "success",
+                "Đã tìm thấy thông tin người mua từ nguồn: " + (json.source || "nội bộ") + ". Vui lòng kiểm tra lại rồi bấm Lưu."
+            );
+        } catch (error) {
+            console.error(error);
+            showBuyerMessage("danger", "Có lỗi khi tra cứu thông tin người mua.");
+        } finally {
+            if (lookupButton) {
+                lookupButton.disabled = false;
+                lookupButton.innerHTML = oldText || "Tra cứu";
+            }
+        }
+    }
+
+    function fillBuyerInfoFromLookup(data) {
+        const buyerType = data.buyerType || getSelectedBuyerType();
+
+        setBuyerTypeRadio(buyerType);
+        applyBuyerTypeUi();
+
+        const taxCodeInput = document.getElementById("buyerTaxCode");
+        const buyerNameInput = document.getElementById("buyerName");
+        const legalNameInput = document.getElementById("buyerLegalName");
+        const addressInput = document.getElementById("buyerAddress");
+        const emailInput = document.getElementById("buyerEmail");
+        const phoneInput = document.getElementById("buyerPhone");
+        const sourceInput = document.getElementById("buyerSource");
+
+        if (taxCodeInput) {
+            taxCodeInput.value = data.buyerTaxCode || taxCodeInput.value || "";
+        }
+
+        if (buyerType === "Business") {
+            if (legalNameInput) {
+                legalNameInput.value = data.buyerLegalName || data.buyerName || "";
+            }
+
+            if (buyerNameInput) {
+                buyerNameInput.value = data.buyerName || "";
+            }
+        } else if (buyerType === "Individual") {
+            if (buyerNameInput) {
+                buyerNameInput.value = data.buyerName || data.buyerLegalName || "";
+            }
+
+            if (legalNameInput) {
+                legalNameInput.value = "";
+            }
+        }
+
+        if (addressInput) {
+            addressInput.value = data.buyerAddress || "";
+        }
+
+        if (emailInput) {
+            emailInput.value = data.buyerEmail || "";
+        }
+
+        if (phoneInput) {
+            phoneInput.value = data.buyerPhone || "";
+        }
+
+        if (sourceInput) {
+            sourceInput.value = data.source || "manual";
+        }
+    }
+
+    function setBuyerTypeRadio(buyerType) {
+        const radio = document.querySelector('input[name="BuyerType"][value="' + buyerType + '"]');
+
+        if (radio) {
+            radio.checked = true;
+        }
+    }
+
+    async function saveBuyerInfo() {
+        const form = document.getElementById("buyerInfoForm");
+
+        if (!form) {
+            return;
+        }
+
+        if (isInvoiceLocked()) {
+            showBuyerMessage("warning", "Hóa đơn đã khóa hoặc đã phát hành, không thể sửa thông tin người mua.");
+            return;
+        }
+
+        const updateUrl = form.dataset.updateUrl;
+        const saveButton = document.getElementById("btnSaveBuyerInfo");
+
+        hideBuyerMessage();
+
+        const clientValidation = validateBuyerInfoClient();
+
+        if (!clientValidation.ok) {
+            showBuyerMessage("warning", clientValidation.message);
+            clientValidation.focusElement?.focus();
+            return;
+        }
+
+        if (!updateUrl) {
+            showBuyerMessage("danger", "Thiếu đường dẫn lưu thông tin người mua.");
+            return;
+        }
+
+        const formData = new FormData(form);
+
+        if (!formData.has("SaveToProfile")) {
+            formData.append("SaveToProfile", "false");
+        }
+
+        const oldText = saveButton ? saveButton.innerHTML : "";
+
+        try {
+            if (saveButton) {
+                saveButton.disabled = true;
+                saveButton.innerHTML = "Đang lưu...";
+            }
+
+            const response = await fetch(updateUrl, {
+                method: "POST",
+                body: formData,
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            });
+
+            const data = await readResponseOnce(response);
+            const json = data.json;
+
+            if (!response.ok || !json?.success) {
+                showBuyerMessage(
+                    "danger",
+                    json?.message || data.message || "Không cập nhật được thông tin người mua."
+                );
+                return;
+            }
+
+            showBuyerMessage("success", json.message || "Đã cập nhật thông tin người mua.");
+
+            setTimeout(function () {
+                window.location.reload();
+            }, 600);
+        } catch (error) {
+            console.error(error);
+            showBuyerMessage("danger", "Có lỗi khi lưu thông tin người mua.");
+        } finally {
+            if (saveButton) {
+                saveButton.disabled = false;
+                saveButton.innerHTML = oldText || "Lưu thông tin người mua";
+            }
+        }
+    }
+
+    function validateBuyerInfoClient() {
+        const buyerType = getSelectedBuyerType();
+
+        const buyerNameInput = document.getElementById("buyerName");
+        const legalNameInput = document.getElementById("buyerLegalName");
+        const taxCodeInput = document.getElementById("buyerTaxCode");
+
+        const buyerName = (buyerNameInput?.value || "").trim();
+        const legalName = (legalNameInput?.value || "").trim();
+        const taxCode = (taxCodeInput?.value || "").trim();
+
+        if (buyerType === "NoInvoice") {
+            return { ok: true };
+        }
+
+        if (taxCode && !isBuyerTaxCodeClientValid(taxCode)) {
+            return {
+                ok: false,
+                message: "MST/mã định danh chỉ cho phép chữ, số, dấu gạch ngang và tối đa 20 ký tự.",
+                focusElement: taxCodeInput
+            };
+        }
+
+        if (buyerType === "Individual" && !buyerName) {
+            return {
+                ok: false,
+                message: "Vui lòng nhập tên khách hàng cá nhân.",
+                focusElement: buyerNameInput
+            };
+        }
+
+        if (buyerType === "Business" && !legalName) {
+            return {
+                ok: false,
+                message: "Vui lòng nhập tên đơn vị/công ty/hộ kinh doanh.",
+                focusElement: legalNameInput
+            };
+        }
+
+        return { ok: true };
+    }
+
+    function isBuyerTaxCodeClientValid(value) {
+        value = (value || "")
+            .trim()
+            .replaceAll(" ", "")
+            .replaceAll(".", "");
+
+        if (!value) {
+            return true;
+        }
+
+        if (value.length > 20) {
+            return false;
+        }
+
+        return /^[A-Za-z0-9-]+$/.test(value);
+    }
+
+    function showBuyerMessage(type, message) {
+        const box = document.getElementById("buyerLookupMessage");
+
+        if (!box) {
+            alert(message);
+            return;
+        }
+
+        box.className = "alert alert-" + type + " small mb-3";
+        box.textContent = message;
+        box.classList.remove("d-none");
+    }
+
+    function hideBuyerMessage() {
+        const box = document.getElementById("buyerLookupMessage");
+
+        if (!box) {
+            return;
+        }
+
+        box.classList.add("d-none");
+        box.textContent = "";
+    }
+
+    // =====================================================
+    // MANUAL DETAIL
+    // =====================================================
+
+    function applyManualQuantityRule() {
+        const quantityInput = document.getElementById("manualQuantity");
+
+        if (!quantityInput) {
+            return;
+        }
+
+        if (isAdjustmentAmountInvoice()) {
+            quantityInput.removeAttribute("min");
+            quantityInput.setAttribute("step", "0.001");
+            quantityInput.setAttribute("placeholder", "VD: -1 để điều chỉnh giảm");
+        } else {
+            quantityInput.setAttribute("min", "0.001");
+            quantityInput.setAttribute("step", "0.001");
+            quantityInput.setAttribute("placeholder", "VD: 1");
+        }
     }
 
     function bindManualDeleteButtons() {
@@ -165,6 +659,11 @@
             return;
         }
 
+        if (!modalElement || !modalContent || !modal) {
+            showError("Không tìm thấy popup thêm dòng manual.");
+            return;
+        }
+
         const invoiceHeadId = getInvoiceHeadId();
 
         const response = await fetch(`/Admin/Invoice/CreateManualDetail?invoiceHeadId=${encodeURIComponent(invoiceHeadId)}`, {
@@ -242,14 +741,14 @@
                 : `placeholder="VD: 1"`;
 
             quantityCell.innerHTML = `
-        <input type="number"
-               class="form-control form-control-sm text-end manual-edit-input"
-               data-manual-edit-field="quantity"
-               ${minAttr}
-               step="0.001"
-               ${placeholderAttr}
-               value="${escapeHtml(quantity)}" />
-    `;
+                <input type="number"
+                       class="form-control form-control-sm text-end manual-edit-input"
+                       data-manual-edit-field="quantity"
+                       ${minAttr}
+                       step="0.001"
+                       ${placeholderAttr}
+                       value="${escapeHtml(quantity)}" />
+            `;
         }
 
         if (unitPriceCell) {
@@ -447,6 +946,7 @@
                 showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
                 return;
             }
+
             const quantityInput = document.getElementById("manualQuantity");
             const unitPriceInput = document.getElementById("manualUnitPrice");
             const vatRateInput = document.getElementById("manualVatRate");
@@ -478,6 +978,7 @@
                 vatRateInput?.focus();
                 return;
             }
+
             const submitButton = form.querySelector("button[type='submit']");
             const oldText = submitButton ? submitButton.innerHTML : "";
 
@@ -507,7 +1008,7 @@
                     return;
                 }
 
-                modal.hide();
+                modal?.hide();
 
                 await reloadInvoiceSummary(data.json.invoiceHeadId);
                 await reloadManualLines(data.json.invoiceHeadId);
@@ -539,7 +1040,9 @@
                 return;
             }
 
-            searchTimer = setTimeout(() => searchProducts(keyword), 250);
+            searchTimer = setTimeout(function () {
+                searchProducts(keyword);
+            }, 250);
         });
 
         input.addEventListener("keydown", function (e) {
@@ -640,7 +1143,7 @@
             return;
         }
 
-        menu.innerHTML = currentItems.map((item, index) => {
+        menu.innerHTML = currentItems.map(function (item, index) {
             const price = formatMoney(item.unitPrice || 0);
 
             return `
@@ -699,7 +1202,10 @@
 
         activeIndex = index;
 
-        rows.forEach(x => x.classList.remove("active"));
+        rows.forEach(function (x) {
+            x.classList.remove("active");
+        });
+
         rows[index].classList.add("active");
         rows[index].scrollIntoView({ block: "nearest" });
     }
@@ -721,7 +1227,7 @@
 
         hideMenu();
 
-        setTimeout(() => {
+        setTimeout(function () {
             document.getElementById("manualQuantity")?.focus();
             document.getElementById("manualQuantity")?.select();
         }, 50);
@@ -738,6 +1244,10 @@
     }
 
     async function reloadInvoiceSummary(invoiceHeadId) {
+        if (!summaryBox) {
+            return;
+        }
+
         const response = await fetch(`/Admin/Invoice/InvoiceSummaryPartial?id=${encodeURIComponent(invoiceHeadId)}`, {
             method: "GET",
             headers: {
@@ -754,6 +1264,10 @@
     }
 
     async function reloadManualLines(invoiceHeadId) {
+        if (!manualLinesBox) {
+            return;
+        }
+
         const response = await fetch(`/Admin/Invoice/ManualLinesPartial?id=${encodeURIComponent(invoiceHeadId)}`, {
             method: "GET",
             headers: {
@@ -814,31 +1328,14 @@
         window.location.reload();
     }
 
-    async function readResponseOnce(response) {
-        const contentType = response.headers.get("content-type") || "";
-
-        if (contentType.includes("application/json")) {
-            const json = await response.json();
-            return {
-                json,
-                text: "",
-                message: json?.message || ""
-            };
-        }
-
-        const text = await response.text();
-
-        return {
-            json: null,
-            text,
-            message: text || ""
-        };
-    }
+    // =====================================================
+    // GLOBAL BINDINGS
+    // =====================================================
 
     document.addEventListener("keydown", function (e) {
-        const isModalOpen = modalElement.classList.contains("show");
+        const isManualModalOpen = modalElement?.classList.contains("show") === true;
 
-        if (e.key === "F2" && !isModalOpen) {
+        if (e.key === "F2" && !isManualModalOpen) {
             e.preventDefault();
 
             if (isInvoiceLocked()) {
@@ -850,7 +1347,7 @@
             return;
         }
 
-        if (e.ctrlKey && e.key.toLowerCase() === "m" && !isModalOpen) {
+        if (e.ctrlKey && e.key.toLowerCase() === "m" && !isManualModalOpen) {
             e.preventDefault();
 
             if (isInvoiceLocked()) {
@@ -862,9 +1359,9 @@
             return;
         }
 
-        if (e.key === "Escape" && isModalOpen) {
+        if (e.key === "Escape" && isManualModalOpen) {
             e.preventDefault();
-            modal.hide();
+            modal?.hide();
         }
     });
 
@@ -888,6 +1385,7 @@
         await postInvoiceLockAction("/Admin/Invoice/Unlock", reason);
     });
 
+    bindBuyerInfoEvents();
     bindManualDeleteButtons();
     bindManualEditRows();
 })();

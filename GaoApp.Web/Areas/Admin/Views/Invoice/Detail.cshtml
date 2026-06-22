@@ -6,14 +6,6 @@
 
     var invoice = Model.Invoice;
 
-    var autoLines = invoice.Details
-        .Where(x => x.SourceType == InvoiceDetailSourceType.FromOrderLine)
-        .ToList();
-
-    var manualLines = invoice.Details
-        .Where(x => x.SourceType == InvoiceDetailSourceType.Manual)
-        .ToList();
-
     var issuedStatuses = new[]
     {
         InvoiceProviderStatus.Issued,
@@ -28,62 +20,15 @@
 
     var isHardLocked = invoice.IsLocked || isViettelIssued;
 
-    var canEditInvoice = !isHardLocked;
-
-    var providerStatusName = invoice.ProviderStatus switch
-    {
-        InvoiceProviderStatus.LocalDraft => "Chưa phát hành",
-        InvoiceProviderStatus.ReadyToIssue => "Sẵn sàng phát hành",
-        InvoiceProviderStatus.Previewed => "Đã preview nháp",
-        InvoiceProviderStatus.DraftSent => "Đã gửi nháp",
-        InvoiceProviderStatus.Issuing => "Đang phát hành",
-        InvoiceProviderStatus.Issued => "Đã phát hành",
-        InvoiceProviderStatus.IssuedWaitingNumber => "Chờ tra cứu số HĐ",
-        InvoiceProviderStatus.IssueFailed => "Phát hành lỗi",
-        InvoiceProviderStatus.Cancelled => "Đã hủy",
-        InvoiceProviderStatus.PdfDownloaded => "Đã tải PDF",
-        InvoiceProviderStatus.ZipDownloaded => "Đã tải ZIP/XML",
-        InvoiceProviderStatus.EmailSent => "Đã gửi email",
-        _ => invoice.ProviderStatus.ToString()
-    };
-
-    var providerStatusClass = invoice.ProviderStatus switch
-    {
-        InvoiceProviderStatus.LocalDraft => "bg-secondary",
-        InvoiceProviderStatus.ReadyToIssue => "bg-info",
-        InvoiceProviderStatus.Previewed => "bg-info",
-        InvoiceProviderStatus.DraftSent => "bg-info",
-        InvoiceProviderStatus.Issuing => "bg-warning text-dark",
-        InvoiceProviderStatus.Issued => "bg-success",
-        InvoiceProviderStatus.IssuedWaitingNumber => "bg-warning text-dark",
-        InvoiceProviderStatus.IssueFailed => "bg-danger",
-        InvoiceProviderStatus.Cancelled => "bg-dark",
-        InvoiceProviderStatus.PdfDownloaded => "bg-success",
-        InvoiceProviderStatus.ZipDownloaded => "bg-success",
-        InvoiceProviderStatus.EmailSent => "bg-success",
-        _ => "bg-secondary"
-    };
-    var correctionHistory = ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
     var isCorrectionInvoice =
-    invoice.OriginalInvoiceHeadId.HasValue ||
-    invoice.CorrectionType.HasValue;
-
-    var isReplacementInvoice =
-        invoice.CorrectionType == InvoiceCorrectionType.Replacement;
+        invoice.OriginalInvoiceHeadId.HasValue ||
+        invoice.CorrectionType.HasValue;
 
     var isAdjustmentAmountInvoice =
         invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
 
-    var isAdjustmentInfoInvoice =
-        invoice.CorrectionType == InvoiceCorrectionType.AdjustmentInfo;
-
-    var correctionTypeName = invoice.CorrectionType switch
-    {
-        InvoiceCorrectionType.Replacement => "Hóa đơn thay thế",
-        InvoiceCorrectionType.AdjustmentAmount => "Hóa đơn điều chỉnh tiền",
-        InvoiceCorrectionType.AdjustmentInfo => "Hóa đơn điều chỉnh thông tin",
-        _ => string.Empty
-    };
+    var correctionHistory =
+        ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
 }
 
 @section VendorStyles {
@@ -257,495 +202,39 @@
         @Html.AntiForgeryToken()
     </form>
 
-    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
-        <div>
-            <h3 class="mb-1 page-title">
-                Hóa đơn bán ra #@invoice.Id
-            </h3>
-
-            <div class="text-muted">
-                Ngày tạo: @invoice.InvoiceDate.ToString("dd/MM/yyyy HH:mm")
-            </div>
-
-            <div class="mt-2 d-flex gap-2 flex-wrap">
-                @if (isHardLocked)
-                {
-                    <span class="badge bg-danger">LOCKED</span>
-                }
-                else
-                {
-                    <span class="badge bg-success">EDITABLE</span>
-                }
-
-                <span class="badge @providerStatusClass">
-                    @providerStatusName
-                </span>
-
-                @if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
-                {
-                    <span class="badge bg-success">
-                        Số HĐ: @invoice.ProviderInvoiceNo
-                    </span>
-                }
-            </div>
-
-            @if (isHardLocked)
-            {
-                <div class="mt-2 small text-muted">
-                    @(string.IsNullOrWhiteSpace(invoice.LockReason)
-                        ? "Hóa đơn đã khóa."
-                        : invoice.LockReason)
-                </div>
-            }
-        </div>
-
-        <div class="d-flex gap-2 invoice-toolbar">
-            @if (canEditInvoice)
-            {
-                <button type="button"
-                        class="btn btn-primary"
-                        id="btnOpenManualDetailModal"
-                        data-invoice-head-id="@invoice.Id">
-                    <i class="bx bx-plus"></i>
-                    Thêm dòng manual (F2)
-                </button>
-
-                <button type="button"
-                        class="btn btn-outline-danger"
-                        id="btnLockInvoice"
-                        data-invoice-head-id="@invoice.Id">
-                    <i class="bx bx-lock"></i>
-                    Khóa hóa đơn
-                </button>
-            }
-            else
-            {
-                <button type="button"
-                        class="btn btn-outline-secondary"
-                        disabled>
-                    <i class="bx bx-lock"></i>
-                    Đã khóa - không thể sửa
-                </button>
-
-                @if (invoice.IsLocked && !isViettelIssued)
-                {
-                    <button type="button"
-                            class="btn btn-outline-warning"
-                            id="btnUnlockInvoice"
-                            data-invoice-head-id="@invoice.Id">
-                        <i class="bx bx-lock-open"></i>
-                        Mở khóa
-                    </button>
-                }
-            }
-            @if (isViettelIssued && !isCorrectionInvoice)
-            {
-                <div class="btn-group">
-                    <button type="button"
-                            class="btn btn-outline-danger dropdown-toggle"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                        Xử lý sai sót
-                    </button>
-
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <a class="dropdown-item"
-                                   asp-area="Admin"
-                                   asp-controller="InvoiceCorrection"
-                                   asp-action="Create"
-                                   asp-route-originalInvoiceHeadId="@invoice.Id"
-                                   asp-route-type="Replacement">
-                                Lập hóa đơn thay thế
-                            </a>
-                        </li>
-
-                        <li>
-                            <a class="dropdown-item"
-                                   asp-area="Admin"
-                                   asp-controller="InvoiceCorrection"
-                                   asp-action="Create"
-                                   asp-route-originalInvoiceHeadId="@invoice.Id"
-                                   asp-route-type="AdjustmentAmount">
-                                Lập hóa đơn điều chỉnh tiền
-                            </a>
-                        </li>
-
-                        <li>
-                            <a class="dropdown-item"
-                                   asp-area="Admin"
-                                   asp-controller="InvoiceCorrection"
-                                   asp-action="Create"
-                                   asp-route-originalInvoiceHeadId="@invoice.Id"
-                                   asp-route-type="AdjustmentInfo">
-                                Lập hóa đơn điều chỉnh thông tin
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            }
-
-            <a asp-area="Admin"
-                   asp-controller="Invoice"
-                   asp-action="ViettelPayload"
-                   asp-route-id="@invoice.Id"
-                   class="btn btn-outline-info">
-                <i class="bx bx-code-curly"></i>
-                Xem JSON Viettel
-            </a>
-            @if (isViettelIssued)
-            {
-                <a asp-area="Admin"
-                       asp-controller="Invoice"
-                       asp-action="ViettelPayload"
-                       asp-route-id="@invoice.Id"
-                       class="btn btn-outline-success">
-                    <i class="bx bx-envelope"></i>
-                    Gửi email
-                </a>
-            }
-            <a asp-area="Admin"
-                   asp-controller="Invoice"
-                   asp-action="Index"
-                   class="btn btn-outline-secondary">
-                <i class="bx bx-arrow-back"></i>
-                Quay lại
-            </a>
-        </div>
-    </div>
-
-    @if (isViettelIssued)
-    {
-        <div class="alert alert-success d-flex align-items-start gap-2">
-            <i class="bx bx-check-circle fs-4"></i>
-            <div>
-                <div class="fw-semibold">
-                    Hóa đơn đã phát hành Viettel.
-                </div>
-                <div>
-                    Không được sửa dòng chi tiết sau khi đã phát hành. Nếu sai nội dung, xử lý bằng hủy/thay thế/điều chỉnh ở phase sau.
-                </div>
-            </div>
-        </div>
-    }
-    else if (invoice.IsLocked)
-    {
-        <div class="alert alert-warning d-flex align-items-start gap-2">
-            <i class="bx bx-lock fs-4"></i>
-            <div>
-                <div class="fw-semibold">
-                    Hóa đơn đang khóa.
-                </div>
-                <div>
-                    Chỉ admin nên mở khóa khi hóa đơn chưa phát hành Viettel.
-                </div>
-            </div>
-        </div>
-    }
-    @if (isCorrectionInvoice)
-    {
-        <div class="alert alert-warning d-flex align-items-start gap-2">
-            <i class="bx bx-git-branch fs-4"></i>
-
-            <div>
-                <div class="fw-semibold">
-                    @correctionTypeName
-                </div>
-
-                <div>
-                    Hóa đơn này được lập để xử lý sai sót cho hóa đơn gốc:
-                    <strong>@(invoice.OriginalInvoiceNo ?? ("#" + invoice.OriginalInvoiceHeadId))</strong>
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(invoice.AdjustedNote))
-                {
-                    <div>
-                        Lý do:
-                        <strong>@invoice.AdjustedNote</strong>
-                    </div>
-                }
-
-                @if (!string.IsNullOrWhiteSpace(invoice.AdditionalReferenceDesc))
-                {
-                    <div>
-                        Văn bản thỏa thuận:
-                        <strong>@invoice.AdditionalReferenceDesc</strong>
-
-                        @if (invoice.AdditionalReferenceDateUtc.HasValue)
-                        {
-                            <span>
-                                - ngày @invoice.AdditionalReferenceDateUtc.Value.ToString("dd/MM/yyyy")
-                            </span>
-                        }
-                    </div>
-                }
-
-                @if (isAdjustmentAmountInvoice)
-                {
-                    <div class="mt-2 text-danger small">
-                        Hóa đơn điều chỉnh tiền cho phép nhập dòng âm để điều chỉnh giảm.
-                    </div>
-                }
-
-                <div class="mt-2">
-                    <a asp-area="Admin"
-                           asp-controller="Invoice"
-                           asp-action="ViettelPayload"
-                           asp-route-id="@invoice.OriginalInvoiceHeadId"
-                           class="btn btn-sm btn-outline-secondary">
-                        Xem hóa đơn gốc
-                    </a>
-                </div>
-            </div>
-        </div>
-    }
     @await Html.PartialAsync(
-    "~/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml",
-    correctionHistory)
+        "~/Areas/Admin/Views/Invoice/_InvoiceDetailHeader.cshtml",
+        Model)
+
+    @await Html.PartialAsync(
+        "~/Areas/Admin/Views/Invoice/_InvoiceDetailAlerts.cshtml",
+        Model)
+
+    @await Html.PartialAsync(
+        "~/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml",
+        correctionHistory)
+
     <div id="invoiceSummaryBox">
         @await Html.PartialAsync("_InvoiceSummary", invoice)
     </div>
 
-    <div class="row g-3 mb-3">
-        <div class="col-lg-6">
-            <div class="card shadow-sm invoice-card h-100">
-                <div class="card-header fw-bold">
-                    Thông tin người mua
-                </div>
+    @await Html.PartialAsync(
+    "~/Areas/Admin/Views/Invoice/_InvoiceBuyerViettelCards.cshtml",
+    Model.Invoice)
 
-                <div class="card-body">
-                    <div class="meta-row">
-                        <span class="meta-label">Người mua</span>
-                        <span class="meta-value">
-                            @(string.IsNullOrWhiteSpace(invoice.BuyerName) ? "-" : invoice.BuyerName)
-                        </span>
-                    </div>
+    @await Html.PartialAsync(
+        "~/Areas/Admin/Views/Invoice/_InvoiceAutoLinesTable.cshtml",
+        Model)
 
-                    <div class="meta-row">
-                        <span class="meta-label">MST</span>
-                        <span class="meta-value">
-                            @(string.IsNullOrWhiteSpace(invoice.BuyerTaxCode) ? "-" : invoice.BuyerTaxCode)
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">Địa chỉ</span>
-                        <span class="meta-value">
-                            @(string.IsNullOrWhiteSpace(invoice.BuyerAddress) ? "-" : invoice.BuyerAddress)
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-6">
-            <div class="card shadow-sm invoice-card h-100">
-                <div class="card-header fw-bold">
-                    Trạng thái Viettel
-                </div>
-
-                <div class="card-body">
-                    <div class="meta-row">
-                        <span class="meta-label">Trạng thái</span>
-                        <span class="meta-value">
-                            <span class="badge status-pill @providerStatusClass">
-                                @providerStatusName
-                            </span>
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">Số hóa đơn</span>
-                        <span class="meta-value text-success">
-                            @(string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo) ? "-" : invoice.ProviderInvoiceNo)
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">TransactionUuid</span>
-                        <span class="meta-value">
-                            @(string.IsNullOrWhiteSpace(invoice.TransactionUuid) ? "-" : invoice.TransactionUuid)
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">ReservationCode</span>
-                        <span class="meta-value">
-                            @(string.IsNullOrWhiteSpace(invoice.ReservationCode) ? "-" : invoice.ReservationCode)
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">PDF</span>
-                        <span class="meta-value">
-                            @if (!string.IsNullOrWhiteSpace(invoice.PdfFilePath))
-                            {
-                                <span class="badge bg-success">Đã lưu</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Chưa lưu</span>
-                            }
-                        </span>
-                    </div>
-
-                    <div class="meta-row">
-                        <span class="meta-label">ZIP/XML</span>
-                        <span class="meta-value">
-                            @if (!string.IsNullOrWhiteSpace(invoice.ZipFilePath))
-                            {
-                                <span class="badge bg-success">Đã lưu</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Chưa lưu</span>
-                            }
-                        </span>
-                    </div>
-
-                    @if (!string.IsNullOrWhiteSpace(invoice.LastErrorCode) ||
-                         !string.IsNullOrWhiteSpace(invoice.LastErrorMessage))
-                    {
-                        <div class="meta-row">
-                            <span class="meta-label">Lỗi gần nhất</span>
-                            <span class="meta-value text-danger">
-                                @invoice.LastErrorCode
-                                @if (!string.IsNullOrWhiteSpace(invoice.LastErrorMessage))
-                                {
-                                    <br />
-                                    <small>@invoice.LastErrorMessage</small>
-                                }
-                            </span>
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card shadow-sm invoice-card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="fw-bold">
-                <span class="badge bg-info me-2">AUTO</span>
-                Dòng tự sinh từ OrderLine
-            </div>
-
-            <div>
-                Tổng:
-                <strong>@autoLines.Count</strong>
-            </div>
-        </div>
-
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>#</th>
-                        <th>Sản phẩm</th>
-                        <th>ĐVT</th>
-                        <th class="text-end">SL</th>
-                        <th class="text-end">Đơn giá</th>
-                        <th class="text-end">Thành tiền</th>
-                        <th>OrderLine</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @if (!autoLines.Any())
-                    {
-                        <tr>
-                            <td colspan="7" class="text-center text-muted py-4">
-                                Không có dòng tự sinh.
-                            </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        foreach (var item in autoLines)
-                        {
-                            <tr>
-                                <td>#@item.Id</td>
-
-                                <td>
-                                    <div class="fw-semibold">@item.ItemName</div>
-                                    <small class="text-muted">
-                                        ProductVariantId: @(item.ProductVariantId?.ToString() ?? "-")
-                                    </small>
-                                </td>
-
-                                <td>@item.UnitName</td>
-
-                                <td class="text-end">@item.Quantity.ToString("N2")</td>
-                                <td class="text-end">@item.UnitPrice.ToString("N0")</td>
-                                <td class="text-end fw-bold text-primary">@item.TotalAmount.ToString("N0")</td>
-
-                                <td>#@item.OrderLineId</td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="card shadow-sm invoice-card" id="manualLinesBox">
+    <div class="card shadow-sm invoice-card"
+         id="manualLinesBox">
         @await Html.PartialAsync("_ManualLinesTable", invoice)
     </div>
 </div>
 
-@if (canEditInvoice)
-{
-    <div class="modal fade"
-         id="manualDetailModal"
-         tabindex="-1"
-         aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content"
-                 id="manualDetailModalContent">
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade"
-         id="deleteManualDetailModal"
-         tabindex="-1"
-         aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-body text-center p-4">
-                    <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle bg-danger text-white"
-                         style="width:56px;height:56px;font-size:28px;">
-                        !
-                    </div>
-
-                    <h5 class="fw-bold mb-2">Xóa dòng manual?</h5>
-
-                    <div class="text-muted mb-3">
-                        Bạn có chắc muốn xóa dòng:
-                        <br />
-                        <strong id="deleteManualDetailName"></strong>
-                    </div>
-
-                    <input type="hidden" id="deleteManualDetailId" />
-
-                    <div class="d-flex justify-content-center gap-2">
-                        <button type="button"
-                                class="btn btn-light px-4"
-                                data-bs-dismiss="modal">
-                            Đóng
-                        </button>
-
-                        <button type="button"
-                                class="btn btn-danger px-4"
-                                id="btnConfirmDeleteManualDetail">
-                            Xóa dòng
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+@await Html.PartialAsync(
+    "~/Areas/Admin/Views/Invoice/_InvoiceManualModals.cshtml",
+    Model)
 
 @section Scripts {
     <script src="~/admin/js/invoice-detail.js" asp-append-version="true"></script>

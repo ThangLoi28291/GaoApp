@@ -1,4 +1,5 @@
 ﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -20,14 +21,49 @@ public class InvoiceHead : BaseStoreEntity
 
     public DateTime InvoiceDate { get; set; } = DateTime.Now;
 
-    [StringLength(250)]
+    /// <summary>
+    /// Loại người mua:
+    /// - NoInvoice: không lấy hóa đơn
+    /// - Individual: cá nhân
+    /// - Business: doanh nghiệp/tổ chức/hộ kinh doanh
+    /// </summary>
+    [StringLength(30)]
+    public string BuyerType { get; set; } =InvoiceBuyerTypes.NoInvoice;
+
+    /// <summary>
+    /// Tên người mua cá nhân hoặc người liên hệ.
+    /// Với cá nhân: đây là tên khách hàng.
+    /// Với doanh nghiệp: có thể là người liên hệ, có thể để trống.
+    /// </summary>
+    [StringLength(300)]
     public string? BuyerName { get; set; }
 
+    /// <summary>
+    /// Tên đơn vị/công ty/hộ kinh doanh.
+    /// Dùng khi BuyerType = Business.
+    /// Khi có BuyerTaxCode thì Viettel bắt buộc buyerLegalName.
+    /// </summary>
+    [StringLength(500)]
+    public string? BuyerLegalName { get; set; }
+
+    /// <summary>
+    /// MST / mã định danh người mua.
+    /// Không ép 10/13 số vì có MST cá nhân, CCCD/mã định danh, MST nước ngoài, mã chi nhánh.
+    /// </summary>
     [StringLength(50)]
     public string? BuyerTaxCode { get; set; }
 
-    [StringLength(500)]
+    /// <summary>
+    /// Địa chỉ xuất hóa đơn.
+    /// </summary>
+    [StringLength(1200)]
     public string? BuyerAddress { get; set; }
+
+    [StringLength(2000)]
+    public string? BuyerEmail { get; set; }
+
+    [StringLength(30)]
+    public string? BuyerPhone { get; set; }
 
     public decimal TotalQuantity { get; set; }
 
@@ -128,6 +164,38 @@ public class InvoiceHead : BaseStoreEntity
     /// </summary>
     [StringLength(500)]
     public string? ZipFilePath { get; set; }
+    // =========================================================
+    // Viettel official file status
+    // =========================================================
+
+    public InvoiceFileDownloadStatus OfficialPdfStatus { get; set; } =
+        InvoiceFileDownloadStatus.None;
+
+    public DateTime? OfficialPdfDownloadedAtUtc { get; set; }
+
+    public string? OfficialPdfFileName { get; set; }
+
+    public InvoiceFileDownloadStatus OfficialZipXmlStatus { get; set; } =
+        InvoiceFileDownloadStatus.None;
+
+    public DateTime? OfficialZipXmlDownloadedAtUtc { get; set; }
+
+    public string? OfficialZipXmlFileName { get; set; }
+
+    // =========================================================
+    // Viettel email status
+    // =========================================================
+
+    public InvoiceEmailSendStatus EmailStatus { get; set; } =
+        InvoiceEmailSendStatus.NotSent;
+
+    public DateTime? EmailSentAtUtc { get; set; }
+
+    public string? LastEmailTo { get; set; }
+
+    public int EmailSendCount { get; set; }
+
+    public string? LastEmailErrorMessage { get; set; }
     /// <summary>
     /// Hóa đơn gốc nếu đây là hóa đơn thay thế / điều chỉnh.
     /// Null nghĩa là hóa đơn gốc bình thường.

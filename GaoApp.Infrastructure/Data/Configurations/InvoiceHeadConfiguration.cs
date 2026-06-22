@@ -1,4 +1,5 @@
-﻿using GaoApp.Domain.Entities;
+﻿using GaoApp.Domain.Constants;
+using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -38,15 +39,34 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.InvoiceDate)
             .IsRequired();
+        // =====================================================
+        // THÔNG TIN NGƯỜI MUA XUẤT HÓA ĐƠN
+        // =====================================================
+
+        b.Property(x => x.BuyerType)
+            .HasMaxLength(30)
+            .IsRequired()
+            .HasDefaultValue(InvoiceBuyerTypes.NoInvoice);
 
         b.Property(x => x.BuyerName)
-            .HasMaxLength(250);
+            .HasMaxLength(300);
+
+        b.Property(x => x.BuyerLegalName)
+            .HasMaxLength(500);
 
         b.Property(x => x.BuyerTaxCode)
             .HasMaxLength(50);
 
         b.Property(x => x.BuyerAddress)
-            .HasMaxLength(500);
+            .HasMaxLength(1200);
+
+        b.Property(x => x.BuyerEmail)
+            .HasMaxLength(2000);
+
+        b.Property(x => x.BuyerPhone)
+            .HasMaxLength(30);
+
+        b.HasIndex(x => new { x.StoreId, x.BuyerTaxCode, x.IsDeleted });
 
         // Tiền
         b.Property(x => x.TotalQuantity)
@@ -129,7 +149,17 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.ZipFilePath)
             .HasMaxLength(500);
+        b.Property(x => x.OfficialPdfFileName)
+    .HasMaxLength(260);
 
+        b.Property(x => x.OfficialZipXmlFileName)
+            .HasMaxLength(260);
+
+        b.Property(x => x.LastEmailTo)
+            .HasMaxLength(500);
+
+        b.Property(x => x.LastEmailErrorMessage)
+            .HasMaxLength(1000);
         // =====================================================
         // PHASE 16 - HÓA ĐƠN THAY THẾ / ĐIỀU CHỈNH
         // =====================================================

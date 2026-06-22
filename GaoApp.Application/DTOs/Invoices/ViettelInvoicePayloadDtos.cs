@@ -1,10 +1,12 @@
-﻿using System.Text.Json.Serialization;
+﻿using GaoApp.Domain.Enums;
+using System.Text.Json.Serialization;
 
 namespace GaoApp.Application.DTOs.Invoices;
 
 public class ViettelInvoicePayloadResultDto
 {
     public int InvoiceHeadId { get; set; }
+    public int StoreId { get; set; }
 
     public int OrderId { get; set; }
 
@@ -44,6 +46,27 @@ public class ViettelInvoicePayloadResultDto
     public string? PdfFilePath { get; set; }
 
     public string? ZipFilePath { get; set; }
+    public InvoiceFileDownloadStatus OfficialPdfStatus { get; set; }
+
+    public DateTime? OfficialPdfDownloadedAtUtc { get; set; }
+
+    public string? OfficialPdfFileName { get; set; }
+
+    public InvoiceFileDownloadStatus OfficialZipXmlStatus { get; set; }
+
+    public DateTime? OfficialZipXmlDownloadedAtUtc { get; set; }
+
+    public string? OfficialZipXmlFileName { get; set; }
+
+    public InvoiceEmailSendStatus EmailStatus { get; set; }
+
+    public DateTime? EmailSentAtUtc { get; set; }
+
+    public string? LastEmailTo { get; set; }
+
+    public int EmailSendCount { get; set; }
+
+    public string? LastEmailErrorMessage { get; set; }
 
     public bool IsIssued { get; set; }
 
@@ -158,6 +181,8 @@ public class ViettelGeneralInvoiceInfoDto
 
 public class ViettelBuyerInfoDto
 {
+    [JsonPropertyName("buyerNotGetInvoice")]
+    public int? BuyerNotGetInvoice { get; set; }
     [JsonPropertyName("buyerName")]
     public string BuyerName { get; set; } = "Người mua không lấy hoá đơn";
 

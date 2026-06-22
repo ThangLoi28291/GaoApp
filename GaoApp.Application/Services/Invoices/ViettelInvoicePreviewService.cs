@@ -23,8 +23,8 @@ public class ViettelInvoicePreviewService : IViettelInvoicePreviewService
     }
 
     public async Task<Result<ViettelInvoicePreviewFileDto>> PreviewDraftPdfAsync(
-        int invoiceHeadId,
-        CancellationToken ct = default)
+    int invoiceHeadId,
+    CancellationToken ct = default)
     {
         if (invoiceHeadId <= 0)
         {
@@ -32,16 +32,6 @@ public class ViettelInvoicePreviewService : IViettelInvoicePreviewService
                 Error.Validation(
                     "Invoice.InvalidInvoiceHeadId",
                     "InvoiceHeadId không hợp lệ."));
-        }
-
-        var setting = await _settingRepository.GetActiveViettelAsync(ct);
-
-        if (setting == null)
-        {
-            return Result<ViettelInvoicePreviewFileDto>.Failure(
-                Error.Validation(
-                    "InvoiceProvider.NotConfigured",
-                    "Chưa có cấu hình Viettel đang dùng."));
         }
 
         var payloadResult = await _payloadBuilder.BuildAsync(invoiceHeadId, ct);
@@ -52,6 +42,37 @@ public class ViettelInvoicePreviewService : IViettelInvoicePreviewService
         }
 
         var payloadData = payloadResult.Value;
+        if (payloadData.StoreId <= 0)
+        {
+            return Result<ViettelInvoicePreviewFileDto>.Failure(
+                Error.Validation(
+                    "Invoice.StoreIdMissing",
+                    "PayloadResult thiếu StoreId, không thể lấy cấu hình Viettel theo cửa hàng."));
+        }
+
+        var setting = await _settingRepository.GetActiveViettelAsync(
+            payloadData.StoreId,
+            ct);
+
+        if (setting == null)
+        {
+            return Result<ViettelInvoicePreviewFileDto>.Failure(
+                Error.Validation(
+                    "InvoiceProvider.NotConfigured",
+                    "Chưa có cấu hình Viettel đang dùng cho cửa hàng này."));
+        }
+
+        var supplierTaxCode = FirstNonEmpty(
+            payloadData.SupplierTaxCode,
+            setting.SupplierTaxCode);
+
+        if (string.IsNullOrWhiteSpace(supplierTaxCode))
+        {
+            return Result<ViettelInvoicePreviewFileDto>.Failure(
+                Error.Validation(
+                    "Invoice.SupplierTaxCodeMissing",
+                    "Hóa đơn thiếu MST phát hành, không thể preview Viettel."));
+        }
 
         return await _previewClient.CreateDraftPreviewAsync(
             invoiceHeadId: invoiceHeadId,
@@ -59,8 +80,19 @@ public class ViettelInvoicePreviewService : IViettelInvoicePreviewService
             username: setting.Username,
             password: setting.Password,
             authMode: setting.AuthMode,
-            supplierTaxCode: setting.SupplierTaxCode,
+            supplierTaxCode: supplierTaxCode,
             payload: payloadData.Payload,
             ct: ct);
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
     }
 }

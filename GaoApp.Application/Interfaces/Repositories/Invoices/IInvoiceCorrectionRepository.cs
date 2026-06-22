@@ -29,6 +29,17 @@ public interface IInvoiceCorrectionRepository
     Task<List<InvoiceCorrectionCase>> GetCasesByOriginalInvoiceHeadIdAsync(
         int originalInvoiceHeadId,
         CancellationToken ct = default);
+    Task<InvoiceCorrectionCase?> GetUnfinishedCaseByOriginalAsync(
+    int originalInvoiceHeadId,
+    CancellationToken ct = default);
+
+    Task<InvoiceCorrectionCase?> GetActiveReplacementCaseByOriginalAsync(
+        int originalInvoiceHeadId,
+        CancellationToken ct = default);
+
+    Task<List<InvoiceCorrectionCase>> GetActiveCasesByOriginalAsync(
+        int originalInvoiceHeadId,
+        CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
 }

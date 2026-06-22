@@ -30,25 +30,23 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
         if (original == null)
         {
             return Result<InvoiceCorrectionCreateInfoDto>.Failure(
-                Error.NotFound("Không tìm thấy hóa đơn gốc."));
+                Error.NotFound("Không tìm thấy hóa đơn."));
         }
 
-        var validate = ValidateOriginalInvoice(original);
+        var validate = ValidateOriginalInvoice(
+            original,
+            type);
 
         if (!validate.IsSuccess)
             return Result<InvoiceCorrectionCreateInfoDto>.Failure(validate.Error!);
 
-        var openCase = await _repository.GetOpenCaseByOriginalAsync(
-            originalInvoiceHeadId,
+        var ruleValidation = await ValidateCorrectionCreationRuleAsync(
+            original,
+            type,
             ct);
 
-        if (openCase != null)
-        {
-            return Result<InvoiceCorrectionCreateInfoDto>.Failure(
-                Error.Validation(
-                    "InvoiceCorrection.OpenCaseExists",
-                    $"Hóa đơn gốc đang có hồ sơ xử lý sai sót chưa hoàn tất. Mã hồ sơ: #{openCase.Id}."));
-        }
+        if (!ruleValidation.IsSuccess)
+            return Result<InvoiceCorrectionCreateInfoDto>.Failure(ruleValidation.Error!);
 
         var originalNo = GetOriginalInvoiceNo(original);
 
@@ -80,25 +78,41 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
         if (request.OriginalInvoiceHeadId <= 0)
         {
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.Validation("InvoiceCorrection.OriginalInvalid", "Hóa đơn gốc không hợp lệ."));
+                Error.Validation(
+                    "InvoiceCorrection.OriginalInvalid",
+                    "Hóa đơn không hợp lệ."));
+        }
+
+        if (!IsValidCorrectionType(request.Type))
+        {
+            return Result<CreateInvoiceCorrectionResultDto>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.InvalidCorrectionType",
+                    "Loại xử lý sai sót không hợp lệ."));
         }
 
         if (string.IsNullOrWhiteSpace(reason))
         {
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.Validation("InvoiceCorrection.ReasonRequired", "Vui lòng nhập lý do sai sót."));
+                Error.Validation(
+                    "InvoiceCorrection.ReasonRequired",
+                    "Vui lòng nhập lý do sai sót."));
         }
 
         if (string.IsNullOrWhiteSpace(agreementNo))
         {
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.Validation("InvoiceCorrection.AgreementRequired", "Vui lòng nhập số văn bản / biên bản thỏa thuận."));
+                Error.Validation(
+                    "InvoiceCorrection.AgreementRequired",
+                    "Vui lòng nhập số văn bản / biên bản thỏa thuận."));
         }
 
         if (request.AgreementDate == default)
         {
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.Validation("InvoiceCorrection.AgreementDateRequired", "Vui lòng nhập ngày văn bản thỏa thuận."));
+                Error.Validation(
+                    "InvoiceCorrection.AgreementDateRequired",
+                    "Vui lòng nhập ngày văn bản thỏa thuận."));
         }
 
         var original = await _repository.GetOriginalInvoiceWithDetailsAsync(
@@ -108,25 +122,23 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
         if (original == null)
         {
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.NotFound("Không tìm thấy hóa đơn gốc."));
+                Error.NotFound("Không tìm thấy hóa đơn."));
         }
 
-        var validate = ValidateOriginalInvoice(original);
+        var validate = ValidateOriginalInvoice(
+            original,
+            request.Type);
 
         if (!validate.IsSuccess)
             return Result<CreateInvoiceCorrectionResultDto>.Failure(validate.Error!);
 
-        var openCase = await _repository.GetOpenCaseByOriginalAsync(
-            original.Id,
+        var ruleValidation = await ValidateCorrectionCreationRuleAsync(
+            original,
+            request.Type,
             ct);
 
-        if (openCase != null)
-        {
-            return Result<CreateInvoiceCorrectionResultDto>.Failure(
-                Error.Validation(
-                    "InvoiceCorrection.OpenCaseExists",
-                    $"Hóa đơn gốc đang có hồ sơ xử lý sai sót chưa hoàn tất. Mã hồ sơ: #{openCase.Id}."));
-        }
+        if (!ruleValidation.IsSuccess)
+            return Result<CreateInvoiceCorrectionResultDto>.Failure(ruleValidation.Error!);
 
         var originalInvoiceNo = GetOriginalInvoiceNo(original);
 
@@ -135,7 +147,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
                 Error.Validation(
                     "InvoiceCorrection.OriginalInvoiceNoMissing",
-                    "Hóa đơn gốc chưa có số hóa đơn Viettel, không thể lập thay thế/điều chỉnh."));
+                    "Hóa đơn chưa có số hóa đơn Viettel, không thể lập thay thế/điều chỉnh."));
         }
 
         if (!original.IssuedAtUtc.HasValue)
@@ -143,7 +155,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
                 Error.Validation(
                     "InvoiceCorrection.OriginalIssuedDateMissing",
-                    "Hóa đơn gốc chưa có ngày phát hành Viettel, không thể lập thay thế/điều chỉnh."));
+                    "Hóa đơn chưa có ngày phát hành Viettel, không thể lập thay thế/điều chỉnh."));
         }
 
         var newInvoice = BuildNewCorrectionInvoice(
@@ -183,16 +195,181 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             });
     }
 
-    private static Result<bool> ValidateOriginalInvoice(InvoiceHead original)
+    public async Task<Result<InvoiceCorrectionHistoryDto>> GetHistoryAsync(
+        int invoiceHeadId,
+        CancellationToken ct = default)
     {
-        if (original.OriginalInvoiceHeadId.HasValue || original.CorrectionType.HasValue)
+        if (invoiceHeadId <= 0)
+        {
+            return Result<InvoiceCorrectionHistoryDto>.Failure(
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
+        }
+
+        var currentInvoice = await _repository.GetInvoiceHeadForHistoryAsync(
+            invoiceHeadId,
+            ct);
+
+        if (currentInvoice == null)
+        {
+            return Result<InvoiceCorrectionHistoryDto>.Failure(
+                Error.NotFound("Không tìm thấy hóa đơn."));
+        }
+
+        var originalInvoiceHeadId = currentInvoice.OriginalInvoiceHeadId ?? currentInvoice.Id;
+
+        var originalInvoiceNo = currentInvoice.OriginalInvoiceHeadId.HasValue
+            ? currentInvoice.OriginalInvoiceNo
+            : GetOriginalInvoiceNo(currentInvoice);
+
+        var cases = await _repository.GetCasesByOriginalInvoiceHeadIdAsync(
+            originalInvoiceHeadId,
+            ct);
+
+        var result = new InvoiceCorrectionHistoryDto
+        {
+            CurrentInvoiceHeadId = currentInvoice.Id,
+            OriginalInvoiceHeadId = originalInvoiceHeadId,
+            OriginalInvoiceNo = originalInvoiceNo,
+            IsCurrentOriginal = currentInvoice.Id == originalInvoiceHeadId,
+            Items = cases
+                .Select(MapHistoryItem)
+                .ToList()
+        };
+
+        return Result<InvoiceCorrectionHistoryDto>.Success(result);
+    }
+
+    private async Task<Result<bool>> ValidateCorrectionCreationRuleAsync(
+        InvoiceHead original,
+        InvoiceCorrectionType requestedType,
+        CancellationToken ct)
+    {
+        // 1. Không cho tạo hồ sơ mới nếu còn hồ sơ đang treo.
+        // Các trạng thái này phải xử lý tiếp hoặc hủy trước.
+        var unfinishedCase = await _repository.GetUnfinishedCaseByOriginalAsync(
+            original.Id,
+            ct);
+
+        if (unfinishedCase != null)
+        {
+            var unfinishedInvoice = unfinishedCase.NewInvoiceHead;
+
+            var unfinishedText = unfinishedInvoice == null
+                ? $"Case #{unfinishedCase.Id}"
+                : !string.IsNullOrWhiteSpace(unfinishedInvoice.ProviderInvoiceNo)
+                    ? unfinishedInvoice.ProviderInvoiceNo
+                    : $"Invoice #{unfinishedInvoice.Id}";
+
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.UnfinishedCaseExists",
+                    $"Hóa đơn này đang có hồ sơ xử lý sai sót chưa hoàn tất ({unfinishedText}). Vui lòng phát hành tiếp, sửa lỗi hoặc hủy hồ sơ đó trước."));
+        }
+
+        // 2. Nếu hóa đơn này đã có hóa đơn thay thế đang hoạt động/đã phát hành,
+        // thì hóa đơn này không còn là hóa đơn hiện hành.
+        // Muốn xử lý tiếp phải mở hóa đơn thay thế.
+        var activeReplacement = await _repository.GetActiveReplacementCaseByOriginalAsync(
+            original.Id,
+            ct);
+
+        if (activeReplacement != null)
+        {
+            var replacementInvoice = activeReplacement.NewInvoiceHead;
+
+            var replacementText = replacementInvoice == null
+                ? $"Case #{activeReplacement.Id}"
+                : !string.IsNullOrWhiteSpace(replacementInvoice.ProviderInvoiceNo)
+                    ? replacementInvoice.ProviderInvoiceNo
+                    : $"Invoice #{replacementInvoice.Id}";
+
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.ReplacementAlreadyExists",
+                    $"Hóa đơn này đã được thay thế bởi {replacementText}. Vui lòng mở hóa đơn thay thế đó để xử lý sai sót tiếp."));
+        }
+
+        // 3. Kiểm tra hình thức xử lý đầu tiên.
+        // - Nếu lần đầu đã điều chỉnh thì các lần sau tiếp tục điều chỉnh.
+        // - Không chuyển sang thay thế trên chính hóa đơn đó.
+        // - Nếu chưa có hồ sơ nào thì được chọn điều chỉnh hoặc thay thế.
+        var activeCases = await _repository.GetActiveCasesByOriginalAsync(
+            original.Id,
+            ct);
+
+        var firstActiveCase = activeCases
+            .OrderBy(x => x.Id)
+            .FirstOrDefault();
+
+        if (firstActiveCase == null)
+        {
+            return Result<bool>.Success(true);
+        }
+
+        var firstType = firstActiveCase.Type;
+
+        if (firstType == InvoiceCorrectionType.AdjustmentAmount ||
+            firstType == InvoiceCorrectionType.AdjustmentInfo)
+        {
+            if (requestedType == InvoiceCorrectionType.Replacement)
+            {
+                return Result<bool>.Failure(
+                    Error.Validation(
+                        "InvoiceCorrection.FirstMethodWasAdjustment",
+                        "Hóa đơn này đã xử lý sai sót lần đầu bằng hình thức điều chỉnh. Các lần tiếp theo nên tiếp tục lập hóa đơn điều chỉnh, không chuyển sang thay thế trên cùng hóa đơn."));
+            }
+
+            if (requestedType == InvoiceCorrectionType.AdjustmentAmount ||
+                requestedType == InvoiceCorrectionType.AdjustmentInfo)
+            {
+                return Result<bool>.Success(true);
+            }
+        }
+
+        if (firstType == InvoiceCorrectionType.Replacement)
+        {
+            // Trường hợp này thường đã bị chặn ở activeReplacement phía trên.
+            // Giữ thêm để an toàn nếu dữ liệu thiếu NewInvoiceHead.
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.FirstMethodWasReplacement",
+                    "Hóa đơn này đã có hóa đơn thay thế. Vui lòng mở hóa đơn thay thế để xử lý tiếp."));
+        }
+
+        return Result<bool>.Failure(
+            Error.Validation(
+                "InvoiceCorrection.InvalidRule",
+                "Không xác định được quy tắc xử lý sai sót cho hóa đơn này."));
+    }
+
+    private static Result<bool> ValidateOriginalInvoice(
+        InvoiceHead original,
+        InvoiceCorrectionType requestedType)
+    {
+        if (!IsValidCorrectionType(requestedType))
         {
             return Result<bool>.Failure(
                 Error.Validation(
-                    "InvoiceCorrection.OriginalMustBeRoot",
-                    "Tạm thời chỉ cho lập thay thế/điều chỉnh từ hóa đơn gốc. Không lập tiếp từ hóa đơn đã là thay thế/điều chỉnh."));
+                    "InvoiceCorrection.InvalidCorrectionType",
+                    "Loại xử lý sai sót không hợp lệ."));
         }
 
+        // Không cho lấy hóa đơn điều chỉnh làm gốc để xử lý tiếp.
+        // Khi cần điều chỉnh tiếp, lập thêm điều chỉnh trên hóa đơn gốc/hoá đơn hiện hành.
+        if (original.CorrectionType == InvoiceCorrectionType.AdjustmentAmount ||
+            original.CorrectionType == InvoiceCorrectionType.AdjustmentInfo)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.CannotCorrectAdjustmentInvoice",
+                    "Không lập xử lý sai sót trực tiếp từ hóa đơn điều chỉnh. Vui lòng xử lý tiếp trên hóa đơn gốc hoặc hóa đơn hiện hành."));
+        }
+
+        // Hóa đơn thay thế được phép xử lý tiếp.
+        // Ví dụ: F0 -> TT1, nếu TT1 sai thì TT1 -> TT2.
+        // Vì TT1 là hóa đơn đang có hiệu lực sau thay thế.
         if (!IsIssuedLike(original))
         {
             return Result<bool>.Failure(
@@ -206,7 +383,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             return Result<bool>.Failure(
                 Error.Validation(
                     "InvoiceCorrection.OriginalInvoiceNoMissing",
-                    "Hóa đơn gốc chưa có số hóa đơn Viettel."));
+                    "Hóa đơn chưa có số hóa đơn Viettel."));
         }
 
         if (!original.IssuedAtUtc.HasValue)
@@ -214,7 +391,15 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             return Result<bool>.Failure(
                 Error.Validation(
                     "InvoiceCorrection.OriginalIssuedDateMissing",
-                    "Hóa đơn gốc chưa có ngày phát hành Viettel."));
+                    "Hóa đơn chưa có ngày phát hành Viettel."));
+        }
+
+        if (string.IsNullOrWhiteSpace(original.CodeOfTax))
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceCorrection.OriginalNotAcceptedByTaxAuthority",
+                    "Hóa đơn chưa được Cơ quan Thuế chấp nhận, chưa thể lập thay thế/điều chỉnh. Vui lòng đồng bộ trạng thái Viettel trước."));
         }
 
         return Result<bool>.Success(true);
@@ -284,10 +469,11 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
 
         return newInvoice;
     }
+
     private static void AddAdjustmentInfoDetail(
-    InvoiceHead newInvoice,
-    InvoiceHead original,
-    string reason)
+        InvoiceHead newInvoice,
+        InvoiceHead original,
+        string reason)
     {
         var originalInvoiceNo = GetOriginalInvoiceNo(original) ?? $"#{original.Id}";
 
@@ -366,6 +552,52 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
         invoice.GrandTotal = details.Sum(x => x.TotalAmount);
     }
 
+    private static InvoiceCorrectionHistoryItemDto MapHistoryItem(
+        InvoiceCorrectionCase correctionCase)
+    {
+        var newInvoice = correctionCase.NewInvoiceHead;
+
+        return new InvoiceCorrectionHistoryItemDto
+        {
+            CorrectionCaseId = correctionCase.Id,
+            OriginalInvoiceHeadId = correctionCase.OriginalInvoiceHeadId,
+            NewInvoiceHeadId = correctionCase.NewInvoiceHeadId,
+
+            NewInvoiceNo = newInvoice?.InvoiceNumber,
+            NewProviderInvoiceNo = newInvoice?.ProviderInvoiceNo,
+
+            Type = correctionCase.Type,
+            TypeName = GetTypeName(correctionCase.Type),
+            TypeBadgeClass = GetTypeBadgeClass(correctionCase.Type),
+
+            Status = correctionCase.Status,
+            StatusName = GetStatusName(correctionCase.Status),
+            StatusBadgeClass = GetStatusBadgeClass(correctionCase.Status),
+
+            ProviderStatus = newInvoice?.ProviderStatus,
+            ProviderStatusName = newInvoice == null
+                ? null
+                : GetProviderStatusName(newInvoice.ProviderStatus),
+
+            Reason = correctionCase.Reason,
+            AgreementDocumentNo = correctionCase.AgreementDocumentNo,
+            AgreementDateUtc = correctionCase.AgreementDateUtc,
+            CreatedAtUtc = correctionCase.CreatedAtUtc,
+            IssuedAtUtc = correctionCase.IssuedAtUtc,
+
+            LastErrorCode = correctionCase.LastErrorCode,
+            LastErrorMessage = correctionCase.LastErrorMessage
+        };
+    }
+
+    private static bool IsValidCorrectionType(InvoiceCorrectionType type)
+    {
+        return type is
+            InvoiceCorrectionType.Replacement or
+            InvoiceCorrectionType.AdjustmentAmount or
+            InvoiceCorrectionType.AdjustmentInfo;
+    }
+
     private static bool IsIssuedLike(InvoiceHead invoice)
     {
         if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
@@ -418,106 +650,6 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             InvoiceCorrectionType.AdjustmentAmount => "Hóa đơn điều chỉnh tiền",
             InvoiceCorrectionType.AdjustmentInfo => "Hóa đơn điều chỉnh thông tin",
             _ => type.ToString()
-        };
-    }
-
-    private static DateTime ToUtcDate(DateTime value)
-    {
-        return value.Kind == DateTimeKind.Utc
-            ? value
-            : DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
-    }
-
-    private static string TrimMax(string value, int maxLength)
-    {
-        value = (value ?? string.Empty).Trim();
-
-        if (value.Length <= maxLength)
-            return value;
-
-        return value[..maxLength];
-    }
-    public async Task<Result<InvoiceCorrectionHistoryDto>> GetHistoryAsync(
-    int invoiceHeadId,
-    CancellationToken ct = default)
-    {
-        if (invoiceHeadId <= 0)
-        {
-            return Result<InvoiceCorrectionHistoryDto>.Failure(
-                Error.Validation(
-                    "Invoice.InvalidInvoiceHeadId",
-                    "InvoiceHeadId không hợp lệ."));
-        }
-
-        var currentInvoice = await _repository.GetInvoiceHeadForHistoryAsync(
-            invoiceHeadId,
-            ct);
-
-        if (currentInvoice == null)
-        {
-            return Result<InvoiceCorrectionHistoryDto>.Failure(
-                Error.NotFound("Không tìm thấy hóa đơn."));
-        }
-
-        var originalInvoiceHeadId = currentInvoice.OriginalInvoiceHeadId ?? currentInvoice.Id;
-
-        var originalInvoiceNo = currentInvoice.OriginalInvoiceHeadId.HasValue
-            ? currentInvoice.OriginalInvoiceNo
-            : GetOriginalInvoiceNo(currentInvoice);
-
-        var cases = await _repository.GetCasesByOriginalInvoiceHeadIdAsync(
-            originalInvoiceHeadId,
-            ct);
-
-        var result = new InvoiceCorrectionHistoryDto
-        {
-            CurrentInvoiceHeadId = currentInvoice.Id,
-            OriginalInvoiceHeadId = originalInvoiceHeadId,
-            OriginalInvoiceNo = originalInvoiceNo,
-            IsCurrentOriginal = currentInvoice.Id == originalInvoiceHeadId,
-            Items = cases
-                .Select(MapHistoryItem)
-                .ToList()
-        };
-
-        return Result<InvoiceCorrectionHistoryDto>.Success(result);
-    }
-
-    private static InvoiceCorrectionHistoryItemDto MapHistoryItem(
-        InvoiceCorrectionCase correctionCase)
-    {
-        var newInvoice = correctionCase.NewInvoiceHead;
-
-        return new InvoiceCorrectionHistoryItemDto
-        {
-            CorrectionCaseId = correctionCase.Id,
-            OriginalInvoiceHeadId = correctionCase.OriginalInvoiceHeadId,
-            NewInvoiceHeadId = correctionCase.NewInvoiceHeadId,
-
-            NewInvoiceNo = newInvoice?.InvoiceNumber,
-            NewProviderInvoiceNo = newInvoice?.ProviderInvoiceNo,
-
-            Type = correctionCase.Type,
-            TypeName = GetTypeName(correctionCase.Type),
-            TypeBadgeClass = GetTypeBadgeClass(correctionCase.Type),
-
-            Status = correctionCase.Status,
-            StatusName = GetStatusName(correctionCase.Status),
-            StatusBadgeClass = GetStatusBadgeClass(correctionCase.Status),
-
-            ProviderStatus = newInvoice?.ProviderStatus,
-            ProviderStatusName = newInvoice == null
-                ? null
-                : GetProviderStatusName(newInvoice.ProviderStatus),
-
-            Reason = correctionCase.Reason,
-            AgreementDocumentNo = correctionCase.AgreementDocumentNo,
-            AgreementDateUtc = correctionCase.AgreementDateUtc,
-            CreatedAtUtc = correctionCase.CreatedAtUtc,
-            IssuedAtUtc = correctionCase.IssuedAtUtc,
-
-            LastErrorCode = correctionCase.LastErrorCode,
-            LastErrorMessage = correctionCase.LastErrorMessage
         };
     }
 
@@ -578,5 +710,22 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             InvoiceProviderStatus.EmailSent => "Đã gửi email",
             _ => status.ToString()
         };
+    }
+
+    private static DateTime ToUtcDate(DateTime value)
+    {
+        return value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value.Date, DateTimeKind.Utc);
+    }
+
+    private static string TrimMax(string value, int maxLength)
+    {
+        value = (value ?? string.Empty).Trim();
+
+        if (value.Length <= maxLength)
+            return value;
+
+        return value[..maxLength];
     }
 }

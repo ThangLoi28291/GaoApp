@@ -33,11 +33,37 @@ public class InvoiceProviderSettingRepository : IInvoiceProviderSettingRepositor
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
     }
 
+    /// <summary>
+    /// Bản cũ: lấy Viettel active mới nhất, không lọc StoreId.
+    /// Giữ lại để không làm lỗi các service/admin cũ nếu đang dùng.
+    /// </summary>
     public async Task<InvoiceProviderSetting?> GetActiveViettelAsync(CancellationToken ct = default)
     {
         return await _db.InvoiceProviderSettings
             .AsNoTracking()
             .Where(x =>
+                !x.IsDeleted &&
+                x.IsActive &&
+                x.ProviderCode == "VIETTEL")
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// Bản mới: lấy Viettel active theo StoreId.
+    /// Dùng khi tạo InvoiceHead để snapshot đúng cấu hình cửa hàng.
+    /// </summary>
+    public async Task<InvoiceProviderSetting?> GetActiveViettelAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        if (storeId <= 0)
+            return null;
+
+        return await _db.InvoiceProviderSettings
+            .AsNoTracking()
+            .Where(x =>
+                x.StoreId == storeId &&
                 !x.IsDeleted &&
                 x.IsActive &&
                 x.ProviderCode == "VIETTEL")
@@ -53,10 +79,10 @@ public class InvoiceProviderSettingRepository : IInvoiceProviderSettingRepositor
         string invoiceSeries,
         CancellationToken ct = default)
     {
-        providerCode = providerCode.Trim().ToUpperInvariant();
-        supplierTaxCode = supplierTaxCode.Trim();
-        templateCode = templateCode.Trim();
-        invoiceSeries = invoiceSeries.Trim();
+        providerCode = (providerCode ?? string.Empty).Trim().ToUpperInvariant();
+        supplierTaxCode = (supplierTaxCode ?? string.Empty).Trim();
+        templateCode = (templateCode ?? string.Empty).Trim();
+        invoiceSeries = (invoiceSeries ?? string.Empty).Trim();
 
         return await _db.InvoiceProviderSettings.AnyAsync(x =>
             !x.IsDeleted &&

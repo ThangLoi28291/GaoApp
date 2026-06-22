@@ -288,5 +288,27 @@ File / khu vực liên quan:
 * Điều chỉnh được lập nhiều lần.
 * Thay thế đi theo chuỗi.
 * Hóa đơn đã bị thay thế không còn là hóa đơn hiện hành để xử lý tiếp.
+## 2026-06-22
+
+### Invoice / Viettel Dashboard
+Đã hoàn tất Phase 21.10:
+- Thêm dashboard kiểm tra hóa đơn Viettel.
+- Lọc hóa đơn đã phát hành nhưng thiếu PDF.
+- Lọc hóa đơn đã phát hành nhưng thiếu ZIP/XML.
+- Lọc hóa đơn đã phát hành nhưng chưa gửi email.
+- Lọc lỗi tải PDF, lỗi tải ZIP/XML, lỗi gửi email.
+- Lọc hóa đơn cần tra cứu UUID.
+- Thêm thao tác nhanh: tra cứu UUID, tải PDF, tải ZIP/XML, gửi email, mở màn hình xử lý.
+
+File liên quan:
+- ViettelInvoiceDashboardDto.cs
+- IInvoiceViettelDashboardService.cs
+- InvoiceViettelDashboardService.cs
+- IInvoiceRepository.cs
+- InvoiceRepository.cs
+- InvoiceController.cs
+- InvoiceController.ViettelDashboard.cs
+- ViettelDashboard.cshtml
+- _ViettelActionToolbar.cshtml
 
 

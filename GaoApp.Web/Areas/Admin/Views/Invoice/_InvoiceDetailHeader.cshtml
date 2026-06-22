@@ -1,0 +1,220 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceDetailViewModel
+
+@{
+    var invoice = Model.Invoice;
+
+    var issuedStatuses = new[]
+    {
+        InvoiceProviderStatus.Issued,
+        InvoiceProviderStatus.PdfDownloaded,
+        InvoiceProviderStatus.ZipDownloaded,
+        InvoiceProviderStatus.EmailSent
+    };
+
+    var isViettelIssued =
+        !string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo)
+        || issuedStatuses.Contains(invoice.ProviderStatus);
+
+    var isHardLocked = invoice.IsLocked || isViettelIssued;
+    var canEditInvoice = !isHardLocked;
+
+    var isCorrectionInvoice =
+        invoice.OriginalInvoiceHeadId.HasValue ||
+        invoice.CorrectionType.HasValue;
+
+    var providerStatusName = invoice.ProviderStatus switch
+    {
+        InvoiceProviderStatus.LocalDraft => "Chưa phát hành",
+        InvoiceProviderStatus.ReadyToIssue => "Sẵn sàng phát hành",
+        InvoiceProviderStatus.Previewed => "Đã preview nháp",
+        InvoiceProviderStatus.DraftSent => "Đã gửi nháp",
+        InvoiceProviderStatus.Issuing => "Đang phát hành",
+        InvoiceProviderStatus.Issued => "Đã phát hành",
+        InvoiceProviderStatus.IssuedWaitingNumber => "Chờ tra cứu số HĐ",
+        InvoiceProviderStatus.IssueFailed => "Phát hành lỗi",
+        InvoiceProviderStatus.Cancelled => "Đã hủy",
+        InvoiceProviderStatus.PdfDownloaded => "Đã tải PDF",
+        InvoiceProviderStatus.ZipDownloaded => "Đã tải ZIP/XML",
+        InvoiceProviderStatus.EmailSent => "Đã gửi email",
+        _ => invoice.ProviderStatus.ToString()
+    };
+
+    var providerStatusClass = invoice.ProviderStatus switch
+    {
+        InvoiceProviderStatus.LocalDraft => "bg-secondary",
+        InvoiceProviderStatus.ReadyToIssue => "bg-info",
+        InvoiceProviderStatus.Previewed => "bg-info",
+        InvoiceProviderStatus.DraftSent => "bg-info",
+        InvoiceProviderStatus.Issuing => "bg-warning text-dark",
+        InvoiceProviderStatus.Issued => "bg-success",
+        InvoiceProviderStatus.IssuedWaitingNumber => "bg-warning text-dark",
+        InvoiceProviderStatus.IssueFailed => "bg-danger",
+        InvoiceProviderStatus.Cancelled => "bg-dark",
+        InvoiceProviderStatus.PdfDownloaded => "bg-success",
+        InvoiceProviderStatus.ZipDownloaded => "bg-success",
+        InvoiceProviderStatus.EmailSent => "bg-success",
+        _ => "bg-secondary"
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3 page-header">
+    <div>
+        <h3 class="mb-1 page-title">
+            Hóa đơn bán ra #@invoice.Id
+        </h3>
+
+        <div class="text-muted">
+            Ngày tạo: @invoice.InvoiceDate.ToString("dd/MM/yyyy HH:mm")
+        </div>
+
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+            @if (isHardLocked)
+            {
+                <span class="badge bg-danger">LOCKED</span>
+            }
+            else
+            {
+                <span class="badge bg-success">EDITABLE</span>
+            }
+
+            <span class="badge @providerStatusClass">
+                @providerStatusName
+            </span>
+
+            @if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
+            {
+                <span class="badge bg-success">
+                    Số HĐ: @invoice.ProviderInvoiceNo
+                </span>
+            }
+        </div>
+
+        @if (isHardLocked)
+        {
+            <div class="mt-2 small text-muted">
+                @(string.IsNullOrWhiteSpace(invoice.LockReason)
+                    ? "Hóa đơn đã khóa."
+                    : invoice.LockReason)
+            </div>
+        }
+    </div>
+
+    <div class="d-flex gap-2 invoice-toolbar">
+        @if (canEditInvoice)
+        {
+            <button type="button"
+                    class="btn btn-primary"
+                    id="btnOpenManualDetailModal"
+                    data-invoice-head-id="@invoice.Id">
+                <i class="bx bx-plus"></i>
+                Thêm dòng manual (F2)
+            </button>
+
+            <button type="button"
+                    class="btn btn-outline-danger"
+                    id="btnLockInvoice"
+                    data-invoice-head-id="@invoice.Id">
+                <i class="bx bx-lock"></i>
+                Khóa hóa đơn
+            </button>
+        }
+        else
+        {
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    disabled>
+                <i class="bx bx-lock"></i>
+                Đã khóa - không thể sửa
+            </button>
+
+            @if (invoice.IsLocked && !isViettelIssued)
+            {
+                <button type="button"
+                        class="btn btn-outline-warning"
+                        id="btnUnlockInvoice"
+                        data-invoice-head-id="@invoice.Id">
+                    <i class="bx bx-lock-open"></i>
+                    Mở khóa
+                </button>
+            }
+        }
+
+        @if (isViettelIssued && !isCorrectionInvoice)
+        {
+            <div class="btn-group">
+                <button type="button"
+                        class="btn btn-outline-danger dropdown-toggle"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                    <i class="bx bx-error-circle"></i>
+                    Xử lý sai sót
+                </button>
+
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item"
+                               asp-area="Admin"
+                               asp-controller="InvoiceCorrection"
+                               asp-action="Create"
+                               asp-route-originalInvoiceHeadId="@invoice.Id"
+                               asp-route-type="Replacement">
+                            Lập hóa đơn thay thế
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item"
+                               asp-area="Admin"
+                               asp-controller="InvoiceCorrection"
+                               asp-action="Create"
+                               asp-route-originalInvoiceHeadId="@invoice.Id"
+                               asp-route-type="AdjustmentAmount">
+                            Lập hóa đơn điều chỉnh tiền
+                        </a>
+                    </li>
+
+                    <li>
+                        <a class="dropdown-item"
+                               asp-area="Admin"
+                               asp-controller="InvoiceCorrection"
+                               asp-action="Create"
+                               asp-route-originalInvoiceHeadId="@invoice.Id"
+                               asp-route-type="AdjustmentInfo">
+                            Lập hóa đơn điều chỉnh thông tin
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        }
+
+        <a asp-area="Admin"
+               asp-controller="Invoice"
+               asp-action="ViettelPayload"
+               asp-route-id="@invoice.Id"
+               class="btn btn-outline-info">
+            <i class="bx bx-code-curly"></i>
+            Xem JSON Viettel
+        </a>
+
+        @if (isViettelIssued)
+        {
+            <a asp-area="Admin"
+                   asp-controller="Invoice"
+                   asp-action="ViettelPayload"
+                   asp-route-id="@invoice.Id"
+                   class="btn btn-outline-success">
+                <i class="bx bx-envelope"></i>
+                Gửi email
+            </a>
+        }
+
+        <a asp-area="Admin"
+               asp-controller="Invoice"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bx bx-arrow-back"></i>
+            Quay lại
+        </a>
+    </div>
+</div>

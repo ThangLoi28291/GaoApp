@@ -7,8 +7,6 @@ using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
@@ -27,49 +25,61 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
     }
 
     public async Task<Result<ViettelInvoiceLookupResultDto>> SearchByTransactionUuidAsync(
-     int invoiceHeadId,
-     string baseUrl,
-     string username,
-     string password,
-     InvoiceProviderAuthMode authMode,
-     string supplierTaxCode,
-     string transactionUuid,
-     CancellationToken ct = default)
+        int invoiceHeadId,
+        string baseUrl,
+        string username,
+        string password,
+        InvoiceProviderAuthMode authMode,
+        string supplierTaxCode,
+        string transactionUuid,
+        CancellationToken ct = default)
     {
         if (invoiceHeadId <= 0)
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.InvoiceHeadIdInvalid", "InvoiceHeadId không hợp lệ."));
+                Error.Validation(
+                    "Viettel.InvoiceHeadIdInvalid",
+                    "InvoiceHeadId không hợp lệ."));
         }
 
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.BaseUrlRequired", "BaseUrl Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.BaseUrlRequired",
+                    "BaseUrl Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(username))
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.UsernameRequired", "Username Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.UsernameRequired",
+                    "Username Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(password))
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.PasswordRequired", "Password Viettel không được trống."));
+                Error.Validation(
+                    "Viettel.PasswordRequired",
+                    "Password Viettel không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(supplierTaxCode))
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.SupplierTaxCodeRequired", "MST phát hành không được trống."));
+                Error.Validation(
+                    "Viettel.SupplierTaxCodeRequired",
+                    "MST phát hành không được trống."));
         }
 
         if (string.IsNullOrWhiteSpace(transactionUuid))
         {
             return Result<ViettelInvoiceLookupResultDto>.Failure(
-                Error.Validation("Viettel.TransactionUuidRequired", "TransactionUuid không được trống."));
+                Error.Validation(
+                    "Viettel.TransactionUuidRequired",
+                    "TransactionUuid không được trống."));
         }
 
         if (authMode != InvoiceProviderAuthMode.BasicAuth)
@@ -80,7 +90,10 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     "Tra cứu UUID hiện đang dùng Basic Auth theo tài khoản Viettel của bạn."));
         }
 
-        var url = $"{baseUrl.TrimEnd('/')}/InvoiceAPI/InvoiceWS/searchInvoiceByTransactionUuid";
+        var normalizedBaseUrl = ViettelClientHelper.NormalizeBaseUrl(baseUrl);
+
+        var url =
+            $"{normalizedBaseUrl}/InvoiceAPI/InvoiceWS/searchInvoiceByTransactionUuid";
 
         var form = new Dictionary<string, string>
         {
@@ -101,7 +114,10 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
 
             request.Headers.Accept.Clear();
             request.Headers.Accept.ParseAdd("application/json");
-            request.Headers.Authorization = BuildBasicAuthHeader(username, password);
+
+            request.Headers.Authorization = ViettelClientHelper.BuildBasicAuthHeader(
+                username,
+                password);
 
             request.Content = new FormUrlEncodedContent(form);
 
@@ -120,21 +136,21 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     TransactionUuid = transactionUuid,
                     ErrorCode = $"HTTP_{(int)response.StatusCode}",
                     ErrorMessage = $"Tra cứu Viettel thất bại. HTTP {(int)response.StatusCode}.",
-                    RawResponse = Trim(raw, 10000),
+                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
                     DurationMs = sw.ElapsedMilliseconds
                 };
 
                 await WriteLookupLogAsync(
-                    invoiceHeadId,
-                    url,
-                    requestBodyForLog,
-                    raw,
-                    false,
-                    fail.ErrorCode,
-                    fail.ErrorMessage,
-                    startedAtUtc,
-                    sw.ElapsedMilliseconds,
-                    ct);
+                    invoiceHeadId: invoiceHeadId,
+                    requestUrl: url,
+                    requestBody: requestBodyForLog,
+                    responseBody: raw,
+                    isSuccess: false,
+                    errorCode: fail.ErrorCode,
+                    errorMessage: fail.ErrorMessage,
+                    startedAtUtc: startedAtUtc,
+                    durationMs: sw.ElapsedMilliseconds,
+                    ct: ct);
 
                 return Result<ViettelInvoiceLookupResultDto>.Success(fail);
             }
@@ -146,16 +162,16 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 sw.ElapsedMilliseconds);
 
             await WriteLookupLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyForLog,
-                raw,
-                parsed.IsFound,
-                parsed.ErrorCode,
-                parsed.ErrorMessage,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                ct);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyForLog,
+                responseBody: raw,
+                isSuccess: parsed.IsFound,
+                errorCode: parsed.ErrorCode,
+                errorMessage: parsed.ErrorMessage,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: ct);
 
             return Result<ViettelInvoiceLookupResultDto>.Success(parsed);
         }
@@ -166,16 +182,16 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
             var message = "Tra cứu Viettel theo UUID timeout.";
 
             await WriteLookupLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyForLog,
-                null,
-                false,
-                "TIMEOUT",
-                message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyForLog,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "TIMEOUT",
+                errorMessage: message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceLookupResultDto>.Success(
                 new ViettelInvoiceLookupResultDto
@@ -193,16 +209,16 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
             sw.Stop();
 
             await WriteLookupLogAsync(
-                invoiceHeadId,
-                url,
-                requestBodyForLog,
-                null,
-                false,
-                "EXCEPTION",
-                ex.Message,
-                startedAtUtc,
-                sw.ElapsedMilliseconds,
-                CancellationToken.None);
+                invoiceHeadId: invoiceHeadId,
+                requestUrl: url,
+                requestBody: requestBodyForLog,
+                responseBody: null,
+                isSuccess: false,
+                errorCode: "EXCEPTION",
+                errorMessage: ex.Message,
+                startedAtUtc: startedAtUtc,
+                durationMs: sw.ElapsedMilliseconds,
+                ct: CancellationToken.None);
 
             return Result<ViettelInvoiceLookupResultDto>.Success(
                 new ViettelInvoiceLookupResultDto
@@ -243,36 +259,36 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
             var root = doc.RootElement;
 
             var message =
-                FindStringProperty(root, "message")
-                ?? FindStringProperty(root, "description")
-                ?? FindStringProperty(root, "data");
+                ViettelClientHelper.FindStringProperty(root, "message") ??
+                ViettelClientHelper.FindStringProperty(root, "description") ??
+                ViettelClientHelper.FindStringProperty(root, "data");
 
             var errorCode =
-                FindStringProperty(root, "errorCode")
-                ?? FindStringProperty(root, "code");
+                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
+                ViettelClientHelper.FindStringProperty(root, "code");
 
             var invoiceNo =
-                FindStringProperty(root, "invoiceNo")
-                ?? FindStringProperty(root, "invoiceNumber")
-                ?? FindStringProperty(root, "supplierInvoiceNo");
+                ViettelClientHelper.FindStringProperty(root, "invoiceNo") ??
+                ViettelClientHelper.FindStringProperty(root, "invoiceNumber") ??
+                ViettelClientHelper.FindStringProperty(root, "supplierInvoiceNo");
 
             var transactionId =
-                FindStringProperty(root, "transactionID")
-                ?? FindStringProperty(root, "transactionId")
-                ?? FindStringProperty(root, "transactionIDStr")
-                ?? FindStringProperty(root, "invoiceId");
+                ViettelClientHelper.FindStringProperty(root, "transactionID") ??
+                ViettelClientHelper.FindStringProperty(root, "transactionId") ??
+                ViettelClientHelper.FindStringProperty(root, "transactionIDStr") ??
+                ViettelClientHelper.FindStringProperty(root, "invoiceId");
 
             var reservationCode =
-                FindStringProperty(root, "reservationCode")
-                ?? FindStringProperty(root, "reservationNo");
+                ViettelClientHelper.FindStringProperty(root, "reservationCode") ??
+                ViettelClientHelper.FindStringProperty(root, "reservationNo");
 
             var codeOfTax =
-                FindStringProperty(root, "codeOfTax");
+                ViettelClientHelper.FindStringProperty(root, "codeOfTax");
 
             var issueDateText =
-                FindStringProperty(root, "issueDateStr")
-                ?? FindStringProperty(root, "issueDate")
-                ?? FindStringProperty(root, "invoiceIssuedDate");
+                ViettelClientHelper.FindStringProperty(root, "issueDateStr") ??
+                ViettelClientHelper.FindStringProperty(root, "issueDate") ??
+                ViettelClientHelper.FindStringProperty(root, "invoiceIssuedDate");
 
             var issueDateUtc = TryParseIssueDateUtc(issueDateText);
 
@@ -288,7 +304,7 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     ReservationCode = reservationCode,
                     CodeOfTax = codeOfTax,
                     IssueDateUtc = issueDateUtc,
-                    RawResponse = Trim(raw, 10000),
+                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
                     DurationMs = durationMs
                 };
             }
@@ -305,7 +321,7 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     TransactionUuid = transactionUuid,
                     ErrorCode = "NOT_FOUND_DATA",
                     ErrorMessage = "Không tìm thấy hóa đơn trên Viettel theo transactionUuid.",
-                    RawResponse = Trim(raw, 10000),
+                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
                     DurationMs = durationMs
                 };
             }
@@ -315,11 +331,13 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 InvoiceHeadId = invoiceHeadId,
                 IsFound = false,
                 TransactionUuid = transactionUuid,
-                ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? "NOT_FOUND_DATA" : errorCode,
+                ErrorCode = string.IsNullOrWhiteSpace(errorCode)
+                    ? "NOT_FOUND_DATA"
+                    : errorCode,
                 ErrorMessage = string.IsNullOrWhiteSpace(message)
                     ? "Không tìm thấy hóa đơn trên Viettel theo transactionUuid."
                     : message,
-                RawResponse = Trim(raw, 10000),
+                RawResponse = ViettelClientHelper.Trim(raw, 10000),
                 DurationMs = durationMs
             };
         }
@@ -332,7 +350,7 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 TransactionUuid = transactionUuid,
                 ErrorCode = "PARSE_ERROR",
                 ErrorMessage = $"Không đọc được response tra cứu UUID: {ex.Message}",
-                RawResponse = Trim(raw, 10000),
+                RawResponse = ViettelClientHelper.Trim(raw, 10000),
                 DurationMs = durationMs
             };
         }
@@ -356,12 +374,12 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.SearchByTransactionUuid,
-                RequestUrl = TrimNullable(requestUrl, 500),
-                RequestBody = TrimNullable(requestBody, 10000),
-                ResponseBody = TrimNullable(responseBody, 10000),
+                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
+                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
+                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
                 IsSuccess = isSuccess,
-                ErrorCode = TrimNullable(errorCode, 100),
-                ErrorMessage = TrimNullable(errorMessage, 1000),
+                ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
+                ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
                 StartedAtUtc = startedAtUtc,
                 FinishedAtUtc = DateTime.UtcNow,
                 DurationMs = durationMs
@@ -405,101 +423,5 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
         }
 
         return null;
-    }
-
-    private static AuthenticationHeaderValue BuildBasicAuthHeader(
-        string username,
-        string password)
-    {
-        var rawCredential = $"{username.Trim()}:{password}";
-        var base64Credential = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawCredential));
-
-        return new AuthenticationHeaderValue("Basic", base64Credential);
-    }
-
-    private static bool TryFindProperty(
-        JsonElement element,
-        string propertyName,
-        out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(prop.Value, propertyName, out value))
-                    return true;
-            }
-        }
-
-        if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
-            }
-        }
-
-        value = default;
-        return false;
-    }
-
-    private static string? FindStringProperty(
-        JsonElement element,
-        string propertyName)
-    {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
-
-        if (value.ValueKind == JsonValueKind.String)
-            return value.GetString();
-
-        if (value.ValueKind == JsonValueKind.Number)
-            return value.ToString();
-
-        if (value.ValueKind == JsonValueKind.True)
-            return "true";
-
-        if (value.ValueKind == JsonValueKind.False)
-            return "false";
-
-        if (value.ValueKind == JsonValueKind.Null)
-            return null;
-
-        return value.ToString();
-    }
-
-    private static string Trim(
-        string? value,
-        int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
-    }
-
-    private static string? TrimNullable(
-        string? value,
-        int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
     }
 }

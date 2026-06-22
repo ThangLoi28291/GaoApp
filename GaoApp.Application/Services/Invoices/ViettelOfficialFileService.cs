@@ -31,7 +31,17 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
         ViettelOfficialFileType fileType,
         CancellationToken ct = default)
     {
-        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(invoiceHeadId, ct);
+        if (invoiceHeadId <= 0)
+        {
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
+        }
+
+        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
+            invoiceHeadId,
+            ct);
 
         if (invoice == null)
         {
@@ -39,8 +49,7 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
-        if (invoice.ProviderStatus != InvoiceProviderStatus.Issued &&
-            string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))
+        if (!IsIssuedLike(invoice.ProviderStatus, invoice.ProviderInvoiceNo))
         {
             return Result<ViettelOfficialFileResultDto>.Failure(
                 Error.Validation(
@@ -48,37 +57,69 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
                     "Hóa đơn chưa phát hành Viettel, chưa thể tải file chính thức."));
         }
 
-        var invoiceNo = !string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo)
-            ? invoice.ProviderInvoiceNo
-            : invoice.InvoiceNumber;
+        var invoiceNo = FirstNonEmpty(
+            invoice.ProviderInvoiceNo,
+            invoice.InvoiceNumber);
 
         if (string.IsNullOrWhiteSpace(invoiceNo))
         {
             return Result<ViettelOfficialFileResultDto>.Failure(
-                Error.Validation("Invoice.InvoiceNoMissing", "Hóa đơn chưa có số hóa đơn Viettel."));
+                Error.Validation(
+                    "Invoice.InvoiceNoMissing",
+                    "Hóa đơn chưa có số hóa đơn Viettel."));
         }
 
         if (!invoice.IssuedAtUtc.HasValue)
         {
             return Result<ViettelOfficialFileResultDto>.Failure(
-                Error.Validation("Invoice.IssuedAtMissing", "Hóa đơn chưa có thời điểm phát hành."));
+                Error.Validation(
+                    "Invoice.IssuedAtMissing",
+                    "Hóa đơn chưa có thời điểm phát hành."));
         }
 
-        var setting = await _settingRepository.GetActiveViettelAsync(ct);
+        var setting = await _settingRepository.GetActiveViettelAsync(
+            invoice.StoreId,
+            ct);
 
         if (setting == null)
         {
             return Result<ViettelOfficialFileResultDto>.Failure(
-                Error.Validation("InvoiceProvider.NotConfigured", "Chưa có cấu hình Viettel đang dùng."));
+                Error.Validation(
+                    "InvoiceProvider.NotConfigured",
+                    "Chưa có cấu hình Viettel đang dùng cho cửa hàng này."));
         }
 
-        var templateCode = !string.IsNullOrWhiteSpace(invoice.TemplateCode)
-      ? invoice.TemplateCode
-      : setting.TemplateCode;
+        var supplierTaxCode = FirstNonEmpty(
+            invoice.SupplierTaxCode,
+            setting.SupplierTaxCode);
 
-        var invoiceSeries = !string.IsNullOrWhiteSpace(invoice.InvoiceSeries)
-            ? invoice.InvoiceSeries
-            : setting.InvoiceSeries;
+        var templateCode = FirstNonEmpty(
+            invoice.TemplateCode,
+            setting.TemplateCode);
+
+        var invoiceSeries = FirstNonEmpty(
+            invoice.InvoiceSeries,
+            setting.InvoiceSeries);
+
+        if (string.IsNullOrWhiteSpace(supplierTaxCode) ||
+            string.IsNullOrWhiteSpace(templateCode) ||
+            string.IsNullOrWhiteSpace(invoiceSeries))
+        {
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.ViettelSnapshotInvalid",
+                    "Hóa đơn thiếu snapshot Viettel: MST phát hành, mẫu số hoặc ký hiệu."));
+        }
+
+        if (string.IsNullOrWhiteSpace(setting.BaseUrl) ||
+            string.IsNullOrWhiteSpace(setting.Username) ||
+            string.IsNullOrWhiteSpace(setting.Password))
+        {
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Validation(
+                    "InvoiceProvider.CredentialMissing",
+                    "Cấu hình Viettel thiếu BaseUrl, Username hoặc Password."));
+        }
 
         var download = await _client.DownloadOfficialFileAsync(
             invoiceHeadId: invoiceHeadId,
@@ -87,7 +128,7 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
             username: setting.Username,
             password: setting.Password,
             authMode: setting.AuthMode,
-            supplierTaxCode: setting.SupplierTaxCode,
+            supplierTaxCode: supplierTaxCode,
             invoiceNo: invoiceNo,
             templateCode: templateCode,
             invoiceSeries: invoiceSeries,
@@ -95,23 +136,76 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
             ct: ct);
 
         if (!download.IsSuccess)
+        {
+            MarkFileDownloadFailed(
+                invoice,
+                fileType,
+                download.Error?.Message);
+
+            invoice.LastSyncedAtUtc = DateTime.UtcNow;
+            invoice.LastErrorCode = download.Error?.Code;
+            invoice.LastErrorMessage = download.Error?.Message;
+
+            await _invoiceRepository.SaveChangesAsync(ct);
+
             return download;
+        }
 
         var file = download.Value;
 
+        if (file.FileBytes == null || file.FileBytes.Length == 0)
+        {
+            MarkFileDownloadFailed(
+                invoice,
+                fileType,
+                "Viettel trả file rỗng, không thể lưu.");
+
+            invoice.LastSyncedAtUtc = DateTime.UtcNow;
+            invoice.LastErrorCode = "Invoice.FileBytesEmpty";
+            invoice.LastErrorMessage = "Viettel trả file rỗng, không thể lưu.";
+
+            await _invoiceRepository.SaveChangesAsync(ct);
+
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.FileBytesEmpty",
+                    "Viettel trả file rỗng, không thể lưu."));
+        }
+
         var now = DateTime.Now;
         var folder = $"invoices/viettel/{now:yyyy}/{now:MM}";
-        var safeInvoiceNo = invoiceNo.Replace("/", "-").Replace("\\", "-");
+        var safeInvoiceNo = MakeSafeFileName(invoiceNo);
 
         var fileName = fileType == ViettelOfficialFileType.Pdf
             ? $"{safeInvoiceNo}.pdf"
             : $"{safeInvoiceNo}.zip";
 
-        var storedPath = await _storage.SaveAsync(
-            folder,
-            fileName,
-            file.FileBytes,
-            ct);
+        string storedPath;
+
+        try
+        {
+            storedPath = await _storage.SaveAsync(
+                folder,
+                fileName,
+                file.FileBytes,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            MarkFileDownloadFailed(
+                invoice,
+                fileType,
+                ex.Message);
+
+            invoice.LastSyncedAtUtc = DateTime.UtcNow;
+            invoice.LastErrorCode = "Invoice.FileSaveFailed";
+            invoice.LastErrorMessage = ex.Message;
+
+            await _invoiceRepository.SaveChangesAsync(ct);
+
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Failure($"Lưu file hóa đơn thất bại: {ex.Message}"));
+        }
 
         file.StoredPath = storedPath;
         file.FileName = fileName;
@@ -119,13 +213,21 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
         if (fileType == ViettelOfficialFileType.Pdf)
         {
             invoice.PdfFilePath = storedPath;
-            invoice.ProviderStatus = InvoiceProviderStatus.PdfDownloaded;
+            invoice.OfficialPdfStatus = InvoiceFileDownloadStatus.Downloaded;
+            invoice.OfficialPdfDownloadedAtUtc = DateTime.UtcNow;
+            invoice.OfficialPdfFileName = fileName;
         }
         else
         {
             invoice.ZipFilePath = storedPath;
-            invoice.ProviderStatus = InvoiceProviderStatus.ZipDownloaded;
+            invoice.OfficialZipXmlStatus = InvoiceFileDownloadStatus.Downloaded;
+            invoice.OfficialZipXmlDownloadedAtUtc = DateTime.UtcNow;
+            invoice.OfficialZipXmlFileName = fileName;
         }
+
+        // Sau Phase 21.9:
+        // ProviderStatus chỉ nên phản ánh trạng thái phát hành/đồng bộ Viettel.
+        // Không đổi ProviderStatus thành PdfDownloaded/ZipDownloaded nữa.
 
         invoice.LastSyncedAtUtc = DateTime.UtcNow;
         invoice.LastErrorCode = null;
@@ -141,7 +243,17 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
         ViettelOfficialFileType fileType,
         CancellationToken ct = default)
     {
-        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(invoiceHeadId, ct);
+        if (invoiceHeadId <= 0)
+        {
+            return Result<ViettelOfficialFileResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
+        }
+
+        var invoice = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
+            invoiceHeadId,
+            ct);
 
         if (invoice == null)
         {
@@ -177,5 +289,67 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
                 FileBytes = stored.Value.Bytes,
                 StoredPath = path
             });
+    }
+
+    private static void MarkFileDownloadFailed(
+        GaoApp.Domain.Entities.InvoiceHead invoice,
+        ViettelOfficialFileType fileType,
+        string? errorMessage)
+    {
+        if (fileType == ViettelOfficialFileType.Pdf)
+        {
+            invoice.OfficialPdfStatus = InvoiceFileDownloadStatus.Failed;
+            return;
+        }
+
+        invoice.OfficialZipXmlStatus = InvoiceFileDownloadStatus.Failed;
+    }
+
+    private static bool IsIssuedLike(
+        InvoiceProviderStatus status,
+        string? providerInvoiceNo)
+    {
+        if (!string.IsNullOrWhiteSpace(providerInvoiceNo))
+            return true;
+
+        return status is
+            InvoiceProviderStatus.Issued or
+            InvoiceProviderStatus.PdfDownloaded or
+            InvoiceProviderStatus.ZipDownloaded or
+            InvoiceProviderStatus.EmailSent;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
+    }
+
+    private static string MakeSafeFileName(string value)
+    {
+        value = (value ?? string.Empty).Trim();
+
+        if (string.IsNullOrWhiteSpace(value))
+            return "invoice";
+
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            value = value.Replace(c, '-');
+        }
+
+        value = value
+            .Replace("/", "-")
+            .Replace("\\", "-")
+            .Replace(":", "-")
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(value)
+            ? "invoice"
+            : value;
     }
 }

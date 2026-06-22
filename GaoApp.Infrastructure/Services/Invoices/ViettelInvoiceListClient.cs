@@ -5,11 +5,8 @@ using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -39,7 +36,9 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         if (authMode != InvoiceProviderAuthMode.BasicAuth)
         {
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.AuthModeUnsupported", "Đồng bộ danh sách Viettel đang dùng Basic Auth."));
+                Error.Validation(
+                    "Viettel.AuthModeUnsupported",
+                    "Đồng bộ danh sách Viettel đang dùng Basic Auth."));
         }
 
         if (string.IsNullOrWhiteSpace(baseUrl) ||
@@ -48,32 +47,41 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
             string.IsNullOrWhiteSpace(supplierTaxCode))
         {
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.RequiredMissing", "Thiếu cấu hình Viettel để đồng bộ danh sách hóa đơn."));
+                Error.Validation(
+                    "Viettel.RequiredMissing",
+                    "Thiếu cấu hình Viettel để đồng bộ danh sách hóa đơn."));
         }
 
         if (toDate.Date < fromDate.Date)
         {
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.DateInvalid", "Đến ngày phải lớn hơn hoặc bằng từ ngày."));
+                Error.Validation(
+                    "Viettel.DateInvalid",
+                    "Đến ngày phải lớn hơn hoặc bằng từ ngày."));
         }
 
         if ((toDate.Date - fromDate.Date).TotalDays > 92)
         {
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.DateRangeTooLong", "Viettel chỉ cho đồng bộ tối đa khoảng 3 tháng/lần."));
+                Error.Validation(
+                    "Viettel.DateRangeTooLong",
+                    "Viettel chỉ cho đồng bộ tối đa khoảng 3 tháng/lần."));
         }
 
         pageSize = pageSize <= 0 ? 100 : pageSize;
         pageSize = Math.Min(pageSize, 500);
 
+        var normalizedBaseUrl = ViettelClientHelper.NormalizeBaseUrl(baseUrl);
+
         var url =
-            $"{baseUrl.TrimEnd('/')}/InvoiceAPI/InvoiceUtilsWS/getInvoices/{Uri.EscapeDataString(supplierTaxCode.Trim())}";
+            $"{normalizedBaseUrl}/InvoiceAPI/InvoiceUtilsWS/getInvoices/{Uri.EscapeDataString(supplierTaxCode.Trim())}";
 
         var sw = Stopwatch.StartNew();
 
         var allInvoices = new List<ViettelInvoiceListItemDto>();
         var totalRows = 0;
         var pageNum = 1;
+
         const int maxPage = 100;
 
         try
@@ -85,28 +93,30 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     supplierTaxCode = supplierTaxCode.Trim(),
                     startDate = fromDate.ToString("yyyy-MM-dd"),
                     endDate = toDate.ToString("yyyy-MM-dd"),
-                    invoiceType = string.IsNullOrWhiteSpace(invoiceType) ? "1" : invoiceType.Trim(),
-                    templateCode = string.IsNullOrWhiteSpace(templateCode) ? null : templateCode.Trim(),
-                    invoiceSeri = string.IsNullOrWhiteSpace(invoiceSeries) ? null : invoiceSeries.Trim(),
+                    invoiceType = string.IsNullOrWhiteSpace(invoiceType)
+                        ? "1"
+                        : invoiceType.Trim(),
+                    templateCode = string.IsNullOrWhiteSpace(templateCode)
+                        ? null
+                        : templateCode.Trim(),
+                    invoiceSeri = string.IsNullOrWhiteSpace(invoiceSeries)
+                        ? null
+                        : invoiceSeries.Trim(),
                     rowPerPage = pageSize,
                     pageNum,
                     getAll = true
                 };
 
-                var requestBodyJson = JsonSerializer.Serialize(
-                    body,
-                    new JsonSerializerOptions
-                    {
-                        WriteIndented = false,
-                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                    });
+                var requestBodyJson = ViettelClientHelper.SerializeJson(body);
 
                 using var request = new HttpRequestMessage(HttpMethod.Post, url);
 
                 request.Headers.Accept.Clear();
                 request.Headers.Accept.ParseAdd("application/json");
-                request.Headers.Authorization = BuildBasicAuthHeader(username, password);
+
+                request.Headers.Authorization = ViettelClientHelper.BuildBasicAuthHeader(
+                    username,
+                    password);
 
                 request.Content = new StringContent(
                     requestBodyJson,
@@ -114,6 +124,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     "application/json");
 
                 using var response = await _httpClient.SendAsync(request, ct);
+
                 var raw = await response.Content.ReadAsStringAsync(ct);
 
                 if (!response.IsSuccessStatusCode)
@@ -123,7 +134,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     return Result<ViettelInvoiceListSyncResultDto>.Failure(
                         Error.Validation(
                             "Viettel.GetInvoicesFailed",
-                            $"Đồng bộ danh sách Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {Trim(raw, 1000)}"));
+                            $"Đồng bộ danh sách Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
                 }
 
                 var parsed = ParseGetInvoicesResponse(raw);
@@ -165,14 +176,18 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
             sw.Stop();
 
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.GetInvoicesTimeout", "Đồng bộ danh sách Viettel timeout."));
+                Error.Validation(
+                    "Viettel.GetInvoicesTimeout",
+                    "Đồng bộ danh sách Viettel timeout."));
         }
         catch (Exception ex)
         {
             sw.Stop();
 
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
-                Error.Validation("Viettel.GetInvoicesException", $"Lỗi đồng bộ danh sách Viettel: {ex.Message}"));
+                Error.Validation(
+                    "Viettel.GetInvoicesException",
+                    $"Lỗi đồng bộ danh sách Viettel: {ex.Message}"));
         }
     }
 
@@ -183,11 +198,15 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
 
-            var errorCode = FindStringProperty(root, "errorCode");
-            var description = FindStringProperty(root, "description");
+            var errorCode =
+                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
+                ViettelClientHelper.FindStringProperty(root, "code");
 
-            if (!string.IsNullOrWhiteSpace(errorCode) &&
-                !string.Equals(errorCode, "null", StringComparison.OrdinalIgnoreCase))
+            var description =
+                ViettelClientHelper.FindStringProperty(root, "description") ??
+                ViettelClientHelper.FindStringProperty(root, "message");
+
+            if (!ViettelClientHelper.IsViettelSuccessCode(errorCode))
             {
                 return new GetInvoicesParseResult
                 {
@@ -197,38 +216,40 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                 };
             }
 
-            var totalRows = FindIntProperty(root, "totalRows") ?? 0;
+            var totalRows = FindIntProperty(root, "totalRows") ??
+                            FindIntProperty(root, "totalRow") ??
+                            0;
 
             var items = new List<ViettelInvoiceListItemDto>();
 
-            if (TryFindProperty(root, "invoices", out var invoicesElement) &&
+            if (ViettelClientHelper.TryFindProperty(root, "invoices", out var invoicesElement) &&
                 invoicesElement.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in invoicesElement.EnumerateArray())
                 {
                     items.Add(new ViettelInvoiceListItemDto
                     {
-                        InvoiceId = FindStringProperty(item, "invoiceId"),
-                        InvoiceType = FindStringProperty(item, "invoiceType"),
-                        TemplateCode = FindStringProperty(item, "templateCode"),
-                        InvoiceSeri = FindStringProperty(item, "invoiceSeri"),
-                        InvoiceNumber = FindStringProperty(item, "invoiceNumber"),
-                        InvoiceNo = FindStringProperty(item, "invoiceNo"),
-                        Currency = FindStringProperty(item, "currency"),
+                        InvoiceId = ViettelClientHelper.FindStringProperty(item, "invoiceId"),
+                        InvoiceType = ViettelClientHelper.FindStringProperty(item, "invoiceType"),
+                        TemplateCode = ViettelClientHelper.FindStringProperty(item, "templateCode"),
+                        InvoiceSeri = ViettelClientHelper.FindStringProperty(item, "invoiceSeri"),
+                        InvoiceNumber = ViettelClientHelper.FindStringProperty(item, "invoiceNumber"),
+                        InvoiceNo = ViettelClientHelper.FindStringProperty(item, "invoiceNo"),
+                        Currency = ViettelClientHelper.FindStringProperty(item, "currency"),
                         Total = FindDecimalProperty(item, "total"),
                         TotalBeforeTax = FindDecimalProperty(item, "totalBeforeTax"),
                         TaxAmount = FindDecimalProperty(item, "taxAmount"),
                         IssueDate = FindLongProperty(item, "issueDate"),
-                        IssueDateStr = FindStringProperty(item, "issueDateStr"),
+                        IssueDateStr = ViettelClientHelper.FindStringProperty(item, "issueDateStr"),
                         State = FindIntProperty(item, "state"),
                         StateCode = FindIntProperty(item, "stateCode"),
                         PaymentStatus = FindIntProperty(item, "paymentStatus"),
-                        PaymentStatusName = FindStringProperty(item, "paymentStatusName"),
-                        BuyerName = FindStringProperty(item, "buyerName"),
-                        BuyerTaxCode = FindStringProperty(item, "buyerTaxCode"),
-                        SupplierTaxCode = FindStringProperty(item, "supplierTaxCode"),
-                        TransactionUuid = FindStringProperty(item, "transactionUuid"),
-                        OriginalInvoiceId = FindStringProperty(item, "originalInvoiceId")
+                        PaymentStatusName = ViettelClientHelper.FindStringProperty(item, "paymentStatusName"),
+                        BuyerName = ViettelClientHelper.FindStringProperty(item, "buyerName"),
+                        BuyerTaxCode = ViettelClientHelper.FindStringProperty(item, "buyerTaxCode"),
+                        SupplierTaxCode = ViettelClientHelper.FindStringProperty(item, "supplierTaxCode"),
+                        TransactionUuid = ViettelClientHelper.FindStringProperty(item, "transactionUuid"),
+                        OriginalInvoiceId = ViettelClientHelper.FindStringProperty(item, "originalInvoiceId")
                     });
                 }
             }
@@ -251,69 +272,11 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         }
     }
 
-    private static AuthenticationHeaderValue BuildBasicAuthHeader(
-        string username,
-        string password)
+    private static int? FindIntProperty(
+        JsonElement element,
+        string propertyName)
     {
-        var rawCredential = $"{username.Trim()}:{password}";
-        var base64Credential = Convert.ToBase64String(Encoding.UTF8.GetBytes(rawCredential));
-
-        return new AuthenticationHeaderValue("Basic", base64Credential);
-    }
-
-    private static bool TryFindProperty(JsonElement element, string propertyName, out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(prop.Value, propertyName, out value))
-                    return true;
-            }
-        }
-
-        if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
-            }
-        }
-
-        value = default;
-        return false;
-    }
-
-    private static string? FindStringProperty(JsonElement element, string propertyName)
-    {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
-
-        if (value.ValueKind == JsonValueKind.String)
-            return value.GetString();
-
-        if (value.ValueKind == JsonValueKind.Number)
-            return value.ToString();
-
-        if (value.ValueKind == JsonValueKind.True)
-            return "true";
-
-        if (value.ValueKind == JsonValueKind.False)
-            return "false";
-
-        return null;
-    }
-
-    private static int? FindIntProperty(JsonElement element, string propertyName)
-    {
-        var value = FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
 
         if (int.TryParse(value, out var result))
             return result;
@@ -321,9 +284,11 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         return null;
     }
 
-    private static long? FindLongProperty(JsonElement element, string propertyName)
+    private static long? FindLongProperty(
+        JsonElement element,
+        string propertyName)
     {
-        var value = FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
 
         if (long.TryParse(value, out var result))
             return result;
@@ -331,26 +296,22 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         return null;
     }
 
-    private static decimal FindDecimalProperty(JsonElement element, string propertyName)
+    private static decimal FindDecimalProperty(
+        JsonElement element,
+        string propertyName)
     {
-        var value = FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
 
-        if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
+        if (decimal.TryParse(
+                value,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out var result))
+        {
             return result;
+        }
 
         return 0m;
-    }
-
-    private static string Trim(string? value, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        value = value.Trim();
-
-        return value.Length <= maxLength
-            ? value
-            : value[..maxLength] + "...";
     }
 
     private class GetInvoicesParseResult

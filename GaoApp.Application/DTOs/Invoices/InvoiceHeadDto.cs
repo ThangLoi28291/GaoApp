@@ -4,7 +4,9 @@ namespace GaoApp.Application.DTOs.Invoices;
 
 public class InvoiceHeadDto
 {
+
     public int Id { get; set; }
+    public int StoreId { get; set; }
 
     public int OrderId { get; set; }
 
@@ -17,6 +19,13 @@ public class InvoiceHeadDto
     public string? BuyerTaxCode { get; set; }
 
     public string? BuyerAddress { get; set; }
+    public string BuyerType { get; set; } = "NoInvoice";
+
+    public string? BuyerLegalName { get; set; }
+
+    public string? BuyerEmail { get; set; }
+
+    public string? BuyerPhone { get; set; }
 
     public decimal TotalQuantity { get; set; }
 
@@ -68,6 +77,27 @@ public class InvoiceHeadDto
     public string? PdfFilePath { get; set; }
 
     public string? ZipFilePath { get; set; }
+    public InvoiceFileDownloadStatus OfficialPdfStatus { get; set; }
+
+    public DateTime? OfficialPdfDownloadedAtUtc { get; set; }
+
+    public string? OfficialPdfFileName { get; set; }
+
+    public InvoiceFileDownloadStatus OfficialZipXmlStatus { get; set; }
+
+    public DateTime? OfficialZipXmlDownloadedAtUtc { get; set; }
+
+    public string? OfficialZipXmlFileName { get; set; }
+
+    public InvoiceEmailSendStatus EmailStatus { get; set; }
+
+    public DateTime? EmailSentAtUtc { get; set; }
+
+    public string? LastEmailTo { get; set; }
+
+    public int EmailSendCount { get; set; }
+
+    public string? LastEmailErrorMessage { get; set; }
     public int? OriginalInvoiceHeadId { get; set; }
 
     public string? OriginalInvoiceNo { get; set; }

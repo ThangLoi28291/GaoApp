@@ -99,7 +99,9 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             invoice.TransactionUuid = Guid.NewGuid().ToString("D");
         }
 
-        var setting = await _settingRepository.GetActiveViettelAsync(ct);
+        var setting = await _settingRepository.GetActiveViettelAsync(
+      invoice.StoreId,
+      ct);
 
         if (setting == null)
         {
@@ -137,14 +139,35 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
 
         await _invoiceRepository.SaveChangesAsync(ct);
 
+        var payloadData = payloadResult.Value;
+
+        var supplierTaxCode = FirstNonEmpty(
+            invoice.SupplierTaxCode,
+            payloadData.SupplierTaxCode,
+            setting.SupplierTaxCode);
+
+        if (string.IsNullOrWhiteSpace(supplierTaxCode))
+        {
+            await MarkCorrectionFailedAsync(
+                correctionCase,
+                "Invoice.SupplierTaxCodeMissing",
+                "Hóa đơn thiếu MST phát hành.",
+                ct);
+
+            return Result<ViettelInvoiceIssueResultDto>.Failure(
+                Error.Validation(
+                    "Invoice.SupplierTaxCodeMissing",
+                    "Hóa đơn thiếu MST phát hành."));
+        }
+
         var issueResult = await _issueClient.IssueInvoiceAsync(
             invoiceHeadId: invoiceHeadId,
             baseUrl: setting.BaseUrl,
             username: setting.Username,
             password: setting.Password,
             authMode: setting.AuthMode,
-            supplierTaxCode: setting.SupplierTaxCode,
-            payload: payloadResult.Value.Payload,
+            supplierTaxCode: supplierTaxCode,
+            payload: payloadData.Payload,
             ct: ct);
 
         if (!issueResult.IsSuccess)
@@ -193,15 +216,30 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             : InvoiceProviderStatus.Issued;
 
         // Lưu snapshot cấu hình Viettel đúng thời điểm phát hành.
-        invoice.ProviderCode = "VIETTEL";
-        invoice.SupplierTaxCode = setting.SupplierTaxCode;
+        // Không ghi đè snapshot nếu InvoiceHead đã có.
+        // Chỉ bổ sung nếu dữ liệu cũ bị thiếu.
+        invoice.ProviderCode = FirstNonEmpty(invoice.ProviderCode, "VIETTEL") ?? "VIETTEL";
 
-        invoice.InvoiceType = string.IsNullOrWhiteSpace(setting.InvoiceType)
-            ? "1"
-            : setting.InvoiceType.Trim();
+        invoice.SupplierTaxCode = FirstNonEmpty(
+            invoice.SupplierTaxCode,
+            payloadData.SupplierTaxCode,
+            setting.SupplierTaxCode);
 
-        invoice.TemplateCode = setting.TemplateCode.Trim();
-        invoice.InvoiceSeries = setting.InvoiceSeries.Trim();
+        invoice.InvoiceType = FirstNonEmpty(
+            invoice.InvoiceType,
+            payloadData.Payload.GeneralInvoiceInfo?.InvoiceType,
+            setting.InvoiceType,
+            "1");
+
+        invoice.TemplateCode = FirstNonEmpty(
+            invoice.TemplateCode,
+            payloadData.TemplateCode,
+            setting.TemplateCode);
+
+        invoice.InvoiceSeries = FirstNonEmpty(
+            invoice.InvoiceSeries,
+            payloadData.InvoiceSeries,
+            setting.InvoiceSeries);
 
         invoice.ProviderInvoiceNo = issue.InvoiceNo;
         invoice.ProviderTransactionId = issue.TransactionId;
@@ -408,5 +446,15 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             return true;
 
         return false;
+    }
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value.Trim();
+        }
+
+        return null;
     }
 }

@@ -1,4 +1,5 @@
-﻿using GaoApp.Domain.Entities;
+﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -76,4 +77,12 @@ public interface IInvoiceRepository
         DateTime fromDate,
         DateTime toDate,
         CancellationToken ct = default);
+    Task<InvoiceHead?> GetLatestBuyerInfoByTaxCodeAsync(
+     int storeId,
+     string taxCode,
+     CancellationToken ct = default);
+    Task<(ViettelInvoiceDashboardSummaryDto Summary, List<InvoiceHead> Items, int Total)> QueryViettelDashboardAsync(
+    ViettelInvoiceDashboardQueryDto query,
+    CancellationToken ct = default);
+
 }

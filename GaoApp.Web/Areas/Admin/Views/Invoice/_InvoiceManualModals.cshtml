@@ -1,0 +1,75 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceDetailViewModel
+
+@{
+    var invoice = Model.Invoice;
+
+    var issuedStatuses = new[]
+    {
+        InvoiceProviderStatus.Issued,
+        InvoiceProviderStatus.PdfDownloaded,
+        InvoiceProviderStatus.ZipDownloaded,
+        InvoiceProviderStatus.EmailSent
+    };
+
+    var isViettelIssued =
+        !string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo)
+        || issuedStatuses.Contains(invoice.ProviderStatus);
+
+    var isHardLocked = invoice.IsLocked || isViettelIssued;
+    var canEditInvoice = !isHardLocked;
+}
+
+@if (canEditInvoice)
+{
+    <div class="modal fade"
+         id="manualDetailModal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content"
+                 id="manualDetailModalContent">
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade"
+         id="deleteManualDetailModal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center p-4">
+                    <div class="mx-auto mb-3 d-flex align-items-center justify-content-center rounded-circle bg-danger text-white"
+                         style="width:56px;height:56px;font-size:28px;">
+                        !
+                    </div>
+
+                    <h5 class="fw-bold mb-2">Xóa dòng manual?</h5>
+
+                    <div class="text-muted mb-3">
+                        Bạn có chắc muốn xóa dòng:
+                        <br />
+                        <strong id="deleteManualDetailName"></strong>
+                    </div>
+
+                    <input type="hidden" id="deleteManualDetailId" />
+
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button"
+                                class="btn btn-light px-4"
+                                data-bs-dismiss="modal">
+                            Đóng
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-danger px-4"
+                                id="btnConfirmDeleteManualDetail">
+                            Xóa dòng
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}

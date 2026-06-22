@@ -48,9 +48,10 @@ public sealed class CustomerRepository : ICustomerRepository
         if (!string.IsNullOrWhiteSpace(keyword))
         {
             query = query.Where(x =>
-                x.Name.Contains(keyword) ||
-                (x.Phone != null && x.Phone.Contains(keyword)) ||
-                (x.Address != null && x.Address.Contains(keyword)));
+     x.Name.Contains(keyword) ||
+     (x.Phone != null && x.Phone.Contains(keyword)) ||
+     (x.Address != null && x.Address.Contains(keyword)) ||
+     (x.TaxCode != null && x.TaxCode.Contains(keyword)));
         }
 
         return await query
@@ -67,5 +68,25 @@ public sealed class CustomerRepository : ICustomerRepository
     public Task SaveChangesAsync(CancellationToken ct = default)
     {
         return _db.SaveChangesAsync(ct);
+    }
+    public async Task<Customer?> GetActiveByTaxCodeAsync(
+     int storeId,
+     string taxCode,
+     CancellationToken ct = default)
+    {
+        taxCode = (taxCode ?? string.Empty).Trim();
+
+        if (storeId <= 0 || string.IsNullOrWhiteSpace(taxCode))
+            return null;
+
+        return await _db.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.StoreId == storeId &&
+                x.IsActive &&
+                !x.IsDeleted &&
+                x.TaxCode != null &&
+                x.TaxCode == taxCode,
+                ct);
     }
 }

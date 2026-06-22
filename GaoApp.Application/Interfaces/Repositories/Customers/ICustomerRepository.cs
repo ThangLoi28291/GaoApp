@@ -13,5 +13,9 @@ public interface ICustomerRepository
     Task AddAsync(Customer customer, CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
+    Task<Customer?> GetActiveByTaxCodeAsync(
+       int storeId,
+       string taxCode,
+       CancellationToken ct = default);
 
 }
