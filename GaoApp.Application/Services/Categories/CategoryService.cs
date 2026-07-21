@@ -1,5 +1,4 @@
-﻿using AutoMapper;
-using FluentValidation;
+﻿using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Results;
@@ -7,6 +6,7 @@ using GaoApp.Application.DTOs.Categories;
 using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.Categories;
 using GaoApp.Application.Interfaces.Services.Categories;
+using GaoApp.Application.Mappings.Categories;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Categories;
@@ -15,7 +15,7 @@ namespace GaoApp.Application.Services.Categories;
 /// Service nghiệp vụ Category theo pattern mới:
 /// - Validation bằng FluentValidation
 /// - Kết quả trả về bằng Result / Result<T>
-/// - Mapping bằng AutoMapper
+/// - Mapping bằng C# thủ công, tường minh
 ///
 /// Giữ nguyên repository hiện tại để không phá code cũ.
 /// </summary>
@@ -25,19 +25,16 @@ public class CategoryService : ICategoryService
     private readonly ICurrentStore _currentStore;
     private readonly ICurrentUser _currentUser;
     private readonly IValidator<CategoryEditDto> _validator;
-    private readonly IMapper _mapper;
 
     public CategoryService(
         ICategoryRepository repository,
         ICurrentStore currentStore,
         IValidator<CategoryEditDto> validator,
-        IMapper mapper,
         ICurrentUser currentUser)
     {
         _repository = repository;
         _currentStore = currentStore;
         _validator = validator;
-        _mapper = mapper;
         _currentUser = currentUser;
     }
 
@@ -56,7 +53,9 @@ public class CategoryService : ICategoryService
             Page = paged.Page,
             PageSize = paged.PageSize,
             TotalItems = paged.TotalItems,
-            Items = _mapper.Map<List<CategoryListItemDto>>(paged.Items ?? new List<Category>())
+            Items = (paged.Items ?? new List<Category>())
+                .Select(static item => item.ToListItemDto())
+                .ToList()
         };
     }
 
@@ -70,7 +69,7 @@ public class CategoryService : ICategoryService
             return Result.Failure<CategoryEditDto>(CategoryErrors.NotFound);
         }
 
-        var dto = _mapper.Map<CategoryEditDto>(entity);
+        var dto = entity.ToEditDto();
         return Result.Success(dto);
     }
 
@@ -149,7 +148,7 @@ public class CategoryService : ICategoryService
         // =========================================================
         // 6. Map DTO -> Entity
         // =========================================================
-        var entity = _mapper.Map<Category>(dto);
+        var entity = dto.ToEntity();
 
         //entity.StoreId = storeId;
         entity.Code = normalizedCode;

@@ -1,11 +1,11 @@
-﻿using AutoMapper;
-using FluentValidation;
+﻿using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.ProductAttributes;
 using GaoApp.Application.Features.ProductAttributes;
 using GaoApp.Application.Interfaces.Repositories.ProductAttributes;
 using GaoApp.Application.Interfaces.Services.ProductAttributes;
+using GaoApp.Application.Mappings.ProductAttributes;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.ProductAttributes;
@@ -13,16 +13,13 @@ namespace GaoApp.Application.Services.ProductAttributes;
 public sealed class ProductAttributeService : IProductAttributeService
 {
     private readonly IProductAttributeRepository _repo;
-    private readonly IMapper _mapper;
     private readonly IValidator<ProductAttributeEditDto> _validator;
 
     public ProductAttributeService(
         IProductAttributeRepository repo,
-        IMapper mapper,
         IValidator<ProductAttributeEditDto> validator)
     {
         _repo = repo;
-        _mapper = mapper;
         _validator = validator;
     }
 
@@ -39,7 +36,7 @@ public sealed class ProductAttributeService : IProductAttributeService
             Page = page,
             PageSize = pageSize,
             TotalItems = total,
-            Items = _mapper.Map<List<ProductAttributeListItemDto>>(items)
+            Items = items.Select(static item => item.ToListItemDto()).ToList()
         };
     }
 
@@ -55,7 +52,7 @@ public sealed class ProductAttributeService : IProductAttributeService
         if (entity == null)
             return Result.Failure<ProductAttributeEditDto>(ProductAttributeErrors.NotFound);
 
-        return Result.Success(_mapper.Map<ProductAttributeEditDto>(entity));
+        return Result.Success(entity.ToEditDto());
     }
 
     public async Task<Result<int>> CreateAsync(
@@ -67,7 +64,7 @@ public sealed class ProductAttributeService : IProductAttributeService
         if (dto == null)
             return Result.Failure<int>(ProductAttributeErrors.InvalidInput);
 
-        var editDto = _mapper.Map<ProductAttributeEditDto>(dto);
+        var editDto = dto.ToEditDto();
         Normalize(editDto);
 
         if (string.IsNullOrWhiteSpace(editDto.Code))
@@ -83,7 +80,7 @@ public sealed class ProductAttributeService : IProductAttributeService
         if (await _repo.ExistsNameAsync(storeId, editDto.Name, null, ct))
             return Result.Failure<int>(ProductAttributeErrors.DuplicateName);
 
-        var entity = _mapper.Map<ProductAttribute>(editDto);
+        var entity = editDto.ToEntity();
         entity.StoreId = storeId;
         entity.SortOrder = 0;
         entity.CreatedAtUtc = DateTime.UtcNow;
@@ -118,7 +115,7 @@ public sealed class ProductAttributeService : IProductAttributeService
         if (entity == null)
             return Result.Failure(ProductAttributeErrors.NotFound);
 
-        var editDto = _mapper.Map<ProductAttributeEditDto>(dto);
+        var editDto = dto.ToEditDto();
         Normalize(editDto);
 
         var validationResult = await _validator.ValidateAsync(editDto, ct);

@@ -1,11 +1,11 @@
-﻿using AutoMapper;
-using FluentValidation;
+﻿using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Units;
 using GaoApp.Application.Features.Units;
 using GaoApp.Application.Interfaces.Repositories.Units;
 using GaoApp.Application.Interfaces.Services.Units;
+using GaoApp.Application.Mappings.Units;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Units;
@@ -13,16 +13,13 @@ namespace GaoApp.Application.Services.Units;
 public sealed class UnitService : IUnitService
 {
     private readonly IUnitRepository _repo;
-    private readonly IMapper _mapper;
     private readonly IValidator<UnitEditDto> _validator;
 
     public UnitService(
         IUnitRepository repo,
-        IMapper mapper,
         IValidator<UnitEditDto> validator)
     {
         _repo = repo;
-        _mapper = mapper;
         _validator = validator;
     }
 
@@ -36,7 +33,7 @@ public sealed class UnitService : IUnitService
             Page = page,
             PageSize = pageSize,
             TotalItems = total,
-            Items = _mapper.Map<List<UnitListItemDto>>(items)
+            Items = items.Select(static item => item.ToListItemDto()).ToList()
         };
     }
 
@@ -49,7 +46,7 @@ public sealed class UnitService : IUnitService
         if (entity == null)
             return Result.Failure<UnitEditDto>(UnitErrors.NotFound);
 
-        var dto = _mapper.Map<UnitEditDto>(entity);
+        var dto = entity.ToEditDto();
         return Result.Success(dto);
     }
 
@@ -58,7 +55,7 @@ public sealed class UnitService : IUnitService
         if (dto == null)
             return Result.Failure<int>(UnitErrors.InvalidInput);
 
-        var editDto = _mapper.Map<UnitEditDto>(dto);
+        var editDto = dto.ToEditDto();
         Normalize(editDto);
 
         // Create cho phép bỏ trống code => tự sinh
@@ -75,7 +72,7 @@ public sealed class UnitService : IUnitService
         if (await _repo.ExistsNameAsync(storeId, editDto.Name, null, ct))
             return Result.Failure<int>(UnitErrors.DuplicateName);
 
-        var entity = _mapper.Map<Unit>(editDto);
+        var entity = editDto.ToEntity();
         entity.StoreId = storeId;
 
         try
@@ -103,7 +100,7 @@ public sealed class UnitService : IUnitService
         if (entity == null)
             return Result.Failure(UnitErrors.NotFound);
 
-        var editDto = _mapper.Map<UnitEditDto>(dto);
+        var editDto = dto.ToEditDto();
         Normalize(editDto);
 
         var validationResult = await _validator.ValidateAsync(editDto, ct);
