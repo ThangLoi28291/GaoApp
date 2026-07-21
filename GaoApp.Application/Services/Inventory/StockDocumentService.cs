@@ -150,8 +150,10 @@ public class StockDocumentService : IStockDocumentService
 
         var documentDate = request.DocumentDate ?? DateTime.UtcNow;
 
+        var storeId = RequireStoreId();
+
         var nextNumber = await _documentNumberSequenceRepository.GetNextNumberAsync(
-            storeId: _tenantContext.StoreId.Value,
+            storeId: storeId,
             sequenceType: DocumentNumberSequenceType.StockReceipt,
             sequenceDate: documentDate,
             ct: ct);
@@ -196,8 +198,10 @@ public class StockDocumentService : IStockDocumentService
             throw new InvalidOperationException("Một dòng đơn đặt hàng chỉ được xuất hiện một lần trên phiếu nhập.");
 
         var date = request.DocumentDate ?? DateTime.UtcNow;
+        var storeId = RequireStoreId();
+
         var nextNumber = await _documentNumberSequenceRepository.GetNextNumberAsync(
-            _tenantContext.StoreId!.Value,
+            storeId,
             DocumentNumberSequenceType.StockReceipt,
             date,
             ct);
@@ -1712,6 +1716,18 @@ public class StockDocumentService : IStockDocumentService
             return 0m;
 
         return lineTotal / baseQuantity;
+    }
+    private int RequireStoreId()
+    {
+        var storeId = _tenantContext.StoreId;
+
+        if (!storeId.HasValue || storeId.Value <= 0)
+        {
+            throw new InvalidOperationException(
+                "Không xác định được cửa hàng hiện tại. Vui lòng đăng nhập lại hoặc kiểm tra tenant.");
+        }
+
+        return storeId.Value;
     }
     private static string BuildReceiptDocumentNo(DateTime documentDate, int sequence)
     {
