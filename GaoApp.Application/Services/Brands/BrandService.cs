@@ -1,11 +1,11 @@
-﻿using FluentValidation;
+﻿using AutoMapper;
+using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Brands;
 using GaoApp.Application.Features.Brands;
 using GaoApp.Application.Interfaces.Repositories.Brands;
 using GaoApp.Application.Interfaces.Services.Brands;
-using GaoApp.Application.Mappings.Brands;
 using GaoApp.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -14,15 +14,18 @@ namespace GaoApp.Application.Services.Brands;
 public sealed class BrandService : IBrandService
 {
     private readonly IBrandRepository _repo;
+    private readonly IMapper _mapper;
     private readonly IValidator<BrandEditDto> _validator;
     private readonly ILogger<BrandService> _logger;
 
     public BrandService(
         IBrandRepository repo,
+        IMapper mapper,
         IValidator<BrandEditDto> validator,
         ILogger<BrandService> logger)
     {
         _repo = repo;
+        _mapper = mapper;
         _validator = validator;
         _logger = logger;
     }
@@ -41,7 +44,7 @@ public sealed class BrandService : IBrandService
             Page = page,
             PageSize = pageSize,
             TotalItems = totalItems,
-            Items = items.Select(static item => item.ToListItemDto()).ToList()
+            Items = _mapper.Map<List<BrandListItemDto>>(items)
         };
     }
 
@@ -57,7 +60,7 @@ public sealed class BrandService : IBrandService
         if (entity == null)
             return Result.Failure<BrandEditDto>(BrandErrors.NotFound);
 
-        var dto = entity.ToEditDto();
+        var dto = _mapper.Map<BrandEditDto>(entity);
         return Result.Success(dto);
     }
 
@@ -71,7 +74,7 @@ public sealed class BrandService : IBrandService
             return Result.Failure<int>(BrandErrors.InvalidInput);
 
         // Map request -> dto nội bộ để gom normalize + validate vào 1 luồng
-        var editDto = dto.ToEditDto();
+        var editDto = _mapper.Map<BrandEditDto>(dto);
 
         Normalize(editDto);
 
@@ -89,7 +92,7 @@ public sealed class BrandService : IBrandService
         if (await _repo.ExistsNameAsync(storeId, editDto.Name, null, ct))
             return Result.Failure<int>(BrandErrors.DuplicateName);
 
-        var entity = editDto.ToEntity();
+        var entity = _mapper.Map<Brand>(editDto);
         entity.StoreId = storeId;
 
         try
@@ -126,7 +129,7 @@ public sealed class BrandService : IBrandService
         if (entity == null)
             return Result.Failure(BrandErrors.NotFound);
 
-        var editDto = dto.ToEditDto();
+        var editDto = _mapper.Map<BrandEditDto>(dto);
         Normalize(editDto);
 
         var validationResult = await _validator.ValidateAsync(editDto, ct);

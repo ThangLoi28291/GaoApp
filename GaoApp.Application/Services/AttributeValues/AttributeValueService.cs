@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using AutoMapper;
+using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.AttributeValues;
@@ -6,7 +7,6 @@ using GaoApp.Application.Features.AttributeValues;
 using GaoApp.Application.Interfaces.Repositories.AttributeValues;
 using GaoApp.Application.Interfaces.Repositories.ProductAttributes;
 using GaoApp.Application.Interfaces.Services.AttributeValues;
-using GaoApp.Application.Mappings.AttributeValues;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.AttributeValues;
@@ -15,15 +15,18 @@ public sealed class AttributeValueService : IAttributeValueService
 {
     private readonly IAttributeValueRepository _repo;
     private readonly IProductAttributeRepository _attrRepo;
+    private readonly IMapper _mapper;
     private readonly IValidator<AttributeValueEditDto> _validator;
 
     public AttributeValueService(
         IAttributeValueRepository repo,
         IProductAttributeRepository attrRepo,
+        IMapper mapper,
         IValidator<AttributeValueEditDto> validator)
     {
         _repo = repo;
         _attrRepo = attrRepo;
+        _mapper = mapper;
         _validator = validator;
     }
 
@@ -50,7 +53,7 @@ public sealed class AttributeValueService : IAttributeValueService
             Page = page,
             PageSize = pageSize,
             TotalItems = total,
-            Items = items.Select(static item => item.ToListItemDto()).ToList()
+            Items = _mapper.Map<List<AttributeValueListItemDto>>(items)
         };
     }
 
@@ -66,7 +69,7 @@ public sealed class AttributeValueService : IAttributeValueService
         if (entity == null)
             return Result.Failure<AttributeValueEditDto>(AttributeValueErrors.NotFound);
 
-        return Result.Success(entity.ToEditDto());
+        return Result.Success(_mapper.Map<AttributeValueEditDto>(entity));
     }
 
     public async Task<Result<int>> CreateAsync(
@@ -85,7 +88,7 @@ public sealed class AttributeValueService : IAttributeValueService
         if (attr == null)
             return Result.Failure<int>(AttributeValueErrors.AttributeNotFound);
 
-        var editDto = dto.ToEditDto();
+        var editDto = _mapper.Map<AttributeValueEditDto>(dto);
         Normalize(editDto);
 
         if (string.IsNullOrWhiteSpace(editDto.Code))
@@ -101,7 +104,7 @@ public sealed class AttributeValueService : IAttributeValueService
         if (await _repo.ExistsNameAsync(storeId, dto.AttributeId, editDto.Name, null, ct))
             return Result.Failure<int>(AttributeValueErrors.DuplicateName);
 
-        var entity = editDto.ToEntity();
+        var entity = _mapper.Map<AttributeValue>(editDto);
         entity.StoreId = storeId;
         entity.SortOrder = 0;
         entity.CreatedAtUtc = DateTime.UtcNow;
@@ -143,7 +146,7 @@ public sealed class AttributeValueService : IAttributeValueService
         if (attr == null)
             return Result.Failure(AttributeValueErrors.AttributeNotFound);
 
-        var editDto = dto.ToEditDto();
+        var editDto = _mapper.Map<AttributeValueEditDto>(dto);
         Normalize(editDto);
 
         var validationResult = await _validator.ValidateAsync(editDto, ct);

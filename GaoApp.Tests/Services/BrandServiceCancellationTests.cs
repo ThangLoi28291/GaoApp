@@ -1,6 +1,8 @@
+using AutoMapper;
 using FluentAssertions;
 using GaoApp.Application.DTOs.Brands;
 using GaoApp.Application.Interfaces.Repositories.Brands;
+using GaoApp.Application.Mappings.Brands;
 using GaoApp.Application.Services.Brands;
 using GaoApp.Application.Validators.Brands;
 using GaoApp.Domain.Entities;
@@ -100,8 +102,12 @@ public class BrandServiceCancellationTests
 
     private static BrandService CreateService(IBrandRepository repository)
     {
+        var mapperConfiguration = new MapperConfiguration(
+            configuration => configuration.AddProfile<BrandMappingProfile>());
+
         return new BrandService(
             repository,
+            mapperConfiguration.CreateMapper(),
             new BrandEditDtoValidator(),
             NullLogger<BrandService>.Instance);
     }

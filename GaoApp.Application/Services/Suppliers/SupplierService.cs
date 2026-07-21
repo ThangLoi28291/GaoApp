@@ -1,4 +1,5 @@
-﻿using FluentValidation;
+﻿using AutoMapper;
+using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Errors;
 using GaoApp.Application.Common.Results;
@@ -6,7 +7,6 @@ using GaoApp.Application.DTOs.Common;
 using GaoApp.Application.DTOs.Suppliers;
 using GaoApp.Application.Interfaces.Repositories.Suppliers;
 using GaoApp.Application.Interfaces.Services.Suppliers;
-using GaoApp.Application.Mappings.Suppliers;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Suppliers;
@@ -15,13 +15,16 @@ public sealed class SupplierService : ISupplierService
 {
     private readonly ISupplierRepository _repo;
     private readonly IValidator<SupplierEditDto> _validator;
+    private readonly IMapper _mapper;
 
     public SupplierService(
         ISupplierRepository repo,
-        IValidator<SupplierEditDto> validator)
+        IValidator<SupplierEditDto> validator,
+        IMapper mapper)
     {
         _repo = repo;
         _validator = validator;
+        _mapper = mapper;
     }
 
     public async Task<PagedResult<SupplierListItemDto>> GetPagedAsync(
@@ -34,7 +37,7 @@ public sealed class SupplierService : ISupplierService
             Page = page,
             PageSize = pageSize,
             TotalItems = total,
-            Items = items.Select(static item => item.ToListItemDto()).ToList()
+            Items = _mapper.Map<List<SupplierListItemDto>>(items)
         };
     }
 
@@ -45,7 +48,7 @@ public sealed class SupplierService : ISupplierService
         if (entity is null)
             return Result.Failure<SupplierEditDto>(SupplierErrors.NotFound(id));
 
-        var dto = entity.ToEditDto();
+        var dto = _mapper.Map<SupplierEditDto>(entity);
         return Result.Success(dto);
     }
 
