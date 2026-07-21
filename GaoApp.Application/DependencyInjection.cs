@@ -174,7 +174,6 @@ public static class DependencyInjection
         services.AddScoped<ISalesReturnService, SalesReturnService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
 
-        services.AddAutoMapper(typeof(DependencyInjection).Assembly);
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
         return services;
