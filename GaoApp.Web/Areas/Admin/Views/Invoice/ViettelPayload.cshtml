@@ -4,11 +4,14 @@
 @{
     ViewData["Title"] = "JSON Viettel SInvoice";
 
-    var logs = Model.Logs ?? new List<GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogItemDto>();
+   var logs = Model.Logs
+    ?? new List<GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogItemDto>();
 
-    var hasWarning = Model.Warnings != null && Model.Warnings.Any();
-    var hasError = !string.IsNullOrWhiteSpace(Model.LastErrorCode)
-                   || !string.IsNullOrWhiteSpace(Model.LastErrorMessage);
+var warnings = Model.Warnings ?? new List<string>();
+var hasWarning = warnings.Count > 0;
+
+var hasError = !string.IsNullOrWhiteSpace(Model.LastErrorCode)
+               || !string.IsNullOrWhiteSpace(Model.LastErrorMessage);
 
     var showOfficialToolGroup =
         Model.CanDownloadOfficialFiles ||
@@ -366,7 +369,7 @@ Model.HasOfficialPdf;
             </div>
 
             <ul class="mb-0">
-                @foreach (var warning in Model.Warnings)
+                @foreach (var warning in warnings)
                 {
                     <li>@warning</li>
                 }

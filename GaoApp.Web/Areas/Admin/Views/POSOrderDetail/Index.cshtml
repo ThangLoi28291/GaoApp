@@ -12,9 +12,15 @@
 
     var paymentCount = Model.Payments?.Count ?? 0;
     var lineCount = Model.Lines?.Count ?? 0;
-    var voucherCount = Model.RewardVouchers?.Count ?? 0;
-var hasVoucher = Model.VoucherDiscountTotal > 0 || voucherCount > 0;
-    var canOpenLegalEntityInvoices = ViewBag.CanOpenLegalEntityInvoices as bool? == true;
+
+    var rewardVouchers = Model.RewardVouchers
+        ?? new List<GaoApp.Application.DTOs.POS.OrderRewardVoucherDto>();
+
+    var voucherCount = rewardVouchers.Count;
+    var hasVoucher = Model.VoucherDiscountTotal > 0 || voucherCount > 0;
+
+    var canOpenLegalEntityInvoices =
+        ViewBag.CanOpenLegalEntityInvoices as bool? == true;
 
   var canRefund = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
                 && Model.RefundedTotal <= 0;
@@ -1064,8 +1070,8 @@ var hasVoucher = Model.VoucherDiscountTotal > 0 || voucherCount > 0;
         </div>
 
         <div style="margin-top:10px; display:grid; gap:8px;">
-            @foreach (var v in Model.RewardVouchers)
-            {
+                                @foreach (var v in rewardVouchers)
+                                {
                 <div style="border:1px solid #e6edf5; border-radius:14px; padding:10px 12px; background:#f8fbff;">
                     <div style="font-weight:900; color:#2957c8;">
                         @v.VoucherCode
