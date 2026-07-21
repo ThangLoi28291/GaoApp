@@ -552,12 +552,14 @@ public class POSController : BasePOSPageController
     [HttpPost("cart/current/payment-and-finalize")]
     public async Task<IActionResult> AddPaymentAndMaybeFinalizeCurrentCart([FromBody] QuickAddPaymentRequest request, CancellationToken ct)
     {
-        
-            var draft = await _pos.AddPaymentToCurrentCartAsync(request, ct);
 
-            await NotifyTerminalAsync(
+        var draft = await _pos.AddPaymentToCurrentCartAsync(request, ct)
+            ?? throw new InvalidOperationException(
+                "Không nhận được dữ liệu giỏ hàng sau khi thêm thanh toán.");
+
+        await NotifyTerminalAsync(
                 eventType: PosRealtimeEventTypes.PaymentChanged,
-                orderId: draft?.OrderId,
+               orderId: draft.OrderId,
                 summaryChanged: true,
                 paymentsChanged: true,
                 message: "Đã ghi nhận thanh toán.",
@@ -574,11 +576,13 @@ public class POSController : BasePOSPageController
                 });
             }
 
-            var finalizedDraft = await _pos.FinalizeCurrentCartAsync(ct);
+        var finalizedDraft = await _pos.FinalizeCurrentCartAsync(ct)
+            ?? throw new InvalidOperationException(
+                "Không nhận được kết quả sau khi tự động chốt đơn.");
 
-            await NotifyStoreAsync(
+        await NotifyStoreAsync(
                 eventType: PosRealtimeEventTypes.OrderFinalized,
-                orderId: finalizedDraft?.OrderId,
+            orderId: finalizedDraft.OrderId,
                 heldChanged: true,
                 message: "Đã thanh toán và tự động chốt đơn.",
                 ct: ct);
@@ -663,11 +667,13 @@ public class POSController : BasePOSPageController
         // - PosAppException → middleware trả business error
         // - DbUpdateException → middleware log + trả system error
 
-        var result = await _pos.FinalizeCurrentCartAsync(ct);
+        var result = await _pos.FinalizeCurrentCartAsync(ct)
+              ?? throw new InvalidOperationException(
+                 "Không nhận được kết quả sau khi chốt đơn.");
 
         await NotifyStoreAsync(
             eventType: PosRealtimeEventTypes.OrderFinalized,
-            orderId: result?.OrderId,
+           orderId: result.OrderId,
             heldChanged: true,
             message: "Đã chốt đơn thành công.",
             ct: ct);

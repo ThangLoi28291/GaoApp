@@ -87,9 +87,9 @@ public sealed class POSService : IPOSService
             IUserRepository users, IInvoiceService invoiceService,
 ILogger<POSService> logger,
 IOrderRewardCalculator orderRewardCalculator,
-ICustomerRewardLedgerRepository rewardLedgerRepository, 
-ICustomerRewardService customerRewardService, 
-ICustomerRewardVoucherRepository rewardVoucherRepository, 
+ICustomerRewardLedgerRepository rewardLedgerRepository,
+ICustomerRewardService customerRewardService,
+ICustomerRewardVoucherRepository rewardVoucherRepository,
 IPromotionEngine promotionEngine,
 IPromotionRepository promotionRepository,
 IOrderLegalEntityFinalizeService legalEntityFinalizeService,
@@ -1446,8 +1446,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         {
             var qtyToAddBack = line.BaseQuantity > 0 ? line.BaseQuantity : line.Quantity;
 
-            var unitCost = line.UnitCostSnapshot.Value;
-            if (unitCost <= 0)
+            if (line.UnitCostSnapshot is not decimal unitCost || unitCost <= 0)
             {
                 throw new InvalidOperationException(
                     $"OrderLine #{line.Id} chưa có UnitCostSnapshot hợp lệ để refund.");
@@ -2207,6 +2206,9 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         var refundableRemaining = order.PaidTotal - refundedTotal;
         if (refundableRemaining < 0)
             refundableRemaining = 0;
+        var orderLines = order.Lines
+            ?? throw new InvalidOperationException(
+                $"Đơn hàng #{order.Id} chưa tải chi tiết dòng hàng.");
         return new OrderReceiptDto
         {
             OrderId = order.Id,
@@ -2243,12 +2245,12 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             PaidTotal = order.PaidTotal,
             BalanceDue = order.BalanceDue,
             ChangeDue = order.ChangeDue,
-            TotalLines = order.Lines?.Count ?? 0,
-            TotalQuantity = order.Lines?.Sum(x => x.Quantity) ?? 0,
+            TotalLines = orderLines.Count,
+            TotalQuantity = orderLines.Sum(x => x.Quantity),
             RefundedTotal = refundedTotal,
             RefundableRemaining = refundableRemaining,
 
-            Lines = order.Lines.Select(x =>
+            Lines = orderLines.Select(x =>
             {
                 var img = ResolveVariantImage(x.Variant);
 
@@ -4079,7 +4081,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             Description = $"Trừ tích lũy do hủy đơn {order.OrderNumber ?? order.Id.ToString()}. Lý do: {reason}"
         }, ct);
     }
-   
+
     public async Task<OrderDraftDto> ApplyRewardVouchersToCurrentCartAsync(
         ApplyRewardVouchersRequest request,
         CancellationToken ct = default)
@@ -4173,7 +4175,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         }
     }
 
-  
+
     public async Task<OrderDraftDto> ClearRewardVouchersFromCurrentCartAsync(
         CancellationToken ct = default)
     {
