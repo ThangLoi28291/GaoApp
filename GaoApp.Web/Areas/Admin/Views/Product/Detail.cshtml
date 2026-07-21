@@ -1,0 +1,86 @@
+﻿@model GaoApp.Application.DTOs.Products.ProductDetailDto
+@{
+    ViewData["Title"] = "Chi tiết sản phẩm";
+    Layout = "_ContentNavbarLayout";
+}
+
+<div class="row g-4">
+    <!-- Gallery -->
+    <div class="col-md-5">
+        <div class="p-main mb-3">
+            @if (!string.IsNullOrWhiteSpace(Model.PrimaryImageUrl))
+            {
+                <img id="imgMain"
+                     src="@Model.PrimaryImageUrl"
+                     alt="Ảnh chính của @Model.Name"
+                     class="p-main-img"
+                     data-image-fallback
+                     data-bs-toggle="modal"
+                     data-bs-target="#imgModal" />
+            }
+            else
+            {
+                <div class="p-main-empty">Chưa có ảnh</div>
+            }
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var img in Model.Images)
+            {
+                <button type="button"
+                        class="p-thumb-btn @(img.Url == Model.PrimaryImageUrl ? "active" : "")"
+                        data-image-url="@img.Url"
+                        aria-label="Xem ảnh của @Model.Name">
+                    <img src="@img.Url"
+                         alt="Ảnh thu nhỏ của @Model.Name"
+                         class="p-thumb-img"
+                         data-image-fallback />
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Info -->
+    <div class="col-md-7">
+        <h4 class="fw-bold mb-1">@Model.Name</h4>
+        <div class="text-muted">Alias: @Model.Alias</div>
+    </div>
+</div>
+
+<!-- Modal view large -->
+<div class="modal fade" id="imgModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-body p-0">
+                <img id="imgModalView"
+                     src="@Model.PrimaryImageUrl"
+                     alt="Ảnh phóng to của @Model.Name"
+                     class="p-modal-img"
+                     data-image-fallback />
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (() => {
+            const gallery = document.querySelector('.p-main')?.parentElement;
+            if (!gallery) return;
+
+            gallery.addEventListener('click', event => {
+                const button = event.target.closest('.p-thumb-btn');
+                if (!button || !gallery.contains(button)) return;
+
+                const url = button.dataset.imageUrl;
+                if (!url) return;
+
+                document.getElementById('imgMain')?.setAttribute('src', url);
+                document.getElementById('imgModalView')?.setAttribute('src', url);
+
+                gallery.querySelectorAll('.p-thumb-btn').forEach(item => item.classList.remove('active'));
+                button.classList.add('active');
+            });
+        })();
+    </script>
+}

@@ -1,0 +1,47 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseOrderCommercialEditViewModel
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@{
+    var order = Model.Order;
+    var request = Model.Request;
+    var options = Model.Options;
+    ViewData["Title"] = $"Sửa thông tin {order.OrderNumber}";
+    var selectedSupplier = options.Suppliers.FirstOrDefault(x => x.Id == request.SupplierId);
+}
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+}
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-commercial-edit.css" asp-append-version="true" /> }
+
+<div class="poc-page" id="purchaseOrderCommercialPage" data-supplier-lookup-url="@Url.Content("~/admin/purchase-orders/supplier-lookup")">
+    <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4"><div class="d-flex gap-3 align-items-start"><a class="btn btn-icon btn-label-secondary rounded-pill" asp-action="Details" asp-route-id="@order.Id"><i class="bx bx-arrow-back"></i></a><div><div class="small fw-bold text-primary">ĐƠN TỪ YÊU CẦU MUA</div><h4 class="mb-1">Sửa thông tin đặt hàng</h4><p class="mb-0 text-muted">@order.OrderNumber · @order.Title</p></div></div><span class="badge bg-label-warning">Sản phẩm &amp; số lượng đã khóa</span></header>
+
+    <form method="post" asp-action="UpdateCommercial" asp-route-id="@order.Id" id="commercialOrderForm" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="RowVersion" value="@request.RowVersion" />
+        <input type="hidden" name="HasVat" value="false" />
+        @if(!ViewData.ModelState.IsValid){<div asp-validation-summary="All" class="alert alert-danger" role="alert"></div>}
+
+        <section class="card border-0 shadow-sm mb-4"><div class="card-header border-bottom"><h5 class="mb-1">Thông tin giao dịch</h5><small class="text-muted">Đơn đặt hàng chỉ xác nhận tên, đơn vị và số lượng. Giá/VAT được nhập khi nhận hàng.</small></div><div class="card-body"><div class="row g-3">
+            <div class="col-12 col-lg-6"><label class="form-label">Nhà cung cấp <span class="text-danger">*</span></label><select class="form-select" id="SupplierId" name="SupplierId" required><option value=""></option>@if(request.SupplierId>0){<option value="@request.SupplierId" selected>@(selectedSupplier?.Text ?? order.SupplierName)</option>}</select><div class="form-text">Một yêu cầu tạo đúng một đơn cho nhà cung cấp thực tế đã chọn.</div></div>
+            <div class="col-12 col-lg-6"><label class="form-label">Tên đơn</label><input class="form-control" name="Title" value="@request.Title" maxlength="250"/></div>
+            <div class="col-12 col-md-6"><label class="form-label">Đơn vị mua hàng <span class="text-danger">*</span></label><select class="form-select" id="LegalEntityId" name="LegalEntityId" required><option value="">-- Chọn --</option>@foreach(var item in options.LegalEntities){<option value="@item.Id" selected="@(item.Id==request.LegalEntityId)">@item.Text</option>}</select></div>
+            <div class="col-12 col-md-6"><label class="form-label">Kho dự kiến nhận <span class="text-danger">*</span></label><select class="form-select" id="ExpectedWarehouseId" name="ExpectedWarehouseId" required><option value="">-- Chọn --</option>@foreach(var item in options.Warehouses){<option value="@item.Id" data-legal="@item.LegalEntityId" selected="@(item.Id==request.ExpectedWarehouseId)">@item.Text</option>}</select></div>
+            <div class="col-12 col-md-6"><label class="form-label">Ngày đặt <span class="text-danger">*</span></label><input class="form-control" id="OrderDate" type="date" name="OrderDate" value="@request.OrderDate.ToString("yyyy-MM-dd")" required/></div>
+            <div class="col-12 col-md-6"><label class="form-label">Dự kiến giao</label><input class="form-control" id="ExpectedDeliveryDate" type="date" name="ExpectedDeliveryDate" value="@request.ExpectedDeliveryDate?.ToString("yyyy-MM-dd")"/></div>
+            <div class="col-12"><label class="form-label">Ghi chú cho nhà cung cấp</label><textarea class="form-control" name="Note" rows="3" maxlength="1000">@request.Note</textarea></div>
+        </div></div></section>
+
+        <section class="card border-0 shadow-sm mb-4"><div class="card-header border-bottom d-flex justify-content-between"><div><h5 class="mb-1">Hàng hóa đặt mua</h5><small class="text-muted">Tên, đơn vị và số lượng lấy nguyên từ yêu cầu đã được quản lý duyệt.</small></div><span class="badge bg-label-secondary"><i class="bx bx-lock-alt me-1"></i>Đã khóa</span></div><div class="table-responsive"><table class="table align-middle mb-0"><thead class="table-light"><tr><th>#</th><th>Sản phẩm / đơn vị</th><th class="text-end">Số lượng đặt</th></tr></thead><tbody>
+        @for(var i=0;i<order.Lines.Count;i++){
+            var line=order.Lines[i];
+            <tr><td>@line.LineNo</td><td><input type="hidden" name="Lines[@i].PurchaseOrderLineId" value="@line.Id"/><input type="hidden" name="Lines[@i].UnitPriceBeforeVat" value="0"/><input type="hidden" name="Lines[@i].TaxId" value="0"/><div class="fw-semibold">@line.ProductName</div><small class="text-muted">@if(!string.IsNullOrWhiteSpace(line.Sku)){<span>SKU: @line.Sku · </span>}@line.UnitName@if(line.ItemKind==PurchaseItemKind.Catalog){<span> × @PurchaseQuantityFormatter.Display(line.ConversionFactor)</span>}</small>@if(line.ItemKind==PurchaseItemKind.FreeText){<div><span class="badge bg-label-warning mt-1">Hàng chưa có trong danh mục</span></div>}</td><td class="text-end fw-semibold">@PurchaseQuantityFormatter.Display(line.OrderedQuantity) @line.UnitName <i class="bx bx-lock-alt text-muted"></i></td></tr>
+        }
+        </tbody></table></div><div class="alert alert-info border-0 rounded-0 mb-0"><i class="bx bx-info-circle me-1"></i>Giá nhà cung cấp giao có thể tăng hoặc giảm và sẽ được quản lý nhập/chốt trên phiếu nhập kho.</div></section>
+
+        <div class="poc-summary"><div><strong>@order.Lines.Count</strong> mặt hàng · Tổng SL <strong>@PurchaseQuantityFormatter.Display(order.Lines.Sum(x=>x.OrderedQuantity))</strong></div><div class="d-flex gap-2"><a class="btn btn-label-secondary" asp-action="Details" asp-route-id="@order.Id">Hủy</a><button class="btn btn-primary" type="submit" id="saveCommercial"><i class="bx bx-save me-1"></i>Lưu thông tin <kbd>Ctrl S</kbd></button></div></div>
+    </form>
+</div>
+@section VendorScripts { <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> }
+@section PageScripts { <script src="~/Admin/js/purchase-order-commercial-edit.js" asp-append-version="true"></script> }

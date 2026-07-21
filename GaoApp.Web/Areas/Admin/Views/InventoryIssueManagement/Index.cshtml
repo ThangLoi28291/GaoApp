@@ -1,0 +1,632 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Orders.InventoryIssueIndexVm
+@using GaoApp.Domain.Enums
+
+@{
+    ViewData["Title"] = "Danh sách case tồn âm";
+}
+
+<div class="container-fluid py-3 inventory-issue-index-page">
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success rounded-4 shadow-sm border-0">@TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger rounded-4 shadow-sm border-0">@TempData["Error"]</div>
+    }
+
+    <div class="page-hero card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4 p-xl-5">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-4">
+                <div>
+                    <div class="text-muted small text-uppercase fw-semibold mb-2">Inventory Issue</div>
+                    <h2 class="fw-bold mb-2">Danh sách case tồn âm</h2>
+                    <div class="text-muted hero-subtitle">
+                        Theo dõi các case âm kho, tiến độ xử lý và trạng thái chờ duyệt của từng đơn.
+                    </div>
+                </div>
+
+                <div class="hero-note-box">
+                    <div class="hero-note-title">Gợi ý sử dụng</div>
+                    <div class="hero-note-text">
+                        Index dùng để theo dõi nhanh. Khi cần xử lý sâu hoặc làm mới trạng thái, vào trang chi tiết của case.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-2">
+            <div class="summary-card total">
+                <div class="label">Tổng case</div>
+                <div class="value">@Model.TotalCount</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="summary-card pending">
+                <div class="label">Đang xử lý</div>
+                <div class="value">@Model.PendingCount</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="summary-card ready">
+                <div class="label">Chờ duyệt</div>
+                <div class="value">@Model.ReadyCount</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="summary-card approved">
+                <div class="label">Đã duyệt</div>
+                <div class="value">@Model.ApprovedCount</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="summary-card rejected">
+                <div class="label">Đã từ chối</div>
+                <div class="value">@Model.RejectedCount</div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="summary-card overdue">
+                <div class="label">Quá hạn</div>
+                <div class="value">@Model.OverdueCount</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 mb-4 filter-card">
+        <div class="card-body p-4">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-4 col-xl-4">
+                    <label class="form-label fw-semibold">Từ khóa</label>
+                    <input type="text"
+                           name="keyword"
+                           value="@Model.Keyword"
+                           class="form-control rounded-3"
+                           placeholder="Mã case, mã đơn..." />
+                </div>
+
+                <div class="col-md-3 col-xl-3">
+                    <label class="form-label fw-semibold">Trạng thái</label>
+                    <select name="status" class="form-select rounded-3">
+                        <option value="">-- Tất cả --</option>
+                        @foreach (var value in Enum.GetValues<InventoryResolutionStatus>())
+                        {
+                            <option value="@value" selected="@(Model.Status == value ? "selected" : null)">
+                                @GetStatusText(value)
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-3 col-xl-3">
+                    <label class="form-label fw-semibold">Quá hạn</label>
+                    <select name="onlyOverdue" class="form-select rounded-3">
+                        <option value="">-- Tất cả --</option>
+                        <option value="true" selected="@(Model.OnlyOverdue == true ? "selected" : null)">Chỉ quá hạn</option>
+                        <option value="false" selected="@(Model.OnlyOverdue == false ? "selected" : null)">Không lọc quá hạn</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2 col-xl-2 d-grid">
+                    <button type="submit" class="btn btn-dark rounded-3">Lọc dữ liệu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if (Model.Items.Any())
+    {
+        <div class="row g-4">
+            @foreach (var item in Model.Items)
+            {
+                var quickModalId = $"quickView_{item.Id}";
+                var percent = item.TotalLines == 0 ? 0 : (int)Math.Round((decimal)item.ResolvedLines * 100 / item.TotalLines, 0);
+                var hasUrgentSignal = item.IsOverdue || item.UnresolvedLines > 0;
+
+                <div class="col-12">
+                    <div class="case-card card border-0 shadow-sm rounded-4">
+                        <div class="case-card-top-bar @GetTopBarClass(item.Status, item.IsOverdue)"></div>
+
+                        <div class="card-body p-4">
+                            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                                <div class="case-main-info">
+                                    <div class="d-flex flex-wrap gap-2 mb-2">
+                                        <span class="badge rounded-pill @GetStatusClass(item.Status) px-3 py-2">
+                                            @GetStatusText(item.Status)
+                                        </span>
+                                        <span class="badge rounded-pill @GetSeverityClass(item.Severity) px-3 py-2">
+                                            @GetSeverityText(item.Severity)
+                                        </span>
+                                        @if (item.IsOverdue)
+                                        {
+                                            <span class="badge rounded-pill bg-danger px-3 py-2">Quá hạn</span>
+                                        }
+                                        @if (item.UnresolvedLines > 0)
+                                        {
+                                            <span class="badge rounded-pill bg-warning text-dark px-3 py-2">
+                                                Cần xử lý
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <h5 class="fw-bold mb-1">@item.Code</h5>
+
+                                    <div class="case-sub-line">
+                                        <span class="case-sub-label">Đơn bán</span>
+                                        <span class="case-sub-value">@item.OrderCode</span>
+                                    </div>
+
+                                    <div class="case-sub-line">
+                                        <span class="case-sub-label">Nguyên nhân</span>
+                                        <span class="case-sub-value">@item.ReasonType</span>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button class="btn btn-outline-secondary rounded-3"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#@quickModalId">
+                                        Xem nhanh
+                                    </button>
+                                    <a asp-action="Detail" asp-route-id="@item.Id" class="btn btn-primary rounded-3">
+                                        Vào chi tiết
+                                    </a>
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-3">
+                                    <div class="mini-info neutral">
+                                        <div class="mini-label">Mở case</div>
+                                        <div class="mini-value">@item.OpenedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-3">
+                                    <div class="mini-info @(item.IsOverdue ? "danger" : "neutral")">
+                                        <div class="mini-label">Deadline</div>
+                                        <div class="mini-value">@item.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-2">
+                                    <div class="mini-info neutral center-box">
+                                        <div class="mini-label">Tổng line</div>
+                                        <div class="mini-value big">@item.TotalLines</div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-2">
+                                    <div class="mini-info success center-box">
+                                        <div class="mini-label">Đã xử lý</div>
+                                        <div class="mini-value big">@item.ResolvedLines</div>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-2">
+                                    <div class="mini-info @(item.UnresolvedLines > 0 ? "danger" : "success") center-box">
+                                        <div class="mini-label">Chưa xử lý</div>
+                                        <div class="mini-value big">@item.UnresolvedLines</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="progress-panel mb-3">
+                                <div class="d-flex justify-content-between align-items-center small text-muted mb-2">
+                                    <span>Tiến độ xử lý</span>
+                                    <span class="fw-semibold">@percent%</span>
+                                </div>
+                                <div class="progress rounded-pill progress-thin">
+                                    <div class="progress-bar @GetProgressBarClass(item.Status)"
+                                         style="width:@percent%"></div>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(item.InternalNotePreview))
+                            {
+                                <div class="quick-note-box">
+                                    <div class="quick-note-title">Ghi chú nhanh</div>
+                                    <div>@item.InternalNotePreview</div>
+                                </div>
+                            }
+
+                            @if (hasUrgentSignal)
+                            {
+                                <div class="case-footer-hint @(item.IsOverdue ? "overdue" : "warning")">
+                                    @if (item.IsOverdue)
+                                    {
+                                        <span>Case này đã quá hạn, nên kiểm tra và xử lý sớm.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Case vẫn còn line chưa xử lý, chưa đủ điều kiện duyệt.</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="modal fade" id="@quickModalId" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content rounded-4 border-0 shadow">
+                                <div class="modal-header border-0">
+                                    <div>
+                                        <h5 class="modal-title fw-bold">@item.Code</h5>
+                                        <div class="text-muted small">@item.OrderCode</div>
+                                    </div>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+
+                                <div class="modal-body">
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-md-4">
+                                            <div class="info-box">
+                                                <div class="label">Trạng thái</div>
+                                                <div class="value">@GetStatusText(item.Status)</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="info-box">
+                                                <div class="label">Mức độ</div>
+                                                <div class="value">@GetSeverityText(item.Severity)</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="info-box">
+                                                <div class="label">Deadline</div>
+                                                <div class="value">@item.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <div class="fw-semibold mb-2">Tiến độ xử lý</div>
+                                        <div class="progress rounded-pill progress-thin">
+                                            <div class="progress-bar @GetProgressBarClass(item.Status)"
+                                                 style="width:@percent%"></div>
+                                        </div>
+                                        <div class="small text-muted mt-2">
+                                            @item.ResolvedLines / @item.TotalLines line đã xử lý
+                                        </div>
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(item.InternalNotePreview))
+                                    {
+                                        <div class="quick-note-box">
+                                            <div class="quick-note-title">Ghi chú nhanh</div>
+                                            <div>@item.InternalNotePreview</div>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="modal-footer border-0">
+                                    <a asp-action="Detail" asp-route-id="@item.Id" class="btn btn-primary rounded-3">
+                                        Vào trang chi tiết
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body text-center text-muted py-5">
+                Chưa có case phù hợp bộ lọc.
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .page-hero {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    }
+
+    .hero-subtitle {
+        max-width: 720px;
+        line-height: 1.65;
+    }
+
+    .hero-note-box {
+        max-width: 360px;
+        background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+        border: 1px solid #bfdbfe;
+        border-radius: 20px;
+        padding: 16px 18px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+    }
+
+    .hero-note-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+        color: #2563eb;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .hero-note-text {
+        color: #334155;
+        line-height: 1.6;
+        font-size: 14px;
+    }
+
+    .filter-card {
+        background: #fff;
+    }
+
+    .summary-card {
+        background: #fff;
+        border: 1px solid #edf1f7;
+        border-radius: 20px;
+        padding: 18px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .summary-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 5px;
+        border-radius: 20px 0 0 20px;
+        background: #cbd5e1;
+    }
+
+    .summary-card.total::before { background: #64748b; }
+    .summary-card.pending::before { background: #f59e0b; }
+    .summary-card.ready::before { background: #3b82f6; }
+    .summary-card.approved::before { background: #16a34a; }
+    .summary-card.rejected::before { background: #dc2626; }
+    .summary-card.overdue::before { background: #ef4444; }
+
+    .summary-card .label {
+        color: #6b7280;
+        font-size: 12px;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+
+    .summary-card .value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .case-card {
+        position: relative;
+        overflow: hidden;
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+
+    .case-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    .case-card-top-bar {
+        height: 6px;
+        width: 100%;
+    }
+
+    .case-card-top-bar.pending { background: linear-gradient(90deg, #f59e0b 0%, #fde68a 100%); }
+    .case-card-top-bar.ready { background: linear-gradient(90deg, #3b82f6 0%, #93c5fd 100%); }
+    .case-card-top-bar.approved { background: linear-gradient(90deg, #16a34a 0%, #86efac 100%); }
+    .case-card-top-bar.rejected { background: linear-gradient(90deg, #dc2626 0%, #fca5a5 100%); }
+    .case-card-top-bar.overdue { background: linear-gradient(90deg, #ef4444 0%, #fecaca 100%); }
+
+    .case-main-info {
+        min-width: 280px;
+    }
+
+    .case-sub-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 4px;
+        font-size: 14px;
+    }
+
+    .case-sub-label {
+        color: #64748b;
+    }
+
+    .case-sub-value {
+        color: #0f172a;
+        font-weight: 600;
+    }
+
+    .mini-info {
+        background: #f8fafc;
+        border: 1px solid #edf1f7;
+        border-radius: 16px;
+        padding: 14px 16px;
+        height: 100%;
+    }
+
+    .mini-info.neutral { border-color: #e2e8f0; }
+    .mini-info.success { border-color: #bbf7d0; background: #f0fdf4; }
+    .mini-info.danger { border-color: #fecaca; background: #fef2f2; }
+
+    .center-box {
+        text-align: center;
+    }
+
+    .mini-label {
+        color: #6b7280;
+        font-size: 12px;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: .3px;
+    }
+
+    .mini-value {
+        color: #111827;
+        font-weight: 700;
+        font-size: 15px;
+    }
+
+    .mini-value.big {
+        font-size: 24px;
+        line-height: 1.1;
+    }
+
+    .progress-panel {
+        background: #fbfcfe;
+        border: 1px solid #edf1f7;
+        border-radius: 16px;
+        padding: 14px 16px;
+    }
+
+    .progress-thin {
+        height: 10px;
+        overflow: hidden;
+    }
+
+    .progress-bar.pending { background: linear-gradient(90deg, #f59e0b 0%, #fcd34d 100%); }
+    .progress-bar.ready { background: linear-gradient(90deg, #3b82f6 0%, #93c5fd 100%); }
+    .progress-bar.approved { background: linear-gradient(90deg, #16a34a 0%, #86efac 100%); }
+    .progress-bar.rejected { background: linear-gradient(90deg, #dc2626 0%, #fca5a5 100%); }
+
+    .info-box {
+        background: #f8fafc;
+        border: 1px solid #edf1f7;
+        border-radius: 16px;
+        padding: 14px 16px;
+        height: 100%;
+    }
+
+    .info-box .label {
+        color: #6b7280;
+        font-size: 12px;
+        margin-bottom: 6px;
+    }
+
+    .info-box .value {
+        font-weight: 600;
+        color: #111827;
+    }
+
+    .quick-note-box {
+        background: #f8fafc;
+        border: 1px solid #edf1f7;
+        border-radius: 16px;
+        padding: 14px 16px;
+        color: #374151;
+    }
+
+    .quick-note-title {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 8px;
+    }
+
+    .case-footer-hint {
+        margin-top: 14px;
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .case-footer-hint.warning {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        color: #9a3412;
+    }
+
+    .case-footer-hint.overdue {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #b91c1c;
+    }
+</style>
+
+@functions {
+    private string GetStatusClass(InventoryResolutionStatus status)
+    {
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "bg-warning-subtle text-warning-emphasis",
+            InventoryResolutionStatus.ReadyForApproval => "bg-info-subtle text-info-emphasis",
+            InventoryResolutionStatus.Approved => "bg-success-subtle text-success-emphasis",
+            InventoryResolutionStatus.Rejected => "bg-danger-subtle text-danger-emphasis",
+            _ => "bg-secondary-subtle text-secondary-emphasis"
+        };
+    }
+
+    private string GetSeverityClass(InventoryIssueSeverity severity)
+    {
+        return severity switch
+        {
+            InventoryIssueSeverity.Critical => "bg-danger-subtle text-danger-emphasis",
+            InventoryIssueSeverity.Overdue => "bg-warning-subtle text-warning-emphasis",
+            InventoryIssueSeverity.Warning => "bg-info-subtle text-info-emphasis",
+            InventoryIssueSeverity.Normal => "bg-primary-subtle text-primary-emphasis",
+            _ => "bg-secondary-subtle text-secondary-emphasis"
+        };
+    }
+
+    private string GetStatusText(InventoryResolutionStatus status)
+    {
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "Đang xử lý",
+            InventoryResolutionStatus.ReadyForApproval => "Chờ duyệt",
+            InventoryResolutionStatus.Approved => "Đã duyệt",
+            InventoryResolutionStatus.Rejected => "Đã từ chối",
+            _ => status.ToString()
+        };
+    }
+
+    private string GetSeverityText(InventoryIssueSeverity severity)
+    {
+        return severity switch
+        {
+            InventoryIssueSeverity.Normal => "Bình thường",
+            InventoryIssueSeverity.Warning => "Cảnh báo",
+            InventoryIssueSeverity.Overdue => "Quá hạn",
+            InventoryIssueSeverity.Critical => "Nghiêm trọng",
+            _ => severity.ToString()
+        };
+    }
+
+    private string GetTopBarClass(InventoryResolutionStatus status, bool isOverdue)
+    {
+        if (isOverdue) return "overdue";
+
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "pending",
+            InventoryResolutionStatus.ReadyForApproval => "ready",
+            InventoryResolutionStatus.Approved => "approved",
+            InventoryResolutionStatus.Rejected => "rejected",
+            _ => "pending"
+        };
+    }
+
+    private string GetProgressBarClass(InventoryResolutionStatus status)
+    {
+        return status switch
+        {
+            InventoryResolutionStatus.PendingResolution => "pending",
+            InventoryResolutionStatus.ReadyForApproval => "ready",
+            InventoryResolutionStatus.Approved => "approved",
+            InventoryResolutionStatus.Rejected => "rejected",
+            _ => "pending"
+        };
+    }
+}

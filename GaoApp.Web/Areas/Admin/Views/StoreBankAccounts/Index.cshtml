@@ -1,0 +1,191 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.StoreBankAccounts
+@model StoreBankAccountIndexVM
+
+@{
+    ViewData["Title"] = "Tài khoản ngân hàng";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section Header {
+    <div class="py-2">
+        <h3 class="mb-0 fw-bold">Danh sách tài khoản ngân hàng</h3>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+
+        <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-5">
+                <label class="form-label">Tìm kiếm</label>
+
+                <div class="position-relative">
+                    <input id="txtSearch"
+                           class="form-control pe-5"
+                           placeholder="Ngân hàng / STK / chủ tài khoản..."
+                           autocomplete="off"
+                           value="@Model.SearchString" />
+
+                    <button type="button"
+                            id="btnClearSearch"
+                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
+                            title="Xóa tìm kiếm"
+                            style="border:0; background:transparent;">
+                        <i class="bx bx-x fs-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Số dòng / trang</label>
+                <select id="ddlPageSize" class="form-select">
+                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
+                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                </select>
+            </div>
+
+            <div class="col-md-4 text-md-end">
+                <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Edit" class="btn btn-primary">
+                    <i class="bx bx-plus me-1"></i> Thêm ngân hàng
+                </a>
+            </div>
+        </div>
+
+        <form id="antiForgeryForm" method="post">
+            @Html.AntiForgeryToken()
+        </form>
+
+        <div id="bankTableWrapper">
+            @await Html.PartialAsync("_StoreBankAccountTable", Model)
+        </div>
+
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const txtSearch = document.getElementById('txtSearch');
+            const btnClearSearch = document.getElementById('btnClearSearch');
+            const ddlPageSize = document.getElementById('ddlPageSize');
+            const wrapper = document.getElementById('bankTableWrapper');
+
+            let typingTimer = null;
+
+            function getToken() {
+                const el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
+                return el ? el.value : '';
+            }
+
+            function updateClearButtonVisibility() {
+                btnClearSearch.classList.toggle('d-none', !(txtSearch.value || '').trim());
+            }
+
+            function toast(success, message) {
+                if (window.toastr) toastr[success ? "success" : "error"](message);
+                else alert(message);
+            }
+
+            function loadBanks(page) {
+                const search = txtSearch.value || '';
+                const pageSize = ddlPageSize.value || 20;
+
+                const url = '@Url.Action("Search", "StoreBankAccounts", new { area = "Admin" })'
+                    + '?search=' + encodeURIComponent(search)
+                    + '&page=' + (page || 1)
+                    + '&pageSize=' + encodeURIComponent(pageSize);
+
+                fetch(url)
+                    .then(r => r.text())
+                    .then(html => {
+                        wrapper.innerHTML = html;
+                        bindAllTableEvents();
+                    });
+            }
+
+            function debounceLoad() {
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(() => loadBanks(1), 300);
+            }
+
+            function bindPaginationEvents() {
+                wrapper.querySelectorAll('.js-page-link').forEach(a => {
+                    a.onclick = function (e) {
+                        e.preventDefault();
+                        const p = this.getAttribute('data-page');
+                        if (p) loadBanks(parseInt(p));
+                    };
+                });
+            }
+
+            function bindToggleEvents() {
+                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
+                    btn.onclick = async function () {
+                        const id = this.dataset.id;
+                        const token = getToken();
+
+                        const res = await fetch('@Url.Action("ToggleStatus", "StoreBankAccounts", new { area = "Admin" })', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                        });
+
+                        const data = await res.json();
+                        toast(data.success, data.message || 'Đã xử lý.');
+                        if (data.success) loadBanks(1);
+                    };
+                });
+            }
+
+            function bindDefaultEvents() {
+                wrapper.querySelectorAll('.js-set-default').forEach(btn => {
+                    btn.onclick = async function () {
+                        const id = this.dataset.id;
+                        const token = getToken();
+
+                        const res = await fetch('@Url.Action("SetDefault", "StoreBankAccounts", new { area = "Admin" })', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                        });
+
+                        const data = await res.json();
+                        toast(data.success, data.message || 'Đã xử lý.');
+                        if (data.success) loadBanks(1);
+                    };
+                });
+            }
+
+            function bindAllTableEvents() {
+                bindPaginationEvents();
+                bindToggleEvents();
+                bindDefaultEvents();
+
+                if (window.bootstrap) {
+                    wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                        try { new bootstrap.Tooltip(el); } catch (e) { }
+                    });
+                }
+            }
+
+            txtSearch.addEventListener('input', function () {
+                updateClearButtonVisibility();
+                debounceLoad();
+            });
+
+            btnClearSearch.addEventListener('click', function () {
+                txtSearch.value = '';
+                updateClearButtonVisibility();
+                loadBanks(1);
+                txtSearch.focus();
+            });
+
+            ddlPageSize.addEventListener('change', () => loadBanks(1));
+
+            updateClearButtonVisibility();
+            bindAllTableEvents();
+        });
+    </script>
+}

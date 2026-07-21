@@ -1,0 +1,107 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Taxes
+@model TaxEditViewModel
+
+@{
+    ViewData["Title"] = Model.Id == 0 ? "Thêm thuế" : "Cập nhật thuế";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section Header {
+    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
+        <h4 class="fw-bold mb-0">
+            <a asp-area="Admin" asp-controller="Tax" asp-action="Index" class="text-muted fw-light">
+                Thuế /
+            </a>
+            @ViewData["Title"]
+        </h4>
+    </div>
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-10 col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Thông tin chi tiết</h5>
+                <small class="text-muted float-end">* là bắt buộc</small>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <form asp-area="Admin"
+                      asp-controller="Tax"
+                      asp-action="@(Model.Id == 0 ? "Create" : "Edit")"
+                      method="post" novalidate>
+                    @Html.AntiForgeryToken()
+                    @Html.HiddenFor(x => x.Id)
+                    @Html.HiddenFor(x => x.RowVersion)
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label asp-for="Code" class="form-label"></label>
+
+                            @if (Model.Id == 0)
+                            {
+                                <input asp-for="Code"
+                                       class="form-control text-uppercase"
+                                       placeholder="(Tự sinh nếu để trống)" />
+                            }
+                            else
+                            {
+                                <input asp-for="Code"
+                                       class="form-control text-uppercase"
+                                       readonly />
+                            }
+
+                            <span asp-validation-for="Code" class="text-danger"></span>
+                        </div>
+
+                        <div class="col-md-8">
+                            <label asp-for="Name" class="form-label"></label> <span class="text-danger">*</span>
+                            <input asp-for="Name"
+                                   class="form-control"
+                                   placeholder="Nhập tên thuế..."
+                                   autofocus />
+                            <span asp-validation-for="Name" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="Rate" class="form-label"></label> <span class="text-danger">*</span>
+                            <div class="input-group input-group-merge">
+                                <span class="input-group-text"><i class="bx bx-percent"></i></span>
+                                <input asp-for="Rate" class="form-control" type="number" step="0.01" min="0" max="100" />
+                            </div>
+                            <span asp-validation-for="Rate" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" asp-for="Status" />
+                            <label class="form-check-label" asp-for="Status">Đang hoạt động</label>
+                        </div>
+                    </div>
+
+                    <div class="text-end">
+                        <a asp-area="Admin" asp-controller="Tax" asp-action="Index"
+                           class="btn btn-label-secondary me-2">
+                            Hủy bỏ
+                        </a>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bx bx-save me-1"></i> Lưu thông tin
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

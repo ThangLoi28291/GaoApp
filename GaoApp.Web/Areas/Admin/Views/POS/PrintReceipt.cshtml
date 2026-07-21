@@ -1,0 +1,512 @@
+﻿@model GaoApp.Application.DTOs.POS.OrderReceiptDto
+
+@{
+    Layout = null;
+    var printSize = (ViewBag.PrintSize as string ?? "80").ToLower();
+    var autoPrint = ViewBag.AutoPrint is bool b && b;
+    var isThermal80 = printSize == "80";
+    var pageTitle = $"Hóa đơn #{Model.OrderId}";
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>@pageTitle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #eef1f4;
+            color: #111;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+            padding: 16px;
+        }
+
+        .print-toolbar {
+            max-width: 900px;
+            margin: 0 auto 12px auto;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+
+        .btn {
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #0d6efd;
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: #fff;
+        }
+
+        .receipt-shell {
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(0,0,0,.08);
+        }
+
+        .receipt-80 {
+            width: 80mm;
+            max-width: 80mm;
+            padding: 10px 10px 14px;
+        }
+
+        .receipt-a4 {
+            width: 210mm;
+            max-width: 100%;
+            padding: 24px;
+            border-radius: 12px;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .store-name {
+            font-size: 20px;
+            font-weight: 800;
+            line-height: 1.2;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .receipt-80 .store-name {
+            font-size: 16px;
+        }
+
+        .store-line {
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .receipt-80 .store-line {
+            font-size: 11px;
+        }
+
+        .divider {
+            border-top: 1px dashed #333;
+            margin: 10px 0;
+        }
+
+        .title {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 800;
+            margin: 6px 0 2px 0;
+            text-transform: uppercase;
+        }
+
+        .receipt-80 .title {
+            font-size: 15px;
+        }
+
+        .sub-title {
+            text-align: center;
+            font-size: 12px;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+            .meta-table td {
+                padding: 2px 0;
+                font-size: 13px;
+                vertical-align: top;
+            }
+
+        .receipt-80 .meta-table td {
+            font-size: 11px;
+        }
+
+        .meta-label {
+            white-space: nowrap;
+            width: 92px;
+            color: #444;
+        }
+
+        .right {
+            text-align: right;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+            .items-table th,
+            .items-table td {
+                padding: 5px 0;
+                font-size: 13px;
+                vertical-align: top;
+            }
+
+        .receipt-80 .items-table th,
+        .receipt-80 .items-table td {
+            font-size: 11px;
+        }
+
+        .items-table th {
+            border-bottom: 1px solid #000;
+            border-top: 1px solid #000;
+            font-weight: 800;
+        }
+
+        .item-name {
+            font-weight: 700;
+        }
+
+        .item-sub {
+            font-size: 11px;
+            color: #555;
+            margin-top: 2px;
+            line-height: 1.35;
+        }
+
+        .receipt-80 .item-sub {
+            font-size: 10px;
+        }
+
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+
+            .summary-table td {
+                padding: 4px 0;
+                font-size: 13px;
+            }
+
+        .receipt-80 .summary-table td {
+            font-size: 11px;
+        }
+
+        .summary-table .grand {
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .receipt-80 .summary-table .grand {
+            font-size: 13px;
+        }
+
+        .payments-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+
+            .payments-table td {
+                padding: 3px 0;
+                font-size: 12px;
+                vertical-align: top;
+            }
+
+        .receipt-80 .payments-table td {
+            font-size: 10.5px;
+        }
+
+        .footer-note {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .receipt-80 .footer-note {
+            font-size: 10.5px;
+        }
+
+        .strong {
+            font-weight: 700;
+        }
+
+        .tiny {
+            font-size: 11px;
+            color: #555;
+        }
+
+        .receipt-80 .tiny {
+            font-size: 10px;
+        }
+
+        .mono {
+            font-family: "Courier New", monospace;
+        }
+
+        @@page {
+            margin: 0;
+            size: auto;
+        }
+
+        @@media print {
+            html, body {
+                background: #fff;
+            }
+
+            body {
+                padding: 0;
+            }
+
+            .print-toolbar {
+                display: none !important;
+            }
+
+            .receipt-shell {
+                box-shadow: none;
+                border-radius: 0;
+                margin: 0 auto;
+            }
+
+            .receipt-80 {
+                width: 80mm;
+                max-width: 80mm;
+                min-width: 80mm;
+                padding: 6mm 4mm 8mm;
+            }
+
+            .receipt-a4 {
+                width: 100%;
+                padding: 10mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-toolbar">
+        <button type="button" class="btn btn-primary" onclick="window.print()">In hóa đơn</button>
+        <button type="button" class="btn btn-secondary" onclick="window.close()">Đóng</button>
+    </div>
+
+    <div class="receipt-shell @(isThermal80 ? "receipt-80" : "receipt-a4")">
+        <div class="center">
+            <div class="store-name">@(Model.StoreName ?? "GaoApp POS")</div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.StoreAddress))
+            {
+                <div class="store-line">@Model.StoreAddress</div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Model.StorePhone))
+            {
+                <div class="store-line">Hotline: @Model.StorePhone</div>
+            }
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="title">Hóa đơn bán hàng</div>
+        <div class="sub-title">Receipt POS</div>
+
+        <table class="meta-table">
+            <tr>
+                <td class="meta-label">Mã đơn:</td>
+                <td class="strong mono">#@Model.OrderId</td>
+            </tr>
+            <tr>
+                <td class="meta-label">Số đơn:</td>
+                <td>@(string.IsNullOrWhiteSpace(Model.OrderNumber) ? "-" : Model.OrderNumber)</td>
+            </tr>
+            <tr>
+                <td class="meta-label">Ngày:</td>
+                <td>@Model.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+            </tr>
+            <tr>
+                <td class="meta-label">Thu ngân:</td>
+                <td>@(string.IsNullOrWhiteSpace(Model.CashierName) ? "-" : Model.CashierName)</td>
+            </tr>
+            <tr>
+                <td class="meta-label">Khách hàng:</td>
+                <td>@(string.IsNullOrWhiteSpace(Model.CustomerName) ? "Khách lẻ" : Model.CustomerName)</td>
+            </tr>
+            @if (!string.IsNullOrWhiteSpace(Model.CustomerPhone))
+            {
+                <tr>
+                    <td class="meta-label">Điện thoại:</td>
+                    <td>@Model.CustomerPhone</td>
+                </tr>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.ShiftCode))
+            {
+                <tr>
+                    <td class="meta-label">Ca bán:</td>
+                    <td>@Model.ShiftCode</td>
+                </tr>
+            }
+            <tr>
+                <td class="meta-label">Trạng thái:</td>
+                <td>@Model.Status / @Model.PaymentStatus</td>
+            </tr>
+            @if (!string.IsNullOrWhiteSpace(Model.Note))
+            {
+                <tr>
+                    <td class="meta-label">Ghi chú:</td>
+                    <td>@Model.Note</td>
+                </tr>
+            }
+        </table>
+
+        <div class="divider"></div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>Tên hàng</th>
+                    <th class="right">SL</th>
+                    <th class="right">ĐG</th>
+                    <th class="right">TT</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Lines == null || !Model.Lines.Any())
+                {
+                    <tr>
+                        <td colspan="4" class="tiny">Không có dữ liệu.</td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var line in Model.Lines)
+                    {
+                        <tr>
+                            <td>
+                                <div class="item-name">@line.ItemName</div>
+                                <div class="item-sub">
+                                    SKU: @(string.IsNullOrWhiteSpace(line.Sku) ? "-" : line.Sku)
+                                    @if (!string.IsNullOrWhiteSpace(line.Barcode))
+                                    {
+                                        <span> | BC: @line.Barcode</span>
+                                    }
+                                    @if (line.LineDiscount > 0)
+                                    {
+                                        <span> | GG: @line.LineDiscount.ToString("N0")</span>
+                                    }
+                                </div>
+                            </td>
+                            <td class="right">@line.Quantity.ToString("0.##")</td>
+                            <td class="right">@line.UnitPrice.ToString("N0")</td>
+                            <td class="right strong">@line.LineTotal.ToString("N0")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <div class="divider"></div>
+
+        <table class="summary-table">
+            <tr>
+                <td>Tổng số mặt hàng</td>
+                <td class="right">@Model.TotalLines</td>
+            </tr>
+            <tr>
+                <td>Tổng số lượng</td>
+                <td class="right">@Model.TotalQuantity.ToString("0.##")</td>
+            </tr>
+            <tr>
+                <td>Tạm tính</td>
+                <td class="right">@Model.Subtotal.ToString("N0")</td>
+            </tr>
+            <tr>
+                <td>Giảm giá</td>
+                <td class="right">@Model.DiscountTotal.ToString("N0")</td>
+            </tr>
+            <tr class="grand">
+                <td>Tổng thanh toán</td>
+                <td class="right">@Model.GrandTotal.ToString("N0")</td>
+            </tr>
+            <tr>
+                <td>Khách đưa / Đã trả</td>
+                <td class="right">@Model.PaidTotal.ToString("N0")</td>
+            </tr>
+            <tr>
+                <td>Còn thiếu</td>
+                <td class="right">@Model.BalanceDue.ToString("N0")</td>
+            </tr>
+            <tr>
+                <td>Tiền thừa</td>
+                <td class="right">@Model.ChangeDue.ToString("N0")</td>
+            </tr>
+        </table>
+
+        <div class="divider"></div>
+
+        <div class="strong" style="margin-bottom: 4px;">Thanh toán</div>
+
+        <table class="payments-table">
+            @if (Model.Payments == null || !Model.Payments.Any())
+            {
+                <tr>
+                    <td class="tiny">Chưa có thanh toán.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var p in Model.Payments)
+                {
+                    <tr>
+                        <td>
+                            <div class="strong">@p.Method</div>
+                            <div class="tiny">
+                                @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm:ss")
+                                @if (!string.IsNullOrWhiteSpace(p.Reference))
+                                {
+                                    <span> | Ref: @p.Reference</span>
+                                }
+                            </div>
+                        </td>
+                        <td class="right strong">@p.Amount.ToString("N0")</td>
+                    </tr>
+                }
+            }
+        </table>
+
+        <div class="divider"></div>
+
+        <div class="footer-note">
+            <div>Cảm ơn Quý khách đã mua hàng!</div>
+            <div>Hẹn gặp lại Quý khách.</div>
+        </div>
+    </div>
+
+    @if (autoPrint)
+    {
+        <script>
+            window.addEventListener('load', function () {
+                setTimeout(function () {
+                    window.print();
+                }, 250);
+            });
+
+            window.addEventListener('afterprint', function () {
+                setTimeout(function () {
+                    window.close();
+                }, 150);
+            });
+        </script>
+    }
+</body>
+</html>

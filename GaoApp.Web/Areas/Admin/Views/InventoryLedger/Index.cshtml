@@ -1,0 +1,455 @@
+﻿@{
+    ViewData["Title"] = "Thẻ kho / Lịch sử giao dịch kho";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <style>
+        .ledger-page {
+            min-height: calc(100vh - 140px);
+        }
+
+        .ledger-card {
+            border: 0;
+            border-radius: 20px;
+            box-shadow: 0 0.125rem 0.9rem rgba(0,0,0,.08);
+            overflow: hidden;
+        }
+
+            .ledger-card .card-header {
+                background: #fff;
+                border-bottom: 1px solid #eef0f4;
+                font-weight: 800;
+                padding: 1rem 1.25rem;
+            }
+
+        .ledger-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .75rem;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .ledger-toolbar-left h4 {
+            margin-bottom: .25rem;
+            font-weight: 800;
+        }
+
+        .ledger-toolbar-left .text-muted {
+            font-size: .95rem;
+        }
+
+        .ledger-summary-box {
+            border-radius: 18px;
+            padding: 16px 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
+            border: 1px solid #eef0f4;
+            height: 100%;
+        }
+
+        .ledger-summary-title {
+            font-size: .86rem;
+            color: #6c757d;
+            margin-bottom: .35rem;
+            font-weight: 600;
+        }
+
+        .ledger-summary-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: #212529;
+            line-height: 1.2;
+        }
+
+        .ledger-summary-sub {
+            margin-top: .35rem;
+            font-size: .82rem;
+            color: #6c757d;
+        }
+
+        .ledger-filter-label {
+            font-weight: 700;
+            margin-bottom: .45rem;
+            font-size: .9rem;
+        }
+
+        .ledger-filter-note {
+            font-size: .8rem;
+            color: #6c757d;
+            margin-top: .25rem;
+        }
+
+        .ledger-table-wrap {
+            overflow-x: auto;
+        }
+
+        .ledger-table {
+            min-width: 1380px;
+        }
+
+            .ledger-table th {
+                font-size: .84rem;
+                text-transform: uppercase;
+                letter-spacing: .02em;
+                color: #6c757d;
+                background: #fbfcfd;
+            }
+
+            .ledger-table td,
+            .ledger-table th {
+                vertical-align: middle;
+                white-space: nowrap;
+            }
+
+        .ledger-empty {
+            text-align: center;
+            color: #6c757d;
+            padding: 24px 0;
+        }
+
+        .ledger-product-name {
+            font-weight: 700;
+            white-space: normal;
+            min-width: 280px;
+            color: #212529;
+        }
+
+        .ledger-product-sub {
+            display: block;
+            margin-top: .2rem;
+            color: #6c757d;
+            font-size: .82rem;
+            font-weight: 500;
+        }
+
+        .ledger-note {
+            white-space: normal;
+            min-width: 260px;
+            color: #495057;
+            line-height: 1.45;
+        }
+
+        .ledger-badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: .28rem .7rem;
+            font-size: .78rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .ledger-badge-normal {
+            background: #e8f7ec;
+            color: #067647;
+        }
+
+        .ledger-badge-negative {
+            background: #ffe5e5;
+            color: #b42318;
+        }
+
+        .ledger-badge-increase {
+            background: #e8f7ec;
+            color: #067647;
+        }
+
+        .ledger-badge-decrease {
+            background: #fff1e6;
+            color: #b54708;
+        }
+
+        .ledger-ref-block {
+            min-width: 150px;
+        }
+
+        .ledger-ref-id {
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .ledger-ref-line {
+            font-size: .8rem;
+            color: #6c757d;
+            margin-top: .15rem;
+        }
+
+        .ledger-qty-negative {
+            color: #b42318;
+            font-weight: 800;
+        }
+
+        .ledger-qty-positive {
+            color: #067647;
+            font-weight: 800;
+        }
+
+        .ledger-qty-neutral {
+            color: #212529;
+            font-weight: 700;
+        }
+
+        .ledger-section-title {
+            font-weight: 800;
+            margin-bottom: 0;
+        }
+
+        .ledger-paging-info {
+            color: #6c757d;
+            font-weight: 600;
+        }
+
+        .ledger-sticky-actions {
+            position: sticky;
+            bottom: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,.85) 0%, rgba(255,255,255,1) 30%);
+            padding-top: .75rem;
+        }
+
+        .ledger-mini-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .35rem .65rem;
+            border-radius: 999px;
+            background: #f3f4f6;
+            color: #495057;
+            font-size: .8rem;
+            font-weight: 600;
+        }
+    </style>
+}
+
+<div class="container-xxl flex-grow-1 container-p-y ledger-page">
+    <div class="ledger-toolbar">
+        <div class="ledger-toolbar-left">
+            <h4>Thẻ kho / Lịch sử giao dịch kho</h4>
+            <div class="text-muted">
+                Tra cứu biến động tồn kho theo kho, sản phẩm, loại giao dịch và chứng từ tham chiếu.
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="btnReloadLedger">
+                <i class="bx bx-refresh me-1"></i> Tải lại
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="ledger-summary-box">
+                <div class="ledger-summary-title">Tổng số giao dịch</div>
+                <div class="ledger-summary-value" id="sumTotalItems">0</div>
+                <div class="ledger-summary-sub">Tổng dòng sau khi áp dụng bộ lọc</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="ledger-summary-box">
+                <div class="ledger-summary-title">Âm sau giao dịch</div>
+                <div class="ledger-summary-value" id="sumNegativeItems">0</div>
+                <div class="ledger-summary-sub">Số dòng âm trong trang hiện tại</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="ledger-summary-box">
+                <div class="ledger-summary-title">Tăng tồn</div>
+                <div class="ledger-summary-value" id="sumIncreaseItems">0</div>
+                <div class="ledger-summary-sub">Số dòng có biến động dương</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="ledger-summary-box">
+                <div class="ledger-summary-title">Trang hiện tại</div>
+                <div class="ledger-summary-value" id="sumCurrentPage">1</div>
+                <div class="ledger-summary-sub">Theo kết quả phân trang</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card ledger-card mb-4">
+        <div class="card-header">Bộ lọc ledger</div>
+        <div class="card-body">
+            <form id="inventoryLedgerFilterForm" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="WarehouseId">Kho</label>
+                    <select id="WarehouseId" class="form-select">
+                        <option value="">-- Tất cả kho --</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="ProductVariantId">Mã Variant</label>
+                    <input type="number"
+                           id="ProductVariantId"
+                           class="form-control"
+                           min="1"
+                           placeholder="Ví dụ: 125" />
+                    <div class="ledger-filter-note">Nhập khi cần soi đúng một variant cụ thể.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="TransactionType">Loại giao dịch</label>
+                    <select id="TransactionType" class="form-select">
+                        <option value="">-- Tất cả loại --</option>
+                        <option value="1">OpeningBalance</option>
+                        <option value="10">PurchaseReceipt</option>
+                        <option value="11">PurchaseReturn</option>
+                        <option value="20">SaleIssue</option>
+                        <option value="21">SaleReturn</option>
+                        <option value="22">SaleVoidIn</option>
+                        <option value="23">CustomerReturnIn</option>
+                        <option value="30">AdjustmentIncrease</option>
+                        <option value="31">AdjustmentDecrease</option>
+                        <option value="40">TransferIn</option>
+                        <option value="41">TransferOut</option>
+                        <option value="50">StockCountGain</option>
+                        <option value="51">StockCountLoss</option>
+                        <option value="60">Hold</option>
+                        <option value="61">ReleaseHold</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="ReferenceType">Loại nguồn / chứng từ</label>
+                    <select id="ReferenceType" class="form-select">
+                        <option value="">-- Tất cả nguồn --</option>
+                        <option value="1">OpeningBalance</option>
+                        <option value="2">StockDocument</option>
+                        <option value="3">StockAdjustment</option>
+                        <option value="4">StockCount</option>
+                        <option value="5">StockTransfer</option>
+                        <option value="6">Order</option>
+                        <option value="7">OrderRefund</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="FromDate">Từ ngày</label>
+                    <input type="date" id="FromDate" class="form-control" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="ToDate">Đến ngày</label>
+                    <input type="date" id="ToDate" class="form-control" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="ReferenceId">Mã tham chiếu</label>
+                    <input type="text"
+                           id="ReferenceId"
+                           class="form-control"
+                           placeholder="Ví dụ: CK240315001" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="Keyword">Từ khóa</label>
+                    <input type="text"
+                           id="Keyword"
+                           class="form-control"
+                           placeholder="Tên SP / SKU / barcode / note..." />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="SortBy">Sắp xếp theo</label>
+                    <select id="SortBy" class="form-select">
+                        <option value="TransactionDate">Thời gian giao dịch</option>
+                        <option value="ProductName">Tên sản phẩm</option>
+                        <option value="Sku">SKU</option>
+                        <option value="Warehouse">Kho</option>
+                        <option value="TransactionType">Loại giao dịch</option>
+                        <option value="ReferenceType">Loại nguồn</option>
+                        <option value="ReferenceId">Mã tham chiếu</option>
+                        <option value="AfterQty">Tồn sau giao dịch</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label ledger-filter-label" for="SortDirection">Chiều sắp xếp</label>
+                    <select id="SortDirection" class="form-select">
+                        <option value="desc">Giảm dần</option>
+                        <option value="asc">Tăng dần</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6 d-flex flex-wrap gap-3 align-items-end">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="OnlyNegativeAfterTransaction" />
+                        <label class="form-check-label" for="OnlyNegativeAfterTransaction">
+                            Chỉ xem giao dịch làm âm tồn
+                        </label>
+                    </div>
+
+                    <div class="ledger-mini-chip">
+                        <i class="bx bx-info-circle"></i>
+                        Lọc theo mã tham chiếu rất hữu ích để soi 1 phiếu nhập / kiểm kê / chuyển kho.
+                    </div>
+                </div>
+
+                <div class="col-12 d-flex flex-wrap gap-2 ledger-sticky-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bx bx-search me-1"></i> Tìm kiếm
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnResetFilter">
+                        Làm mới bộ lọc
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card ledger-card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="ledger-section-title">Danh sách ledger kho</div>
+            <div class="ledger-paging-info" id="pagingInfo">Trang 1 / 1</div>
+        </div>
+
+        <div class="card-body">
+            <div class="ledger-table-wrap">
+                <table class="table table-hover ledger-table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Kho</th>
+                            <th>Sản phẩm</th>
+                            <th>Loại GD</th>
+                            <th>Nguồn</th>
+                            <th>Ref</th>
+                            <th class="text-end">Trước</th>
+                            <th class="text-end">Thay đổi</th>
+                            <th class="text-end">Sau</th>
+                            <th>Trạng thái</th>
+                            <th>Ghi chú</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryLedgerTableBody">
+                        <tr>
+                            <td colspan="11" class="ledger-empty">Đang tải dữ liệu...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mt-4">
+                <div class="text-muted" id="resultInfo">
+                    Chưa có dữ liệu.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" id="btnPrevPage">
+                        <i class="bx bx-chevron-left"></i> Trang trước
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnNextPage">
+                        Trang sau <i class="bx bx-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-ledger.js"></script>
+}

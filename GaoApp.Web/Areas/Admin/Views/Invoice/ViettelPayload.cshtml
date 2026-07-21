@@ -1,0 +1,970 @@
+﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
+@using GaoApp.Domain.Enums
+
+@{
+    ViewData["Title"] = "JSON Viettel SInvoice";
+
+    var logs = Model.Logs ?? new List<GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogItemDto>();
+
+    var hasWarning = Model.Warnings != null && Model.Warnings.Any();
+    var hasError = !string.IsNullOrWhiteSpace(Model.LastErrorCode)
+                   || !string.IsNullOrWhiteSpace(Model.LastErrorMessage);
+
+    var showOfficialToolGroup =
+        Model.CanDownloadOfficialFiles ||
+        Model.CanViewSavedPdf ||
+        Model.CanDownloadSavedZip;
+    var pdfDownloaded =
+Model.OfficialPdfStatus == InvoiceFileDownloadStatus.Downloaded ||
+Model.HasOfficialPdf;
+
+    var pdfFailed =
+        Model.OfficialPdfStatus == InvoiceFileDownloadStatus.Failed;
+
+    var zipDownloaded =
+        Model.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Downloaded ||
+        Model.HasOfficialZip;
+
+    var zipFailed =
+        Model.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Failed;
+
+    var emailSent =
+        Model.EmailStatus == InvoiceEmailSendStatus.Sent;
+
+    var emailFailed =
+        Model.EmailStatus == InvoiceEmailSendStatus.Failed;
+    var generalInvoiceInfo = Model.Payload?.GeneralInvoiceInfo;
+
+    var isCorrectionPayload =
+        generalInvoiceInfo != null &&
+        !string.IsNullOrWhiteSpace(generalInvoiceInfo.AdjustmentType) &&
+        generalInvoiceInfo.AdjustmentType != "1";
+
+    var correctionTypeName = generalInvoiceInfo?.AdjustmentType switch
+    {
+        "3" => "Hóa đơn thay thế",
+        "5" when generalInvoiceInfo?.AdjustmentInvoiceType == "1" => "Hóa đơn điều chỉnh tiền",
+        "5" when generalInvoiceInfo?.AdjustmentInvoiceType == "2" => "Hóa đơn điều chỉnh thông tin",
+        _ => string.Empty
+    };
+    var correctionHistory = ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
+}
+
+<style>
+    .payload-page .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .payload-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+        .payload-card .card-header {
+            background: #fff;
+        }
+
+    .payload-json {
+        background: #111827;
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 18px;
+        max-height: 760px;
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre;
+    }
+
+    .payload-meta-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #edf0f2;
+    }
+
+        .payload-meta-row:last-child {
+            border-bottom: 0;
+        }
+
+    .payload-meta-label {
+        color: #697a8d;
+        white-space: nowrap;
+    }
+
+    .payload-meta-value {
+        font-weight: 600;
+        text-align: right;
+        word-break: break-word;
+    }
+
+    .payload-money {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .preview-frame {
+        width: 100%;
+        height: 760px;
+        border: 1px solid #d9dee3;
+        border-radius: 12px;
+        background: #f8f9fa;
+    }
+
+    .log-row {
+        border-bottom: 1px solid #edf0f2;
+        padding: 10px 0;
+    }
+
+        .log-row:last-child {
+            border-bottom: 0;
+        }
+
+    .log-url {
+        font-size: 12px;
+        color: #697a8d;
+        word-break: break-all;
+    }
+
+    .log-message {
+        font-size: 12px;
+        word-break: break-word;
+    }
+
+    .sticky-side {
+        position: sticky;
+        top: 82px;
+    }
+
+    .payload-toolbar {
+        flex-wrap: wrap;
+    }
+
+    .payload-status-pill {
+        font-size: 13px;
+        padding: 8px 10px;
+        border-radius: 10px;
+    }
+
+    .official-tools {
+        background: #f8f9fa;
+        border: 1px solid #edf0f2;
+        border-radius: 12px;
+        padding: 12px;
+    }
+
+    .viettel-toolbar-panel {
+        border: 0;
+        border-radius: 14px;
+    }
+
+    .viettel-toolbar-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .viettel-toolbar-section {
+        background: #f8f9fa;
+        border: 1px solid #edf0f2;
+        border-radius: 12px;
+        padding: 10px 12px;
+        min-height: 88px;
+    }
+
+    .viettel-toolbar-section-full {
+        grid-column: 1 / -1;
+    }
+
+    .viettel-toolbar-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #697a8d;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: 7px;
+    }
+
+    .viettel-toolbar-actions .btn {
+        padding: 7px 12px;
+        font-size: 14px;
+        border-radius: 8px;
+    }
+
+    .viettel-toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+        .viettel-toolbar-actions form {
+            margin: 0;
+        }
+
+    .soft-box {
+        background: #f8f9fa;
+        border: 1px solid #edf0f2;
+        border-radius: 12px;
+        padding: 14px;
+    }
+
+    @@media (max-width: 992px) {
+        .sticky-side {
+            position: static;
+        }
+
+        .preview-frame {
+            height: 620px;
+        }
+
+        .viettel-toolbar-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .viettel-toolbar-section-full {
+            grid-column: auto;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .payload-page .page-header {
+            gap: 12px;
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+
+        .payload-meta-row {
+            display: block;
+        }
+
+        .payload-meta-value {
+            text-align: left;
+        }
+
+        .preview-frame {
+            height: 560px;
+        }
+
+        .payload-toolbar .btn,
+        .payload-toolbar form,
+        .payload-toolbar a {
+            width: 100%;
+        }
+
+            .payload-toolbar form button {
+                width: 100%;
+            }
+
+    }
+</style>
+
+<div class="container-fluid payload-page">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
+        <div>
+            <h3 class="mb-1 page-title">
+                JSON Viettel SInvoice
+            </h3>
+
+            <div class="text-muted">
+                Kiểm tra payload, trạng thái Viettel, PDF bản thể hiện, ZIP/XML và log tích hợp.
+            </div>
+        </div>
+
+       
+    </div>
+    @await Html.PartialAsync(
+    "~/Areas/Admin/Views/Invoice/_ViettelActionToolbar.cshtml",
+    Model)
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bx bx-check-circle me-1"></i>
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bx bx-error-circle me-1"></i>
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    <div class="alert alert-info d-flex align-items-start gap-2">
+        <i class="bx bx-info-circle fs-4"></i>
+        <div>
+            <div class="fw-semibold">Phase 15 - Workflow an toàn</div>
+            <div>
+                Hệ thống tự ẩn nút phát hành khi hóa đơn đã phát hành, yêu cầu tra cứu UUID khi kết quả chưa rõ,
+                và chỉ cho tải PDF bản thể hiện / ZIP/XML sau khi hóa đơn đã có số Viettel.
+            </div>
+        </div>
+    </div>
+    @await Html.PartialAsync(
+    "~/Areas/Admin/Views/Invoice/_InvoiceCorrectionHistory.cshtml",
+    correctionHistory)
+    @if (isCorrectionPayload)
+    {
+        <div class="alert alert-warning d-flex align-items-start gap-2">
+            <i class="bx bx-git-branch fs-4"></i>
+
+            <div>
+                <div class="fw-semibold">
+                    @correctionTypeName
+                </div>
+
+                <div>
+                    Hóa đơn gốc:
+                    <strong>@generalInvoiceInfo?.OriginalInvoiceId</strong>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(generalInvoiceInfo?.AdjustedNote))
+                {
+                    <div>
+                        Lý do:
+                        <strong>@generalInvoiceInfo.AdjustedNote</strong>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(generalInvoiceInfo?.AdditionalReferenceDesc))
+                {
+                    <div>
+                        Văn bản:
+                        <strong>@generalInvoiceInfo.AdditionalReferenceDesc</strong>
+                    </div>
+                }
+
+                <div class="small text-muted mt-2">
+                    Dữ liệu này sẽ được gửi sang Viettel trong nhóm generalInvoiceInfo.
+                </div>
+            </div>
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(Model.IssueBlockReason) && !Model.CanIssue && !Model.IsIssued)
+    {
+        <div class="alert alert-warning d-flex align-items-start gap-2">
+            <i class="bx bx-error-circle fs-4"></i>
+            <div>
+                <div class="fw-semibold">Chưa thể phát hành</div>
+                <div>@Model.IssueBlockReason</div>
+            </div>
+        </div>
+    }
+
+    @if (hasWarning)
+    {
+        <div class="alert alert-warning">
+            <div class="fw-semibold mb-2">
+                Cảnh báo cần kiểm tra
+            </div>
+
+            <ul class="mb-0">
+                @foreach (var warning in Model.Warnings)
+                {
+                    <li>@warning</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="row g-3">
+
+        <div class="col-lg-4">
+
+            <div class="sticky-side">
+
+                <div class="card shadow-sm payload-card mb-3">
+                    <div class="card-header fw-semibold">
+                        Thông tin hóa đơn
+                    </div>
+
+                    <div class="card-body">
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">InvoiceHead</span>
+                            <span class="payload-meta-value">#@Model.InvoiceHeadId</span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Trạng thái Viettel</span>
+                            <span class="payload-meta-value">
+                                <span class="badge payload-status-pill @Model.ProviderStatusBadgeClass">
+                                    @Model.ProviderStatusName
+                                </span>
+                            </span>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(Model.ProviderInvoiceNo))
+                        {
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">Số hóa đơn Viettel</span>
+                                <span class="payload-meta-value text-success">
+                                    @Model.ProviderInvoiceNo
+                                </span>
+                            </div>
+                        }
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Order</span>
+                            <span class="payload-meta-value">
+                                #@Model.OrderId @(string.IsNullOrWhiteSpace(Model.OrderNumber) ? "" : Model.OrderNumber)
+                            </span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">HKD phát hành</span>
+                            <span class="payload-meta-value">
+                                @if (Model.LegalEntityId.HasValue)
+                                {
+                                    <span class="badge bg-primary">
+                                        @(string.IsNullOrWhiteSpace(Model.LegalEntityCode)
+                                            ? $"HKD #{Model.LegalEntityId}"
+                                            : Model.LegalEntityCode)
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(Model.LegalEntityName))
+                                    {
+                                        <br />
+                                        <small class="text-muted">@Model.LegalEntityName</small>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-muted border">Legacy</span>
+                                }
+                            </span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">MST phát hành</span>
+                            <span class="payload-meta-value">@Model.SupplierTaxCode</span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Mẫu</span>
+                            <span class="payload-meta-value">@Model.TemplateCode</span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Ký hiệu</span>
+                            <span class="payload-meta-value">@Model.InvoiceSeries</span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">TransactionUuid</span>
+                            <span class="payload-meta-value">@Model.TransactionUuid</span>
+                        </div>
+
+                        @if (Model.IssuedAtUtc.HasValue)
+                        {
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">Ngày phát hành UTC</span>
+                                <span class="payload-meta-value">
+                                    @Model.IssuedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                </span>
+                            </div>
+                        }
+
+                        @if (Model.LastSyncedAtUtc.HasValue)
+                        {
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">Đồng bộ gần nhất UTC</span>
+                                <span class="payload-meta-value">
+                                    @Model.LastSyncedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                </span>
+                            </div>
+                        }
+
+                        @if (hasError)
+                        {
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">Lỗi gần nhất</span>
+                                <span class="payload-meta-value text-danger">
+                                    @Model.LastErrorCode
+                                    @if (!string.IsNullOrWhiteSpace(Model.LastErrorMessage))
+                                    {
+                                        <br />
+                                        <small>@Model.LastErrorMessage</small>
+                                    }
+                                </span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="card shadow-sm payload-card mb-3">
+                    <div class="card-header fw-semibold">
+                        Tổng tiền
+                    </div>
+
+                    <div class="card-body">
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Chưa VAT</span>
+                            <span class="payload-meta-value payload-money">
+                                @Model.TotalAmountWithoutTax.ToString("N0")
+                            </span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">VAT</span>
+                            <span class="payload-meta-value payload-money">
+                                @Model.TotalTaxAmount.ToString("N0")
+                            </span>
+                        </div>
+
+                        <div class="payload-meta-row">
+                            <span class="payload-meta-label">Thanh toán</span>
+                            <span class="payload-meta-value payload-money @(Model.TotalAmountWithTax < 0 ? "text-danger" : "text-primary")">
+                                @Model.TotalAmountWithTax.ToString("N0")
+                            </span>
+                        </div>
+
+                        @if (isCorrectionPayload && Model.TotalAmountWithTax < 0)
+                        {
+                            <div class="small text-danger mt-2">
+                                Đây là hóa đơn điều chỉnh giảm tiền.
+                            </div>
+                        }
+                        else if (isCorrectionPayload && Model.TotalAmountWithTax > 0)
+                        {
+                            <div class="small text-success mt-2">
+                                Đây là hóa đơn điều chỉnh/thay thế có tổng tiền dương.
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (showOfficialToolGroup || pdfDownloaded || zipDownloaded || emailSent || pdfFailed || zipFailed || emailFailed)
+                {
+                    <div class="card shadow-sm payload-card mb-3">
+                        <div class="card-header fw-semibold">
+                            File / Email hóa đơn Viettel
+                        </div>
+
+                        <div class="card-body">
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">PDF chính thức</span>
+                                <span class="payload-meta-value">
+                                    @if (pdfDownloaded)
+                                    {
+                                        <span class="badge bg-success">Đã tải</span>
+                                    }
+                                    else if (pdfFailed)
+                                    {
+                                        <span class="badge bg-danger">Tải lỗi</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Chưa tải</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(Model.OfficialPdfFileName))
+                            {
+                                <div class="small text-muted mt-1">
+                                    File PDF: @Model.OfficialPdfFileName
+                                </div>
+                            }
+
+                            @if (Model.OfficialPdfDownloadedAtUtc.HasValue)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Tải PDF lúc UTC:
+                                    @Model.OfficialPdfDownloadedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(Model.PdfFilePath))
+                            {
+                                <div class="small text-muted mt-1">
+                                    Đường dẫn PDF: @Model.PdfFilePath
+                                </div>
+                            }
+
+                            <hr />
+
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">ZIP/XML chính thức</span>
+                                <span class="payload-meta-value">
+                                    @if (zipDownloaded)
+                                    {
+                                        <span class="badge bg-success">Đã tải</span>
+                                    }
+                                    else if (zipFailed)
+                                    {
+                                        <span class="badge bg-danger">Tải lỗi</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Chưa tải</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(Model.OfficialZipXmlFileName))
+                            {
+                                <div class="small text-muted mt-1">
+                                    File ZIP/XML: @Model.OfficialZipXmlFileName
+                                </div>
+                            }
+
+                            @if (Model.OfficialZipXmlDownloadedAtUtc.HasValue)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Tải ZIP/XML lúc UTC:
+                                    @Model.OfficialZipXmlDownloadedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(Model.ZipFilePath))
+                            {
+                                <div class="small text-muted mt-1">
+                                    Đường dẫn ZIP/XML: @Model.ZipFilePath
+                                </div>
+                            }
+
+                            <hr />
+
+                            <div class="payload-meta-row">
+                                <span class="payload-meta-label">Email hóa đơn</span>
+                                <span class="payload-meta-value">
+                                    @if (emailSent)
+                                    {
+                                        <span class="badge bg-success">Đã gửi</span>
+                                    }
+                                    else if (emailFailed)
+                                    {
+                                        <span class="badge bg-danger">Gửi lỗi</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Chưa gửi</span>
+                                    }
+                                </span>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(Model.LastEmailTo))
+                            {
+                                <div class="small text-muted mt-1">
+                                    Email gần nhất: @Model.LastEmailTo
+                                </div>
+                            }
+
+                            @if (Model.EmailSentAtUtc.HasValue)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Gửi lúc UTC:
+                                    @Model.EmailSentAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                </div>
+                            }
+
+                            @if (Model.EmailSendCount > 0)
+                            {
+                                <div class="small text-muted mt-1">
+                                    Số lần gửi: @Model.EmailSendCount
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(Model.LastEmailErrorMessage))
+                            {
+                                <div class="small text-danger mt-1">
+                                    Lỗi email gần nhất: @Model.LastEmailErrorMessage
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                <div class="card shadow-sm payload-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div class="fw-semibold">
+                            Log tích hợp
+                        </div>
+
+                        <span class="badge bg-secondary">
+                            @logs.Count
+                        </span>
+                    </div>
+
+                    <div class="card-body">
+                        @if (!logs.Any())
+                        {
+                            <div class="text-muted">
+                                Chưa có log tích hợp.
+                            </div>
+                        }
+                        else
+                        {
+                            foreach (var log in logs)
+                            {
+                                <div class="log-row">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <div class="fw-semibold">
+                                            @log.ActionName
+                                        </div>
+
+                                        @if (log.IsSuccess)
+                                        {
+                                            <span class="badge bg-success">OK</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger">Lỗi</span>
+                                        }
+                                    </div>
+
+                                    <div class="small text-muted">
+                                        Bắt đầu UTC: @log.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")
+                                    </div>
+
+                                    <div class="small text-muted">
+                                        Thời gian: @(log.DurationMs?.ToString("N0") ?? "-") ms
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(log.ErrorCode))
+                                    {
+                                        <div class="small text-danger mt-1">
+                                            Mã lỗi: @log.ErrorCode
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(log.ErrorMessage))
+                                    {
+                                        <div class="log-message text-danger mt-1">
+                                            @log.ErrorMessage
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(log.RequestUrl))
+                                    {
+                                        <div class="log-url mt-1">
+                                            @log.RequestUrl
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="col-lg-8">
+
+            @if (Model.CanPreviewDraft)
+            {
+                <div class="card shadow-sm payload-card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-semibold">
+                                PDF nháp Viettel
+                            </div>
+                            <small class="text-muted">
+                                PDF nháp chỉ tải khi bấm nút. Không tự gọi Viettel khi mở trang.
+                            </small>
+                        </div>
+
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="ViettelDraftPreview"
+                               asp-route-id="@Model.InvoiceHeadId"
+                               target="_blank"
+                               class="btn btn-sm btn-outline-primary">
+                            Mở tab riêng
+                        </a>
+                    </div>
+
+                    <div class="card-body">
+                        <div class="alert alert-light border d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-semibold">PDF nháp chưa được tải</div>
+                                <small class="text-muted">
+                                    Bấm “Tải PDF nháp” mới gọi API Viettel và ghi log.
+                                </small>
+                            </div>
+
+                            <button type="button"
+                                    class="btn btn-success"
+                                    onclick="loadPreviewPdf()">
+                                <i class="bx bx-file"></i>
+                                Tải PDF nháp
+                            </button>
+                        </div>
+
+                        <iframe id="previewPdfFrame"
+                                class="preview-frame d-none"
+                                title="Bản xem trước hóa đơn điện tử Viettel"
+                                data-src="@Url.Action("ViettelDraftPreview", "Invoice", new { area = "Admin", id = Model.InvoiceHeadId })">
+                        </iframe>
+                    </div>
+                </div>
+            }
+            else if (Model.IsIssued)
+            {
+                <div class="alert alert-success d-flex align-items-start gap-2">
+                    <i class="bx bx-check-circle fs-4"></i>
+                    <div>
+                        <div class="fw-semibold">
+                            Hóa đơn đã phát hành Viettel.
+                        </div>
+                        <div>
+                            PDF nháp đã được ẩn. Vui lòng dùng PDF bản thể hiện đã lưu hoặc tải PDF bản thể hiện từ Viettel.
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="card shadow-sm payload-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="fw-semibold">
+                        Payload JSON
+                    </div>
+
+                    <span class="badge bg-secondary">
+                        Preview
+                    </span>
+                </div>
+
+                <div class="card-body">
+                    <pre id="payloadJson" class="payload-json">@Model.Json</pre>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+@if (Model.CanSendEmail)
+{
+    <div class="modal fade"
+         id="sendViettelEmailModal"
+         tabindex="-1"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form asp-area="Admin"
+                      asp-controller="Invoice"
+                      asp-action="SendViettelEmail"
+                      method="post">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           name="InvoiceHeadId"
+                           value="@Model.InvoiceHeadId" />
+
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            Gửi email hóa đơn Viettel
+                        </h5>
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Đóng">
+                        </button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="alert alert-info small">
+                            Hệ thống sẽ gửi hóa đơn qua Viettel theo TransactionUuid:
+                            <br />
+                            <strong>@Model.TransactionUuid</strong>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(Model.ProviderInvoiceNo))
+                        {
+                            <div class="mb-3">
+                                <label class="form-label text-muted">Số hóa đơn</label>
+                                <div class="fw-semibold text-success">
+                                    @Model.ProviderInvoiceNo
+                                </div>
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Email người nhận <span class="text-danger">*</span>
+                            </label>
+
+                            <input type="text"
+                                   name="BuyerEmail"
+                                   class="form-control"
+                                   value="@Model.BuyerEmail"
+                                   placeholder="VD: khachhang@gmail.com hoặc email1@gmail.com;email2@gmail.com"
+                                   required />
+
+                            <div class="form-text">
+                                Có thể nhập nhiều email, cách nhau bằng dấu chấm phẩy (;).
+                            </div>
+                        </div>
+
+                        <div class="alert alert-warning small mb-0">
+                            Chỉ gửi email khi hóa đơn đã phát hành. Nếu Viettel báo lỗi cấu hình email,
+                            kiểm tra cấu hình email trên hệ thống SInvoice.
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                data-bs-dismiss="modal">
+                            Đóng
+                        </button>
+
+                        <button type="submit"
+                                class="btn btn-success"
+                                onclick="return confirm('Xác nhận gửi email hóa đơn cho khách?');">
+                            <i class="bx bx-envelope"></i>
+                            Gửi email
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+@section Scripts {
+    <script>
+        function copyPayloadJson() {
+            const el = document.getElementById('payloadJson');
+
+            if (!el) {
+                return;
+            }
+
+            navigator.clipboard.writeText(el.innerText)
+                .then(() => {
+                    alert('Đã copy JSON.');
+                })
+                .catch(() => {
+                    alert('Không copy được JSON. Hãy bôi đen và copy thủ công.');
+                });
+        }
+
+        function loadPreviewPdf() {
+            const frame = document.getElementById('previewPdfFrame');
+
+            if (!frame) {
+                return;
+            }
+
+            const src = frame.getAttribute('data-src');
+
+            if (!src) {
+                alert('Không tìm thấy đường dẫn preview PDF.');
+                return;
+            }
+
+            frame.classList.remove('d-none');
+            frame.src = src + '?_=' + new Date().getTime();
+        }
+    </script>
+}

@@ -1,0 +1,221 @@
+﻿@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.ViewModels.Promotions
+
+@model PromotionIndexVM
+
+@functions {
+    string TypeClass(PromotionType type)
+    {
+        return type switch
+        {
+            PromotionType.ProductDiscount => "promo-type-product",
+            PromotionType.ComboFixedPrice => "promo-type-combo",
+            PromotionType.BuyXGetY => "promo-type-gift",
+            _ => "promo-type-default"
+        };
+    }
+
+    string TierText(string? tier)
+    {
+        tier = (tier ?? "").Trim().ToUpperInvariant();
+
+        return tier switch
+        {
+            "RETAIL" => "Khách lẻ",
+            "WHOLESALE" => "Khách sỉ",
+            _ => "Tất cả"
+        };
+    }
+
+    string StatusClass(string status)
+    {
+        return status switch
+        {
+            "Đang chạy" => "promo-status-running",
+            "Sắp chạy" => "promo-status-upcoming",
+            "Hết hạn" => "promo-status-expired",
+            "Đã khóa" => "promo-status-locked",
+            _ => "promo-status-default"
+        };
+    }
+}
+
+<div class="card border-0 shadow-sm promo-table-card">
+    <div class="card-body p-0">
+        @if (Model.Paged.Items == null || !Model.Paged.Items.Any())
+        {
+            <div class="promo-empty">
+                <div class="promo-empty-icon">
+                    <i class="bx bx-gift"></i>
+                </div>
+                <div class="promo-empty-title">Chưa có chương trình khuyến mãi</div>
+                <div class="promo-empty-text">
+                    Bấm “Thêm khuyến mãi” để tạo chương trình đầu tiên.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0 promo-table">
+                    <thead>
+                        <tr>
+                            <th>Chương trình</th>
+                            <th>Loại</th>
+                            <th>Thiết lập</th>
+                            <th>Thời gian</th>
+                            <th>Nhóm khách</th>
+                            <th class="text-center">Ưu tiên</th>
+                            <th>Trạng thái</th>
+                            <th class="text-end">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Paged.Items)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="promo-name">@item.Name</div>
+                                    <div class="promo-sub">
+                                        ID #@item.Id ·
+                                        @if (item.Type == PromotionType.ComboFixedPrice)
+                                        {
+                                            <span>@item.ComboRuleCount sản phẩm combo</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@item.ItemCount sản phẩm áp dụng</span>
+                                        }
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <span class="promo-type-badge @TypeClass(item.Type)">
+                                        @item.TypeText
+                                    </span>
+                                </td>
+
+                                <td>
+                                    @if (item.Type == PromotionType.ProductDiscount)
+                                    {
+                                        <div class="promo-setting-main">
+                                            @(item.DiscountType == PromotionDiscountType.Percentage
+                                                ? $"Giảm {item.DiscountValue:n0}%"
+                                                : $"Giảm {item.DiscountValue:n0}")
+                                        </div>
+                                    }
+                                    else if (item.Type == PromotionType.ComboFixedPrice)
+                                    {
+                                        <div class="promo-setting-main">
+                                            Combo còn @($"{item.ComboFixedPrice ?? 0:n0}")
+                                        </div>
+                                    }
+                                    else if (item.Type == PromotionType.BuyXGetY)
+                                    {
+                                        <div class="promo-setting-main">
+                                            Mua @($"{item.BuyQuantity ?? 0:n0}") tặng @($"{item.GetQuantity ?? 0:n0}")
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="promo-date">
+                                        @item.StartAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
+                                    <div class="promo-date text-muted">
+                                        đến @item.EndAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <span class="promo-tier-badge">
+                                        @TierText(item.CustomerPriceTier)
+                                    </span>
+                                </td>
+
+                                <td class="text-center">
+                                    <span class="promo-priority">@item.Priority</span>
+                                </td>
+
+                                <td>
+                                    <span class="promo-status-badge @StatusClass(item.StatusText)">
+                                        @item.StatusText
+                                    </span>
+                                </td>
+
+                                <td class="text-end">
+                                    <div class="dropdown">
+                                        <button type="button"
+                                                class="btn btn-sm btn-label-secondary dropdown-toggle"
+                                                data-bs-toggle="dropdown">
+                                            Thao tác
+                                        </button>
+
+                                        <div class="dropdown-menu dropdown-menu-end">
+                                            <button type="button"
+                                                    class="dropdown-item"
+                                                    data-promotion-edit="@item.Id">
+                                                <i class="bx bx-edit-alt me-1"></i> Sửa
+                                            </button>
+
+                                            <button type="button"
+                                                    class="dropdown-item"
+                                                    data-promotion-duplicate="@item.Id">
+                                                <i class="bx bx-copy me-1"></i> Nhân bản
+                                            </button>
+
+                                            <button type="button"
+                                                    class="dropdown-item"
+                                                    data-promotion-toggle="@item.Id">
+                                                <i class="bx bx-power-off me-1"></i>
+                                                @(item.IsActive ? "Khóa" : "Mở khóa")
+                                            </button>
+
+                                            <div class="dropdown-divider"></div>
+
+                                            <button type="button"
+                                                    class="dropdown-item text-danger"
+                                                    data-promotion-delete="@item.Id"
+                                                    data-promotion-name="@item.Name">
+                                                <i class="bx bx-trash me-1"></i> Xóa
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    @if (Model.Paged.TotalItems > Model.PageSize)
+    {
+        var totalPages = (int)Math.Ceiling(Model.Paged.TotalItems / (double)Model.PageSize);
+
+        <div class="card-footer bg-white border-0">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="text-muted small">
+                    Trang @Model.Page / @totalPages · Tổng @Model.Paged.TotalItems chương trình
+                </div>
+
+                <div class="btn-group">
+                    <button type="button"
+                            class="btn btn-sm btn-label-secondary"
+                            data-promo-page="@(Model.Page - 1)"
+                            disabled="@(Model.Page <= 1)">
+                        Trước
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-sm btn-label-secondary"
+                            data-promo-page="@(Model.Page + 1)"
+                            disabled="@(Model.Page >= totalPages)">
+                        Sau
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>

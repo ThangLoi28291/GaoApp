@@ -1,0 +1,312 @@
+﻿@{
+    Layout = null;
+    var slipId = ViewBag.SlipId as int?;
+    var shiftId = ViewBag.ShiftId as int?;
+}
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <title>In phiếu bàn giao cuối ca</title>
+
+    <style>
+        @@page {
+            size: 80mm auto;
+            margin: 0;
+        }
+
+        body {
+            margin: 0;
+            background: #fff;
+            font-family: Arial, sans-serif;
+            color: #000;
+        }
+
+        .receipt {
+            width: 80mm;
+            padding: 8px 7px;
+            box-sizing: border-box;
+            font-size: 12px;
+        }
+
+        .center { text-align: center; }
+        .title {
+            font-size: 16px;
+            font-weight: 900;
+            margin-top: 6px;
+        }
+
+        .sub { font-size: 11px; }
+        .line {
+            border-top: 1px dashed #000;
+            margin: 8px 0;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 3px 0;
+        }
+
+        .label { font-weight: 700; }
+        .value {
+            text-align: right;
+            font-weight: 700;
+        }
+
+        .money {
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .diff-plus { font-weight: 900; }
+        .diff-minus { font-weight: 900; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+
+        th, td {
+            font-size: 11px;
+            padding: 3px 0;
+            border-bottom: 1px dotted #999;
+        }
+
+        th { text-align: left; font-weight: 900; }
+
+        th:nth-child(2),
+        th:nth-child(3),
+        td:nth-child(2),
+        td:nth-child(3) {
+            text-align: right;
+        }
+
+        .barcode-box {
+            text-align: center;
+            margin-top: 8px;
+        }
+
+        #barcode {
+            max-width: 72mm;
+            height: 42px;
+        }
+
+        .barcode-text {
+            font-size: 10px;
+            word-break: break-all;
+            margin-top: 2px;
+        }
+
+        .sign-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 14px;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .sign-title { font-weight: 900; }
+        .sign-space { height: 42px; }
+
+        .footer {
+            margin-top: 8px;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        .btn-print {
+            position: fixed;
+            right: 12px;
+            top: 12px;
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 8px;
+            background: #111827;
+            color: #fff;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        @@media print {
+            .btn-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <button class="btn-print" onclick="window.print()">In lại</button>
+
+    <div class="receipt">
+        <div class="center">
+            <div style="font-weight:900;font-size:14px;">GAO MART</div>
+            <div class="sub">Phiếu kiểm quỹ và bàn giao cuối ca</div>
+            <div class="title">PHIẾU BÀN GIAO CA</div>
+        </div>
+
+        <div class="barcode-box">
+            <svg id="barcode"></svg>
+            <div id="barcodeText" class="barcode-text"></div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="row"><div class="label">Mã phiếu:</div><div id="slipCode" class="value">-</div></div>
+        <div class="row"><div class="label">Mã ca:</div><div id="shiftCode" class="value">-</div></div>
+        <div class="row"><div class="label">Người mở:</div><div id="openedBy" class="value">-</div></div>
+        <div class="row"><div class="label">Người đóng:</div><div id="closedBy" class="value">-</div></div>
+        <div class="row"><div class="label">Mở lúc:</div><div id="openedAt" class="value">-</div></div>
+        <div class="row"><div class="label">Đóng lúc:</div><div id="closedAt" class="value">-</div></div>
+
+        <div class="line"></div>
+
+        <div class="row"><div class="label">Tiền đầu ca:</div><div id="openingCash" class="value">0</div></div>
+        <div class="row"><div class="label">DT tiền mặt:</div><div id="cashSales" class="value">0</div></div>
+        <div class="row"><div class="label">DT không TM:</div><div id="nonCashSales" class="value">0</div></div>
+        <div class="row"><div class="label">Thu thêm:</div><div id="cashIn" class="value">0</div></div>
+        <div class="row"><div class="label">Chi tiền:</div><div id="cashOut" class="value">0</div></div>
+        <div class="row"><div class="label">Hoàn tiền mặt:</div><div id="cashRefund" class="value">0</div></div>
+        <div class="row"><div class="label">Số hoàn:</div><div id="refundCount" class="value">0</div></div>
+        <div class="row"><div class="label">Số void:</div><div id="voidCount" class="value">0</div></div>
+
+        <div class="line"></div>
+
+        <div class="row"><div class="label money">Tiền phải có:</div><div id="expectedCash" class="value money">0</div></div>
+        <div class="row"><div class="label money">Tiền thực đếm:</div><div id="actualCash" class="value money">0</div></div>
+        <div class="row"><div class="label money">Chênh lệch:</div><div id="cashDiff" class="value money">0</div></div>
+
+        <div class="line"></div>
+
+        <div class="center" style="font-weight:900;">CHI TIẾT MỆNH GIÁ CUỐI CA</div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Mệnh giá</th>
+                    <th>SL</th>
+                    <th>Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody id="denomBody">
+                <tr><td colspan="3">Đang tải...</td></tr>
+            </tbody>
+        </table>
+
+        <div id="noteBox" style="margin-top:6px;display:none;">
+            <div class="label">Ghi chú:</div>
+            <div id="noteText" style="white-space:pre-wrap;"></div>
+        </div>
+
+        <div class="line"></div>
+
+        <div class="sign-grid">
+            <div>
+                <div class="sign-title">THU NGÂN</div>
+                <div class="sign-space"></div>
+                <div id="signCashier">..............</div>
+            </div>
+            <div>
+                <div class="sign-title">QUẢN LÝ</div>
+                <div class="sign-space"></div>
+                <div>..............</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Phiếu bàn giao cuối ca dùng để đối chiếu tiền mặt trong két.
+        </div>
+    </div>
+
+    <script src="~/lib/jsbarcode/JsBarcode.all.min.js" asp-append-version="true"></script>
+
+    <script>
+        const slipId = @(slipId.HasValue ? slipId.Value.ToString() : "null");
+        const shiftId = @(shiftId.HasValue ? shiftId.Value.ToString() : "null");
+
+        function money(v) {
+            return Number(v || 0).toLocaleString('vi-VN') + ' đ';
+        }
+
+        function dt(v) {
+            if (!v) return '-';
+            return new Date(v).toLocaleString('vi-VN');
+        }
+
+        async function loadSlip() {
+            const url = slipId
+                ? `/admin/pos/shift-closing-slips/${slipId}`
+                : `/admin/pos/shift-closing-slips/by-shift/${shiftId}`;
+
+            const res = await fetch(url);
+
+            if (!res.ok) {
+                document.body.innerHTML = '<div style="padding:20px;font-family:Arial;">Không tải được phiếu bàn giao cuối ca.</div>';
+                return;
+            }
+
+            const x = await res.json();
+
+            document.getElementById('slipCode').textContent = x.slipCode;
+            document.getElementById('shiftCode').textContent = x.shiftCode || `#${x.posShiftId}`;
+            document.getElementById('openedBy').textContent = x.openedByUserName || `User #${x.openedByUserId}`;
+            document.getElementById('closedBy').textContent = x.closedByUserName || `User #${x.closedByUserId}`;
+            document.getElementById('openedAt').textContent = dt(x.openedAtUtc);
+            document.getElementById('closedAt').textContent = dt(x.closedAtUtc);
+
+            document.getElementById('openingCash').textContent = money(x.openingCash);
+            document.getElementById('cashSales').textContent = money(x.cashSalesTotal);
+            document.getElementById('nonCashSales').textContent = money(x.nonCashSalesTotal);
+            document.getElementById('cashIn').textContent = money(x.cashInTotal);
+            document.getElementById('cashOut').textContent = money(x.cashOutTotal);
+            document.getElementById('cashRefund').textContent = money(x.cashRefundTotal);
+            document.getElementById('refundCount').textContent = x.refundCount || 0;
+            document.getElementById('voidCount').textContent = x.voidCount || 0;
+
+            document.getElementById('expectedCash').textContent = money(x.closingCashExpected);
+            document.getElementById('actualCash').textContent = money(x.closingCashActual);
+
+            const diffEl = document.getElementById('cashDiff');
+            diffEl.textContent = (x.cashDifference > 0 ? '+' : x.cashDifference < 0 ? '-' : '') + money(Math.abs(x.cashDifference));
+            diffEl.className = 'value money ' + (x.cashDifference < 0 ? 'diff-minus' : x.cashDifference > 0 ? 'diff-plus' : '');
+
+            document.getElementById('signCashier').textContent = x.closedByUserName || '..............';
+
+            if (x.closeNote) {
+                document.getElementById('noteBox').style.display = '';
+                document.getElementById('noteText').textContent = x.closeNote;
+            }
+
+            document.getElementById('denomBody').innerHTML = (x.denominations || []).length
+                ? x.denominations.map(d => `
+                    <tr>
+                        <td>${money(d.denominationValue)}</td>
+                        <td>${d.quantity}</td>
+                        <td>${money(d.amount)}</td>
+                    </tr>
+                `).join('')
+                : '<tr><td colspan="3">Không có dữ liệu mệnh giá.</td></tr>';
+
+            document.getElementById('barcodeText').textContent = x.barcodeValue;
+
+            JsBarcode('#barcode', x.barcodeValue, {
+                format: 'CODE128',
+                displayValue: false,
+                width: 1.4,
+                height: 42,
+                margin: 0
+            });
+
+            fetch(`/admin/pos/shift-closing-slips/${x.id}/mark-printed`, {
+                method: 'POST'
+            }).catch(() => { });
+
+            setTimeout(() => window.print(), 500);
+        }
+
+        loadSlip();
+    </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+﻿@{
+    var path = Context.Request.Path.Value?.ToLower() ?? string.Empty;
+
+    bool isPOS = path == "/admin/pos";
+    bool isShift = path.Contains("/admin/pos-shift") && !path.Contains("/history");
+    bool isShiftHistory = path.Contains("/admin/pos-shift/history") || path.Contains("/admin/pos-shift-history");
+    bool isOrders = path.Contains("/admin/pos/orders-page") || path.Contains("/admin/pos/order-detail");
+    bool isDashboard = path.Contains("/admin/pos/dashboard");
+
+    // Nếu route màn hình khách của anh khác thì sửa dòng này
+    var customerDisplayUrl = "/admin/pos/customer-display";
+}
+
+<style>
+    .pos-top-nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+        .pos-top-nav .pos-nav-link,
+        .pos-top-nav .pos-nav-button {
+            min-height: 42px;
+            border-radius: 12px;
+            font-weight: 700;
+            padding: 10px 16px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            border: 1px solid #dfe3e8;
+            background: #fff;
+            color: #344054;
+            transition: all .15s ease;
+            box-shadow: 0 1px 2px rgba(16,24,40,.04);
+        }
+
+            .pos-top-nav .pos-nav-link:hover,
+            .pos-top-nav .pos-nav-button:hover {
+                border-color: #bfc7d4;
+                background: #f8fafc;
+                color: #101828;
+            }
+
+            .pos-top-nav .pos-nav-link.active {
+                background: linear-gradient(180deg, #1d4ed8 0%, #1e40af 100%);
+                color: #fff;
+                border-color: #1e40af;
+                box-shadow: 0 8px 20px rgba(30,64,175,.18);
+            }
+
+        .pos-top-nav .pos-nav-button {
+            cursor: pointer;
+        }
+
+            .pos-top-nav .pos-nav-button.customer-display {
+                border-color: #16a34a;
+                color: #15803d;
+                background: #f0fdf4;
+            }
+
+                .pos-top-nav .pos-nav-button.customer-display:hover {
+                    background: #dcfce7;
+                    border-color: #15803d;
+                }
+
+        .pos-top-nav .pos-nav-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+</style>
+
+<div class="pos-top-nav">
+    <a href="/admin/pos" class="pos-nav-link @(isPOS ? "active" : "")">
+        <i class="bx bx-cart-alt pos-nav-icon"></i>
+        <span>POS Bán hàng</span>
+    </a>
+
+    <a href="/admin/pos-shift" class="pos-nav-link @(isShift ? "active" : "")">
+        <i class="bx bx-time-five pos-nav-icon"></i>
+        <span>Ca POS</span>
+    </a>
+
+    <a href="/admin/pos-shift/history" class="pos-nav-link @(isShiftHistory ? "active" : "")">
+        <i class="bx bx-history pos-nav-icon"></i>
+        <span>Lịch sử ca</span>
+    </a>
+
+    <a href="/admin/pos/orders-page" class="pos-nav-link @(isOrders ? "active" : "")">
+        <i class="bx bx-receipt pos-nav-icon"></i>
+        <span>Đơn POS</span>
+    </a>
+
+    <a href="/admin/pos/dashboard" class="pos-nav-link @(isDashboard ? "active" : "")">
+        <i class="bx bx-bar-chart-alt-2 pos-nav-icon"></i>
+        <span>Dashboard</span>
+    </a>
+
+    <button type="button"
+            id="btnOpenCustomerDisplay"
+            class="pos-nav-button customer-display"
+            data-url="@customerDisplayUrl">
+        <i class="bx bx-desktop pos-nav-icon"></i>
+        <span>Màn hình khách</span>
+    </button>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const btn = document.getElementById('btnOpenCustomerDisplay');
+        if (!btn) return;
+
+        btn.addEventListener('click', function () {
+            const url = btn.getAttribute('data-url') || '/admin/pos/customer-display';
+
+            const features = [
+                'popup=yes',
+                'width=1280',
+                'height=720',
+                'left=1920',
+                'top=0',
+                'menubar=no',
+                'toolbar=no',
+                'location=no',
+                'status=no',
+                'resizable=yes',
+                'scrollbars=no'
+            ].join(',');
+
+            const win = window.open(url, 'GaoMartCustomerDisplay', features);
+
+            if (win) {
+                win.focus();
+            } else {
+                alert('Trình duyệt đang chặn popup. Hãy cho phép popup cho trang POS.');
+            }
+        });
+    });
+</script>

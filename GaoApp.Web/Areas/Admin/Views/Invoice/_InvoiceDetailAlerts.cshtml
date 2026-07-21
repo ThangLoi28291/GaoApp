@@ -1,0 +1,124 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceDetailViewModel
+
+@{
+    var invoice = Model.Invoice;
+
+    var issuedStatuses = new[]
+    {
+        InvoiceProviderStatus.Issued,
+        InvoiceProviderStatus.PdfDownloaded,
+        InvoiceProviderStatus.ZipDownloaded,
+        InvoiceProviderStatus.EmailSent
+    };
+
+    var isViettelIssued =
+        !string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo)
+        || issuedStatuses.Contains(invoice.ProviderStatus);
+
+    var isCorrectionInvoice =
+        invoice.OriginalInvoiceHeadId.HasValue ||
+        invoice.CorrectionType.HasValue;
+
+    var isAdjustmentAmountInvoice =
+        invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
+
+    var correctionTypeName = invoice.CorrectionType switch
+    {
+        InvoiceCorrectionType.Replacement => "Hóa đơn thay thế",
+        InvoiceCorrectionType.AdjustmentAmount => "Hóa đơn điều chỉnh tiền",
+        InvoiceCorrectionType.AdjustmentInfo => "Hóa đơn điều chỉnh thông tin",
+        _ => string.Empty
+    };
+}
+
+@if (isViettelIssued)
+{
+    <div class="alert alert-success d-flex align-items-start gap-2">
+        <i class="bx bx-check-circle fs-4"></i>
+        <div>
+            <div class="fw-semibold">
+                Hóa đơn đã phát hành Viettel.
+            </div>
+            <div>
+                Không được sửa dòng chi tiết sau khi đã phát hành.
+                Nếu sai nội dung, xử lý bằng hóa đơn thay thế hoặc hóa đơn điều chỉnh.
+            </div>
+        </div>
+    </div>
+}
+else if (invoice.IsLocked)
+{
+    <div class="alert alert-warning d-flex align-items-start gap-2">
+        <i class="bx bx-lock fs-4"></i>
+        <div>
+            <div class="fw-semibold">
+                Hóa đơn đang khóa.
+            </div>
+            <div>
+                Chỉ admin nên mở khóa khi hóa đơn chưa phát hành Viettel.
+            </div>
+        </div>
+    </div>
+}
+
+@if (isCorrectionInvoice)
+{
+    <div class="alert alert-warning d-flex align-items-start gap-2">
+        <i class="bx bx-git-branch fs-4"></i>
+
+        <div>
+            <div class="fw-semibold">
+                @correctionTypeName
+            </div>
+
+            <div>
+                Hóa đơn này được lập để xử lý sai sót cho hóa đơn gốc:
+                <strong>@(invoice.OriginalInvoiceNo ?? ("#" + invoice.OriginalInvoiceHeadId))</strong>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(invoice.AdjustedNote))
+            {
+                <div>
+                    Lý do:
+                    <strong>@invoice.AdjustedNote</strong>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(invoice.AdditionalReferenceDesc))
+            {
+                <div>
+                    Văn bản thỏa thuận:
+                    <strong>@invoice.AdditionalReferenceDesc</strong>
+
+                    @if (invoice.AdditionalReferenceDateUtc.HasValue)
+                    {
+                        <span>
+                            - ngày @invoice.AdditionalReferenceDateUtc.Value.ToString("dd/MM/yyyy")
+                        </span>
+                    }
+                </div>
+            }
+
+            @if (isAdjustmentAmountInvoice)
+            {
+                <div class="mt-2 text-danger small">
+                    Hóa đơn điều chỉnh tiền cho phép nhập dòng âm để điều chỉnh giảm.
+                </div>
+            }
+
+            @if (invoice.OriginalInvoiceHeadId.HasValue)
+            {
+                <div class="mt-2">
+                    <a asp-area="Admin"
+                           asp-controller="Invoice"
+                           asp-action="ViettelPayload"
+                           asp-route-id="@invoice.OriginalInvoiceHeadId"
+                           class="btn btn-sm btn-outline-secondary">
+                        Xem hóa đơn gốc
+                    </a>
+                </div>
+            }
+        </div>
+    </div>
+}

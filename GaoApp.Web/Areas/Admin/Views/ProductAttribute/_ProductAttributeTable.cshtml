@@ -1,0 +1,185 @@
+﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Web.Areas.Admin.ViewModels.ProductAttributes
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@model ProductAttributeIndexVM
+
+@{
+    var items = Model.Paged.Items;
+    var totalItems = Model.Paged.TotalItems;
+    var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
+    var currentPage = Model.Page <= 0 ? 1 : Model.Page;
+    var totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
+
+    var canUpdate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.ProductAttribute.Update)).Succeeded;
+    var canDelete = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.ProductAttribute.Delete)).Succeeded;
+}
+
+<div class="card border-0 shadow-sm pa-table-card">
+    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="mb-1 fw-bold">Danh sách thuộc tính</h5>
+            <div class="text-muted small">
+                Tổng cộng <b>@totalItems</b> thuộc tính
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive pa-table-wrap">
+        <table class="table table-hover align-middle mb-0 pa-table">
+            <thead>
+                <tr>
+                    <th style="width:90px">ID</th>
+                    <th style="width:170px">Mã</th>
+                    <th>Tên thuộc tính</th>
+                    <th style="width:180px">Trạng thái</th>
+                    <th class="text-end" style="width:120px">Thao tác</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @if (items == null || !items.Any())
+                {
+                    <tr>
+                        <td colspan="5">
+                            <div class="pa-empty">
+                                <div class="pa-empty-icon">
+                                    <i class="bx bx-slider-alt"></i>
+                                </div>
+                                <div class="fw-bold mb-1">Chưa có thuộc tính</div>
+                                <div class="text-muted">
+                                    Hãy thêm thuộc tính như Màu sắc, Kích cỡ, Dung tích...
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var x in items)
+                    {
+                        <tr>
+                            <td>
+                                <span class="pa-id">#@x.Id</span>
+                            </td>
+
+                            <td>
+                                <span class="pa-code">@x.Code</span>
+                            </td>
+
+                            <td>
+                                <div class="fw-bold">@x.Name</div>
+                            </td>
+
+                            <td>
+                                @if (canUpdate)
+                                {
+                                    <button type="button"
+                                            class="pa-status-btn js-toggle-status @(x.Status ? "is-active" : "is-inactive")"
+                                            data-id="@x.Id">
+                                        <span class="pa-status-dot"></span>
+                                        @(x.Status ? "Đang hoạt động" : "Ngưng giao dịch")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span class="pa-status-badge @(x.Status ? "is-active" : "is-inactive")">
+                                        <span class="pa-status-dot"></span>
+                                        @(x.Status ? "Đang hoạt động" : "Ngưng giao dịch")
+                                    </span>
+                                }
+                            </td>
+
+                            <td class="text-end">
+                                <div class="dropdown">
+                                    <button type="button"
+                                            class="btn btn-sm btn-icon btn-label-secondary"
+                                            data-bs-toggle="dropdown">
+                                        <i class="bx bx-dots-vertical-rounded"></i>
+                                    </button>
+
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        @if (canUpdate)
+                                        {
+                                            <a asp-area="Admin"
+                                                   asp-controller="ProductAttribute"
+                                                   asp-action="Edit"
+                                                   asp-route-id="@x.Id"
+                                                   class="dropdown-item">
+                                                <i class="bx bx-edit me-2"></i> Sửa
+                                            </a>
+
+                                            <button type="button"
+                                                    class="dropdown-item js-toggle-status"
+                                                    data-id="@x.Id">
+                                                <i class="bx bx-power-off me-2"></i>
+                                                @(x.Status ? "Ngưng hoạt động" : "Mở hoạt động")
+                                            </button>
+                                        }
+
+                                        @if (canDelete)
+                                        {
+                                            <div class="dropdown-divider"></div>
+                                            <button type="button"
+                                                    class="dropdown-item text-danger js-delete"
+                                                    data-id="@x.Id"
+                                                    data-name="@x.Name">
+                                                <i class="bx bx-trash me-2"></i> Xóa
+                                            </button>
+                                        }
+
+                                        @if (!canUpdate && !canDelete)
+                                        {
+                                            <span class="dropdown-item text-muted">
+                                                Không có quyền thao tác
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="pa-pagination mt-3">
+        <div class="text-muted">
+            Trang <b>@currentPage</b> / <b>@totalPages</b>
+        </div>
+
+        <nav>
+            <ul class="pagination mb-0">
+                @{
+                    var start = Math.Max(1, currentPage - 3);
+                    var end = Math.Min(totalPages, start + 6);
+                    start = Math.Max(1, end - 6);
+                }
+
+                <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                    <a href="#" class="page-link js-page-link" data-page="@(currentPage - 1)">
+                        <i class="bx bx-chevron-left"></i>
+                    </a>
+                </li>
+
+                @for (int p = start; p <= end; p++)
+                {
+                    <li class="page-item @(p == currentPage ? "active" : "")">
+                        <a href="#" class="page-link js-page-link" data-page="@p">@p</a>
+                    </li>
+                }
+
+                <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                    <a href="#" class="page-link js-page-link" data-page="@(currentPage + 1)">
+                        <i class="bx bx-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+}

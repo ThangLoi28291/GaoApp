@@ -1,0 +1,94 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseOrderEditViewModel
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@{
+    var isEdit = Model.Request.Id.HasValue;
+    ViewData["Title"] = isEdit ? "Sửa đơn đặt hàng ngoài yêu cầu" : "Tạo đơn đặt hàng ngoài yêu cầu";
+    var options = Model.Options;
+    var selectedSupplier = options.Suppliers.FirstOrDefault(x => x.Id == Model.Request.SupplierId);
+    var validLines = Model.Request.Lines.Where(x => x.Quantity > 0 &&
+        (x.ItemKind == PurchaseItemKind.FreeText
+            ? !string.IsNullOrWhiteSpace(x.ProductName) && !string.IsNullOrWhiteSpace(x.UnitName)
+            : x.ProductVariantId > 0 && x.ProductUnitConversionId > 0)).ToList();
+    var saveLabel = isEdit ? "Lưu thay đổi" : "Lưu đơn nháp";
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+}
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-edit.css" asp-append-version="true" /> }
+
+<div class="po-page" id="purchaseOrderPage"
+     data-product-lookup-url="@Url.Content("~/admin/purchase-orders/product-lookup")"
+     data-supplier-lookup-url="@Url.Content("~/admin/purchase-orders/supplier-lookup")">
+    <div class="po-page-header">
+        <div class="po-title-wrap">
+            <a class="po-back-link" asp-action="Index" aria-label="Quay lại"><i class="bx bx-arrow-back"></i></a>
+            <div><h4 class="po-page-title mb-0">@ViewData["Title"]</h4><div class="po-page-subtitle">@(isEdit ? Model.OrderNumber : "Mã đơn được cấp tự động theo cửa hàng") · Chỉ ghi tên, đơn vị và số lượng đặt</div></div>
+        </div>
+        <button type="button" class="btn btn-sm btn-label-secondary" data-bs-toggle="modal" data-bs-target="#poShortcutModal"><i class="bx bx-command me-1"></i>Phím tắt</button>
+    </div>
+
+    <form method="post" asp-action="Save" id="purchaseOrderForm" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Id" value="@Model.Request.Id" />
+        <input type="hidden" name="RowVersion" value="@Model.Request.RowVersion" />
+        <input type="hidden" name="HasVat" value="false" />
+        @if (!ViewData.ModelState.IsValid) { <div asp-validation-summary="All" class="alert alert-danger po-validation-summary" role="alert"></div> }
+
+        <section class="card po-card mb-4">
+            <div class="card-header po-card-header"><div class="po-section-heading"><span class="po-section-icon"><i class="bx bx-file"></i></span><div><h5 class="mb-1">Thông tin đặt hàng</h5><p class="mb-0">Chọn một nhà cung cấp thực tế cho toàn bộ đơn và nơi dự kiến nhận.</p></div></div></div>
+            <div class="card-body po-card-body"><div class="row g-4">
+                <div class="col-12"><label class="form-label" for="Title">Tên đơn hàng</label><input class="form-control" id="Title" name="Title" maxlength="250" value="@Model.Request.Title" placeholder="Ví dụ: Bổ sung hàng bán tuần 30" /></div>
+                <div class="col-12 col-lg-6">
+                    <label class="form-label po-required" for="SupplierId">Nhà cung cấp</label>
+                    <select class="form-select" id="SupplierId" name="SupplierId" required><option value=""></option>@if(Model.Request.SupplierId > 0){<option value="@Model.Request.SupplierId" selected>@(selectedSupplier?.Text ?? $"Nhà cung cấp #{Model.Request.SupplierId}")</option>}</select>
+                    <div class="form-text"><i class="bx bx-search-alt me-1"></i>Gõ tên, mã, số điện thoại hoặc mã số thuế.</div>
+                </div>
+                <div class="col-12 col-md-6 col-lg-3"><label class="form-label po-required" for="LegalEntityId">Đơn vị mua hàng</label><select class="form-select" id="LegalEntityId" name="LegalEntityId" required><option value="">-- Chọn HKD --</option>@foreach(var item in options.LegalEntities){<option value="@item.Id" selected="@(item.Id == Model.Request.LegalEntityId)">@item.Text</option>}</select><div class="form-text">Có thể đổi trước khi duyệt.</div></div>
+                <div class="col-12 col-md-6 col-lg-3"><label class="form-label po-required" for="ExpectedWarehouseId">Kho dự kiến nhận</label><select class="form-select" id="ExpectedWarehouseId" name="ExpectedWarehouseId" required><option value="">-- Chọn kho --</option>@foreach(var item in options.Warehouses){<option value="@item.Id" data-legal="@item.LegalEntityId" selected="@(item.Id == Model.Request.ExpectedWarehouseId)">@item.Text</option>}</select></div>
+                <div class="col-12 col-sm-6 col-lg-3"><label class="form-label po-required" for="OrderDate">Ngày đặt</label><input class="form-control" id="OrderDate" type="date" name="OrderDate" value="@Model.Request.OrderDate.ToString("yyyy-MM-dd")" required /></div>
+                <div class="col-12 col-sm-6 col-lg-3"><label class="form-label" for="ExpectedDeliveryDate">Dự kiến giao</label><input class="form-control" id="ExpectedDeliveryDate" type="date" name="ExpectedDeliveryDate" value="@Model.Request.ExpectedDeliveryDate?.ToString("yyyy-MM-dd")" /></div>
+                <div class="col-12 col-lg-6"><label class="form-label" for="Note">Ghi chú</label><textarea class="form-control" id="Note" name="Note" rows="2" maxlength="1000" placeholder="Điều kiện giao hàng, người liên hệ...">@Model.Request.Note</textarea></div>
+                <div class="col-12"><label class="form-label po-required" for="OutsideRequestReason">Lý do lập đơn ngoài yêu cầu mua</label><textarea class="form-control" id="OutsideRequestReason" name="OutsideRequestReason" rows="2" maxlength="500" required placeholder="Ví dụ: Mua bổ sung khẩn cấp theo xác nhận của quản lý...">@Model.Request.OutsideRequestReason</textarea><div class="form-text">Đơn trực tiếp được đánh dấu rõ là ngoài quy trình yêu cầu mua.</div></div>
+            </div></div>
+        </section>
+
+        <section class="card po-card po-products-card mb-4">
+            <div class="card-header po-card-header po-products-header"><div class="po-section-heading"><span class="po-section-icon po-section-icon-product"><i class="bx bx-package"></i></span><div><h5 class="mb-1">Hàng hóa đặt mua</h5><p class="mb-0">Không nhập giá tại đơn đặt hàng. Giá thực tế và VAT được xác nhận khi nhập kho.</p></div></div><span class="po-line-count"><strong id="lineCount">@validLines.Count</strong> mặt hàng</span></div>
+            <div class="card-body po-product-search-area"><div class="row g-3 align-items-end">
+                <div class="col-12 col-lg"><label class="form-label" for="productQuickSearch">Tìm sản phẩm có sẵn</label><div class="po-product-search-wrap"><select id="productQuickSearch" class="form-select"></select><span class="po-search-shortcut d-none d-md-inline-flex">F3</span></div></div>
+                <div class="col-12 col-lg-auto"><button type="button" class="btn btn-outline-primary w-100" id="openFreeTextProduct"><i class="bx bx-edit me-1"></i>Hàng chưa có <kbd>F4</kbd></button></div>
+            </div><div class="po-search-tip"><i class="bx bx-bulb"></i>Không thấy sản phẩm phù hợp? Nhấn F4 và nhập đúng tên hàng nhà cung cấp sẽ giao.</div></div>
+            <div class="table-responsive po-line-table-wrap"><table class="table po-line-table align-middle mb-0" id="purchaseLineTable"><thead><tr><th class="po-col-number">#</th><th>Sản phẩm</th><th class="po-col-unit">Đơn vị mua</th><th class="po-col-quantity">Số lượng</th><th class="po-col-actions"></th></tr></thead><tbody id="lineRows">
+            @for(var i=0;i<validLines.Count;i++){
+                var line=validLines[i];
+                var product=line.ProductUnitConversionId.HasValue ? options.Products.FirstOrDefault(x=>x.ProductUnitConversionId==line.ProductUnitConversionId.Value) : null;
+                var free=line.ItemKind==PurchaseItemKind.FreeText;
+                var productName=free ? line.ProductName : product?.Text ?? line.ProductName ?? $"Sản phẩm #{line.ProductVariantId}";
+                var unitName=free ? line.UnitName : product?.UnitName ?? line.UnitName ?? "Đơn vị";
+                <tr class="purchase-line" data-line-key="@(free?$"free:{productName?.Trim().ToLowerInvariant()}|{unitName?.Trim().ToLowerInvariant()}":$"catalog:{line.ProductUnitConversionId}")">
+                    <td class="po-line-number">@(i+1)</td><td class="po-product-cell"><input type="hidden" class="line-id" name="Lines[@i].Id" value="@line.Id"/><input type="hidden" class="item-kind" name="Lines[@i].ItemKind" value="@((int)line.ItemKind)"/><input type="hidden" class="variant-id" name="Lines[@i].ProductVariantId" value="@line.ProductVariantId"/><input type="hidden" class="conversion-id" name="Lines[@i].ProductUnitConversionId" value="@line.ProductUnitConversionId"/><input type="hidden" class="product-name-input" name="Lines[@i].ProductName" value="@productName"/><input type="hidden" class="unit-name-input" name="Lines[@i].UnitName" value="@unitName"/><input type="hidden" class="tax-id" name="Lines[@i].TaxId" value="0"/><input type="hidden" class="unit-price" name="Lines[@i].UnitPriceBeforeVat" value="0"/><div class="po-product-name">@productName</div>@if(free){<small class="text-warning"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small>}else if(!string.IsNullOrWhiteSpace(product?.Sku)){<small class="po-product-meta">SKU: @product.Sku</small>}</td>
+                    <td class="po-unit-cell"><span class="po-unit-name">@unitName</span>@if(!free){<span class="po-factor">× @PurchaseQuantityFormatter.Display(product?.Factor ?? 1)</span>}</td>
+                    <td><input class="form-control qty text-end" type="number" min="0.001" step="0.001" name="Lines[@i].Quantity" value="@PurchaseQuantityFormatter.Invariant(line.Quantity)" required/></td>
+                    <td class="po-actions-cell"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line" aria-label="Xóa"><i class="bx bx-trash"></i></button></td>
+                </tr>
+            }
+            </tbody></table><div class="po-empty-state @(validLines.Count>0?"d-none":string.Empty)" id="emptyLineState"><span class="po-empty-illustration"><i class="bx bx-package"></i></span><h6>Chưa có mặt hàng trong đơn</h6><p>Nhấn F3 để tìm sản phẩm có sẵn hoặc F4 để nhập tên hàng chưa có.</p><button type="button" class="btn btn-sm btn-primary" id="emptyAddProduct"><i class="bx bx-search-alt me-1"></i>Tìm sản phẩm</button></div></div>
+        </section>
+        <div class="po-form-error d-none" id="lineValidationMessage" role="alert"><i class="bx bx-error-circle"></i><span></span></div>
+        <div class="po-sticky-summary"><div class="po-summary-values"><div class="po-summary-item"><span>Mặt hàng</span><strong id="summaryLineCount">@validLines.Count</strong></div><div class="po-summary-item po-summary-grand"><span>Tổng số lượng</span><strong id="summaryQuantity">0</strong></div></div><div class="po-summary-actions"><a class="btn btn-label-secondary" asp-action="Index">Hủy</a><button class="btn btn-primary" type="submit" id="savePurchaseOrder"><span class="spinner-border spinner-border-sm d-none"></span><i class="bx bx-save"></i><span>@saveLabel</span><kbd>Ctrl S</kbd></button></div></div>
+    </form>
+</div>
+
+<div class="modal fade" id="productDetailModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content po-modal-content"><div class="modal-header"><div><div class="po-modal-eyebrow">THÊM VÀO ĐƠN</div><h5 class="modal-title">Thông tin sản phẩm</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="po-modal-product"><span class="po-modal-product-icon"><i class="bx bx-package"></i></span><div><h6 class="mb-1" id="modalProductName">—</h6><div class="po-modal-product-meta" id="modalProductMeta">—</div></div></div><div class="mb-3"><label class="form-label">Đơn vị mua</label><div class="form-control bg-light"><strong id="modalUnitName">—</strong> <span class="text-muted">· Quy đổi ×<span id="modalFactor">1</span></span></div></div><div><label class="form-label" for="modalQuantity">Số lượng <span class="text-danger">*</span></label><input class="form-control form-control-lg text-end" id="modalQuantity" type="number" min="0.001" step="0.001" value="1"/></div><div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="modalProductError"></div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="button" class="btn btn-outline-primary" id="saveProductAndContinue">Thêm &amp; tiếp tục <kbd>Ctrl ↵</kbd></button><button type="button" class="btn btn-primary" id="saveProductLine">Thêm vào đơn <kbd>Enter</kbd></button></div></div></div></div>
+
+<div class="modal fade" id="freeTextProductModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content po-modal-content"><div class="modal-header"><div><div class="po-modal-eyebrow">HÀNG CHƯA CÓ TRONG DANH MỤC</div><h5 class="modal-title">Nhập mặt hàng đặt mua</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="alert alert-info py-2"><i class="bx bx-info-circle me-1"></i>Trước khi nhập kho, mặt hàng sẽ được ghép với sản phẩm có sẵn hoặc tạo sản phẩm mới.</div><div class="mb-3"><label class="form-label" for="freeTextProductName">Tên mặt hàng <span class="text-danger">*</span></label><input class="form-control form-control-lg" id="freeTextProductName" maxlength="250" autocomplete="off"/></div><div class="mb-3"><label class="form-label" for="freeTextUnitName">Đơn vị mua <span class="text-danger">*</span></label><input class="form-control" id="freeTextUnitName" list="poUnitNames" maxlength="100" autocomplete="off" placeholder="Gõ hoặc chọn đơn vị..."/><datalist id="poUnitNames">@foreach(var unitName in Model.UnitNames){<option value="@unitName"></option>}<option value="Đơn vị khác"></option></datalist></div><div><label class="form-label" for="freeTextQuantity">Số lượng <span class="text-danger">*</span></label><input class="form-control text-end" id="freeTextQuantity" type="number" min="0.001" step="0.001" value="1"/></div><div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="freeTextProductError"></div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="button" class="btn btn-outline-primary" id="saveFreeTextAndContinue">Thêm &amp; tiếp tục <kbd>Ctrl ↵</kbd></button><button type="button" class="btn btn-primary" id="saveFreeTextLine">Thêm vào đơn <kbd>Enter</kbd></button></div></div></div></div>
+
+<div class="modal fade" id="poShortcutModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title"><i class="bx bx-command me-1"></i>Phím tắt</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="d-grid gap-2"><div class="d-flex justify-content-between"><span>Tìm sản phẩm có sẵn</span><kbd>F3</kbd></div><div class="d-flex justify-content-between"><span>Nhập hàng chưa có</span><kbd>F4</kbd></div><div class="d-flex justify-content-between"><span>Thêm và đóng</span><kbd>Enter</kbd></div><div class="d-flex justify-content-between"><span>Thêm rồi tiếp tục</span><kbd>Ctrl Enter</kbd></div><div class="d-flex justify-content-between"><span>Lưu đơn nháp</span><kbd>Ctrl S</kbd></div><div class="d-flex justify-content-between"><span>Đóng cửa sổ</span><kbd>Esc</kbd></div></div></div></div></div></div>
+
+<template id="lineTemplate"><tr class="purchase-line"><td class="po-line-number"></td><td class="po-product-cell"><input type="hidden" class="line-id"/><input type="hidden" class="item-kind"/><input type="hidden" class="variant-id"/><input type="hidden" class="conversion-id"/><input type="hidden" class="product-name-input"/><input type="hidden" class="unit-name-input"/><input type="hidden" class="tax-id" value="0"/><input type="hidden" class="unit-price" value="0"/><div class="po-product-name"></div><small class="po-product-meta"></small><small class="text-warning d-none po-free-text"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small></td><td class="po-unit-cell"><span class="po-unit-name"></span><span class="po-factor"></span></td><td><input class="form-control qty text-end" type="number" min="0.001" step="0.001" required/></td><td class="po-actions-cell"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line"><i class="bx bx-trash"></i></button></td></tr></template>
+
+@section VendorScripts { <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> }
+@section PageScripts { <script src="~/Admin/js/purchase-order-edit.js" asp-append-version="true"></script> }

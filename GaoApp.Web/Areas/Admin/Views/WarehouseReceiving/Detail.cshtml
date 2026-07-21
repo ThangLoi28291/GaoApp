@@ -1,0 +1,502 @@
+﻿@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@using GaoApp.Domain.Enums
+@using GaoApp.Application.DTOs.Purchases
+
+@{
+    ViewData["Title"] = "Nhập hàng";
+    Layout = "_ContentNavbarLayout";
+
+    var canEdit = Model.Status == StockDocumentStatus.Draft
+               || Model.Status == StockDocumentStatus.Rejected;
+
+    string statusText = Model.Status switch
+    {
+        StockDocumentStatus.Draft => "Đang nhập",
+        StockDocumentStatus.PendingApproval => "Chờ quản lý duyệt",
+        StockDocumentStatus.Rejected => "Bị trả về - cần sửa",
+        _ => Model.Status.ToString()
+    };
+
+    var totalLines = Model.Lines?.Count ?? 0;
+    var totalQty = Model.Lines?.Sum(x => x.Quantity) ?? 0;
+    var canQuickCreateProduct = ViewBag.CanQuickCreateProduct as bool? ?? false;
+    var canCreateUnit = ViewBag.CanCreateUnit as bool? ?? false;
+    var quickCreateOptions = ViewBag.ProcurementQuickCreateOptions as ProcurementQuickCreateOptionsDto
+        ?? new ProcurementQuickCreateOptionsDto();
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/admin/css/warehouse-receiving-detail.css" rel="stylesheet" />
+}
+
+<div class="container-xxl flex-grow-1 container-p-y wrd-page">
+    <input type="hidden" id="StockDocumentId" value="@Model.Id" />
+    <input type="hidden" id="CanEditReceiving" value="@canEdit.ToString().ToLower()" />
+    <div class="d-none" id="warehouseReceivingAntiforgery">@Html.AntiForgeryToken()</div>
+    @if (canEdit)
+    {
+        <div id="barcodeVerificationAlert" class="alert alert-warning rounded-4 d-none">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <div class="fw-bold">
+                        ⚠ Có <span id="barcodeVerificationCount">0</span> đơn vị cần chuẩn hóa barcode
+                    </div>
+                    <div class="small">
+                        Một số đơn vị như lốc/thùng đang dùng mã hệ thống cũ. Bạn có thể bổ sung mã nhà sản xuất nếu có.
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn btn-warning"
+                        id="btnOpenBarcodeVerificationModal">
+                    Bổ sung barcode
+                </button>
+            </div>
+        </div>
+    }
+    <div class="wrd-topbar">
+        <div>
+            <a href="/admin/warehouse-receiving" class="wrd-back">← Quay lại danh sách</a>
+            <h1 class="wrd-document-title">
+                @(Model.DocumentTitle ?? "Phiếu nhập kho")
+            </h1>
+
+            <div class="wrd-document-code">
+                @Model.DocumentNo
+            </div>
+        </div>
+
+        <div class="wrd-top-actions">
+            <span class="wrd-status">@statusText</span>
+        </div>
+    </div>
+
+    @if (Model.Status == StockDocumentStatus.PendingApproval)
+    {
+        <div class="alert alert-warning rounded-4 d-flex justify-content-between align-items-center">
+
+            <div>
+                <div class="fw-bold">
+                    Phiếu đã gửi quản lý duyệt.
+                </div>
+
+                <div>
+                    Nhân viên không thể sửa trực tiếp.
+                </div>
+            </div>
+
+            @if (!Model.HasRevisionRequest)
+            {
+                <button type="button"
+                        class="btn btn-outline-danger"
+                        id="btnRequestRevision">
+                    <i class="bx bx-edit"></i>
+                    Đề nghị sửa
+                </button>
+            }
+        </div>
+    }
+
+    @if (Model.HasRevisionRequest)
+    {
+        <div class="alert alert-info rounded-4 wrd-revision-info">
+            <div class="fw-bold mb-1">
+                Đã gửi yêu cầu sửa phiếu
+            </div>
+
+            <div>
+                <b>Lý do:</b> @Model.RevisionRequestNote
+            </div>
+
+            @if (Model.RevisionRequestedAtUtc.HasValue)
+            {
+                <div class="small text-muted mt-1">
+                    Gửi lúc:
+                    @Model.RevisionRequestedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                </div>
+            }
+        </div>
+    }
+    @if (Model.Status == StockDocumentStatus.Rejected)
+    {
+        <div class="alert alert-danger rounded-4">
+            Phiếu bị trả về. Vui lòng kiểm tra lại số lượng hàng rồi gửi duyệt lại.
+            @if (!string.IsNullOrWhiteSpace(Model.ApprovalNote))
+            {
+                <div class="mt-1"><b>Lý do:</b> @Model.ApprovalNote</div>
+            }
+        </div>
+    }
+
+    <div class="wrd-layout">
+        <div class="wrd-main">
+
+            @if (canEdit)
+            {
+                <div class="wrd-panel wrd-scan-panel">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div class="wrd-panel-title mb-0">Quét mã vạch / tìm sản phẩm</div>
+                        @if (canQuickCreateProduct)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-warning" id="btnReceivingQuickCreateProduct">
+                                <i class="bx bx-plus-circle me-1"></i>Hàng mới <span class="ms-1 opacity-75">F4</span>
+                            </button>
+                        }
+                    </div>
+                    <select id="quickLookupInput" class="form-select"></select>
+                    <div class="wrd-hint">Quét barcode hoặc gõ tên sản phẩm, Enter để chọn. Không tìm thấy thì bấm F4 để tạo hàng chờ hoàn thiện.</div>
+                </div>
+            }
+
+            <div class="wrd-panel">
+                <div class="wrd-panel-header">
+                    <div>
+                        <div class="wrd-panel-title">Danh sách hàng nhập</div>
+                        <div class="wrd-hint">Chỉ nhập số lượng thực nhận. Giá và hóa đơn do quản lý xử lý.</div>
+                    </div>
+                </div>
+
+                <div id="wrdLinesContainer">
+                    @await Html.PartialAsync("_ReceivingLinesTable", Model)
+                </div>
+            </div>
+        </div>
+
+        <aside class="wrd-side">
+            <div class="wrd-side-card">
+                <div class="wrd-side-title">Thông tin phiếu</div>
+
+                <div class="wrd-info-row">
+                    <span>Kho nhập</span>
+                    <b>@Model.WarehouseName</b>
+                </div>
+
+                <div class="wrd-info-row">
+                    <span>Nhà cung cấp</span>
+                    <b>@(Model.SupplierName ?? "Chưa chọn")</b>
+                </div>
+
+                <div class="wrd-info-row">
+                    <span>Số dòng</span>
+                    <b id="wrdTotalLines">@totalLines</b>
+                </div>
+
+                <div class="wrd-info-row">
+                    <span>Tổng SL nhập</span>
+                    <b id="wrdTotalQty">@totalQty.ToString("0.###")</b>
+                </div>
+
+                @if (canEdit)
+                {
+                    <button type="button"
+                            class="btn btn-warning wrd-submit-btn"
+                            id="btnSubmitReceiving">
+                        Gửi quản lý duyệt
+                    </button>
+                }
+
+                <div class="wrd-shortcut">
+                    Enter: thêm / lưu dòng<br />
+                    Esc: đóng popup
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<div class="modal fade" id="quickAddProductModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content wrd-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Nhập số lượng hàng</h5>
+                    <div class="wrd-muted small">Kiểm tra đúng sản phẩm rồi nhập số lượng thực nhận.</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="popupProductVariantId" />
+                <input type="hidden" id="popupUnitId" />
+
+                <div class="row g-3 align-items-start">
+                    <div class="col-md-3">
+                        <div class="wrd-product-img-box">
+                            <img id="popupProductImage" class="wrd-product-img d-none" src="" />
+                            <div id="popupProductNoImage" class="wrd-no-img">
+                                <i class="bx bx-image fs-1"></i>
+                                <div>Chưa có ảnh</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-9">
+                        <h5 id="popupProductName" class="wrd-product-title">-</h5>
+
+                        <div class="wrd-popup-grid">
+                            <div class="wrd-popup-box">
+                                <div class="wrd-info-label">Barcode</div>
+                                <div class="wrd-info-value" id="popupBarcode">-</div>
+                            </div>
+
+                            <div class="wrd-popup-box">
+                                <div class="wrd-info-label">ĐVT</div>
+                                <div class="wrd-info-value" id="popupUnitName">-</div>
+                            </div>
+
+                            <div class="wrd-popup-box">
+                                <div class="wrd-info-label">Factor</div>
+                                <div class="wrd-info-value" id="popupFactor">1</div>
+                            </div>
+
+                            <div class="wrd-popup-box">
+                                <div class="wrd-info-label">SL gốc dự kiến</div>
+                                <div class="wrd-info-value" id="popupBaseQty">1</div>
+                            </div>
+                        </div>
+                        <div id="popupUnitChooser" class="mt-3 d-none">
+                            <label class="form-label fw-bold">Chọn đơn vị nhập</label>
+                            <div id="popupUnitChooserList" class="wrd-unit-choice-list"></div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label fw-bold">Số lượng nhập</label>
+                            <input type="number"
+                                   id="popupQuickQty"
+                                   class="form-control form-control-lg wrd-qty-input"
+                                   value="1"
+                                   min="0.001"
+                                   step="0.001"
+                                   inputmode="decimal"
+                                   autocomplete="off" />
+                        </div>
+
+                        <div class="text-danger small mt-2" id="popupQuickMessage"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 justify-content-between">
+                <div class="wrd-muted small">Enter: thêm dòng · Esc: đóng</div>
+                <button type="button" class="btn btn-primary px-4" id="btnPopupQuickAddLine">
+                    Thêm dòng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@if (canQuickCreateProduct && canEdit)
+{
+    <div class="modal fade" id="receivingQuickCreateProductModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content wrd-modal">
+                <div class="modal-header border-0">
+                    <div>
+                        <div class="small text-primary fw-semibold text-uppercase">F4 · Hàng chưa có</div>
+                        <h5 class="modal-title fw-bold mb-0">Tạo sản phẩm chờ hoàn thiện</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info rounded-3 py-2 small">
+                        Hàng được dùng ngay trên phiếu nhập này nhưng chưa hiển thị tại POS cho đến khi quản lý hoàn thiện danh mục.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tên sản phẩm <span class="text-danger">*</span></label>
+                        <input class="form-control" id="receivingQuickProductName" maxlength="200" autocomplete="off" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nhà cung cấp <span class="text-danger">*</span></label>
+                        <select class="form-select" id="receivingQuickSupplier">
+                            @if (Model.SupplierId.HasValue)
+                            {
+                                <option value="@Model.SupplierId" selected>@Model.SupplierName</option>
+                            }
+                        </select>
+                        <div class="form-text">Danh mục sản phẩm bắt buộc có nhà cung cấp, dù phiếu nhập trực tiếp có thể chưa chọn NCC.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Danh mục <span class="text-danger">*</span></label>
+                        <select class="form-select" id="receivingQuickCategory">
+                            <option value="">-- Chọn danh mục --</option>
+                            @foreach (var option in quickCreateOptions.Categories)
+                            {
+                                <option value="@option.Id">@option.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Đơn vị gốc <span class="text-danger">*</span></label>
+                        <select class="form-select" id="receivingQuickUnit">
+                            <option value="">-- Chọn đơn vị --</option>
+                            @foreach (var option in quickCreateOptions.Units)
+                            {
+                                <option value="@option.Id">@option.Text</option>
+                            }
+                            @if (canCreateUnit)
+                            {
+                                <option value="__other">Đơn vị khác...</option>
+                            }
+                        </select>
+                    </div>
+                    @if (canCreateUnit)
+                    {
+                        <div class="mb-3 d-none" id="receivingQuickOtherUnitWrap">
+                            <label class="form-label fw-bold">Tên đơn vị khác <span class="text-danger">*</span></label>
+                            <input class="form-control" id="receivingQuickOtherUnit" maxlength="200" placeholder="Ví dụ: khay, túi, can..." />
+                        </div>
+                    }
+                    <div class="text-danger small" id="receivingQuickCreateMessage"></div>
+                </div>
+                <div class="modal-footer border-0 justify-content-between">
+                    <small class="text-muted">Ctrl+Enter: tạo · Esc: đóng</small>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="button" class="btn btn-warning" id="btnConfirmReceivingQuickCreate">
+                            <i class="bx bx-plus-circle me-1"></i>Tạo và nhập số lượng
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="modal fade" id="requestRevisionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content wrd-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Đề nghị sửa phiếu</h5>
+                    <div class="wrd-muted small">
+                        Gửi lý do cho quản lý để xin mở lại phiếu.
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <label class="form-label fw-bold">
+                    Lý do cần sửa <span class="text-danger">*</span>
+                </label>
+
+                <textarea id="txtRevisionNote"
+                          class="form-control wrd-revision-note"
+                          rows="4"
+                          maxlength="1000"
+                          placeholder="Ví dụ: nhập thiếu 2 thùng Pepsi, xin mở lại phiếu để sửa..."></textarea>
+
+                <div class="text-danger small mt-2" id="revisionRequestMessage"></div>
+            </div>
+
+            <div class="modal-footer border-0 justify-content-between">
+                <div class="wrd-muted small">
+                    Ctrl + Enter: gửi yêu cầu
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-danger"
+                            id="btnConfirmRevision">
+                        Gửi yêu cầu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="submitReceivingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content wrd-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Gửi phiếu cho quản lý duyệt?</h5>
+                    <div class="wrd-muted small">
+                        Sau khi gửi, nhân viên chỉ được xem phiếu.
+                    </div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="alert alert-warning rounded-4 mb-0">
+                    Vui lòng kiểm tra lại số lượng hàng nhập trước khi gửi duyệt.
+                </div>
+
+                <div class="text-danger small mt-2" id="submitReceivingMessage"></div>
+            </div>
+
+            <div class="modal-footer border-0 justify-content-between">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Hủy
+                </button>
+
+                <button type="button" class="btn btn-warning px-4" id="btnConfirmSubmitReceiving">
+                    Gửi quản lý duyệt
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="barcodeVerificationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content wrd-modal">
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Bổ sung barcode lốc / thùng</h5>
+                    <div class="wrd-muted small">
+                        Nhập mã nhà sản xuất nếu có, hoặc đánh dấu không có mã.
+                    </div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="barcodeVerificationList">
+                    <div class="text-muted">Đang tải dữ liệu...</div>
+                </div>
+
+                <div class="text-danger small mt-2" id="barcodeVerificationMessage"></div>
+            </div>
+
+            <div class="modal-footer border-0 justify-content-between">
+                <div class="wrd-muted small">
+                    Dữ liệu sẽ gửi cho quản lý xử lý sau.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Đóng
+                    </button>
+
+                    <button type="button" class="btn btn-warning px-4" id="btnSubmitBarcodeVerification">
+                        Gửi quản lý xử lý
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@section PageScripts {
+    <script>
+        window.warehouseReceivingDetail = {
+            documentId: @Model.Id,
+            rowVersion: '@Model.RowVersion'
+        };
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="~/admin/js/warehouse-receiving-detail.js"></script>
+}

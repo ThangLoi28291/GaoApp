@@ -1,0 +1,43 @@
+name: GaoApp CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - dev
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore GaoApp.sln
+
+      - name: Build solution
+        run: dotnet build GaoApp.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet test GaoApp.Tests/GaoApp.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=gaoapp-tests.trx"
+
+      - name: Publish Web project
+        run: dotnet publish GaoApp.Web/GaoApp.Web.csproj --configuration Release --no-build -o ./publish-web
+
+      - name: Publish Migrator project
+        run: dotnet publish GaoApp.Migrator/GaoApp.Migrator.csproj --configuration Release --no-build -o ./publish-migrator

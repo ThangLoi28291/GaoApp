@@ -1,0 +1,147 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseRequestIndexViewModel
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@{
+    ViewData["Title"] = "Yêu cầu mua hàng";
+    string StatusLabel(PurchaseRequestStatus status) => status switch
+    {
+        PurchaseRequestStatus.Draft => "Nháp",
+        PurchaseRequestStatus.PendingApproval => "Chờ quản lý chốt",
+        PurchaseRequestStatus.ReturnedForRevision => "Trả sửa",
+        PurchaseRequestStatus.Rejected => "Từ chối",
+        PurchaseRequestStatus.Approved => "Đã chốt mua",
+        PurchaseRequestStatus.PartiallyConverted => "Đang tạo đơn",
+        PurchaseRequestStatus.Converted => "Đã tạo đủ đơn",
+        PurchaseRequestStatus.Cancelled => "Đã hủy",
+        _ => status.ToString()
+    };
+    string StatusClass(PurchaseRequestStatus status) => status switch
+    {
+        PurchaseRequestStatus.Draft => "bg-label-secondary",
+        PurchaseRequestStatus.PendingApproval => "bg-label-warning",
+        PurchaseRequestStatus.ReturnedForRevision => "bg-label-info",
+        PurchaseRequestStatus.Rejected or PurchaseRequestStatus.Cancelled => "bg-label-danger",
+        PurchaseRequestStatus.Approved => "bg-label-success",
+        PurchaseRequestStatus.PartiallyConverted => "bg-label-primary",
+        PurchaseRequestStatus.Converted => "bg-label-success",
+        _ => "bg-label-secondary"
+    };
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+            <span class="avatar avatar-sm bg-label-primary rounded"><i class="bx bx-list-check fs-5"></i></span>
+            <h4 class="mb-0">Yêu cầu mua hàng</h4>
+        </div>
+        <p class="text-muted mb-0">Nhân viên yêu cầu mặt hàng và số lượng; quản lý duyệt rồi chuyển thành một đơn đặt hàng.</p>
+    </div>
+    @if (Model.CanCreate)
+    {
+        <a class="btn btn-primary" asp-action="Create">
+            <i class="bx bx-plus me-1"></i>Tạo yêu cầu
+        </a>
+    }
+</div>
+
+@if (TempData["Success"] is string success)
+{
+    <div class="alert alert-success alert-dismissible" role="alert">@success<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+}
+@if (TempData["Error"] is string error)
+{
+    <div class="alert alert-danger alert-dismissible" role="alert">@error<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+}
+
+@if (Model.CanViewStore)
+{
+    <div class="nav-align-top mb-3">
+        <ul class="nav nav-pills gap-2" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link @(!Model.ShowingOnlyMine ? "active" : string.Empty)" asp-action="Index">
+                    <i class="bx bx-store-alt me-1"></i>Toàn cửa hàng
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link @(Model.ShowingOnlyMine ? "active" : string.Empty)" asp-action="Index" asp-route-mine="true">
+                    <i class="bx bx-user me-1"></i>Của tôi
+                </a>
+            </li>
+        </ul>
+    </div>
+}
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Yêu cầu</th>
+                    @if (Model.CanViewStore && !Model.ShowingOnlyMine)
+                    {
+                        <th>Người yêu cầu</th>
+                    }
+                    <th>Ngày cần hàng</th>
+                    <th>Số lượng yêu cầu / được duyệt</th>
+                    <th>Tiến độ</th>
+                    <th>Trạng thái</th>
+                    <th class="text-end"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Items.Count == 0)
+                {
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <div class="avatar avatar-lg bg-label-secondary rounded-circle mb-3"><i class="bx bx-basket fs-3"></i></div>
+                            <h6 class="mb-1">Chưa có yêu cầu mua hàng</h6>
+                            <p class="text-muted mb-3">Tạo yêu cầu đầu tiên chỉ với tên, sản phẩm và số lượng.</p>
+                            @if (Model.CanCreate)
+                            {
+                                <a class="btn btn-sm btn-primary" asp-action="Create"><i class="bx bx-plus me-1"></i>Tạo yêu cầu</a>
+                            }
+                        </td>
+                    </tr>
+                }
+                @foreach (var item in Model.Items)
+                {
+                    var hasFinalQuantity = item.Status is PurchaseRequestStatus.Approved or PurchaseRequestStatus.PartiallyConverted or PurchaseRequestStatus.Converted;
+                    var finalQuantity = hasFinalQuantity ? item.ApprovedQuantity : item.RequestedQuantity;
+                    var progress = finalQuantity <= 0 ? 0 : Math.Min(100, (int)Math.Round(item.ConvertedQuantity * 100 / finalQuantity));
+                    <tr>
+                        <td>
+                            <a class="fw-semibold d-block" asp-action="Details" asp-route-id="@item.Id">@item.Title</a>
+                            <small class="text-muted">@item.RequestNumber · @item.RequestDate.ToString("dd/MM/yyyy")</small>
+                        </td>
+                        @if (Model.CanViewStore && !Model.ShowingOnlyMine)
+                        {
+                            <td>@item.RequestedByName</td>
+                        }
+                        <td>@(item.NeedByDate?.ToString("dd/MM/yyyy") ?? "Không giới hạn")</td>
+                        <td>
+                            <div><span class="fw-medium">NV yêu cầu:</span> @PurchaseQuantityFormatter.Display(item.RequestedQuantity)</div>
+                            @if (hasFinalQuantity)
+                            {
+                                <div class="small text-success"><span class="fw-medium">QL chốt mua:</span> @PurchaseQuantityFormatter.Display(item.ApprovedQuantity)</div>
+                            }
+                            else
+                            {
+                                <div class="small text-muted">@item.LineCount mặt hàng · Chưa chốt</div>
+                            }
+                        </td>
+                        <td style="min-width:150px">
+                            <div class="d-flex justify-content-between small mb-1"><span>Đã đưa vào đơn</span><span>@progress%</span></div>
+                            <div class="progress" style="height:6px"><div class="progress-bar" style="width:@progress%"></div></div>
+                        </td>
+                        <td><span class="badge @StatusClass(item.Status)">@StatusLabel(item.Status)</span></td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-icon btn-label-secondary rounded-pill" asp-action="Details" asp-route-id="@item.Id" title="Xem chi tiết">
+                                <i class="bx bx-chevron-right"></i>
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

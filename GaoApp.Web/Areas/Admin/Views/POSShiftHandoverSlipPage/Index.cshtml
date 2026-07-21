@@ -1,0 +1,280 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@{
+    ViewData["Title"] = "Phiếu nhận ca POS";
+    Layout = "_ContentNavbarLayout";
+    var posCtx = ViewBag.POSHeaderContext as POSHeaderContextViewModel ?? new POSHeaderContextViewModel();
+}
+
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-handover-slip.css" asp-append-version="true" />
+}
+
+@section header {
+    <div class="shift-title-only">
+        <h1>PHIẾU NHẬN CA</h1>
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+<partial name="~/Areas/Admin/Views/Shared/_POSWorkContextBar.cshtml" model="posCtx" />
+
+<div class="shift-shell handover-shell">
+    @Html.AntiForgeryToken()
+
+    <div class="shift-hero-card">
+        <div class="shift-hero-card__content">
+            <div class="shift-hero-card__meta">
+                <div class="shift-hero-card__title">Quản lý phiếu nhận ca POS</div>
+            </div>
+
+            <div class="shift-action-group">
+                <button id="btnShowCreateSlipModal" type="button" class="btn btn-primary shift-toolbar-btn">
+                    <i class="bx bx-plus-circle"></i>
+                    <span>Tạo phiếu</span>
+                </button>
+
+                <button id="btnReloadSlips" type="button" class="btn btn-outline-primary shift-toolbar-btn">
+                    <i class="bx bx-refresh"></i>
+                    <span>Tải lại</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shift-card">
+        <div class="card-body">
+            <div class="handover-filter">
+                <div>
+                    <label class="shift-form-label">Tìm kiếm</label>
+                    <input id="txtSlipKeyword"
+                           class="form-control"
+                           placeholder="Mã phiếu / barcode / ghi chú" />
+                </div>
+
+                <div>
+                    <label class="shift-form-label">Trạng thái</label>
+                    <select id="ddlSlipStatus" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="1">Mới tạo</option>
+                        <option value="2">Đã in</option>
+                        <option value="3">Đã sử dụng</option>
+                        <option value="4">Đã hủy</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="shift-form-label">Từ ngày</label>
+                    <input id="txtSlipFromDate" type="date" class="form-control" />
+                </div>
+
+                <div>
+                    <label class="shift-form-label">Đến ngày</label>
+                    <input id="txtSlipToDate" type="date" class="form-control" />
+                </div>
+
+                <div class="handover-filter-actions">
+                    <button id="btnSearchSlips" type="button" class="btn btn-primary">
+                        <i class="bx bx-search"></i>
+                        Lọc
+                    </button>
+                </div>
+            </div>
+
+            <div class="shift-table-wrap mt-3">
+                <div class="table-responsive">
+                    <table class="table align-middle shift-table handover-table">
+                        <thead>
+                            <tr>
+                                <th>Mã phiếu</th>
+                                <th>Trạng thái</th>
+                                <th>Kho</th>
+                                <th>Terminal</th>
+                                <th>Người nhận</th>
+                                <th class="text-end">Tổng tiền</th>
+                                <th>Ngày tạo</th>
+                                <th style="width:210px;">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="handoverSlipBody">
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">
+                                    Đang tải dữ liệu...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="shift-pager">
+                <div id="handoverSlipPagerInfo" class="shift-pager-info">0 phiếu</div>
+
+                <div class="shift-pager-actions">
+                    <button id="btnSlipPrev" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                        <i class="bx bx-chevron-left"></i>
+                        <span>Trang trước</span>
+                    </button>
+
+                    <button id="btnSlipNext" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                        <span>Trang sau</span>
+                        <i class="bx bx-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal tạo phiếu -->
+<div class="modal fade shift-modal handover-modal" id="createSlipModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-open-shift modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header shift-open-cashier-header">
+                <div class="shift-open-cashier-title">
+                    <div class="shift-open-cashier-icon">
+                        <i class="bx bx-receipt"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title">TẠO PHIẾU NHẬN CA</h5>
+                        <div class="shift-modal-subtitle">
+                            Quản lý nhập số tiền theo mệnh giá để in phiếu cho nhân viên nhận ca
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body shift-open-cashier-body">
+                <div class="shift-open-cashier-layout">
+                    <div class="shift-open-left">
+                        <div class="shift-open-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-home-alt"></i>
+                                KHO BÁN HÀNG
+                            </div>
+
+                            <select id="ddlCreateSlipWarehouse" class="form-select shift-open-select">
+                                <option value="">-- Chọn kho --</option>
+                            </select>
+                        </div>
+
+                        <div class="shift-open-divider"></div>
+
+                        <div class="shift-open-block">
+                            <div class="shift-open-small-label">TỔNG TIỀN PHIẾU</div>
+                            <div id="createSlipTotalText" class="shift-open-big-money">0 đ</div>
+                            <div class="shift-open-money-words">Tổng tiền nhân viên sẽ nhận đầu ca</div>
+                        </div>
+
+                        <div class="shift-open-block">
+                            <label class="shift-form-label">Ghi chú</label>
+                            <textarea id="txtCreateSlipNote"
+                                      class="form-control shift-open-note"
+                                      maxlength="500"
+                                      rows="4"
+                                      placeholder="Ví dụ: Phiếu nhận ca sáng, bàn giao tiền lẻ..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="shift-open-middle">
+                        <div class="shift-open-money-table-card">
+                            <div class="shift-open-money-table-head">
+                                <div class="shift-open-block-title mb-0">NHẬP TIỀN THEO MỆNH GIÁ</div>
+
+                                <div class="shift-open-head-actions">
+                                    <button id="btnResetCreateSlipDenoms" type="button" class="btn btn-outline-danger shift-open-action-btn">
+                                        <i class="bx bx-trash"></i>
+                                        Xóa tất cả
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="shift-open-money-table-header">
+                                <div>Mệnh giá</div>
+                                <div>Số tờ / số lượng</div>
+                                <div>Thành tiền</div>
+                                <div></div>
+                            </div>
+
+                            <div id="createSlipDenomGrid" class="shift-open-money-table-body"></div>
+                        </div>
+                    </div>
+
+                    <div class="shift-open-right">
+                        <div class="shift-open-summary-card">
+                            <div class="shift-open-block-title">TỔNG KẾT PHIẾU</div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Số tờ</span>
+                                <strong id="createSlipBillCountText">0 tờ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tổng cộng</span>
+                                <strong id="createSlipSummaryTotalText">0 đ</strong>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-warning-card">
+                            <div class="shift-open-warning-title">
+                                <i class="bx bx-shield-quarter"></i>
+                                LƯU Ý
+                            </div>
+                            <div>Phiếu tạo xong có thể in barcode</div>
+                            <div>Nhân viên quét mã để nhận ca</div>
+                            <div>Phiếu đã dùng sẽ không dùng lại được</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer shift-open-cashier-footer">
+                <button type="button" class="btn shift-open-cancel-btn" data-bs-dismiss="modal">
+                    <i class="bx bx-x"></i>
+                    Hủy
+                </button>
+
+                <button id="btnCreateSlipConfirm" type="button" class="btn shift-open-confirm-btn">
+                    <i class="bx bx-check-circle"></i>
+                    OK - Tạo phiếu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal chi tiết -->
+<div class="modal fade shift-modal" id="slipDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 id="slipDetailTitle" class="modal-title">Chi tiết phiếu</h5>
+                    <div id="slipDetailSub" class="shift-modal-subtitle"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="slipDetailContent"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnPrintSlipDetail" type="button" class="btn btn-primary shift-modal-btn">
+                    <i class="bx bx-printer"></i>
+                    In phiếu
+                </button>
+                <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift-handover-slip.page.js" asp-append-version="true"></script>
+}

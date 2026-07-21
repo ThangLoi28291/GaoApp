@@ -1,0 +1,313 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceDashboardIndexViewModel
+
+@{
+    ViewData["Title"] = "Dashboard hóa đơn điện tử";
+
+    var q = Model.Query;
+    var d = Model.Dashboard;
+}
+
+<style>
+    .dashboard-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .metric-card {
+        border: 0;
+        border-radius: 14px;
+        padding: 18px;
+        background: #fff;
+        box-shadow: 0 2px 10px rgba(67, 89, 113, .08);
+        height: 100%;
+    }
+
+    .metric-value {
+        font-size: 30px;
+        font-weight: 800;
+        line-height: 1.1;
+    }
+
+    .metric-label {
+        color: #697a8d;
+        font-size: 13px;
+        margin-top: 6px;
+    }
+
+    .metric-sub {
+        color: #697a8d;
+        font-size: 12px;
+        margin-top: 8px;
+    }
+
+    .dashboard-table th {
+        white-space: nowrap;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #697a8d;
+    }
+
+    .dashboard-table td {
+        vertical-align: middle;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h3 class="mb-1 fw-bold">
+                Dashboard hóa đơn điện tử
+            </h3>
+            <div class="text-muted">
+                Theo dõi trạng thái phát hành, lỗi tích hợp, PDF/XML và email hóa đơn.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <a asp-area="Admin"
+                   asp-controller="ViettelInvoiceSync"
+                   asp-action="Index"
+                   class="btn btn-outline-primary">
+                Đồng bộ Viettel
+            </a>
+
+            <a asp-area="Admin"
+                   asp-controller="InvoiceIntegrationLog"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                Log tích hợp
+            </a>
+
+            <a asp-area="Admin"
+                   asp-controller="Invoice"
+                   asp-action="Index"
+                   class="btn btn-outline-secondary">
+                Danh sách hóa đơn
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">
+            @TempData["Error"]
+        </div>
+    }
+
+    <div class="card shadow-sm dashboard-card mb-3">
+        <div class="card-header bg-white fw-semibold">
+            Bộ lọc
+        </div>
+
+        <div class="card-body">
+            <form method="get"
+                  asp-area="Admin"
+                  asp-controller="InvoiceDashboard"
+                  asp-action="Index">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Từ ngày</label>
+                        <input type="date"
+                               name="FromDate"
+                               value="@q.FromDate.ToString("yyyy-MM-dd")"
+                               class="form-control" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">Đến ngày</label>
+                        <input type="date"
+                               name="ToDate"
+                               value="@q.ToDate.ToString("yyyy-MM-dd")"
+                               class="form-control" />
+                    </div>
+
+                    <div class="col-md-6 text-end">
+                        <button type="submit" class="btn btn-primary">
+                            Xem dashboard
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if (d != null)
+    {
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value">@d.TotalInvoices.ToString("N0")</div>
+                    <div class="metric-label">Tổng hóa đơn</div>
+                    <div class="metric-sub">@d.FromDate:dd/MM/yyyy - @d.ToDate:dd/MM/yyyy</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value text-success">@d.IssuedCount.ToString("N0")</div>
+                    <div class="metric-label">Đã phát hành</div>
+                    <div class="metric-sub">Tổng tiền: @d.IssuedAmount.ToString("N0")</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value text-danger">@d.IssueFailedCount.ToString("N0")</div>
+                    <div class="metric-label">Phát hành lỗi</div>
+                    <div class="metric-sub">Log lỗi: @d.ErrorLogCount.ToString("N0")</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value text-warning">@d.NeedUuidSyncCount.ToString("N0")</div>
+                    <div class="metric-label">Cần tra cứu UUID</div>
+                    <div class="metric-sub">Timeout: @d.TimeoutLogCount, HTTP500: @d.Http500LogCount</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value">@d.PdfDownloadedCount.ToString("N0")</div>
+                    <div class="metric-label">Đã lưu PDF</div>
+                    <div class="metric-sub">Thiếu PDF: @d.MissingPdfCount.ToString("N0")</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value">@d.ZipDownloadedCount.ToString("N0")</div>
+                    <div class="metric-label">Đã lưu ZIP/XML</div>
+                    <div class="metric-sub">Thiếu ZIP/XML: @d.MissingZipCount.ToString("N0")</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value">@d.EmailSentCount.ToString("N0")</div>
+                    <div class="metric-label">Đã gửi email</div>
+                    <div class="metric-sub">Theo ProviderStatus EmailSent</div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="metric-value">@d.ReadyToIssueCount.ToString("N0")</div>
+                    <div class="metric-label">Sẵn sàng phát hành</div>
+                    <div class="metric-sub">Nháp local: @d.LocalDraftCount.ToString("N0")</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="card shadow-sm dashboard-card h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        Thống kê theo trạng thái
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover dashboard-table mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Trạng thái</th>
+                                    <th class="text-end">Số lượng</th>
+                                    <th class="text-end">Tổng tiền</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!d.StatusRows.Any())
+                                {
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-4">
+                                            Không có dữ liệu.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    foreach (var row in d.StatusRows)
+                                    {
+                                        <tr>
+                                            <td>@row.StatusName</td>
+                                            <td class="text-end fw-semibold">@row.Count.ToString("N0")</td>
+                                            <td class="text-end">@row.Amount.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card shadow-sm dashboard-card h-100">
+                    <div class="card-header bg-white fw-semibold">
+                        Lỗi tích hợp gần đây
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover dashboard-table mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Thời gian UTC</th>
+                                    <th>Hóa đơn</th>
+                                    <th>API</th>
+                                    <th>Lỗi</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!d.RecentErrors.Any())
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">
+                                            Không có lỗi gần đây.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    foreach (var err in d.RecentErrors)
+                                    {
+                                        <tr>
+                                            <td>@err.StartedAtUtc.ToString("dd/MM HH:mm")</td>
+                                            <td>
+                                                <a asp-area="Admin"
+                                                       asp-controller="Invoice"
+                                                       asp-action="ViettelPayload"
+                                                       asp-route-id="@err.InvoiceHeadId">
+                                                    #@err.InvoiceHeadId
+                                                </a>
+                                            </td>
+                                            <td>@err.ActionName</td>
+                                            <td>
+                                                <div class="text-danger fw-semibold">@err.ErrorCode</div>
+                                                <small class="text-danger">@err.ErrorMessage</small>
+                                            </td>
+                                            <td class="text-end">
+                                                <a asp-area="Admin"
+                                                       asp-controller="InvoiceIntegrationLog"
+                                                       asp-action="Detail"
+                                                       asp-route-id="@err.LogId"
+                                                       class="btn btn-sm btn-outline-primary">
+                                                    Xem
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+</div>

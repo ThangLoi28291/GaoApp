@@ -1,0 +1,223 @@
+﻿@model GaoApp.Application.DTOs.Security.UserInStores.UpdateUserInStoreRequest
+@using GaoApp.Application.DTOs.Security.UserInStores
+@using Microsoft.AspNetCore.Mvc.Rendering
+
+@{
+    ViewData["Title"] = "Cập nhật người dùng trong store";
+    var mappingInfo = ViewBag.MappingInfo as UserInStoreEditDto;
+    var roleOptions = ViewBag.RoleOptions as List<SelectListItem> ?? new();
+}
+
+<div class="container-fluid edit-userinstore-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="mb-1">Cập nhật người dùng trong store</h3>
+            <div class="text-muted">Điều chỉnh vai trò và trạng thái của người dùng trong cửa hàng hiện tại.</div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="UserInStores"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i> Quay lại
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+
+    @if (mappingInfo != null)
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Người dùng</div>
+                        <div class="fw-bold fs-5 mt-2">@mappingInfo.FullName</div>
+                        <div class="text-muted mt-1">@mappingInfo.Username</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Email</div>
+                        <div class="fw-semibold mt-2">
+                            @(string.IsNullOrWhiteSpace(mappingInfo.Email) ? "-" : mappingInfo.Email)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Trạng thái hiện tại</div>
+                        <div class="mt-2">
+                            @if (mappingInfo.IsActive)
+                            {
+                                <span class="badge rounded-pill bg-success-subtle text-success px-3 py-2">Đang hoạt động</span>
+                            }
+                            else
+                            {
+                                <span class="badge rounded-pill bg-secondary-subtle text-secondary px-3 py-2">Đang khóa</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Số điện thoại</div>
+                        <div class="fw-semibold mt-2">
+                            @(string.IsNullOrWhiteSpace(mappingInfo.PhoneNumber) ? "-" : mappingInfo.PhoneNumber)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Chức vụ</div>
+                        <div class="fw-semibold mt-2">
+                            @(string.IsNullOrWhiteSpace(mappingInfo.PositionName) ? "-" : mappingInfo.PositionName)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card shadow-sm border-0 info-card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Ngày vào làm</div>
+                        <div class="fw-semibold mt-2">
+                            @(mappingInfo.JoinedDate.HasValue
+                                ? mappingInfo.JoinedDate.Value.ToString("dd/MM/yyyy")
+                                : "-")
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <form asp-area="Admin"
+          asp-controller="UserInStores"
+          asp-action="Edit"
+          method="post">
+        @Html.AntiForgeryToken()
+        <input asp-for="Id" type="hidden" />
+
+        <div class="card shadow-sm border-0 form-card">
+            <div class="card-header bg-white border-0 pb-0">
+                <h5 class="mb-1">Thông tin cập nhật</h5>
+                <div class="text-muted small">Cập nhật vai trò và trạng thái hoạt động trong store.</div>
+            </div>
+
+            <div class="card-body">
+                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <label asp-for="RoleId" class="form-label fw-semibold">Vai trò</label>
+                        <select asp-for="RoleId" class="form-select">
+                            <option value="">-- Chọn vai trò --</option>
+                            @foreach (var item in roleOptions)
+                            {
+                                if (item.Selected)
+                                {
+                                    <option value="@item.Value" selected>@item.Text</option>
+                                }
+                                else
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }
+                            }
+                        </select>
+                        <span asp-validation-for="RoleId" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-lg-6 d-flex align-items-center">
+                        <div class="form-check form-switch mt-4">
+                            <input asp-for="IsActive" class="form-check-input" />
+                            <label asp-for="IsActive" class="form-check-label fw-semibold">Đang hoạt động trong store</label>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <label asp-for="PhoneNumber" class="form-label fw-semibold">Số điện thoại</label>
+                        <input asp-for="PhoneNumber"
+                               class="form-control"
+                               placeholder="Ví dụ: 0987654321"
+                               autocomplete="tel" />
+                        <span asp-validation-for="PhoneNumber" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <label asp-for="PositionName" class="form-label fw-semibold">Chức vụ</label>
+                        <input asp-for="PositionName"
+                               class="form-control"
+                               placeholder="Ví dụ: Thu ngân, Quản lý, Kho..." />
+                        <span asp-validation-for="PositionName" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <label asp-for="JoinedDate" class="form-label fw-semibold">Ngày vào làm</label>
+                        <input asp-for="JoinedDate"
+                               type="date"
+                               class="form-control" />
+                        <span asp-validation-for="JoinedDate" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-lg-12">
+                        <label asp-for="Note" class="form-label fw-semibold">Ghi chú</label>
+                        <textarea asp-for="Note"
+                                  class="form-control"
+                                  rows="3"
+                                  placeholder="Ví dụ: Làm ca tối, phụ trách kho, ghi chú nội bộ..."></textarea>
+                        <span asp-validation-for="Note" class="text-danger small"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i> Lưu thay đổi
+            </button>
+
+            <a asp-area="Admin"
+                   asp-controller="UserInStores"
+                   asp-action="Index"
+                   class="btn btn-light border">
+                Hủy
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .edit-userinstore-page .info-card,
+    .edit-userinstore-page .form-card {
+        border-radius: 18px;
+    }
+</style>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

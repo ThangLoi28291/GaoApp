@@ -1,0 +1,35 @@
+# Build
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# VS Code / Rider
+.vscode/
+.idea/
+
+# Logs
+*.log
+startup-error.txt
+
+# Runtime data (không đóng gói/deploy đè dữ liệu)
+**/App_Data/
+
+# Publish output
+publish/
+publish-web/
+publish-migrator/
+
+# OS
+Thumbs.db
+.DS_Store
+TestResults/
+**/TestResults/
+*.trx
+*.coverage
+*.coveragexml
+App_Data/Logs/
+*.pubxml.user

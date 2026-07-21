@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HDon>
+  <DLHDon>
+    <TTChung>
+      <KHMSHDon>1</KHMSHDon>
+      <KHHDon>CODEX-UAT</KHHDon>
+      <SHDon>19001</SHDon>
+      <NLap>2026-07-19</NLap>
+      <MSTTCGP>CODEX-DEMO-AUTHORITY</MSTTCGP>
+    </TTChung>
+    <NDHDon>
+      <NBan>
+        <Ten>CODEX-UAT Nhà cung cấp demo</Ten>
+        <MST>0100000000</MST>
+        <DChi>Dữ liệu kiểm thử local</DChi>
+      </NBan>
+      <NMua>
+        <Ten>CODEX-UAT GaoApp demo</Ten>
+        <MST>0200000000</MST>
+        <DChi>Dữ liệu kiểm thử local</DChi>
+      </NMua>
+      <DSHHDVu>
+        <HHDVu>
+          <STT>1</STT>
+          <THHDVu>Ấm siêu tốc thủy tinh ĐQ EKT16 1515</THHDVu>
+          <DVTinh>Cái</DVTinh>
+          <SLuong>2</SLuong>
+          <DGia>10000</DGia>
+          <ThTien>20000</ThTien>
+          <TSuat>0%</TSuat>
+          <TTKhac>
+            <TTin><TTruong>VATAmount</TTruong><DLieu>0</DLieu></TTin>
+          </TTKhac>
+        </HHDVu>
+      </DSHHDVu>
+      <TToan>
+        <TgTCThue>20000</TgTCThue>
+        <TgTThue>0</TgTThue>
+        <TgTTTBSo>20000</TgTTTBSo>
+      </TToan>
+    </NDHDon>
+  </DLHDon>
+</HDon>

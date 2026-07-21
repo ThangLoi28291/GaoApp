@@ -1,0 +1,295 @@
+﻿@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@{
+    ViewData["Title"] = "Phiếu kiểm kê kho";
+    Layout = "_ContentNavbarLayout";
+
+    // =========================================================
+    // PHÂN QUYỀN UI
+    // - Backend/API vẫn phải check policy riêng.
+    // - View chỉ ẩn/hiện nút cho đẹp UX.
+    // =========================================================
+    var canCreate = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Inventory.StockCount.Create)).Succeeded;
+}
+
+@section VendorStyles {
+    <link href="~/Admin/css/stock-count.css" rel="stylesheet" asp-append-version="true" />
+}
+
+<div class="container-xxl flex-grow-1 container-p-y sc-page">
+
+    <!-- =====================================================
+         PAGE HEADER
+    ====================================================== -->
+    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
+        <div>
+            <h4 class="mb-1 sc-page-title">Phiếu kiểm kê kho</h4>
+            <div class="sc-page-subtitle">
+                Quản lý phiếu kiểm kê, lọc trạng thái, theo dõi chênh lệch và duyệt xác nhận tồn kho.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-secondary" id="btnReloadStockCountList">
+                <i class="bx bx-refresh me-1"></i> Tải lại
+            </button>
+
+            @if (canCreate)
+            {
+                <button type="button" class="btn btn-primary" id="btnOpenCreateStockCountModal">
+                    <i class="bx bx-plus me-1"></i> Tạo phiếu kiểm kê
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- =====================================================
+         SUMMARY
+    ====================================================== -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="sc-summary-box">
+                <div class="sc-summary-title">Tổng số phiếu</div>
+                <div class="sc-summary-value" id="sumTotalDocuments">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="sc-summary-box">
+                <div class="sc-summary-title">Nháp / bị từ chối</div>
+                <div class="sc-summary-value" id="sumWorkingDocuments">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="sc-summary-box">
+                <div class="sc-summary-title">Chờ duyệt</div>
+                <div class="sc-summary-value" id="sumPendingDocuments">0</div>
+            </div>
+        </div>
+
+        <div class="col-6 col-md-3">
+            <div class="sc-summary-box">
+                <div class="sc-summary-title">Đã xác nhận</div>
+                <div class="sc-summary-value" id="sumConfirmedDocuments">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         FILTER
+    ====================================================== -->
+    <div class="sc-filter-card p-3 mb-4">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-5">
+                <label class="form-label" for="stockCountSearchInput">Tìm kiếm</label>
+                <input type="text"
+                       id="stockCountSearchInput"
+                       class="form-control"
+                       placeholder="Nhập số phiếu, tên phiếu, kho hoặc ghi chú..." />
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label" for="stockCountStatusFilter">Trạng thái</label>
+                <select id="stockCountStatusFilter" class="form-select">
+                    <option value="working" selected>Mặc định: Nháp + Chờ duyệt</option>
+                    <option value="all">Tất cả</option>
+                    <option value="1">Nháp</option>
+                    <option value="2">Chờ duyệt</option>
+                    <option value="3">Đã xác nhận</option>
+                    <option value="4">Bị từ chối</option>
+                    <option value="5">Đã hủy</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label" for="stockCountPageSize">Số dòng/trang</label>
+                <select id="stockCountPageSize" class="form-select">
+                    <option value="10" selected>10 dòng</option>
+                    <option value="20">20 dòng</option>
+                    <option value="50">50 dòng</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <button type="button" class="btn btn-outline-secondary w-100" id="btnResetStockCountFilter">
+                    <i class="bx bx-filter-alt me-1"></i> Reset
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================================================
+         TABLE
+    ====================================================== -->
+    <div class="card sc-card">
+        <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+            <div>
+                <div>Danh sách phiếu kiểm kê</div>
+    
+            </div>
+
+            <div class="text-muted small" id="stockCountListInfo">
+                Đang tải...
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive sc-table-wrap">
+                <table class="table table-hover align-middle mb-0 sc-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width:280px;">Phiếu kiểm kê</th>
+                            <th style="width: 160px;">Ngày phiếu</th>
+                            <th style="width: 180px;">Kho</th>
+                            <th style="width: 140px;">Trạng thái</th>
+                            <th class="text-end" style="width: 100px;">Số dòng</th>
+                            <th>Ghi chú</th>
+                            <th class="text-end" style="width: 120px;"></th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="stockCountIndexBody">
+                        <tr>
+                            <td colspan="8" class="sc-empty">Đang tải dữ liệu...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card-footer d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+            <div class="text-muted small" id="stockCountPaginationInfo"></div>
+            <nav>
+                <ul class="pagination pagination-sm mb-0 sc-pagination" id="stockCountPagination"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     CREATE MODAL
+========================================================= -->
+<div class="modal fade sc-modal" id="createStockCountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold">Tạo phiếu kiểm kê</h5>
+                    <div class="text-muted small">
+                        Chọn kho, đặt tên phiếu để dễ quản lý và bắt đầu kiểm kê.
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="sc-create-hero">
+                    <div class="fw-bold mb-1">
+                        <i class="bx bx-package me-1"></i> Phiếu kiểm kê mới
+                    </div>
+                    <div class="text-muted small">
+                        Sau khi tạo, bạn sẽ được chuyển sang màn chi tiết để quét barcode hoặc thêm sản phẩm.
+                    </div>
+                </div>
+
+                <form id="createStockCountForm" novalidate>
+                    <div class="mb-3">
+                        <label class="form-label" for="createStockCountDocumentName">Tên phiếu</label>
+                        <input type="text"
+                               id="createStockCountDocumentName"
+                               class="form-control"
+                               maxlength="250"
+                               placeholder="Ví dụ: Kiểm kê kho bán lẻ cuối ngày" />
+                        <div class="form-text">
+                            Nếu backend chưa thêm DocumentName, trường này sẽ không ảnh hưởng flow cũ.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="createStockCountWarehouseId">Kho kiểm kê</label>
+                        <select id="createStockCountWarehouseId" class="form-select">
+                            <option value="">-- Chọn kho --</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="createStockCountDocumentDate">Ngày phiếu</label>
+                        <input type="datetime-local" id="createStockCountDocumentDate" class="form-control" />
+                    </div>
+
+                    <div class="mb-0">
+                        <label class="form-label" for="createStockCountNote">Ghi chú</label>
+                        <textarea id="createStockCountNote"
+                                  class="form-control"
+                                  rows="3"
+                                  maxlength="1000"
+                                  placeholder="Ghi chú nội bộ nếu có..."></textarea>
+                    </div>
+
+                    <div class="text-danger small mt-2" id="createStockCountMessage"></div>
+                </form>
+            </div>
+
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+                <button type="button" class="btn btn-primary" id="btnCreateStockCount">
+                    <i class="bx bx-check me-1"></i> Tạo phiếu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     QUICK VIEW MODAL
+========================================================= -->
+<div class="modal fade sc-modal" id="stockCountQuickViewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header border-0">
+                <div>
+                    <h5 class="modal-title fw-bold" id="quickViewTitle">Xem nhanh phiếu kiểm kê</h5>
+                    <div class="text-muted small" id="quickViewSubtitle"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="quickViewBody" class="text-muted">
+                    Đang tải dữ liệu...
+                </div>
+            </div>
+
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+                <a href="#" class="btn btn-primary" id="btnOpenQuickViewDetail">
+                    <i class="bx bx-detail me-1"></i> Mở chi tiết
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script>
+        window.stockCountPage = {
+            mode: 'index',
+            permissions: {
+                canCreate: @canCreate.ToString().ToLowerInvariant()
+            }
+        };
+    </script>
+
+    <script src="~/Admin/js/stock-count.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,456 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIntegrationLogIndexViewModel
+
+@{
+    ViewData["Title"] = "Log tích hợp hóa đơn điện tử";
+
+    var q = Model.Query ?? new GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogQueryDto();
+    var result = Model.Result;
+    var items = result.Items ?? new List<GaoApp.Application.DTOs.Invoices.InvoiceIntegrationLogListItemDto>();
+}
+
+<style>
+    .log-page .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .log-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .log-page .table th {
+        white-space: nowrap;
+        font-size: 12px;
+        text-transform: uppercase;
+        color: #697a8d;
+        letter-spacing: .03em;
+    }
+
+    .log-page .table td {
+        vertical-align: middle;
+    }
+
+    .log-url {
+        max-width: 420px;
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #697a8d;
+        font-size: 12px;
+    }
+
+    .log-error {
+        max-width: 360px;
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .filter-card {
+        border: 0;
+        border-radius: 14px;
+    }
+
+    @@media (max-width: 768px) {
+        .log-page .page-header {
+            gap: 12px;
+            align-items: flex-start !important;
+            flex-direction: column;
+        }
+
+        .log-url,
+        .log-error {
+            max-width: 240px;
+        }
+    }
+</style>
+
+<div class="container-fluid log-page">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 page-header">
+        <div>
+            <h3 class="mb-1 page-title">
+                Log tích hợp hóa đơn điện tử
+            </h3>
+
+            <div class="text-muted">
+                Theo dõi các lần gọi API Viettel: preview, phát hành, tra cứu UUID, tải PDF/XML.
+            </div>
+        </div>
+        <a asp-area="Admin"
+               asp-controller="InvoiceIntegrationLog"
+               asp-action="Cleanup"
+               class="btn btn-outline-danger">
+            <i class="bx bx-trash"></i>
+            Dọn log
+        </a>
+        <a asp-area="Admin"
+               asp-controller="Invoice"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bx bx-arrow-back"></i>
+            Về danh sách hóa đơn
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bx bx-check-circle me-1"></i>
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bx bx-error-circle me-1"></i>
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    <div class="card shadow-sm filter-card mb-3">
+        <div class="card-header bg-white fw-semibold">
+            Bộ lọc log
+        </div>
+
+        <div class="card-body">
+            <form method="get"
+                  asp-area="Admin"
+                  asp-controller="InvoiceIntegrationLog"
+                  asp-action="Index">
+
+                <div class="row g-3 align-items-end">
+
+                    <div class="col-md-2">
+                        <label class="form-label">Từ ngày</label>
+                        <input type="date"
+                               name="FromDate"
+                               value="@(q.FromDate?.ToString("yyyy-MM-dd"))"
+                               class="form-control" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Đến ngày</label>
+                        <input type="date"
+                               name="ToDate"
+                               value="@(q.ToDate?.ToString("yyyy-MM-dd"))"
+                               class="form-control" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">InvoiceHeadId</label>
+                        <input type="number"
+                               name="InvoiceHeadId"
+                               value="@(q.InvoiceHeadId?.ToString() ?? "")"
+                               class="form-control"
+                               placeholder="VD: 25" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">OrderId</label>
+                        <input type="number"
+                               name="OrderId"
+                               value="@(q.OrderId?.ToString() ?? "")"
+                               class="form-control"
+                               placeholder="VD: 386" />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">API</label>
+                        <select name="ActionType" class="form-select">
+                            <option value="">Tất cả</option>
+                            @foreach (InvoiceIntegrationActionType action in Enum.GetValues(typeof(InvoiceIntegrationActionType)))
+                            {
+                                <option value="@((int)action)" selected="@(q.ActionType == action)">
+                                    @action
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Kết quả</label>
+                        <select name="IsSuccess" class="form-select">
+                            <option value="">Tất cả</option>
+                            <option value="true" selected="@(q.IsSuccess == true)">Thành công</option>
+                            <option value="false" selected="@(q.IsSuccess == false)">Lỗi</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Từ khóa</label>
+                        <input type="text"
+                               name="Keyword"
+                               value="@q.Keyword"
+                               class="form-control"
+                               placeholder="invoiceNo, UUID, URL, mã lỗi..." />
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label">Số dòng</label>
+                        <select name="PageSize" class="form-select">
+                            <option value="20" selected="@(q.PageSize == 20)">20</option>
+                            <option value="50" selected="@(q.PageSize == 50)">50</option>
+                            <option value="100" selected="@(q.PageSize == 100)">100</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 text-end">
+                        <input type="hidden" name="Page" value="1" />
+
+                        <a asp-area="Admin"
+                               asp-controller="InvoiceIntegrationLog"
+                               asp-action="Index"
+                               class="btn btn-outline-secondary">
+                            Xóa lọc
+                        </a>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bx bx-search"></i>
+                            Lọc log
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm log-card">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-semibold">Danh sách log</div>
+                <small class="text-muted">
+                    Tổng: @result.TotalItems.ToString("N0") log
+                </small>
+            </div>
+
+            <span class="badge bg-primary">
+                Trang @result.Page / @(Model.TotalPages <= 0 ? 1 : Model.TotalPages)
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Thời gian UTC</th>
+                        <th>Hóa đơn</th>
+                        <th>API</th>
+                        <th>Kết quả</th>
+                        <th>Thời gian</th>
+                        <th>Lỗi</th>
+                        <th>URL</th>
+                        <th class="text-end">Chi tiết</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (!items.Any())
+                    {
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-5">
+                                Không có log phù hợp.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var item in items)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>#@item.Id</strong>
+                                </td>
+
+                                <td>
+                                    <div>@item.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                                    @if (item.FinishedAtUtc.HasValue)
+                                    {
+                                        <small class="text-muted">
+                                            Kết thúc: @item.FinishedAtUtc.Value.ToString("HH:mm:ss")
+                                        </small>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div>
+                                        <a asp-area="Admin"
+                                               asp-controller="Invoice"
+                                               asp-action="ViettelPayload"
+                                               asp-route-id="@item.InvoiceHeadId"
+                                               class="fw-semibold">
+                                            Invoice #@item.InvoiceHeadId
+                                        </a>
+                                    </div>
+
+                                    <small class="text-muted">
+                                        Order: @(item.OrderId?.ToString() ?? "-")
+                                    </small>
+
+                                    @if (!string.IsNullOrWhiteSpace(item.ProviderInvoiceNo))
+                                    {
+                                        <div>
+                                            <span class="badge bg-success">
+                                                @item.ProviderInvoiceNo
+                                            </span>
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="fw-semibold">
+                                        @item.ActionName
+                                    </div>
+                                    <small class="text-muted">
+                                        @item.ActionType
+                                    </small>
+                                </td>
+
+                                <td>
+                                    @if (item.IsSuccess)
+                                    {
+                                        <span class="badge bg-success">OK</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Lỗi</span>
+                                    }
+                                </td>
+
+                                <td>
+                                    @(item.DurationMs?.ToString("N0") ?? "-") ms
+                                </td>
+
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(item.ErrorCode) &&
+                                         string.IsNullOrWhiteSpace(item.ErrorMessage))
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-danger fw-semibold">
+                                            @item.ErrorCode
+                                        </div>
+                                        <small class="text-danger log-error"
+                                               title="@item.ErrorMessage">
+                                            @item.ErrorMessage
+                                        </small>
+                                    }
+                                </td>
+
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(item.RequestUrl))
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="log-url"
+                                              title="@item.RequestUrl">
+                                            @item.RequestUrl
+                                        </span>
+                                    }
+                                </td>
+
+                                <td class="text-end">
+                                    <a asp-area="Admin"
+                                           asp-controller="InvoiceIntegrationLog"
+                                           asp-action="Detail"
+                                           asp-route-id="@item.Id"
+                                           class="btn btn-sm btn-outline-primary">
+                                        Xem
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (Model.TotalPages > 1)
+        {
+            <div class="card-footer bg-white">
+                <nav>
+                    <ul class="pagination mb-0 justify-content-end">
+                        @{
+                            var currentPage = result.Page;
+                            var totalPages = Model.TotalPages;
+                            var startPage = Math.Max(1, currentPage - 2);
+                            var endPage = Math.Min(totalPages, currentPage + 2);
+                        }
+
+                        <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                            <a class="page-link"
+                                   asp-area="Admin"
+                                   asp-controller="InvoiceIntegrationLog"
+                                   asp-action="Index"
+                                   asp-route-Page="@(currentPage - 1)"
+                                   asp-route-PageSize="@q.PageSize"
+                                   asp-route-FromDate="@(q.FromDate?.ToString("yyyy-MM-dd"))"
+                                   asp-route-ToDate="@(q.ToDate?.ToString("yyyy-MM-dd"))"
+                                   asp-route-InvoiceHeadId="@q.InvoiceHeadId"
+                                   asp-route-OrderId="@q.OrderId"
+                                   asp-route-Keyword="@q.Keyword"
+                                   asp-route-ActionType="@((int?)q.ActionType)"
+                                   asp-route-IsSuccess="@q.IsSuccess">
+                                Trước
+                            </a>
+                        </li>
+
+                        @for (var p = startPage; p <= endPage; p++)
+                        {
+                            <li class="page-item @(p == currentPage ? "active" : "")">
+                                <a class="page-link"
+                                       asp-area="Admin"
+                                       asp-controller="InvoiceIntegrationLog"
+                                       asp-action="Index"
+                                       asp-route-Page="@p"
+                                       asp-route-PageSize="@q.PageSize"
+                                       asp-route-FromDate="@(q.FromDate?.ToString("yyyy-MM-dd"))"
+                                       asp-route-ToDate="@(q.ToDate?.ToString("yyyy-MM-dd"))"
+                                       asp-route-InvoiceHeadId="@q.InvoiceHeadId"
+                                       asp-route-OrderId="@q.OrderId"
+                                       asp-route-Keyword="@q.Keyword"
+                                       asp-route-ActionType="@((int?)q.ActionType)"
+                                       asp-route-IsSuccess="@q.IsSuccess">
+                                    @p
+                                </a>
+                            </li>
+                        }
+
+                        <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                            <a class="page-link"
+                                   asp-area="Admin"
+                                   asp-controller="InvoiceIntegrationLog"
+                                   asp-action="Index"
+                                   asp-route-Page="@(currentPage + 1)"
+                                   asp-route-PageSize="@q.PageSize"
+                                   asp-route-FromDate="@(q.FromDate?.ToString("yyyy-MM-dd"))"
+                                   asp-route-ToDate="@(q.ToDate?.ToString("yyyy-MM-dd"))"
+                                   asp-route-InvoiceHeadId="@q.InvoiceHeadId"
+                                   asp-route-OrderId="@q.OrderId"
+                                   asp-route-Keyword="@q.Keyword"
+                                   asp-route-ActionType="@((int?)q.ActionType)"
+                                   asp-route-IsSuccess="@q.IsSuccess">
+                                Sau
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        }
+    </div>
+
+</div>

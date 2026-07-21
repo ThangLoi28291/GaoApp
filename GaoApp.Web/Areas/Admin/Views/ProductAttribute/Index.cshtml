@@ -1,0 +1,165 @@
+﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Web.Areas.Admin.ViewModels.ProductAttributes
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@model ProductAttributeIndexVM
+
+@{
+    ViewData["Title"] = "Thuộc tính sản phẩm";
+    Layout = "_ContentNavbarLayout";
+
+    var canCreate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.ProductAttribute.Create)).Succeeded;
+}
+
+@section Header {
+    <div class="pa-page-header">
+        <div>
+            <div class="pa-kicker">Catalog</div>
+            <h3 class="mb-1 fw-bold">Thuộc tính sản phẩm</h3>
+            <div class="text-muted">
+                Quản lý nhóm thuộc tính như màu sắc, kích cỡ, dung tích, phiên bản...
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            @if (canCreate)
+            {
+                <a asp-area="Admin"
+                       asp-controller="ProductAttribute"
+                       asp-action="Create"
+                       class="btn btn-primary">
+                    <i class="bx bx-plus me-1"></i> Thêm thuộc tính
+                </a>
+            }
+        </div>
+    </div>
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/product-attributes.css" asp-append-version="true" />
+}
+
+<div class="pa-shell"
+     data-search-url="@Url.Action("Search", "ProductAttribute", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleStatus", "ProductAttribute", new { area = "Admin" })"
+     data-delete-url="@Url.Action("DeleteAjax", "ProductAttribute", new { area = "Admin" })">
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="pa-stat-card">
+                <div class="pa-stat-icon bg-primary-subtle text-primary">
+                    <i class="bx bx-slider-alt"></i>
+                </div>
+                <div>
+                    <div class="pa-stat-label">Tổng thuộc tính</div>
+                    <div class="pa-stat-value">@Model.Paged.TotalItems</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="pa-stat-card">
+                <div class="pa-stat-icon bg-success-subtle text-success">
+                    <i class="bx bx-check-circle"></i>
+                </div>
+                <div>
+                    <div class="pa-stat-label">Trạng thái</div>
+                    <div class="pa-stat-value">Đang quản lý</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="pa-stat-card">
+                <div class="pa-stat-icon bg-info-subtle text-info">
+                    <i class="bx bx-search-alt"></i>
+                </div>
+                <div>
+                    <div class="pa-stat-label">Tìm kiếm</div>
+                    <div class="pa-stat-value">Mã / Tên</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm pa-filter-card">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-7 col-md-6">
+                    <label class="form-label fw-semibold">Tìm kiếm</label>
+                    <div class="pa-search-box">
+                        <i class="bx bx-search"></i>
+
+                        <input id="txtSearch"
+                               class="form-control"
+                               placeholder="Nhập mã hoặc tên thuộc tính..."
+                               autocomplete="off"
+                               value="@Model.SearchString" />
+
+                        <button type="button"
+                                id="btnClearSearch"
+                                class="pa-clear-search d-none"
+                                title="Xóa tìm kiếm">
+                            <i class="bx bx-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label fw-semibold">Số dòng</label>
+                    <select id="ddlPageSize" class="form-select">
+                        <option value="10" selected="@(Model.PageSize == 10)">10 dòng</option>
+                        <option value="20" selected="@(Model.PageSize == 20)">20 dòng</option>
+                        <option value="50" selected="@(Model.PageSize == 50)">50 dòng</option>
+                        <option value="100" selected="@(Model.PageSize == 100)">100 dòng</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-2 d-grid">
+                    <button type="button" id="btnReload" class="btn btn-label-primary">
+                        <i class="bx bx-refresh"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form id="antiForgeryForm" method="post" class="d-none">
+        @Html.AntiForgeryToken()
+    </form>
+
+    <div id="productAttributeTableWrapper" class="mt-4">
+        @await Html.PartialAsync("_ProductAttributeTable", Model)
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content pa-modal">
+            <div class="modal-body text-center p-4">
+                <div class="pa-danger-icon mb-3">
+                    <i class="bx bx-trash"></i>
+                </div>
+
+                <h5 class="fw-bold mb-2">Xóa thuộc tính?</h5>
+                <div class="text-muted mb-3">
+                    Thuộc tính <b id="deleteName"></b> sẽ bị xóa khỏi danh sách.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-label-secondary w-50" data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+                    <button type="button" class="btn btn-danger w-50" id="btnConfirmDelete">
+                        Xóa
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/admin/js/product-attributes.index.js" asp-append-version="true"></script>
+}

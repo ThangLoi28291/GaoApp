@@ -1,0 +1,30 @@
+﻿@{
+    Layout = "~/Areas/Admin/Views/Shared/_Layout.cshtml";
+    var statusCode = ViewBag.StatusCode ?? 500;
+    var message = ViewBag.Message ?? "Đã xảy ra lỗi.";
+    var traceId = ViewBag.TraceId ?? "";
+}
+
+<div class="container-fluid py-4">
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <div>
+                    <span class="badge bg-danger">Lỗi @statusCode</span>
+                </div>
+            </div>
+
+            <h3 class="mb-3">Hệ thống gặp sự cố</h3>
+            <p class="text-muted mb-4">@message</p>
+
+            <div class="alert alert-light border mb-4">
+                <strong>TraceId:</strong> @traceId
+            </div>
+
+            <div class="d-flex gap-2">
+                <a href="javascript:history.back()" class="btn btn-outline-secondary">Quay lại</a>
+                <a href="/Admin" class="btn btn-primary">Về trang quản trị</a>
+            </div>
+        </div>
+    </div>
+</div>

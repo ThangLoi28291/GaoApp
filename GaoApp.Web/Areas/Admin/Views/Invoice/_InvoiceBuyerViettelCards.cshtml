@@ -1,0 +1,421 @@
+﻿@using GaoApp.Application.DTOs.Invoices
+@using GaoApp.Domain.Constants
+@using GaoApp.Domain.Enums
+@model InvoiceHeadDto
+
+@{
+    var buyerType = string.IsNullOrWhiteSpace(Model.BuyerType)
+        ? InvoiceBuyerTypes.NoInvoice
+        : Model.BuyerType;
+
+    var isNoInvoice = buyerType == InvoiceBuyerTypes.NoInvoice;
+    var isIndividual = buyerType == InvoiceBuyerTypes.Individual;
+    var isBusiness = buyerType == InvoiceBuyerTypes.Business;
+
+    var buyerTypeText = buyerType switch
+    {
+        InvoiceBuyerTypes.Individual => "Cá nhân",
+        InvoiceBuyerTypes.Business => "Doanh nghiệp / tổ chức",
+        _ => "Không lấy hóa đơn"
+    };
+
+    var displayBuyerName = isBusiness
+        ? Model.BuyerLegalName
+        : Model.BuyerName;
+
+    var canEditBuyer =
+        !Model.IsLocked &&
+        string.IsNullOrWhiteSpace(Model.ProviderInvoiceNo) &&
+        Model.ProviderStatus != InvoiceProviderStatus.Issued &&
+        Model.ProviderStatus != InvoiceProviderStatus.PdfDownloaded &&
+        Model.ProviderStatus != InvoiceProviderStatus.ZipDownloaded &&
+        Model.ProviderStatus != InvoiceProviderStatus.EmailSent;
+
+    var lookupBuyerUrl = Url.Action(
+        "LookupBuyerByTaxCode",
+        "Invoice",
+        new { area = "Admin" });
+
+    var updateBuyerUrl = Url.Action(
+        "UpdateBuyerInfo",
+        "Invoice",
+        new { area = "Admin" });
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-xl-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <div class="fw-semibold">
+                        Người mua trên hóa đơn
+                    </div>
+                    <div class="text-muted small">
+                        Thông tin này sẽ dùng để phát hành hóa đơn điện tử.
+                    </div>
+                </div>
+
+                @if (canEditBuyer)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-primary"
+                            id="btnOpenBuyerInfoModal"
+                            data-bs-toggle="modal"
+                            data-bs-target="#buyerInfoModal">
+                        <i class="bx bx-edit-alt me-1"></i>
+                        Sửa người mua
+                    </button>
+                }
+            </div>
+
+            <div class="card-body">
+                <div class="mb-2">
+                    <span class="badge bg-label-secondary">
+                        @buyerTypeText
+                    </span>
+                </div>
+
+                @if (isNoInvoice)
+                {
+                    <div class="alert alert-light border mb-0">
+                        <div class="fw-semibold">
+                            Người mua không lấy hóa đơn
+                        </div>
+                        <div class="text-muted small">
+                            Khi phát hành Viettel sẽ gửi buyerNotGetInvoice = 1.
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <dl class="row mb-0 small">
+                        @if (isBusiness)
+                        {
+                            <dt class="col-sm-4 text-muted">Tên đơn vị</dt>
+                            <dd class="col-sm-8 fw-semibold">
+                                @(string.IsNullOrWhiteSpace(Model.BuyerLegalName) ? "—" : Model.BuyerLegalName)
+                            </dd>
+
+                            <dt class="col-sm-4 text-muted">Người liên hệ</dt>
+                            <dd class="col-sm-8">
+                                @(string.IsNullOrWhiteSpace(Model.BuyerName) ? "—" : Model.BuyerName)
+                            </dd>
+                        }
+                        else
+                        {
+                            <dt class="col-sm-4 text-muted">Tên khách hàng</dt>
+                            <dd class="col-sm-8 fw-semibold">
+                                @(string.IsNullOrWhiteSpace(Model.BuyerName) ? "—" : Model.BuyerName)
+                            </dd>
+                        }
+
+                        <dt class="col-sm-4 text-muted">MST / mã định danh</dt>
+                        <dd class="col-sm-8">
+                            @(string.IsNullOrWhiteSpace(Model.BuyerTaxCode) ? "—" : Model.BuyerTaxCode)
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">Địa chỉ</dt>
+                        <dd class="col-sm-8">
+                            @(string.IsNullOrWhiteSpace(Model.BuyerAddress) ? "—" : Model.BuyerAddress)
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">Email</dt>
+                        <dd class="col-sm-8">
+                            @(string.IsNullOrWhiteSpace(Model.BuyerEmail) ? "—" : Model.BuyerEmail)
+                        </dd>
+
+                        <dt class="col-sm-4 text-muted">Điện thoại</dt>
+                        <dd class="col-sm-8">
+                            @(string.IsNullOrWhiteSpace(Model.BuyerPhone) ? "—" : Model.BuyerPhone)
+                        </dd>
+                    </dl>
+                }
+
+                @if (!canEditBuyer)
+                {
+                    <div class="alert alert-warning mt-3 mb-0 small">
+                        Hóa đơn đã khóa hoặc đã phát hành nên không được sửa trực tiếp thông tin người mua.
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-6">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header">
+                <div class="fw-semibold">
+                    Trạng thái Viettel
+                </div>
+                <div class="text-muted small">
+                    Thông tin phát hành và đồng bộ hóa đơn.
+                </div>
+            </div>
+
+            <div class="card-body">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-4 text-muted">Nhà cung cấp</dt>
+                    <dd class="col-sm-8">
+                        @(string.IsNullOrWhiteSpace(Model.ProviderCode) ? "—" : Model.ProviderCode)
+                    </dd>
+
+                    <dt class="col-sm-4 text-muted">Trạng thái</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-label-info">
+                            @Model.ProviderStatus
+                        </span>
+                    </dd>
+
+                    <dt class="col-sm-4 text-muted">Số hóa đơn</dt>
+                    <dd class="col-sm-8">
+                        @(string.IsNullOrWhiteSpace(Model.ProviderInvoiceNo) ? "—" : Model.ProviderInvoiceNo)
+                    </dd>
+
+                    <dt class="col-sm-4 text-muted">Mã giao dịch</dt>
+                    <dd class="col-sm-8 text-break">
+                        @(string.IsNullOrWhiteSpace(Model.TransactionUuid) ? "—" : Model.TransactionUuid)
+                    </dd>
+
+                    <dt class="col-sm-4 text-muted">Lỗi gần nhất</dt>
+                    <dd class="col-sm-8 text-danger">
+                        @(string.IsNullOrWhiteSpace(Model.LastErrorMessage) ? "—" : Model.LastErrorMessage)
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (canEditBuyer)
+{
+    <div class="modal fade"
+         id="buyerInfoModal"
+         tabindex="-1"
+         aria-labelledby="buyerInfoModalLabel"
+         aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="buyerInfoForm"
+                      method="post"
+                      data-lookup-url="@lookupBuyerUrl"
+                      data-update-url="@updateBuyerUrl">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           id="buyerInvoiceHeadId"
+                           name="InvoiceHeadId"
+                           value="@Model.Id" />
+
+                    <input type="hidden"
+                           id="buyerSource"
+                           name="Source"
+                           value="manual" />
+
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="buyerInfoModalLabel">
+                                Sửa thông tin người mua
+                            </h5>
+                            <div class="text-muted small">
+                                Kiểm tra kỹ trước khi lưu và phát hành hóa đơn.
+                            </div>
+                        </div>
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"
+                                aria-label="Close"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div id="buyerLookupMessage" class="alert d-none small mb-3"></div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Loại người mua
+                            </label>
+
+                            <div class="row g-2">
+                                <div class="col-12 col-md-4">
+                                    <label class="border rounded p-3 w-100 h-100 cursor-pointer">
+                                        <input class="form-check-input me-2 buyer-type-radio"
+                                               type="radio"
+                                               name="BuyerType"
+                                               value="@InvoiceBuyerTypes.NoInvoice"
+                                        @(isNoInvoice ? "checked" : "") />
+                                        <span class="fw-semibold">Không lấy hóa đơn</span>
+                                        <div class="text-muted small mt-1">
+                                            Khách lẻ, không cần thông tin người mua.
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    <label class="border rounded p-3 w-100 h-100 cursor-pointer">
+                                        <input class="form-check-input me-2 buyer-type-radio"
+                                               type="radio"
+                                               name="BuyerType"
+                                               value="@InvoiceBuyerTypes.Individual"
+                                        @(isIndividual ? "checked" : "") />
+                                        <span class="fw-semibold">Cá nhân</span>
+                                        <div class="text-muted small mt-1">
+                                            Dùng tên khách hàng cá nhân.
+                                        </div>
+                                    </label>
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    <label class="border rounded p-3 w-100 h-100 cursor-pointer">
+                                        <input class="form-check-input me-2 buyer-type-radio"
+                                               type="radio"
+                                               name="BuyerType"
+                                               value="@InvoiceBuyerTypes.Business"
+                                        @(isBusiness ? "checked" : "") />
+                                        <span class="fw-semibold">Doanh nghiệp</span>
+                                        <div class="text-muted small mt-1">
+                                            Dùng tên đơn vị/công ty/hộ kinh doanh.
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="buyer-fields">
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6 buyer-tax-code-wrap">
+                                    <label class="form-label">
+                                        MST / mã định danh
+                                    </label>
+
+                                    <div class="input-group">
+                                        <input type="text"
+                                               class="form-control"
+                                               id="buyerTaxCode"
+                                               name="BuyerTaxCode"
+                                               maxlength="50"
+                                               autocomplete="off"
+                                               value="@Model.BuyerTaxCode" />
+
+                                        <button class="btn btn-outline-primary"
+                                                type="button"
+                                                id="btnLookupBuyerTaxCode">
+                                            Tra cứu
+                                        </button>
+                                    </div>
+
+                                    <div class="form-text">
+                                        Không ép 10/13 số. Cho phép chữ, số, dấu gạch ngang, tối đa 20 ký tự khi phát hành.
+                                    </div>
+                                </div>
+
+                                <div class="col-12 col-md-6 buyer-phone-wrap">
+                                    <label class="form-label">
+                                        Điện thoại
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="buyerPhone"
+                                           name="BuyerPhone"
+                                           maxlength="30"
+                                           value="@Model.BuyerPhone" />
+                                </div>
+
+                                <div class="col-12 buyer-name-wrap">
+                                    <label class="form-label" id="buyerNameLabel">
+                                        Tên khách hàng
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="buyerName"
+                                           name="BuyerName"
+                                           maxlength="300"
+                                           value="@Model.BuyerName" />
+                                </div>
+
+                                <div class="col-12 buyer-legal-name-wrap">
+                                    <label class="form-label">
+                                        Tên đơn vị / công ty / hộ kinh doanh
+                                        <span class="text-danger">*</span>
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="buyerLegalName"
+                                           name="BuyerLegalName"
+                                           maxlength="500"
+                                           value="@Model.BuyerLegalName" />
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">
+                                        Địa chỉ xuất hóa đơn
+                                    </label>
+
+                                    <textarea class="form-control"
+                                              id="buyerAddress"
+                                              name="BuyerAddress"
+                                              rows="2"
+                                              maxlength="1200">@Model.BuyerAddress</textarea>
+                                </div>
+
+                                <div class="col-12">
+                                    <label class="form-label">
+                                        Email nhận hóa đơn
+                                    </label>
+
+                                    <input type="text"
+                                           class="form-control"
+                                           id="buyerEmail"
+                                           name="BuyerEmail"
+                                           maxlength="2000"
+                                           value="@Model.BuyerEmail" />
+
+                                    <div class="form-text">
+                                        Có thể để trống. Nếu nhập nhiều email thì phân cách bằng dấu phẩy.
+                                    </div>
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input class="form-check-input"
+                                               type="checkbox"
+                                               id="buyerSaveToProfile"
+                                               name="SaveToProfile"
+                                               value="true"
+                                               checked />
+
+                                        <label class="form-check-label" for="buyerSaveToProfile">
+                                            Lưu vào hồ sơ người mua để lần sau dùng lại
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info small mt-3 mb-0">
+                            <b>Ghi chú:</b>
+                            Tra cứu ở phase này chỉ tìm trong dữ liệu nội bộ: hồ sơ người mua, khách hàng, lịch sử hóa đơn.
+                            VietQR sẽ làm ở phase sau.
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button"
+                                class="btn btn-label-secondary"
+                                data-bs-dismiss="modal">
+                            Đóng
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-primary"
+                                id="btnSaveBuyerInfo">
+                            Lưu thông tin người mua
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}

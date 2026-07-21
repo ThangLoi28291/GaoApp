@@ -1,0 +1,585 @@
+﻿@model GaoApp.Application.DTOs.AdminMenus.SaveAdminMenuItemRequest
+
+@{
+    ViewData["Title"] = "Thêm menu";
+}
+
+<div class="container-fluid admin-menu-form-page">
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+            <h3 class="mb-1">Thêm menu</h3>
+            <div class="text-muted">
+                Tạo menu cha hoặc menu con, chọn quyền hiển thị và gán nhanh cho vai trò.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="AdminMenus"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>
+            Quay lại
+        </a>
+    </div>
+
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div class="alert alert-danger">
+            Vui lòng kiểm tra lại thông tin menu.
+        </div>
+    }
+
+    <form asp-area="Admin"
+          asp-controller="AdminMenus"
+          asp-action="Create"
+          method="post">
+
+        @Html.AntiForgeryToken()
+
+        <div class="row g-4">
+
+            <div class="col-xl-8">
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white border-0 pt-4 px-4">
+                        <h5 class="mb-1">Thông tin menu</h5>
+                        <div class="text-muted small">
+                            Cấu hình tên, cấp cha/con, đường dẫn và icon.
+                        </div>
+                    </div>
+
+                    <div class="card-body p-4">
+
+                        <div asp-validation-summary="ModelOnly"
+                             class="text-danger mb-3"></div>
+
+                        <div class="mb-3">
+                            <label asp-for="Title" class="form-label fw-semibold">
+                                Tên menu <span class="text-danger">*</span>
+                            </label>
+
+                            <input asp-for="Title"
+                                   class="form-control"
+                                   placeholder="Ví dụ: Báo cáo doanh thu, Kho hàng..." />
+
+                            <span asp-validation-for="Title"
+                                  class="text-danger small"></span>
+                        </div>
+
+                        <div class="row g-3">
+
+                            <div class="col-md-6">
+                                <label asp-for="ParentId" class="form-label fw-semibold">
+                                    Menu cha
+                                </label>
+
+                                <select asp-for="ParentId" class="form-select">
+                                    <option value="">-- Là menu cha --</option>
+
+                                    @if (ViewBag.ParentMenus != null)
+                                    {
+                                        foreach (var parent in ViewBag.ParentMenus)
+                                        {
+                                            <option value="@parent.Id">@parent.Title</option>
+
+                                            if (parent.Children != null)
+                                            {
+                                                foreach (var child in parent.Children)
+                                                {
+                                                    <option value="@child.Id">-- @child.Title</option>
+                                                }
+                                            }
+                                        }
+                                    }
+                                </select>
+
+                                <div class="form-text">
+                                    Để trống nếu tạo menu cha.
+                                </div>
+
+                                <span asp-validation-for="ParentId"
+                                      class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="SortOrder" class="form-label fw-semibold">
+                                    Thứ tự hiển thị
+                                </label>
+
+                                <input asp-for="SortOrder"
+                                       class="form-control"
+                                       type="number"
+                                       min="0" />
+
+                                <span asp-validation-for="SortOrder"
+                                      class="text-danger small"></span>
+                            </div>
+
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <div class="row g-3">
+
+                            <div class="col-md-4">
+                                <label asp-for="Area" class="form-label fw-semibold">
+                                    Area
+                                </label>
+
+                                <input asp-for="Area"
+                                       class="form-control"
+                                       placeholder="Admin" />
+
+                                <span asp-validation-for="Area"
+                                      class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label asp-for="Controller" class="form-label fw-semibold">
+                                    Controller
+                                </label>
+
+                                <input asp-for="Controller"
+                                       id="Controller"
+                                       class="form-control"
+                                       placeholder="Product, Reports, POS..." />
+
+                                <span asp-validation-for="Controller"
+                                      class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label asp-for="Action" class="form-label fw-semibold">
+                                    Action
+                                </label>
+
+                                <input asp-for="Action"
+                                       id="Action"
+                                       class="form-control"
+                                       placeholder="Index" />
+
+                                <span asp-validation-for="Action"
+                                      class="text-danger small"></span>
+                            </div>
+
+                        </div>
+
+                        <div class="mt-3">
+                            <label asp-for="Url" class="form-label fw-semibold">
+                                Url tùy chỉnh
+                            </label>
+
+                            <input asp-for="Url"
+                                   class="form-control"
+                                   placeholder="/Admin/POS hoặc để trống nếu dùng Controller/Action" />
+
+                            <div class="form-text">
+                                Nếu nhập Url thì sidebar dùng Url trực tiếp.
+                            </div>
+
+                            <span asp-validation-for="Url"
+                                  class="text-danger small"></span>
+                        </div>
+
+                        <div class="mt-3">
+                            <label asp-for="Icon" class="form-label fw-semibold">
+                                Icon
+                            </label>
+
+                            <select asp-for="Icon" class="form-select">
+                                <option value="">-- Chọn icon --</option>
+                                <option value="bx bx-home-smile">🏠 Trang chủ</option>
+                                <option value="bx bx-box">📦 Danh mục</option>
+                                <option value="bx bx-buildings">🏬 Kho</option>
+                                <option value="bx bx-cart">🛒 Bán hàng</option>
+                                <option value="bx bx-bar-chart">📊 Báo cáo</option>
+                                <option value="bx bx-user">👤 Nhân sự</option>
+                                <option value="bx bx-shield-quarter">🛡️ Bảo mật</option>
+                                <option value="bx bx-cog">⚙️ Cài đặt</option>
+                                <option value="bx bx-slideshow">🖥️ Màn hình khách</option>
+                            </select>
+
+                            <span asp-validation-for="Icon"
+                                  class="text-danger small"></span>
+                        </div>
+
+                        <div class="form-check form-switch mt-4">
+                            <input asp-for="IsActive"
+                                   class="form-check-input"
+                                   role="switch" />
+
+                            <label asp-for="IsActive"
+                                   class="form-check-label fw-semibold">
+                                Hiển thị menu
+                            </label>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-header bg-white border-0 pt-4 px-4">
+                        <h5 class="mb-1">Phân quyền menu</h5>
+                        <div class="text-muted small">
+                            Chọn quyền có sẵn hoặc tạo quyền mới, sau đó gán cho vai trò được thấy menu.
+                        </div>
+                    </div>
+
+                    <div class="card-body p-4">
+
+                        <div class="mb-3">
+                            <label asp-for="PermissionCode" class="form-label fw-semibold">
+                                Quyền có sẵn
+                            </label>
+
+                            <select asp-for="PermissionCode" class="form-select">
+                                <option value="">-- Không gắn quyền --</option>
+
+                                @if (ViewBag.Permissions != null)
+                                {
+                                    foreach (var p in ViewBag.Permissions)
+                                    {
+                                        <option value="@p.Code">
+                                            @p.Code - @p.Name
+                                        </option>
+                                    }
+                                }
+                            </select>
+
+                            <div class="form-text">
+                                Nếu menu con cần phân quyền, nên chọn hoặc tạo permission.
+                            </div>
+
+                            <span asp-validation-for="PermissionCode"
+                                  class="text-danger small"></span>
+                        </div>
+
+                        <div class="form-check form-switch mb-3">
+                            <input asp-for="CreateNewPermission"
+                                   class="form-check-input"
+                                   role="switch"
+                                   id="CreateNewPermission" />
+
+                            <label asp-for="CreateNewPermission"
+                                   class="form-check-label fw-semibold">
+                                Tạo quyền mới cho menu này
+                            </label>
+                        </div>
+
+                        <div class="row g-3 permission-new-box">
+                            <div class="col-md-4">
+
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+
+                                    <label asp-for="NewPermissionCode"
+                                           class="form-label fw-semibold mb-0">
+
+                                        Mã quyền mới
+                                    </label>
+
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary"
+                                            id="btnGeneratePermissionCode">
+
+                                        Tự sinh
+                                    </button>
+
+                                </div>
+
+                                <input asp-for="NewPermissionCode"
+                                       id="NewPermissionCode"
+                                       class="form-control"
+                                       placeholder="report.revenue.view" />
+
+                                <span asp-validation-for="NewPermissionCode"
+                                      class="text-danger small"></span>
+
+                            </div>
+
+                            <div class="col-md-4">
+                                <label asp-for="NewPermissionName" class="form-label fw-semibold">
+                                    Tên quyền
+                                </label>
+
+                                <input asp-for="NewPermissionName"
+                                       id="NewPermissionName"
+                                       class="form-control"
+                                       placeholder="Xem báo cáo doanh thu" />
+
+                                <span asp-validation-for="NewPermissionName"
+                                      class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label asp-for="NewPermissionGroupName" class="form-label fw-semibold">
+                                    Nhóm quyền
+                                </label>
+
+                                <input asp-for="NewPermissionGroupName"
+                                       class="form-control"
+                                       placeholder="Báo cáo" />
+
+                                <span asp-validation-for="NewPermissionGroupName"
+                                      class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <div>
+                            <label class="form-label fw-semibold">
+                                Vai trò được thấy menu này
+                            </label>
+
+                            <div class="row g-2">
+                                @if (ViewBag.Roles != null)
+                                {
+                                    foreach (var role in ViewBag.Roles)
+                                    {
+                                        <div class="col-md-4">
+                                            <label class="role-check-card">
+                                                <input type="checkbox"
+                                                       name="AssignRoleIds"
+                                                       value="@role.RoleId"
+                                                       class="form-check-input me-2" />
+
+                                                <span>
+                                                    <strong>@role.RoleName</strong>
+                                                    <small class="d-block text-muted">@role.RoleCode</small>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            <div class="form-text mt-2">
+                                Nếu chọn vai trò, hệ thống sẽ tự gán quyền của menu cho vai trò đó.
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-xl-4">
+
+                <div class="card border-0 shadow-sm mb-4">
+                    <div class="card-header bg-white border-0 pt-4 px-4">
+                        <h5 class="mb-1">Gợi ý nhanh</h5>
+                    </div>
+
+                    <div class="card-body p-4">
+                        <div class="example-box mb-3">
+                            <div class="fw-semibold mb-1">Menu cha</div>
+                            <code>Title = Báo cáo</code><br />
+                            <code>Icon = bx bx-bar-chart</code><br />
+                            <code>Permission = trống</code>
+                        </div>
+
+                        <div class="example-box">
+                            <div class="fw-semibold mb-1">Menu con</div>
+                            <code>Controller = Reports</code><br />
+                            <code>Action = Revenue</code><br />
+                            <code>Permission = report.revenue.view</code>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save me-1"></i>
+                                Lưu menu
+                            </button>
+
+                            <a asp-area="Admin"
+                                   asp-controller="AdminMenus"
+                                   asp-action="Index"
+                                   class="btn btn-light border">
+                                Hủy
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </form>
+
+</div>
+
+<style>
+    .admin-menu-form-page .card {
+        border-radius: 18px;
+    }
+
+    .admin-menu-form-page .form-control,
+    .admin-menu-form-page .form-select {
+        border-radius: 12px;
+    }
+
+    .admin-menu-form-page .example-box,
+    .role-check-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 1rem;
+    }
+
+    .role-check-card {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        cursor: pointer;
+        height: 100%;
+        background: #fff;
+    }
+
+        .role-check-card:hover {
+            background: #f8fafc;
+            border-color: #93c5fd;
+        }
+
+    .admin-menu-form-page code {
+        color: #db2777;
+        background: #fdf2f8;
+        padding: .15rem .35rem;
+        border-radius: .45rem;
+        font-size: .78rem;
+    }
+</style>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+
+            // =====================================================
+            // TOGGLE BOX TẠO QUYỀN
+            // =====================================================
+
+            const switchEl =
+                document.getElementById('CreateNewPermission');
+
+            const box =
+                document.querySelector('.permission-new-box');
+
+            function syncPermissionBox() {
+
+                if (!switchEl || !box)
+                    return;
+
+                box.style.display =
+                    switchEl.checked ? '' : 'none';
+            }
+
+            switchEl?.addEventListener(
+                'change',
+                syncPermissionBox);
+
+            syncPermissionBox();
+
+            // =====================================================
+            // TỰ SINH PERMISSION CODE
+            // =====================================================
+
+            const btnGenerate =
+                document.getElementById(
+                    'btnGeneratePermissionCode');
+
+            const controllerInput =
+                document.getElementById('Controller');
+
+            const actionInput =
+                document.getElementById('Action');
+
+            const permissionCodeInput =
+                document.getElementById(
+                    'NewPermissionCode');
+
+            const permissionNameInput =
+                document.getElementById(
+                    'NewPermissionName');
+
+            function normalizePermissionPart(value) {
+
+                return (value || '')
+                    .trim()
+
+                    // ProductCategory => product.category
+                    .replace(/([a-z])([A-Z])/g, '$1.$2')
+
+                    // bỏ ký tự lạ
+                    .replace(/[^a-zA-Z0-9]+/g, '.')
+
+                    // nhiều dấu . => 1 dấu .
+                    .replace(/\.+/g, '.')
+
+                    // bỏ . đầu/cuối
+                    .replace(/^\.|\.$/g, '')
+
+                    .toLowerCase();
+            }
+
+            btnGenerate?.addEventListener(
+                'click',
+                function () {
+
+                    const controller =
+                        controllerInput?.value || '';
+
+                    const action =
+                        actionInput?.value || 'index';
+
+                    const c =
+                        normalizePermissionPart(controller);
+
+                    const a =
+                        normalizePermissionPart(action);
+
+                    if (!c) {
+
+                        alert(
+                            'Vui lòng nhập Controller trước.');
+
+                        controllerInput?.focus();
+
+                        return;
+                    }
+
+                    // =================================================
+                    // TỰ SINH CODE
+                    // =================================================
+
+                    permissionCodeInput.value =
+                        `${c}.${a}.view`;
+
+                    // =================================================
+                    // AUTO TÊN QUYỀN
+                    // =================================================
+
+                    if (!permissionNameInput.value.trim()) {
+
+                        permissionNameInput.value =
+                            `Xem ${controller} ${action}`;
+                    }
+
+                    // =================================================
+                    // AUTO BẬT SWITCH
+                    // =================================================
+
+                    switchEl.checked = true;
+
+                    syncPermissionBox();
+                });
+
+        })();
+    </script>
+}

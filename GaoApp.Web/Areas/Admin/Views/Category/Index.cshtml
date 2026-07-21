@@ -1,0 +1,335 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Categories
+@model CategoryIndexVM
+
+@{
+    ViewData["Title"] = "Danh mục";
+    Layout = "_ContentNavbarLayout";
+
+    var canCreate = (bool?)(ViewData["CanCreateCategory"]) ?? false;
+    var canUpdate = (bool?)(ViewData["CanUpdateCategory"]) ?? false;
+    var canDelete = (bool?)(ViewData["CanDeleteCategory"]) ?? false;
+}
+
+@section header {
+    <div class="py-2">
+        <h3 class="mb-0 fw-bold">Danh sách danh mục</h3>
+    </div>
+}
+
+<div class="card">
+    <div class="card-body">
+
+        <div class="row g-3 align-items-end mb-3">
+            <div class="col-md-5">
+                <label class="form-label">Tìm kiếm</label>
+
+                <div class="position-relative">
+                    <input id="txtSearch"
+                           class="form-control pe-5"
+                           placeholder="Tên / mã..."
+                           autocomplete="off"
+                           value="@Model.SearchString" />
+
+                    <button type="button"
+                            id="btnClearSearch"
+                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
+                            title="Xóa tìm kiếm"
+                            aria-label="Xóa tìm kiếm"
+                            style="border:0; background:transparent;">
+                        <i class="bx bx-x fs-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label">Kích thước trang</label>
+                <select id="ddlPageSize" class="form-select">
+                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
+                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
+                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
+                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
+                    <option value="200" selected="@(Model.PageSize == 200)">200</option>
+                </select>
+            </div>
+
+            <div class="col-md-4 text-md-end">
+                @if (canCreate)
+                {
+                    <a asp-area="Admin"
+                           asp-controller="Category"
+                           asp-action="Create"
+                           class="btn btn-primary">
+                        <i class="bx bx-plus me-1"></i> Thêm danh mục
+                    </a>
+                }
+            </div>
+        </div>
+
+        <form id="antiForgeryForm" method="post">
+            @Html.AntiForgeryToken()
+        </form>
+
+        <div id="categoryTableWrapper">
+            @await Html.PartialAsync("_CategoryTable", Model, new ViewDataDictionary(ViewData))
+        </div>
+
+    </div>
+</div>
+
+@if (canDelete)
+{
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Xác nhận xóa</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body">
+                    Bạn chắc chắn muốn xóa danh mục: <b id="deleteName"></b> ?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmDelete">Xóa</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const wrapper = document.getElementById('categoryTableWrapper');
+            const txtSearch = document.getElementById('txtSearch');
+            const btnClearSearch = document.getElementById('btnClearSearch');
+            const ddlPageSize = document.getElementById('ddlPageSize');
+            const btnConfirmDelete = document.getElementById('btnConfirmDelete');
+
+            let typingTimer = null;
+            let deleteId = 0;
+            let searchAbortController = null;
+            let searchRequestSequence = 0;
+
+            const canUpdate = @canUpdate.ToString().ToLowerInvariant();
+            const canDelete = @canDelete.ToString().ToLowerInvariant();
+
+            function getToken() {
+                return document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]')?.value || '';
+            }
+
+            function notify(type, message) {
+                const safeMessage = message || 'Đã xảy ra lỗi. Vui lòng thử lại.';
+
+                if (window.toastr && typeof window.toastr[type] === 'function') {
+                    window.toastr[type](safeMessage);
+                    return;
+                }
+
+                alert(safeMessage);
+            }
+
+            function initializeTooltips(container) {
+                if (!container || !window.bootstrap?.Tooltip) return;
+
+                container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                    try {
+                        bootstrap.Tooltip.getOrCreateInstance(el);
+                    } catch (_) {
+                        // Tooltip không được phép làm hỏng luồng tải bảng.
+                    }
+                });
+            }
+
+            function disposeTooltips(container) {
+                if (!container || !window.bootstrap?.Tooltip) return;
+
+                container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+                    bootstrap.Tooltip.getInstance(el)?.dispose();
+                });
+            }
+
+            async function readJsonResponse(response, fallbackMessage) {
+                let data = null;
+
+                try {
+                    data = await response.json();
+                } catch (_) {
+                    // Giữ thông báo an toàn nếu server không trả JSON.
+                }
+
+                if (!response.ok) {
+                    throw new Error(data?.message || fallbackMessage);
+                }
+
+                if (!data) {
+                    throw new Error(fallbackMessage);
+                }
+
+                return data;
+            }
+
+            function updateClearButtonVisibility() {
+                if (!txtSearch.value || txtSearch.value.trim() === '') btnClearSearch.classList.add('d-none');
+                else btnClearSearch.classList.remove('d-none');
+            }
+
+            async function loadCategories(page) {
+                const qs = new URLSearchParams();
+                qs.set('searchString', txtSearch.value || '');
+                qs.set('page', page || 1);
+                qs.set('pageSize', ddlPageSize.value || '20');
+
+                searchAbortController?.abort();
+
+                const controller = new AbortController();
+                const requestSequence = ++searchRequestSequence;
+                searchAbortController = controller;
+
+                try {
+                    const response = await fetch(
+                        '@Url.Action("Search", "Category", new { area = "Admin" })' + '?' + qs.toString(),
+                        {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                            signal: controller.signal
+                        });
+
+                    if (!response.ok) {
+                        throw new Error('Không tải được danh sách danh mục.');
+                    }
+
+                    const html = await response.text();
+
+                    if (requestSequence !== searchRequestSequence) return;
+
+                    disposeTooltips(wrapper);
+                    wrapper.innerHTML = html;
+                    bindAllTableEvents();
+                    initializeTooltips(wrapper);
+                } catch (error) {
+                    if (error?.name === 'AbortError') return;
+                    if (requestSequence !== searchRequestSequence) return;
+
+                    notify('error', error?.message || 'Không tải được danh sách danh mục.');
+                } finally {
+                    if (requestSequence === searchRequestSequence) {
+                        searchAbortController = null;
+                    }
+                }
+            }
+
+            function debounceLoad() {
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(() => loadCategories(1), 300);
+            }
+
+            function bindPaginationEvents() {
+                wrapper.querySelectorAll('.js-page-link').forEach(a => {
+                    a.onclick = function (e) {
+                        e.preventDefault();
+                        const p = this.getAttribute('data-page');
+                        if (p) loadCategories(parseInt(p));
+                    };
+                });
+            }
+
+            function bindToggleStatusEvents() {
+                if (!canUpdate) return;
+
+                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
+                    btn.onclick = async function () {
+                        const actionButton = this;
+                        const id = this.getAttribute('data-id');
+                        const token = getToken();
+                        if (!id || !token || actionButton.disabled) return;
+
+                        actionButton.disabled = true;
+
+                        try {
+                            const response = await fetch('@Url.Action("ToggleStatus", "Category", new { area = "Admin" })', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                                body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                            });
+
+                            const data = await readJsonResponse(response, 'Không thể đổi trạng thái danh mục.');
+                            notify(data.success ? 'success' : 'error', data.message);
+
+                            if (data.success) await loadCategories(1);
+                        } catch (error) {
+                            notify('error', error?.message || 'Không thể đổi trạng thái danh mục.');
+                        } finally {
+                            actionButton.disabled = false;
+                        }
+                    };
+                });
+            }
+
+            function bindDeleteEvents() {
+                if (!canDelete) return;
+
+                wrapper.querySelectorAll('.js-delete').forEach(btn => {
+                    btn.onclick = function () {
+                        deleteId = parseInt(this.dataset.id);
+                        document.getElementById('deleteName').textContent = this.dataset.name || '';
+                        new bootstrap.Modal(document.getElementById('deleteModal')).show();
+                    };
+                });
+            }
+
+            function bindAllTableEvents() {
+                bindPaginationEvents();
+                bindToggleStatusEvents();
+                bindDeleteEvents();
+            }
+
+            if (canDelete) {
+                btnConfirmDelete?.addEventListener('click', async function () {
+                    if (!deleteId || this.disabled) return;
+
+                    const actionButton = this;
+                    const currentDeleteId = deleteId;
+                    actionButton.disabled = true;
+
+                    try {
+                        const response = await fetch('@Url.Action("DeleteAjax", "Category", new { area = "Admin" })', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: `id=${encodeURIComponent(currentDeleteId)}&__RequestVerificationToken=${encodeURIComponent(getToken())}`
+                        });
+
+                        const data = await readJsonResponse(response, 'Không thể xóa danh mục.');
+                        notify(data.success ? 'success' : 'error', data.message);
+                        if (!data.success) return;
+
+                        bootstrap.Modal.getInstance(document.getElementById('deleteModal'))?.hide();
+                        deleteId = 0;
+                        await loadCategories(1);
+                    } catch (error) {
+                        notify('error', error?.message || 'Không thể xóa danh mục.');
+                    } finally {
+                        actionButton.disabled = false;
+                    }
+                });
+            }
+
+            txtSearch.addEventListener('input', function () {
+                updateClearButtonVisibility();
+                debounceLoad();
+            });
+
+            btnClearSearch.addEventListener('click', function () {
+                txtSearch.value = '';
+                updateClearButtonVisibility();
+                loadCategories(1);
+                txtSearch.focus();
+            });
+
+            ddlPageSize.addEventListener('change', () => loadCategories(1));
+
+            updateClearButtonVisibility();
+            bindAllTableEvents();
+            initializeTooltips(wrapper);
+        });
+    </script>
+}

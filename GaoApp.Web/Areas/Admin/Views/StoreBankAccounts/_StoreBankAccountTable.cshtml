@@ -1,0 +1,129 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.StoreBankAccounts
+@model StoreBankAccountIndexVM
+
+@{
+    var items = Model.Items;
+    var totalItems = Model.TotalItems;
+    var pageSize = Model.PageSize;
+    var currentPage = Model.Page;
+
+    var totalPages = (int)Math.Ceiling((double)totalItems / (pageSize <= 0 ? 1 : pageSize));
+}
+
+<div class="table-responsive">
+    <table class="table align-middle table-hover">
+        <thead class="table-light">
+            <tr>
+                <th style="width:80px">ID</th>
+                <th style="width:220px">Ngân hàng</th>
+                <th style="width:170px">Số TK</th>
+                <th>Chủ tài khoản</th>
+                <th style="width:130px">QR</th>
+                <th style="width:130px">Xác nhận</th>
+                <th style="width:150px">Trạng thái</th>
+                <th style="width:140px">Mặc định</th>
+                <th style="width:150px">Thao tác</th>
+            </tr>
+        </thead>
+
+        <tbody class="table-border-bottom-0">
+            @if (items == null || !items.Any())
+            {
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-4">
+                        Chưa có tài khoản ngân hàng
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var x in items)
+                {
+                    <tr>
+                        <td class="fw-semibold text-primary">@x.Id</td>
+
+                        <td>
+                            <div class="fw-semibold">@x.BankName</div>
+                            <div class="text-muted small">
+                                @(x.BankCode ?? "") · BIN: @(x.VietQrBankBin ?? "-")
+                            </div>
+                        </td>
+
+                        <td class="fw-semibold">@x.AccountNumber</td>
+                        <td>@x.AccountName</td>
+
+                        <td>
+                            <span class="badge bg-label-info">@x.QrRenderMode</span>
+                        </td>
+
+                        <td>
+                            <span class="badge bg-label-secondary">@x.ConfirmMode</span>
+                        </td>
+
+                        <td>
+                            <button type="button"
+                                    class="btn btn-sm @(x.IsActive ? "btn-success" : "btn-label-danger") js-toggle-status"
+                                    data-id="@x.Id"
+                                    title="Bấm để bật/tắt ngân hàng"
+                                    data-bs-toggle="tooltip">
+                                @(x.IsActive ? "Đang bật" : "Đang tắt")
+                            </button>
+                        </td>
+
+                        <td>
+                            @if (x.IsDefault)
+                            {
+                                <span class="badge bg-primary">Mặc định</span>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary js-set-default"
+                                        data-id="@x.Id"
+                                    @(x.IsActive ? "" : "disabled")>
+                                    Chọn
+                                </button>
+                            }
+                        </td>
+
+                        <td>
+                            <a asp-area="Admin"
+                                   asp-controller="StoreBankAccounts"
+                                   asp-action="Edit"
+                                   asp-route-id="@x.Id"
+                                   class="btn btn-sm btn-warning me-1">
+                                Sửa
+                            </a>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="d-flex justify-content-between align-items-center mt-3">
+        <div class="text-muted">
+            Tổng: <b>@totalItems</b>
+        </div>
+
+        <nav>
+            <ul class="pagination mb-0">
+                @{
+                    var start = Math.Max(1, currentPage - 3);
+                    var end = Math.Min(totalPages, start + 6);
+                    start = Math.Max(1, end - 6);
+                }
+
+                @for (int p = start; p <= end; p++)
+                {
+                    <li class="page-item @(p == currentPage ? "active" : "")">
+                        <a href="#" class="page-link js-page-link" data-page="@p">@p</a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    </div>
+}

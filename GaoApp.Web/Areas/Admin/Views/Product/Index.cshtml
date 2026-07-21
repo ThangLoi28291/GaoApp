@@ -1,0 +1,372 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.Products
+@model ProductIndexVM
+
+@{
+    ViewData["Title"] = "Sản phẩm";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link href="~/css/admin/product.css" rel="stylesheet" />
+
+    <style>
+        .product-page {
+            max-width: 1500px;
+            margin: 0 auto;
+        }
+
+        .product-page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .product-page-title {
+            font-size: 30px;
+            font-weight: 900;
+            color: #1f2937;
+            margin: 0;
+        }
+
+        .product-page-subtitle {
+            color: #64748b;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .product-card {
+            border: 0;
+            border-radius: 22px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+            overflow: hidden;
+        }
+
+        .product-toolbar {
+            display: grid;
+            grid-template-columns: 1fr 220px auto;
+            gap: 14px;
+            align-items: end;
+            padding: 20px 22px;
+            background: linear-gradient(180deg, #fff, #f8fafc);
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .product-search-box {
+            position: relative;
+        }
+
+            .product-search-box .form-control {
+                height: 48px;
+                border-radius: 14px;
+                font-weight: 700;
+                padding-left: 42px;
+                padding-right: 96px;
+            }
+
+        .product-search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: 20px;
+        }
+
+        .product-clear-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-radius: 10px;
+            font-weight: 800;
+        }
+
+        .product-page-size {
+            height: 48px;
+            border-radius: 14px;
+            font-weight: 800;
+        }
+
+        .product-create-btn {
+            height: 48px;
+            border-radius: 14px;
+            font-weight: 900;
+            padding: 0 22px;
+            box-shadow: 0 8px 18px rgba(99, 102, 241, .28);
+        }
+
+        .product-table-zone {
+            position: relative;
+            min-height: 260px;
+        }
+
+        .product-table-loading {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,.72);
+            backdrop-filter: blur(2px);
+            z-index: 5;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            color: #475569;
+        }
+
+        .product-table-zone.is-loading .product-table-loading {
+            display: flex;
+        }
+
+        @@media (max-width: 992px) {
+            .product-toolbar {
+                grid-template-columns: 1fr;
+            }
+
+            .product-page-header {
+                align-items: stretch;
+                flex-direction: column;
+            }
+        }
+    </style>
+}
+
+@section header {
+    <div class="product-page-header">
+        <div>
+            <h3 class="product-page-title">Danh sách sản phẩm</h3>
+            <div class="product-page-subtitle">
+                Quản lý sản phẩm, giá bán, trạng thái và biến thể.
+            </div>
+        </div>
+    </div>
+}
+
+<div class="product-page">
+    <div class="card product-card">
+        <div class="product-toolbar">
+            <div>
+                <label class="form-label fw-bold text-muted">Tìm kiếm sản phẩm</label>
+                <div class="product-search-box">
+                    <i class="bx bx-search product-search-icon"></i>
+
+                    <input id="txtSearch"
+                           class="form-control"
+                           placeholder="Nhập tên sản phẩm, barcode, alias..."
+                           autocomplete="off"
+                           value="@Model.SearchString" />
+
+                    <button type="button"
+                            class="btn btn-sm btn-light border product-clear-btn"
+                            onclick="clearSearch()">
+                        Xóa tìm
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <label class="form-label fw-bold text-muted">Số dòng</label>
+                <select id="ddlPageSize" class="form-select product-page-size">
+                    @{
+                        int[] sizes = new[] { 10, 20, 50, 100, 200 };
+                        foreach (var s in sizes)
+                        {
+                            <option value="@s" selected="@(Model.PageSize == s)">
+                                @s dòng
+                            </option>
+                        }
+                    }
+                </select>
+            </div>
+
+            <div>
+                <a class="btn btn-primary product-create-btn" href="/Admin/Product/Create">
+                    <i class="bx bx-plus me-1"></i>
+                    Tạo sản phẩm
+                </a>
+            </div>
+        </div>
+
+        @Html.AntiForgeryToken()
+
+        <div id="productTableZone" class="product-table-zone">
+            <div class="product-table-loading">
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                Đang tải dữ liệu...
+            </div>
+
+            <div id="productTable">
+                @await Html.PartialAsync("_ProductTable", Model)
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    @if (TempData["Success"] != null)
+    {
+        <script>
+            (function () {
+                const msg = '@TempData["Success"]';
+                if (window.toastr) toastr.success(msg);
+            })();
+        </script>
+    }
+
+    <script>
+        let _debounceTimer = null;
+
+        const tableZone = document.getElementById('productTableZone');
+        const tableWrap = document.getElementById('productTable');
+        const txtSearch = document.getElementById('txtSearch');
+        const ddlPageSize = document.getElementById('ddlPageSize');
+
+        function getToken() {
+            const el = document.querySelector('input[name="__RequestVerificationToken"]');
+            return el ? el.value : '';
+        }
+
+        function setTableLoading(isLoading) {
+            tableZone?.classList.toggle('is-loading', !!isLoading);
+        }
+
+        function clearSearch() {
+            if (!txtSearch) return;
+
+            txtSearch.value = '';
+            reloadProductTable(1);
+            txtSearch.focus();
+        }
+
+        txtSearch?.addEventListener('input', function () {
+            clearTimeout(_debounceTimer);
+            _debounceTimer = setTimeout(() => reloadProductTable(1), 350);
+        });
+
+        txtSearch?.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(_debounceTimer);
+                reloadProductTable(1);
+            }
+
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                clearSearch();
+            }
+        });
+
+        ddlPageSize?.addEventListener('change', function () {
+            reloadProductTable(1);
+        });
+
+        tableWrap?.addEventListener('click', async function (e) {
+            const pageBtn = e.target.closest('[data-page]');
+            if (pageBtn) {
+                e.preventDefault();
+                const p = parseInt(pageBtn.getAttribute('data-page') || '1');
+                reloadProductTable(p);
+                return;
+            }
+
+            const toggleBtn = e.target.closest('[data-toggle-id]');
+            if (toggleBtn) {
+                e.preventDefault();
+                const id = parseInt(toggleBtn.getAttribute('data-toggle-id') || '0');
+                if (!id) return;
+
+                await postAction('/Admin/Product/ToggleStatus', { id });
+                return;
+            }
+
+            const delBtn = e.target.closest('[data-delete-id]');
+            if (delBtn) {
+                e.preventDefault();
+
+                const id = parseInt(delBtn.getAttribute('data-delete-id') || '0');
+                const name = delBtn.getAttribute('data-product-name') || 'sản phẩm này';
+
+                if (!id) return;
+
+                const ok = confirm(`Bạn có chắc muốn xóa "${name}" không?`);
+                if (!ok) return;
+
+                await postAction('/Admin/Product/SoftDelete', { id });
+                return;
+            }
+        });
+
+        async function postAction(url, data) {
+            try {
+                setTableLoading(true);
+
+                const body = new URLSearchParams(data).toString();
+
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'RequestVerificationToken': getToken()
+                    },
+                    body
+                });
+
+                const json = await res.json().catch(() => null);
+
+                if (json && json.ok) {
+                    if (window.toastr) toastr.success(json.message || 'Đã cập nhật');
+                    await reloadProductTable(getCurrentPage());
+                } else {
+                    if (window.toastr) toastr.error((json && json.message) || 'Thao tác thất bại');
+                }
+            } catch (err) {
+                console.error(err);
+                if (window.toastr) toastr.error('Có lỗi khi xử lý thao tác.');
+            } finally {
+                setTableLoading(false);
+            }
+        }
+
+        function getCurrentPage() {
+            const cur = tableWrap?.querySelector('[data-current-page]');
+            return cur ? parseInt(cur.getAttribute('data-current-page') || '1') : 1;
+        }
+
+        async function reloadProductTable(page) {
+            try {
+                setTableLoading(true);
+
+                const search = txtSearch?.value || '';
+                const pageSize = parseInt(ddlPageSize?.value || '20');
+
+                const qs = new URLSearchParams();
+
+                if (search.trim()) qs.set('search', search.trim());
+                if (page > 1) qs.set('page', page);
+                if (pageSize !== 20) qs.set('pageSize', pageSize);
+
+                const query = qs.toString();
+
+                const newUrl = `/Admin/Product/Index${query ? '?' + query : ''}`;
+                window.history.pushState({}, '', newUrl);
+
+                const url = `/Admin/Product/Search${query ? '?' + query : ''}`;
+                const res = await fetch(url, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                const html = await res.text();
+                tableWrap.innerHTML = html;
+            } catch (err) {
+                console.error(err);
+                if (window.toastr) toastr.error('Không thể tải danh sách sản phẩm.');
+            } finally {
+                setTableLoading(false);
+            }
+        }
+    </script>
+}

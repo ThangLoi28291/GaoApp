@@ -1,0 +1,1093 @@
+﻿@model GaoApp.Application.DTOs.Products.ProductEditDto
+@using Microsoft.AspNetCore.Mvc.Rendering
+
+@{
+    ViewData["Title"] = "Sửa sản phẩm";
+    Layout = "_ContentNavbarLayout";
+
+    var categories = (List<SelectListItem>)ViewBag.Categories;
+    var suppliers  = (List<SelectListItem>)ViewBag.Suppliers;
+    var brands     = (List<SelectListItem>)ViewBag.Brands;
+    var taxes      = (List<SelectListItem>)ViewBag.Taxes;
+    var units      = (List<SelectListItem>)ViewBag.Units;
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <link href="~/lib/filepond/filepond.min.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/lib/filepond/filepond-plugin-image-preview.min.css" rel="stylesheet" asp-append-version="true" />
+
+<style>
+    .req::after { content: " *"; color: #dc3545; }
+    .help { font-size: .84rem; color: #64748b; margin-top: .3rem; }
+
+    .gm-page { max-width: 1280px; margin: 0 auto; }
+
+    .gm-card{
+        border-radius:22px;
+        border:1px solid rgba(15,23,42,.07);
+        box-shadow:0 12px 30px rgba(15,23,42,.05);
+        overflow:hidden;
+        background:#fff;
+    }
+
+    .gm-card .card-header{
+        background:linear-gradient(180deg,#fff 0%,#f8fafc 100%);
+        font-weight:900;
+        padding:16px 18px;
+        border-bottom:1px solid rgba(15,23,42,.06);
+    }
+
+    .gm-card .card-body{ padding:18px; }
+
+    .gm-section-title{
+        font-weight:900;
+        font-size:1rem;
+        margin-bottom:12px;
+        display:flex;
+        align-items:center;
+        gap:10px;
+        color:#0f172a;
+    }
+
+    .gm-section-title .dot{
+        width:10px;
+        height:10px;
+        border-radius:999px;
+        background:#2563eb;
+        display:inline-block;
+    }
+
+    .select2-container--bootstrap-5 .select2-selection { min-height: 42px; }
+    .select2-container { z-index: 9999 !important; }
+    .select2-dropdown { z-index: 99999 !important; }
+
+    .gm-sticky{ position: sticky; top: 92px; }
+    @@media (max-width: 991px){ .gm-sticky{ position: static; top:auto; } }
+
+    .gm-banner{
+        border-radius:18px;
+        border:1px solid rgba(37,99,235,.16);
+        background:linear-gradient(180deg,rgba(37,99,235,.06) 0%,rgba(37,99,235,.03) 100%);
+        padding:14px 16px;
+        color:#334155;
+        font-weight:700;
+    }
+
+    .gm-summary{
+        border-radius:20px;
+        border:1px solid rgba(15,23,42,.06);
+        background:#fff;
+        padding:16px;
+        box-shadow:0 10px 26px rgba(15,23,42,.04);
+    }
+
+    .gm-summary h6{
+        font-weight:900;
+        margin-bottom:12px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        color:#0f172a;
+    }
+
+    .gm-pill{
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:5px 10px;
+        border-radius:999px;
+        font-size:12px;
+        font-weight:900;
+        border:1px solid rgba(0,0,0,.08);
+        background:#fff;
+        color:#64748b;
+        white-space:nowrap;
+    }
+
+    .gm-pill.is-dirty{
+        border-color: rgba(220,53,69,.25);
+        background: rgba(220,53,69,.08);
+        color:#dc3545;
+    }
+
+    .gm-summary .rowline{
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        padding: 8px 0;
+        border-bottom: 1px dashed rgba(0,0,0,.08);
+    }
+
+    .gm-summary .rowline:last-child{ border-bottom:0; }
+    .gm-summary .k{ color:#64748b; font-size:.88rem; }
+    .gm-summary .v{ font-weight:900; text-align:right; color:#0f172a; }
+
+    .gm-actions { position: sticky; bottom: 12px; z-index: 10; }
+    .gm-actions .gm-actions-inner{
+        background: rgba(255,255,255,.92);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(0,0,0,.06);
+        border-radius: 18px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 26px rgba(0,0,0,.08);
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:12px;
+    }
+    @@media (max-width: 991px){ .gm-actions{ position: static; } }
+
+    .gm-pond-wrap .filepond--list-scroller,
+    .gm-pond-wrap .filepond--items { display:none !important; }
+
+    .gm-pond-wrap .filepond--panel-root { border-radius: 14px; }
+    .gm-pond-wrap .filepond--drop-label {
+        min-height: 40px !important;
+        padding: 8px 10px !important;
+        font-size: .9rem;
+        background:#f8fafc;
+        border:1px dashed rgba(0,0,0,.18);
+    }
+
+    .gm-pond-wrap .filepond--root { margin-bottom: 0; min-height: 40px; }
+    .gm-pond-wrap .filepond--label-action{ text-decoration:none; font-weight:900; }
+
+    .gm-main-preview{
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        max-height: 160px;
+        border-radius: 16px;
+        border: 1px solid rgba(0,0,0,.08);
+        background:#fff;
+        overflow:hidden;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+    }
+
+    .gm-main-preview img{ width:100%; height:100%; object-fit:contain; background:#fff; }
+    .gm-main-empty{ color:#64748b; font-size:.9rem; padding:10px 12px; text-align:center; }
+
+    .gm-main-badge{
+        position:absolute;
+        top:10px; left:10px;
+        background: rgba(37,99,235,.94);
+        color:#fff;
+        font-weight:900;
+        font-size:12px;
+        padding:4px 8px;
+        border-radius:999px;
+    }
+
+    .gm-thumbbar-title{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-end;
+        gap:12px;
+        margin-bottom:10px;
+    }
+
+    .gm-thumbstrip{
+        display:flex;
+        gap:10px;
+        overflow-x:auto;
+        padding:10px;
+        border-radius:16px;
+        border:1px dashed rgba(37,99,235,.24);
+        background:rgba(37,99,235,.03);
+    }
+
+    .gm-thumbstrip::-webkit-scrollbar{ height: 10px; }
+    .gm-thumbstrip::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.15); border-radius: 999px; }
+    .gm-thumbstrip::-webkit-scrollbar-track{ background: rgba(0,0,0,.05); border-radius: 999px; }
+
+    .gm-thumb{
+        width:96px; min-width:96px;
+        height:72px;
+        border-radius:14px;
+        overflow:hidden;
+        position:relative;
+        border:1px solid rgba(0,0,0,.08);
+        background:#fff;
+        cursor:pointer;
+    }
+
+    .gm-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .gm-thumb.is-active{ outline: 2px solid rgba(37,99,235,.40); }
+    .gm-thumb.is-primary{ outline: 2px solid rgba(37,99,235,.78); }
+
+    .gm-thumb .gm-remove{
+        position:absolute;
+        top:6px; right:6px;
+        width:20px; height:20px;
+        border-radius:999px;
+        border:0;
+        background: rgba(0,0,0,.55);
+        color:#fff;
+        font-weight:900;
+        line-height:20px;
+        text-align:center;
+        cursor:pointer;
+    }
+
+    .gm-thumb .gm-remove:hover{ background: rgba(220,53,69,.88); }
+
+    .gm-thumb .gm-primary-badge{
+        position:absolute;
+        left:6px;
+        bottom:6px;
+        padding:3px 7px;
+        border-radius:999px;
+        font-size:11px;
+        font-weight:900;
+        background: rgba(37,99,235,.94);
+        color:#fff;
+        display:none;
+    }
+
+    .gm-thumb.is-primary .gm-primary-badge{ display:inline-block; }
+
+    .gm-thumbstrip.is-drag,
+    #mainPreview.is-drag {
+        outline: 2px dashed rgba(37,99,235,.55);
+        outline-offset: 4px;
+        background: rgba(37,99,235,.06);
+    }
+</style>
+}
+
+<div class="gm-banner mb-3">
+    Kéo thả để đổi thứ tự ảnh • Click thumbnail để xem • Nhấp 2 lần để đặt ảnh chính
+</div>
+
+<div class="gm-page">
+    @if (!Model.IsSellable)
+    {
+        <div class="alert alert-warning d-flex gap-2 align-items-start">
+            <i class="bx bx-error-circle fs-4"></i>
+            <div><strong>Sản phẩm đang chờ hoàn thiện</strong><div>Hàng vẫn dùng được cho mua/nhập kho nhưng chưa xuất hiện tại POS. Bật “Cho phép bán tại POS” sau khi đã kiểm tra đầy đủ thông tin.</div></div>
+        </div>
+    }
+    <div class="gm-banner mb-3">
+        <div><b>Mẹo ảnh:</b> Kéo thả để đổi thứ tự • <b>Click</b> thumbnail để xem • <b>Nhấp 2 lần</b> để đặt ảnh chính.</div>
+        <div class="text-muted">MVP: ảnh chính là <b>ảnh đầu tiên</b> theo thứ tự bạn sắp xếp.</div>
+    </div>
+
+    <form asp-area="Admin" asp-controller="Product" asp-action="Edit" method="post" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger mb-3"></div>
+
+        <div class="row g-3">
+            <!-- LEFT -->
+            <div class="col-lg-8">
+                <div class="card gm-card mb-3">
+                    <div class="card-header">1) Thông tin chung</div>
+                    <div class="card-body">
+
+                        <div class="gm-section-title"><span class="dot"></span> Thông tin cơ bản</div>
+
+                        <div class="row g-3">
+                            <div class="col-md-7">
+                                <label class="form-label req" for="txtName">Tên sản phẩm</label>
+                                <input asp-for="Name" class="form-control" autocomplete="off" id="txtName" />
+                                <div class="help">Tên hiển thị cho khách hàng.</div>
+                                <span asp-validation-for="Name" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-5">
+                                <label class="form-label" for="txtAlias">Mã hiển thị (Alias)</label>
+                                <div class="input-group">
+                                    <input asp-for="Alias" class="form-control" id="txtAlias" readonly tabindex="-1" />
+                                    <button class="btn btn-outline-secondary" type="button" id="btnRegenAlias" title="Tạo lại alias theo tên">⟳</button>
+                                </div>
+                                <div class="help">Alias tự sinh theo tên, trùng sẽ tự thêm -1, -2…</div>
+                                <span asp-validation-for="Alias" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Danh mục</label>
+                                <select asp-for="CategoryId" class="form-select select2" id="ddlCategory" data-placeholder="Chọn danh mục...">
+                                    <option value=""></option>
+                                    @foreach (var x in categories) { <option value="@x.Value">@x.Text</option> }
+                                </select>
+                                <span asp-validation-for="CategoryId" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Nhà cung cấp</label>
+                                <select asp-for="SupplierId" class="form-select select2" id="ddlSupplier" data-placeholder="Chọn nhà cung cấp...">
+                                    <option value=""></option>
+                                    @foreach (var x in suppliers) { <option value="@x.Value">@x.Text</option> }
+                                </select>
+                                <span asp-validation-for="SupplierId" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label req">Đơn vị cơ bản</label>
+                                <select asp-for="BaseUnitId" class="form-select select2" id="ddlUnit" data-placeholder="Chọn đơn vị...">
+                                    <option value=""></option>
+                                    @foreach (var x in units) { <option value="@x.Value">@x.Text</option> }
+                                </select>
+                                <span asp-validation-for="BaseUnitId" class="text-danger"></span>
+                            </div>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <div class="gm-section-title"><span class="dot"></span> Giá & tuỳ chọn</div>
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Giá cơ bản</label>
+                                <!-- ✅ VNĐ: không .00 -->
+                                <input asp-for="BasePrice"
+                                       asp-format="{0:0}"
+                                       class="form-control"
+                                       id="txtBasePrice"
+                                       type="number"
+                                       min="0"
+                                       step="1000" />
+                                <div class="help">Nếu biến thể không có giá riêng sẽ dùng giá này.</div>
+                                <span asp-validation-for="BasePrice" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Thương hiệu</label>
+                                <select asp-for="BrandId" class="form-select select2" id="ddlBrand" data-placeholder="(Không bắt buộc)">
+                                    <option value=""></option>
+                                    @foreach (var x in brands) { <option value="@x.Value">@x.Text</option> }
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label">Thuế</label>
+                                <select asp-for="TaxId" class="form-select select2" id="ddlTax" data-placeholder="(Không bắt buộc)">
+                                    <option value=""></option>
+                                    @foreach (var x in taxes) { <option value="@x.Value">@x.Text</option> }
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-check form-switch p-3 border rounded-3 @(Model.IsSellable ? "bg-light" : "border-warning bg-label-warning")">
+                                    <input asp-for="IsSellable" class="form-check-input" role="switch" />
+                                    <label asp-for="IsSellable" class="form-check-label fw-bold">Cho phép bán tại POS</label>
+                                    <div class="help mb-0">Tắt: chỉ dùng cho mua/nhập kho. Bật: sản phẩm có thể xuất hiện trong luồng bán hàng/POS.</div>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Mô tả ngắn</label>
+                                <input asp-for="Description" class="form-control" id="txtDesc" />
+                                <span asp-validation-for="Description" class="text-danger"></span>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Nội dung</label>
+                                <textarea asp-for="Content" class="form-control" rows="6"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT -->
+            <div class="col-lg-4">
+                <div class="gm-sticky">
+
+                    <div class="card gm-card mb-3">
+                        <div class="card-header">2) Hình ảnh</div>
+                        <div class="card-body">
+
+                            <div class="gm-pond-wrap">
+                                <input type="file" id="productImages" name="file" multiple />
+                            </div>
+
+                            <div class="gm-main-preview mt-3" id="mainPreview">
+                                <div class="gm-main-empty">Chưa có ảnh. Kéo thả hoặc bấm <b>Chọn ảnh</b>.</div>
+                                <img id="mainPreviewImg" alt="preview" style="display:none;" />
+                                <div class="gm-main-badge" id="mainBadge" style="display:none;">ẢNH CHÍNH</div>
+                            </div>
+
+                            <div class="gm-main-tip">Click thumbnail để xem • Nhấp 2 lần: đặt ảnh chính (và kéo thả để đổi thứ tự).</div>
+
+                            <div class="gm-thumbbar mt-3">
+                                <div class="gm-thumbbar-title">
+                                    <div class="fw-bold">Ảnh đã chọn</div>
+                                    <div class="small text-muted">Kéo ngang để xem thêm</div>
+                                </div>
+                                <div id="thumbStrip" class="gm-thumbstrip"></div>
+                            </div>
+
+                            <!-- Backend fields -->
+                            <input type="hidden" id="ImagesStateJson" name="ImagesStateJson" value="[]" />
+                            <input type="hidden" id="PrimaryKey" name="PrimaryKey" value="" />
+                        </div>
+                    </div>
+
+                    <div class="gm-summary">
+                        <h6>
+                            🧾 Tóm tắt thay đổi
+                            <span id="dirtyPill" class="gm-pill">Chưa thay đổi</span>
+                        </h6>
+
+                        <div class="rowline">
+                            <div class="k">Tên</div>
+                            <div class="v">
+                                <span id="sumName">—</span>
+                                <span id="chgName" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Danh mục</div>
+                            <div class="v">
+                                <span id="sumCategory">—</span>
+                                <span id="chgCategory" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Nhà cung cấp</div>
+                            <div class="v">
+                                <span id="sumSupplier">—</span>
+                                <span id="chgSupplier" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Đơn vị</div>
+                            <div class="v">
+                                <span id="sumUnit">—</span>
+                                <span id="chgUnit" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Thương hiệu</div>
+                            <div class="v">
+                                <span id="sumBrand">—</span>
+                                <span id="chgBrand" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Thuế</div>
+                            <div class="v">
+                                <span id="sumTax">—</span>
+                                <span id="chgTax" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Giá</div>
+                            <div class="v">
+                                <span id="sumPrice">—</span>
+                                <span id="chgPrice" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="rowline">
+                            <div class="k">Ảnh</div>
+                            <div class="v">
+                                <span id="sumImages">0</span>
+                                <span id="chgImages" class="gm-delta" style="display:none;"></span>
+                            </div>
+                        </div>
+
+                        <div class="help mt-2">
+                            Khi có thay đổi, bạn sẽ thấy dạng <b>cũ → mới</b> để dễ kiểm tra trước khi lưu.
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+        @using GaoApp.Web.Areas.Admin.ViewModels.Products
+
+        @await Html.PartialAsync("_Variants", new ProductVariantVM
+                {
+            ProductId = Model.Id,
+                ProductAlias = Model.Alias
+                })
+
+        <!-- ACTION BAR -->
+<div class="gm-actions mt-3">
+    <div class="gm-actions-inner">
+        <div class="text-muted">
+            <div class="fw-bold">Trạng thái</div>
+            <div class="small" id="dirtyText">Chưa có thay đổi.</div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-lg" id="btnSaveAll" type="button">
+                Lưu thay đổi
+            </button>
+            <a class="btn btn-light btn-lg" asp-area="Admin" asp-controller="Product" asp-action="Index">Quay lại</a>
+        </div>
+    </div>
+</div>
+    </form>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <script src="~/lib/filepond/filepond.min.js" asp-append-version="true"></script>
+    <script src="~/lib/filepond/filepond-plugin-image-preview.min.js" asp-append-version="true"></script>
+    <script src="~/admin/js/product-variant-unit-conversion.js" asp-append-version="true"></script>
+    <script>
+        window.GaoVariantUnitConversion?.bind();
+    </script>
+}
+ 
+@section PageScripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <!-- 1) Bơm danh sách ảnh cũ từ server (Edit) -->
+    <script>
+        window.__existingImages = @Html.Raw(
+            System.Text.Json.JsonSerializer.Serialize(
+                Model.Images
+                    .OrderBy(x => x.SortOrder)
+                    .Select(x => new {
+                        productImageId = x.ProductImageId,
+                        url = x.Url,
+                        isPrimary = x.IsPrimary,
+                        sortOrder = x.SortOrder
+                    })
+            )
+        );
+    </script>
+<script>
+    window.gaoProductCtx = {
+        productId: @Model.Id,
+        productAlias: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Alias ?? string.Empty))
+    };
+</script>
+
+
+<script>
+        /* =========================================================
+           ✅ EDIT PRODUCT - FINAL SCRIPT (Fix drop + append new file)
+           ========================================================= */
+
+    let pond = null;
+        let activePondId = '';
+
+    /* ========== Helpers ========== */
+        function getCsrf() {
+          const el = document.querySelector('input[name="__RequestVerificationToken"]');
+          return el ? el.value : '';
+        }
+
+    function fmtMoney(v) {
+          const s = (v ?? '').toString().trim();
+          if (!s) return '—';
+          const n = Number(s.replaceAll(',', ''));
+          if (Number.isNaN(n)) return s;
+          return n.toLocaleString('vi-VN');
+        }
+
+    function selText(selector) {
+          const el = document.querySelector(selector);
+          if (!el || !el.value) return '—';
+          const opt = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+          const t = opt ? (opt.text || '').trim() : '';
+          return t || '—';
+        }
+
+    /* ========== Select2 ========== */
+        function initSelect2(ctx) {
+          if (!window.jQuery || !$.fn.select2) return;
+          $(ctx).find('select.select2').each(function () {
+            const $el = $(this);
+            if ($el.data('select2')) return;
+            $el.select2({
+              theme: 'bootstrap-5',
+              width: '100%',
+              allowClear: true,
+              placeholder: $el.data('placeholder') || 'Chọn...',
+              dropdownParent: $('body'),
+              closeOnSelect: true,
+              selectOnClose: false
+            });
+          });
+        }
+
+    $(document).on('keydown', '.select2-selection', function (e) {
+          const k = e.key || e.which || e.keyCode;
+          const isDown = (k === 'ArrowDown' || k === 40);
+          const isEnter = (k === 'Enter' || k === 13);
+          if (!isDown && !isEnter) return;
+          e.preventDefault();
+          const $select = $(this).closest('.select2-container').prev('select');
+          if ($select.length) $select.select2('open');
+        });
+
+    $(document).on('select2:open', function () {
+          setTimeout(() => {
+            const f = document.querySelector('.select2-container--open .select2-search__field');
+            if (f) f.focus();
+          }, 0);
+        });
+
+    /* ========== Drop guard (DON'T block mainPreview/thumbStrip) ========== */
+        function isAllowedDropTarget(target) {
+          const el = target && target.closest ? target : null;
+          if (!el) return false;
+          return !!el.closest(
+            '.filepond--root, .filepond, .filepond--drop-label, .filepond--panel-root,' +
+            '#mainPreview, #thumbStrip'
+          );
+        }
+
+    // prevent browser open new tab when drop outside allowed zones
+        document.addEventListener('dragover', (e) => {
+          if (!isAllowedDropTarget(e.target)) e.preventDefault();
+        }, true);
+
+    document.addEventListener('drop', (e) => {
+          if (!isAllowedDropTarget(e.target)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }, true);
+
+    /* ========== Web image drop helpers ========== */
+        function dataUrlToFile(dataUrl, filename) {
+          const arr = dataUrl.split(',');
+          const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+          const bstr = atob(arr[1]);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) u8arr[n] = bstr.charCodeAt(n);
+          return new File([u8arr], filename, { type: mime });
+        }
+
+    async function urlToFile(url) {
+          const res = await fetch(url, { mode: 'cors' });
+          if (!res.ok) throw new Error('Fetch failed');
+          const blob = await res.blob();
+          const ext = blob.type.includes('png') ? 'png' : (blob.type.includes('webp') ? 'webp' : 'jpg');
+          return new File([blob], `web_${Date.now()}.${ext}`, { type: blob.type || 'image/jpeg' });
+        }
+
+    /* ✅ Drop zone -> add files into pond (MainPreview / ThumbStrip) */
+        function bindDropAddFiles(el) {
+          if (!el) return;
+
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+            el.addEventListener(evt, function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+            }, true);
+          });
+
+      el.addEventListener('dragenter', () => el.classList.add('is-drag'), true);
+          el.addEventListener('dragleave', () => el.classList.remove('is-drag'), true);
+
+      el.addEventListener('drop', async function (e) {
+            el.classList.remove('is-drag');
+            if (!pond) return;
+
+        const dt = e.dataTransfer;
+            if (!dt) return;
+
+        // 1) File from PC
+            const files = Array.from(dt.files || []);
+            if (files.length) {
+              for (const f of files) {
+                if (!f.type || !f.type.startsWith('image/')) continue;
+                await pond.addFile(f);
+              }
+              return;
+            }
+
+        // 2) Web image (data:image or url)
+            const uri = dt.getData('text/uri-list') || dt.getData('text/plain');
+            if (!uri) return;
+
+        try {
+              if (uri.startsWith('data:image/')) {
+                await pond.addFile(dataUrlToFile(uri, `web_${Date.now()}.jpg`));
+              } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
+                await pond.addFile(await urlToFile(uri));
+              }
+            } catch (err) {
+              console.warn(err);
+              alert('Không kéo ảnh web được do CORS. Hãy lưu ảnh về máy rồi kéo vào.');
+            }
+          }, true);
+        }
+
+    /* ========== Summary ========== */
+        function syncSummary() {
+          $('#sumName').text((($('#txtName').val() || '').toString().trim()) || '—');
+          $('#sumCategory').text(selText('#ddlCategory'));
+          $('#sumSupplier').text(selText('#ddlSupplier'));
+          $('#sumUnit').text(selText('#ddlUnit'));
+          $('#sumBrand').text(selText('#ddlBrand'));
+          $('#sumTax').text(selText('#ddlTax'));
+
+      const p = ($('#txtBasePrice').val() || '').toString().trim();
+          $('#sumPrice').text(p ? fmtMoney(p) : '—');
+
+      $('#sumImages').text(pond ? pond.getFiles().length : 0);
+        }
+
+    /* ========== Main Preview ========== */
+        function setMainPreviewFromItem(item) {
+          const img = document.getElementById('mainPreviewImg');
+          const empty = document.querySelector('#mainPreview .gm-main-empty');
+          const badge = document.getElementById('mainBadge');
+          if (!img || !badge) return;
+
+      if (!item) {
+            img.style.display = 'none';
+            badge.style.display = 'none';
+            if (empty) empty.style.display = 'block';
+            activePondId = '';
+            return;
+          }
+
+      if (empty) empty.style.display = 'none';
+          img.style.display = 'block';
+
+      const md = item.getMetadata?.();
+          if (md && md.url) img.src = md.url;
+          else {
+            try { img.src = URL.createObjectURL(item.file); } catch {}
+          }
+
+      activePondId = item.id;
+
+      const files = pond ? pond.getFiles() : [];
+          badge.style.display = (files.length && files[0].id === item.id) ? 'block' : 'none';
+        }
+
+    /* ========== Thumb Strip ========== */
+        function rebuildThumbStrip() {
+          const strip = document.getElementById('thumbStrip');
+          if (!strip || !pond) return;
+
+      strip.innerHTML = '';
+          const files = pond.getFiles();
+          if (!activePondId && files.length) activePondId = files[0].id;
+
+      files.forEach((item, index) => {
+            const md = item.getMetadata?.();
+
+        const thumb = document.createElement('div');
+            thumb.className = 'gm-thumb';
+            thumb.dataset.pondId = item.id;
+
+        if (item.id === activePondId) thumb.classList.add('is-active');
+            if (index === 0) thumb.classList.add('is-primary');
+
+        const img = document.createElement('img');
+            if (md && md.url) img.src = md.url;
+            else {
+              try { img.src = URL.createObjectURL(item.file); } catch {}
+            }
+
+        const btnRemove = document.createElement('button');
+            btnRemove.type = 'button';
+            btnRemove.className = 'gm-remove';
+            btnRemove.innerHTML = '&times;';
+
+        const badge = document.createElement('span');
+            badge.className = 'gm-primary-badge';
+            badge.textContent = 'CHÍNH';
+
+        // click => view
+            thumb.addEventListener('click', function () {
+              const f = pond.getFiles().find(x => x.id === this.dataset.pondId);
+              if (!f) return;
+
+          activePondId = f.id;
+              document.querySelectorAll('.gm-thumb').forEach(x => x.classList.remove('is-active'));
+              this.classList.add('is-active');
+              setMainPreviewFromItem(f);
+            });
+
+        // dblclick => move to first => primary
+            thumb.addEventListener('dblclick', function (e) {
+              e.preventDefault();
+              const pondId = this.dataset.pondId;
+              const all = pond.getFiles();
+              const idx = all.findIndex(x => x.id === pondId);
+              if (idx <= 0) return;
+
+          pond.moveFile(idx, 0);
+              activePondId = pondId;
+
+          setTimeout(() => {
+                rebuildThumbStrip();
+                syncImagesStateAndPrimary();
+              }, 0);
+            });
+
+        // remove
+            btnRemove.addEventListener('click', function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              pond.removeFile(item.id);
+            });
+
+        thumb.appendChild(img);
+            thumb.appendChild(btnRemove);
+            thumb.appendChild(badge);
+            strip.appendChild(thumb);
+          });
+
+      const current = files.find(x => x.id === activePondId) || files[0];
+          setMainPreviewFromItem(current);
+          syncSummary();
+        }
+
+    /* ========== Backend sync ========== */
+        function syncImagesStateAndPrimary() {
+          if (!pond) return;
+
+      const files = pond.getFiles();
+
+      const orderedItems = files.map(f => {
+            const md = f.getMetadata?.();
+            if (md && md.productImageId) {
+              return { ExistingProductImageId: Number(md.productImageId), TempToken: null };
+            }
+            const token = f.serverId;
+            return token ? { ExistingProductImageId: null, TempToken: String(token) } : null;
+          }).filter(Boolean);
+
+      const stateEl = document.querySelector('#ImagesStateJson');
+          const primaryEl = document.querySelector('#PrimaryKey');
+          if (stateEl) stateEl.value = JSON.stringify(orderedItems);
+
+      // Primary = first
+          if (primaryEl) {
+            if (orderedItems.length === 0) primaryEl.value = '';
+            else {
+              const first = orderedItems[0];
+              if (first.ExistingProductImageId) primaryEl.value = `id:${first.ExistingProductImageId}`;
+              else if (first.TempToken) primaryEl.value = `temp:${first.TempToken}`;
+              else primaryEl.value = '';
+            }
+          }
+
+      // badge update
+          const current = files.find(x => x.id === activePondId) || files[0];
+          setMainPreviewFromItem(current);
+
+      syncSummary();
+        }
+
+    /* ✅ Ensure NEW image always appended (not become primary) */
+        async function moveNewFileToEndIfNeeded(item) {
+          if (!pond || !item) return;
+
+      // local existing has metadata.productImageId
+          const md = item.getMetadata?.();
+          const isExisting = !!(md && md.productImageId);
+
+      if (isExisting) return;
+
+      const all = pond.getFiles();
+          const idx = all.findIndex(x => x.id === item.id);
+          if (idx < 0) return;
+
+      const lastIdx = all.length - 1;
+          if (idx !== lastIdx) {
+            pond.moveFile(idx, lastIdx);
+          }
+        }
+
+    /* ========== INIT ========== */
+        $(function () {
+          initSelect2(document);
+
+      // summary bindings
+          $(document).on('change input',
+            '#txtName, #ddlCategory, #ddlSupplier, #ddlUnit, #ddlBrand, #ddlTax, #txtBasePrice, #txtDesc, #IsSellable, textarea[name="Content"]',
+            syncSummary
+          );
+          $(document).on('select2:select select2:clear',
+            '#ddlCategory, #ddlSupplier, #ddlUnit, #ddlBrand, #ddlTax',
+            syncSummary
+          );
+
+      // FilePond
+          if (window.FilePondPluginImagePreview) FilePond.registerPlugin(FilePondPluginImagePreview);
+
+      const input = document.querySelector('#productImages');
+          if (!input || !window.FilePond) {
+            syncSummary();
+            setMainPreviewFromItem(null);
+            return;
+          }
+
+      // preload existing images
+          const existing = (window.__existingImages || []).map(x => ({
+            source: String(x.productImageId),
+            options: {
+              type: 'local',
+              metadata: { productImageId: x.productImageId, url: x.url }
+            }
+          }));
+
+      pond = FilePond.create(input, {
+            allowMultiple: true,
+            allowReorder: false,
+            name: 'file',
+            allowImagePreview: false,
+            labelIdle: 'Thêm ảnh (<span class="filepond--label-action">Chọn</span>)',
+            dropOnPage: false,
+            dropOnElement: true,
+
+        server: {
+              load: (source, load, error) => {
+                const img = (window.__existingImages || []).find(z => String(z.productImageId) === String(source));
+                if (!img || !img.url) { error('not found'); return; }
+
+            fetch(img.url)
+                  .then(r => r.blob())
+                  .then(blob => load(blob))
+                  .catch(() => error('load failed'));
+              },
+              process: {
+                url: '/admin/media/temp',
+                method: 'POST',
+                headers: { 'RequestVerificationToken': getCsrf() },
+                onload: (res) => res
+              },
+              revert: {
+                url: '/admin/media/temp',
+                method: 'DELETE',
+                headers: { 'RequestVerificationToken': getCsrf() }
+              }
+            },
+
+        files: existing
+          });
+
+      // ✅ drop add files for preview + strip
+          bindDropAddFiles(document.getElementById('mainPreview'));
+          bindDropAddFiles(document.getElementById('thumbStrip'));
+
+      // events
+          pond.on('addfile', async (err, item) => {
+            if (err) return;
+
+        // ✅ append new image to end, keep primary unchanged
+            await moveNewFileToEndIfNeeded(item);
+
+        // keep active as current viewed (don’t auto jump to new)
+            const first = pond.getFiles()[0];
+            if (!activePondId && first) activePondId = first.id;
+
+        rebuildThumbStrip();
+            syncImagesStateAndPrimary();
+          });
+
+      pond.on('removefile', () => {
+            const left = pond.getFiles();
+            activePondId = left.length ? left[0].id : '';
+            rebuildThumbStrip();
+            syncImagesStateAndPrimary();
+          });
+
+      pond.on('processfile', () => {
+            rebuildThumbStrip();
+            syncImagesStateAndPrimary();
+          });
+
+      pond.on('updatefiles', () => {
+            rebuildThumbStrip();
+            syncImagesStateAndPrimary();
+          });
+
+      // init
+          rebuildThumbStrip();
+          syncImagesStateAndPrimary();
+
+      $('form').on('submit', function () {
+            syncImagesStateAndPrimary();
+          });
+
+      syncSummary();
+        });
+    </script>
+    <script>
+    // =========================================================
+    // GỘP 2 NÚT LƯU:
+    // - Lưu thay đổi = lưu _Variants trước
+    // - nếu _Variants OK => submit form Edit
+    // =========================================================
+    (() => {
+        const formEl = document.querySelector('form[asp-action="Edit"]') || document.querySelector('form');
+        const btnSaveAll = document.getElementById('btnSaveAll');
+
+        if (!formEl || !btnSaveAll) return;
+
+        let isSavingAll = false;
+
+        function setSaveAllLoading(isLoading) {
+            btnSaveAll.disabled = isLoading;
+            btnSaveAll.innerHTML = isLoading
+                ? '<span class="spinner-border spinner-border-sm me-2"></span>Đang lưu...'
+                : 'Lưu thay đổi';
+        }
+
+        async function saveAll() {
+            if (isSavingAll) return;
+
+            try {
+                isSavingAll = true;
+                setSaveAllLoading(true);
+
+                // 1) đồng bộ ảnh trước khi submit Edit
+                if (typeof syncImagesStateAndPrimary === 'function') {
+                    syncImagesStateAndPrimary();
+                }
+
+                // 2) lưu Variants trước
+                if (window.GaoVariant?.save) {
+                    const result = await window.GaoVariant.save();
+
+                    if (!result?.ok) {
+                        toastr?.error(result?.message || 'Lưu biến thể thất bại.');
+                        return;
+                    }
+                }
+
+                // 3) submit form Edit
+                formEl.submit();
+            }
+            catch (err) {
+                console.error(err);
+                toastr?.error('Có lỗi khi lưu dữ liệu.');
+            }
+            finally {
+                isSavingAll = false;
+                setSaveAllLoading(false);
+            }
+        }
+
+        btnSaveAll.addEventListener('click', async function () {
+            await saveAll();
+        });
+    })();
+</script>
+}
+
+
+
+

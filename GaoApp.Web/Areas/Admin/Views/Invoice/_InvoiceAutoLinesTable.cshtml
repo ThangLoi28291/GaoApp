@@ -1,0 +1,81 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceDetailViewModel
+
+@{
+    var invoice = Model.Invoice;
+
+    var autoLines = invoice.Details
+        .Where(x => x.SourceType == InvoiceDetailSourceType.FromOrderLine)
+        .ToList();
+}
+
+<div class="card shadow-sm invoice-card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="fw-bold">
+            <span class="badge bg-info me-2">AUTO</span>
+            Dòng tự sinh từ OrderLine
+        </div>
+
+        <div>
+            Tổng:
+            <strong>@autoLines.Count</strong>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>#</th>
+                    <th>Sản phẩm</th>
+                    <th>ĐVT</th>
+                    <th class="text-end">SL</th>
+                    <th class="text-end">Đơn giá</th>
+                    <th class="text-end">Thành tiền</th>
+                    <th>OrderLine</th>
+                    <th>Allocation HKD</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @if (!autoLines.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            Không có dòng tự sinh.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var item in autoLines)
+                    {
+                        <tr>
+                            <td>#@item.Id</td>
+
+                            <td>
+                                <div class="fw-semibold">@item.ItemName</div>
+                                <small class="text-muted">
+                                    ProductVariantId: @(item.ProductVariantId?.ToString() ?? "-")
+                                </small>
+                            </td>
+
+                            <td>@item.UnitName</td>
+
+                            <td class="text-end">@item.Quantity.ToString("N2")</td>
+                            <td class="text-end">@item.UnitPrice.ToString("N0")</td>
+                            <td class="text-end fw-bold text-primary">@item.TotalAmount.ToString("N0")</td>
+
+                            <td>#@item.OrderLineId</td>
+                            <td>
+                                @(item.OrderLegalEntityAllocationId.HasValue
+                                    ? $"#{item.OrderLegalEntityAllocationId}"
+                                    : "Legacy")
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

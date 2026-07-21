@@ -1,0 +1,248 @@
+@model GaoApp.Application.DTOs.LegalEntities.LegalEntityReconciliationReportDto
+
+@{
+    ViewData["Title"] = "Đối soát HKD";
+    Layout = "_ContentNavbarLayout";
+    var query = Model.Query;
+    var invoiceDifference = Model.ActualInvoiceTotal - Model.ExpectedInvoiceTotal;
+    var canExport = ViewBag.CanExport as bool? == true;
+}
+
+@functions {
+    private static string StatusText(string status) => status switch
+    {
+        "Completed" => "Đã chốt",
+        "Voided" => "Void",
+        "Refunded" => "Đã hoàn/trả",
+        _ => status
+    };
+}
+
+@section VendorStyles {
+    <style>
+        :root {
+            --le-primary: #3b5bfd;
+            --le-text: #172033;
+            --le-muted: #667085;
+            --le-border: #e4eaf2;
+            --le-soft: #f7f9fc;
+            --le-ok: #15803d;
+            --le-bad: #dc2626;
+        }
+        .le-page { display: grid; gap: 18px; padding-bottom: 28px; }
+        .le-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+        .le-title { margin:0; color:var(--le-text); font-weight:900; font-size:1.9rem; }
+        .le-subtitle { margin-top:7px; color:var(--le-muted); font-weight:600; }
+        .le-actions { display:flex; gap:10px; flex-wrap:wrap; }
+        .le-btn { border-radius:13px; padding:10px 16px; font-weight:800; }
+        .le-card { background:#fff; border:1px solid var(--le-border); border-radius:20px; box-shadow:0 12px 32px rgba(15,23,42,.05); overflow:hidden; }
+        .le-card-head { padding:18px 20px; border-bottom:1px solid var(--le-border); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        .le-card-title { margin:0; color:var(--le-text); font-weight:900; font-size:1.05rem; }
+        .le-card-body { padding:20px; }
+        .le-filter { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px; align-items:end; }
+        .le-field label { display:block; margin-bottom:7px; font-size:.82rem; color:#475467; font-weight:800; }
+        .le-field .form-control, .le-field .form-select { min-height:44px; border-radius:12px; border-color:#d7dfeb; }
+        .le-check { min-height:44px; display:flex; align-items:center; gap:9px; padding:0 12px; border:1px solid #d7dfeb; border-radius:12px; font-weight:700; color:#475467; }
+        .le-stats { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:14px; }
+        .le-stat { background:#fff; border:1px solid var(--le-border); border-radius:18px; padding:17px; }
+        .le-stat-label { color:var(--le-muted); font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
+        .le-stat-value { color:var(--le-text); font-size:1.45rem; font-weight:900; margin-top:8px; line-height:1.1; }
+        .le-stat.ok { border-color:#b7e4c7; background:#f4fbf6; }
+        .le-stat.bad { border-color:#fecaca; background:#fff7f7; }
+        .le-status { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:6px 10px; font-size:.76rem; font-weight:900; white-space:nowrap; }
+        .le-status.ok { color:var(--le-ok); background:#eaf8ef; }
+        .le-status.bad { color:var(--le-bad); background:#fff0f0; }
+        .le-status.neutral { color:#344054; background:#eef2f7; }
+        .le-table { margin:0; min-width:1120px; }
+        .le-table th { background:#f7f9fc; color:#667085; font-size:.76rem; text-transform:uppercase; letter-spacing:.025em; border-bottom:1px solid var(--le-border); padding:13px 12px; white-space:nowrap; }
+        .le-table td { padding:13px 12px; border-color:#edf1f6; vertical-align:middle; color:#344054; font-weight:650; }
+        .le-link { color:#3156d9; font-weight:900; text-decoration:none; }
+        .le-link:hover { text-decoration:underline; }
+        .le-note { color:var(--le-muted); font-size:.86rem; font-weight:600; }
+        .le-empty { padding:42px 18px; text-align:center; color:var(--le-muted); font-weight:700; }
+        .le-pager { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:15px 18px; border-top:1px solid var(--le-border); }
+        @@media (max-width:1200px) { .le-filter { grid-template-columns:repeat(3,minmax(0,1fr)); } .le-stats { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+        @@media (max-width:768px) { .le-filter { grid-template-columns:1fr; } .le-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    </style>
+}
+
+<div class="le-page">
+    <div class="le-head">
+        <div>
+            <h2 class="le-title">Đối soát HKD</h2>
+            <div class="le-subtitle">Đối chiếu đơn gộp, allocation theo kho/HKD, các lần đảo trả và hóa đơn điện tử con.</div>
+        </div>
+        <div class="le-actions">
+            <a class="btn btn-outline-secondary le-btn" href="/admin/pos/orders-page">Đơn POS</a>
+            @if (canExport)
+            {
+                <a class="btn btn-success le-btn"
+                   asp-area="Admin"
+                   asp-controller="LegalEntityReconciliation"
+                   asp-action="Export"
+                   asp-route-fromDate="@query.FromDate.ToString("yyyy-MM-dd")"
+                   asp-route-toDate="@query.ToDate.ToString("yyyy-MM-dd")"
+                   asp-route-legalEntityId="@query.LegalEntityId"
+                   asp-route-keyword="@query.Keyword"
+                   asp-route-onlyDiscrepancies="@query.OnlyDiscrepancies">
+                    Xuất Excel
+                </a>
+            }
+        </div>
+    </div>
+
+    <div class="alert @(Model.IsMultiLegalEntityEnabled ? "alert-success" : "alert-warning") mb-0">
+        <strong>Multi LegalEntity: @(Model.IsMultiLegalEntityEnabled ? "Đang bật" : "Đang tắt")</strong>
+        @if (Model.MultiLegalEntityActivatedAtUtc.HasValue)
+        {
+            <span> · Kích hoạt từ @Model.MultiLegalEntityActivatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+        }
+        <div class="small mt-1">Báo cáo chỉ đọc các order đã có allocation; dữ liệu legacy trước ngày kích hoạt không bị suy đoán lại.</div>
+    </div>
+
+    <div class="le-card">
+        <div class="le-card-head"><h5 class="le-card-title">Bộ lọc báo cáo</h5></div>
+        <div class="le-card-body">
+            <form method="get" asp-area="Admin" asp-controller="LegalEntityReconciliation" asp-action="Index" class="le-filter">
+                <div class="le-field">
+                    <label>Từ ngày</label>
+                    <input type="date" class="form-control" name="FromDate" value="@query.FromDate.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="le-field">
+                    <label>Đến ngày</label>
+                    <input type="date" class="form-control" name="ToDate" value="@query.ToDate.ToString("yyyy-MM-dd")" />
+                </div>
+                <div class="le-field">
+                    <label>Hộ kinh doanh</label>
+                    <select class="form-select" name="LegalEntityId">
+                        <option value="">-- Tất cả HKD --</option>
+                        @foreach (var entity in Model.LegalEntities)
+                        {
+                            <option value="@entity.Id" selected="@(query.LegalEntityId == entity.Id)">@entity.Code - @entity.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="le-field">
+                    <label>Mã đơn / khách hàng</label>
+                    <input class="form-control" name="Keyword" value="@query.Keyword" placeholder="Tìm mã đơn, tên hoặc SĐT" />
+                </div>
+                <div>
+                    <label class="le-check">
+                        <input type="checkbox" name="OnlyDiscrepancies" value="true" checked="@query.OnlyDiscrepancies" />
+                        Chỉ xem dòng lệch
+                    </label>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary le-btn" type="submit">Lọc dữ liệu</button>
+                    <a class="btn btn-outline-secondary le-btn" href="/admin/legal-entities/reconciliation">Làm mới</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="le-stats">
+        <div class="le-stat"><div class="le-stat-label">Số đơn liên quan</div><div class="le-stat-value">@Model.OrderCount.ToString("N0")</div></div>
+        <div class="le-stat"><div class="le-stat-label">Tổng đơn gộp</div><div class="le-stat-value">@Model.UnifiedOrderTotal.ToString("N0")</div></div>
+        <div class="le-stat"><div class="le-stat-label">Phân bổ gốc</div><div class="le-stat-value">@Model.AllocationGrossTotal.ToString("N0")</div></div>
+        <div class="le-stat"><div class="le-stat-label">Đã đảo / trả</div><div class="le-stat-value">@Model.ReversalTotal.ToString("N0")</div></div>
+        <div class="le-stat"><div class="le-stat-label">Phân bổ ròng</div><div class="le-stat-value">@Model.AllocationNetTotal.ToString("N0")</div></div>
+        <div class="le-stat @(Math.Abs(invoiceDifference) <= .01m ? "ok" : "bad")">
+            <div class="le-stat-label">Lệch hóa đơn</div>
+            <div class="le-stat-value">@invoiceDifference.ToString("N0")</div>
+            <div class="le-note">@Model.DiscrepantOrderCount.ToString("N0") đơn cần kiểm tra</div>
+        </div>
+    </div>
+
+    <div class="le-card">
+        <div class="le-card-head">
+            <div>
+                <h5 class="le-card-title">Tổng hợp theo LegalEntity</h5>
+                <div class="le-note mt-1">HĐ kỳ vọng chỉ tính sản phẩm <code>HasInputInvoice = true</code>, sau khi trừ phần đã return/void.</div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table le-table">
+                <thead><tr><th>HKD</th><th class="text-end">Đơn</th><th class="text-end">Phân bổ gốc</th><th class="text-end">Đã đảo/trả</th><th class="text-end">Ròng</th><th class="text-end">HĐ kỳ vọng</th><th class="text-end">HĐ thực tế</th><th class="text-end">Chênh lệch</th><th>Phát hành</th><th>Kết quả</th></tr></thead>
+                <tbody>
+                @if (Model.EntitySummaries.Count == 0)
+                {
+                    <tr><td colspan="10"><div class="le-empty">Không có dữ liệu allocation trong kỳ đã chọn.</div></td></tr>
+                }
+                else
+                {
+                    @foreach (var item in Model.EntitySummaries)
+                    {
+                        <tr>
+                            <td><strong>@item.LegalEntityCode</strong><div class="le-note">@item.LegalEntityName · ưu tiên @item.SalePriority</div></td>
+                            <td class="text-end">@item.OrderCount.ToString("N0")</td>
+                            <td class="text-end">@item.AllocationGrossTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ReversalTotal.ToString("N0")</td>
+                            <td class="text-end">@item.AllocationNetTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ExpectedInvoiceTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ActualInvoiceTotal.ToString("N0")</td>
+                            <td class="text-end">@item.InvoiceDifference.ToString("N0")</td>
+                            <td>@item.IssuedInvoiceCount/@item.InvoiceCount</td>
+                            <td><span class="le-status @(item.InvoiceMatches ? "ok" : "bad")">@(item.InvoiceMatches ? "Khớp" : "Cần kiểm tra")</span></td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="le-card">
+        <div class="le-card-head">
+            <div><h5 class="le-card-title">Đối soát theo đơn gộp</h5><div class="le-note mt-1">Allocation gốc phải bằng tổng đơn; hóa đơn thực tế phải bằng phần đủ điều kiện sau đảo/trả.</div></div>
+            <span class="le-status neutral">@Model.Orders.TotalItems.ToString("N0") dòng</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table le-table">
+                <thead><tr><th>Đơn</th><th>Ngày chốt</th><th>HKD</th><th class="text-end">Tổng đơn</th><th class="text-end">Allocation</th><th class="text-end">Đảo/trả</th><th class="text-end">HĐ kỳ vọng</th><th class="text-end">HĐ thực tế</th><th class="text-end">Lệch đơn</th><th class="text-end">Lệch HĐ</th><th>Kết quả</th></tr></thead>
+                <tbody>
+                @if (Model.Orders.Items.Count == 0)
+                {
+                    <tr><td colspan="11"><div class="le-empty">Không tìm thấy order phù hợp bộ lọc.</div></td></tr>
+                }
+                else
+                {
+                    @foreach (var item in Model.Orders.Items)
+                    {
+                        <tr>
+                            <td><a class="le-link" href="/admin/pos/order-detail/@item.OrderId">@(item.OrderNumber ?? $"#{item.OrderId}")</a><div class="le-note">@StatusText(item.Status)</div></td>
+                            <td>@item.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><strong>@item.LegalEntityCodes</strong><div class="le-note">@item.IssuedInvoiceCount/@item.InvoiceCount HĐ phát hành</div></td>
+                            <td class="text-end">@item.UnifiedOrderTotal.ToString("N0")</td>
+                            <td class="text-end">@item.AllocationGrossTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ReversalTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ExpectedInvoiceTotal.ToString("N0")</td>
+                            <td class="text-end">@item.ActualInvoiceTotal.ToString("N0")</td>
+                            <td class="text-end">@item.OrderDifference.ToString("N0")</td>
+                            <td class="text-end">@item.InvoiceDifference.ToString("N0")</td>
+                            <td><span class="le-status @(item.IsBalanced ? "ok" : "bad")">@(item.IsBalanced ? "Khớp" : "Cần kiểm tra")</span></td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (Model.Orders.TotalPages > 1)
+        {
+            <div class="le-pager">
+                <div class="le-note">Trang @Model.Orders.Page / @Model.Orders.TotalPages</div>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-secondary btn-sm @(Model.Orders.Page <= 1 ? "disabled" : "")"
+                       asp-area="Admin" asp-controller="LegalEntityReconciliation" asp-action="Index"
+                       asp-route-fromDate="@query.FromDate.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate.ToString("yyyy-MM-dd")"
+                       asp-route-legalEntityId="@query.LegalEntityId" asp-route-keyword="@query.Keyword" asp-route-onlyDiscrepancies="@query.OnlyDiscrepancies"
+                       asp-route-page="@(Model.Orders.Page - 1)" asp-route-pageSize="@Model.Orders.PageSize">Trang trước</a>
+                    <a class="btn btn-outline-secondary btn-sm @(Model.Orders.Page >= Model.Orders.TotalPages ? "disabled" : "")"
+                       asp-area="Admin" asp-controller="LegalEntityReconciliation" asp-action="Index"
+                       asp-route-fromDate="@query.FromDate.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate.ToString("yyyy-MM-dd")"
+                       asp-route-legalEntityId="@query.LegalEntityId" asp-route-keyword="@query.Keyword" asp-route-onlyDiscrepancies="@query.OnlyDiscrepancies"
+                       asp-route-page="@(Model.Orders.Page + 1)" asp-route-pageSize="@Model.Orders.PageSize">Trang sau</a>
+                </div>
+            </div>
+        }
+    </div>
+</div>

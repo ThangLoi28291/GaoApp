@@ -1,0 +1,248 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseRequestEditViewModel
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@{
+    var isEdit = Model.Request.Id.HasValue;
+    ViewData["Title"] = isEdit ? "Chỉnh sửa yêu cầu mua hàng" : "Tạo yêu cầu mua hàng";
+    var selectedProducts = Model.SelectedProducts.ToDictionary(x => x.ProductUnitConversionId);
+    var validLines = Model.Request.Lines
+        .Where(x => x.Quantity > 0 &&
+                    (x.ItemKind == PurchaseItemKind.FreeText
+                        ? !string.IsNullOrWhiteSpace(x.ProductName) && !string.IsNullOrWhiteSpace(x.UnitName)
+                        : x.ProductVariantId > 0 && x.ProductUnitConversionId > 0))
+        .ToList();
+    var statusLabel = Model.Status == PurchaseRequestStatus.ReturnedForRevision ? "Cần chỉnh sửa" : "Bản nháp";
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+}
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/purchase-request-edit.css" asp-append-version="true" />
+}
+
+<div class="pr-page" id="purchaseRequestPage" data-product-lookup-url="@Url.Content("~/admin/purchase-requests/product-lookup")">
+    <div class="pr-header">
+        <div class="d-flex align-items-start gap-3">
+            <a class="btn btn-icon btn-label-secondary rounded-pill" asp-action="Index" aria-label="Quay lại danh sách"><i class="bx bx-arrow-back"></i></a>
+            <div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <h4 class="mb-0">@ViewData["Title"]</h4>
+                    @if (isEdit)
+                    {
+                        <span class="badge @(Model.Status == PurchaseRequestStatus.ReturnedForRevision ? "bg-label-warning" : "bg-label-secondary")">@statusLabel</span>
+                    }
+                </div>
+                <div class="text-muted mt-1">
+                    @if (!string.IsNullOrWhiteSpace(Model.RequestNumber))
+                    {
+                        <span>@Model.RequestNumber · </span>
+                    }
+                    Nhân viên chỉ cần ghi đúng mặt hàng, đơn vị và số lượng cần mua. Giá, VAT và phí chỉ được xác nhận khi nhập hàng thực tế.
+                </div>
+            </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-label-secondary pr-shortcut-help" data-bs-toggle="modal" data-bs-target="#shortcutHelpModal">
+            <i class="bx bx-command me-1"></i>Phím tắt <kbd>Ctrl</kbd> <kbd>/</kbd>
+        </button>
+    </div>
+
+    <form method="post" asp-action="Save" id="purchaseRequestForm" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Id" value="@Model.Request.Id" />
+        <input type="hidden" name="RowVersion" value="@Model.Request.RowVersion" />
+        <input type="hidden" name="RequestDate" value="@Model.Request.RequestDate.ToString("yyyy-MM-dd")" />
+        @if (Model.Request.NeedByDate.HasValue)
+        {
+            <input type="hidden" name="NeedByDate" value="@Model.Request.NeedByDate.Value.ToString("yyyy-MM-dd")" />
+        }
+        <input type="hidden" name="intent" id="formIntent" value="save" />
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger shadow-sm" role="alert"></div>
+        }
+        @if (Model.Status == PurchaseRequestStatus.ReturnedForRevision && !string.IsNullOrWhiteSpace(Model.WorkflowNote))
+        {
+            <div class="alert alert-warning shadow-sm d-flex gap-2" role="alert">
+                <i class="bx bx-message-detail fs-5"></i>
+                <div><strong>Quản lý yêu cầu chỉnh sửa</strong><div>@Model.WorkflowNote</div></div>
+            </div>
+        }
+
+        <section class="card border-0 shadow-sm pr-title-card mb-4">
+            <div class="card-body">
+                <label class="form-label fw-semibold" for="Title">Tên yêu cầu mua hàng <span class="text-danger">*</span></label>
+                <div class="position-relative">
+                    <input class="form-control form-control-lg pr-title-input" id="Title" name="Title" value="@Model.Request.Title" maxlength="250" required autofocus
+                           placeholder="Ví dụ: Nhập hàng bán tuần 30" autocomplete="off" />
+                    <span class="pr-field-shortcut">F2</span>
+                </div>
+                <div class="d-flex justify-content-between mt-2">
+                    <small class="text-muted">Đặt tên ngắn gọn để dễ tìm và theo dõi sau này.</small>
+                    <small class="text-muted"><span id="titleCount">0</span>/250</small>
+                </div>
+
+                <div class="accordion accordion-flush mt-3" id="requestNoteAccordion">
+                    <div class="accordion-item border rounded">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed py-2 px-3" type="button" data-bs-toggle="collapse" data-bs-target="#requestNotePanel">
+                                <i class="bx bx-note me-2"></i>Thêm ghi chú <span class="text-muted ms-1">(không bắt buộc)</span>
+                            </button>
+                        </h2>
+                        <div id="requestNotePanel" class="accordion-collapse collapse @(string.IsNullOrWhiteSpace(Model.Request.Note) ? string.Empty : "show")">
+                            <div class="accordion-body p-3">
+                                <textarea class="form-control" id="Note" name="Note" rows="3" maxlength="1000" placeholder="Ghi rõ yêu cầu đặc biệt nếu có...">@Model.Request.Note</textarea>
+                                <div class="text-end small text-muted mt-1"><span id="noteCount">0</span>/1000</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card border-0 shadow-sm pr-products-card">
+            <div class="card-header border-bottom">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="avatar avatar-sm bg-label-primary rounded"><i class="bx bx-package"></i></span>
+                <div><h5 class="mb-0">Mặt hàng cần mua</h5><small class="text-muted">Chọn đúng đơn vị mua rồi nhập số lượng cần mua.</small></div>
+                    </div>
+                    <span class="badge bg-label-primary rounded-pill"><span id="lineCountBadge">@validLines.Count</span> mặt hàng</span>
+                </div>
+            </div>
+            <div class="card-body border-bottom pr-product-toolbar">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-lg">
+                        <label class="form-label" for="productSearch">Tìm hoặc quét sản phẩm</label>
+                        <div class="position-relative">
+                            <select id="productSearch" class="form-select" aria-label="Tìm sản phẩm"></select>
+                            <span class="pr-search-shortcut">F3</span>
+                        </div>
+                        <small class="text-muted"><i class="bx bx-barcode-reader me-1"></i>Gõ tên, SKU, barcode hoặc quét mã để tìm nhanh.</small>
+                    </div>
+                    <div class="col-12 col-lg-auto">
+                        <button type="button" class="btn btn-outline-primary w-100" id="openFreeTextModal">
+                            <i class="bx bx-edit me-1"></i>Hàng chưa có trong danh mục <kbd>F4</kbd>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-responsive pr-lines-wrap">
+                <table class="table align-middle mb-0 pr-lines-table">
+                    <thead class="table-light"><tr><th style="width:54px">#</th><th>Sản phẩm</th><th style="width:180px">Đơn vị mua</th><th style="width:190px">Số lượng cần mua</th><th style="width:58px"></th></tr></thead>
+                    <tbody id="lineRows">
+                    @for (var i = 0; i < validLines.Count; i++)
+                    {
+                        var line = validLines[i];
+                        GaoApp.Application.DTOs.Purchases.PurchaseRequestProductLookupDto? product = null;
+                        if (line.ProductUnitConversionId.HasValue)
+                        {
+                            selectedProducts.TryGetValue(line.ProductUnitConversionId.Value, out product);
+                        }
+                        var isFreeText = line.ItemKind == PurchaseItemKind.FreeText;
+                        var productName = isFreeText ? line.ProductName : product?.Text ?? line.ProductName ?? $"Sản phẩm #{line.ProductVariantId}";
+                        var unitName = isFreeText ? line.UnitName : product?.UnitName ?? line.UnitName ?? "Đơn vị";
+                        <tr class="request-line"
+                            data-line-key="@(isFreeText ? $"free:{productName?.Trim().ToLowerInvariant()}|{unitName?.Trim().ToLowerInvariant()}" : $"catalog:{line.ProductUnitConversionId}")"
+                            data-item-kind="@((int)line.ItemKind)"
+                            data-product-name="@productName" data-sku="@(product?.Sku ?? string.Empty)" data-unit-name="@unitName" data-factor="@(isFreeText || product == null ? "1" : PurchaseQuantityFormatter.Invariant(product.Factor))">
+                            <td class="pr-line-number" data-label="#">@(i + 1)</td>
+                            <td data-label="Sản phẩm">
+                                <input type="hidden" class="line-id" name="Lines[@i].Id" value="@line.Id" />
+                                <input type="hidden" class="item-kind" name="Lines[@i].ItemKind" value="@((int)line.ItemKind)" />
+                                <input type="hidden" class="variant-id" name="Lines[@i].ProductVariantId" value="@line.ProductVariantId" />
+                                <input type="hidden" class="conversion-id" name="Lines[@i].ProductUnitConversionId" value="@line.ProductUnitConversionId" />
+                                <input type="hidden" class="product-name-input" name="Lines[@i].ProductName" value="@productName" />
+                                <input type="hidden" class="unit-name-input" name="Lines[@i].UnitName" value="@unitName" />
+                                <div class="fw-semibold pr-product-name">@productName</div>
+                                @if (isFreeText)
+                                {
+                                    <small class="text-warning"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(product?.Sku))
+                                {
+                                    <small class="text-muted">SKU: @product.Sku</small>
+                                }
+                            </td>
+                            <td data-label="Đơn vị mua"><span class="badge bg-label-secondary pr-unit-name">@unitName</span>@if(!isFreeText){<small class="text-muted d-block mt-1">Quy đổi ×<span class="pr-factor">@(product == null ? "1" : PurchaseQuantityFormatter.Display(product.Factor))</span></small>}</td>
+                            <td data-label="Số lượng"><input class="form-control text-end quantity" type="number" min="0.001" step="0.001" name="Lines[@i].Quantity" value="@PurchaseQuantityFormatter.Invariant(line.Quantity)" required /></td>
+                            <td class="text-end"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line" title="Xóa sản phẩm"><i class="bx bx-trash"></i></button></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+                <div class="pr-empty-state @(validLines.Count > 0 ? "d-none" : string.Empty)" id="emptyLineState">
+                    <span class="pr-empty-icon"><i class="bx bx-basket"></i></span>
+                    <h6>Chưa có sản phẩm nào</h6>
+                    <p>Tìm sản phẩm phía trên hoặc nhấn F3 để bắt đầu.</p>
+                    <button type="button" class="btn btn-sm btn-primary" id="emptyAddProduct"><i class="bx bx-search me-1"></i>Tìm sản phẩm</button>
+                </div>
+            </div>
+            <div class="alert alert-danger m-3 d-none" id="lineValidationMessage" role="alert"></div>
+        </section>
+
+        <div class="pr-sticky-actions">
+            <div class="pr-summary">
+                <div><span>Mặt hàng</span><strong id="summaryLineCount">@validLines.Count</strong></div>
+                <div><span>Tổng số lượng</span><strong id="summaryQuantity">0</strong></div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 justify-content-end">
+                <a class="btn btn-label-secondary" asp-action="Index">Hủy</a>
+                <button type="button" class="btn btn-outline-primary pr-submit-button" data-intent="save"><i class="bx bx-save me-1"></i>Lưu nháp <kbd>Ctrl S</kbd></button>
+                @if (Model.CanSubmit)
+                {
+                    <button type="button" class="btn btn-primary pr-submit-button" data-intent="submit"><i class="bx bx-send me-1"></i>Gửi duyệt <kbd>Alt ↵</kbd></button>
+                }
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="modal fade" id="productDetailModal" tabindex="-1" aria-labelledby="productDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content pr-modal-content">
+        <div class="modal-header"><div><div class="pr-modal-eyebrow">THÊM VÀO YÊU CẦU</div><h5 class="modal-title" id="productDetailModalLabel">Thông tin sản phẩm</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <div class="pr-selected-product"><span class="avatar bg-label-primary rounded"><i class="bx bx-package"></i></span><div class="min-w-0"><h6 class="mb-1 text-truncate" id="modalProductName">—</h6><div class="small text-muted" id="modalProductMeta">—</div></div></div>
+            <div class="pr-stock-strip" id="modalStockInfo"><div><span>Tồn hiện tại</span><strong id="modalCurrentStock">—</strong></div><div><span>Đang về</span><strong id="modalIncoming">—</strong></div></div>
+            <div class="alert alert-warning py-2 d-none" id="modalOpenRequestWarning"><i class="bx bx-info-circle me-1"></i>Sản phẩm này đã có trong một yêu cầu đang xử lý. Hãy kiểm tra để tránh đặt trùng.</div>
+            <div class="row g-3">
+                <div class="col-12"><label class="form-label">Đơn vị mua</label><div class="form-control bg-light d-flex justify-content-between"><strong id="modalUnitName">—</strong><span class="text-muted">Quy đổi ×<span id="modalFactor">1</span></span></div></div>
+                <div class="col-12"><label class="form-label" for="modalQuantity">Số lượng cần mua <span class="text-danger">*</span></label><input class="form-control form-control-lg text-end" id="modalQuantity" type="number" min="0.001" step="0.001" value="1" /></div>
+            </div>
+            <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="modalProductError"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="button" class="btn btn-outline-primary" id="saveProductAndContinue"><i class="bx bx-plus me-1"></i>Thêm &amp; tiếp tục <kbd>Ctrl ↵</kbd></button><button type="button" class="btn btn-primary" id="saveProductLine"><i class="bx bx-check me-1"></i>Thêm &amp; đóng <kbd>Enter</kbd></button></div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="freeTextProductModal" tabindex="-1" aria-labelledby="freeTextProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content pr-modal-content">
+        <div class="modal-header"><div><div class="pr-modal-eyebrow">HÀNG CHƯA CÓ TRONG DANH MỤC</div><h5 class="modal-title" id="freeTextProductModalLabel">Nhập mặt hàng cần mua</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <div class="alert alert-info py-2"><i class="bx bx-info-circle me-1"></i>Mặt hàng này được giữ nguyên tên trên yêu cầu và đơn đặt hàng. Trước khi cộng kho, quản lý sẽ ghép với sản phẩm có sẵn hoặc tạo sản phẩm mới.</div>
+            <div class="mb-3"><label class="form-label" for="freeTextProductName">Tên mặt hàng <span class="text-danger">*</span></label><input class="form-control form-control-lg" id="freeTextProductName" maxlength="250" autocomplete="off" placeholder="Ví dụ: Nước rửa tay hương chanh 500ml" /></div>
+            <div class="mb-3"><label class="form-label" for="freeTextUnitName">Đơn vị mua <span class="text-danger">*</span></label><input class="form-control" id="freeTextUnitName" list="purchaseUnitNames" maxlength="100" autocomplete="off" placeholder="Gõ hoặc chọn đơn vị..." /><datalist id="purchaseUnitNames">@foreach (var unitName in Model.UnitNames){<option value="@unitName"></option>}<option value="Đơn vị khác"></option></datalist><div class="form-text">Có thể chọn đơn vị đang dùng hoặc gõ một tên đơn vị khác.</div></div>
+            <div><label class="form-label" for="freeTextQuantity">Số lượng <span class="text-danger">*</span></label><input class="form-control text-end" id="freeTextQuantity" type="number" min="0.001" step="0.001" value="1" /></div>
+            <div class="alert alert-danger py-2 mt-3 mb-0 d-none" id="freeTextProductError"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="button" class="btn btn-outline-primary" id="saveFreeTextAndContinue"><i class="bx bx-plus me-1"></i>Thêm &amp; tiếp tục <kbd>Ctrl ↵</kbd></button><button type="button" class="btn btn-primary" id="saveFreeTextLine"><i class="bx bx-check me-1"></i>Thêm vào yêu cầu <kbd>Enter</kbd></button></div>
+    </div></div>
+</div>
+
+<div class="modal fade" id="shortcutHelpModal" tabindex="-1" aria-labelledby="shortcutHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="shortcutHelpModalLabel"><i class="bx bx-command me-1"></i>Phím tắt thao tác nhanh</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="pr-shortcut-list"><div><span>Nhập tên yêu cầu</span><kbd>F2</kbd></div><div><span>Tìm hoặc quét sản phẩm có sẵn</span><kbd>F3</kbd></div><div><span>Nhập hàng chưa có trong danh mục</span><kbd>F4</kbd></div><div><span>Thêm và đóng cửa sổ</span><kbd>Enter</kbd></div><div><span>Thêm rồi tiếp tục</span><span><kbd>Ctrl</kbd> <kbd>Enter</kbd></span></div><div><span>Lưu bản nháp</span><span><kbd>Ctrl</kbd> <kbd>S</kbd></span></div><div><span>Gửi duyệt</span><span><kbd>Alt</kbd> <kbd>Enter</kbd></span></div><div><span>Đóng cửa sổ</span><kbd>Esc</kbd></div></div></div></div></div>
+</div>
+
+<template id="lineTemplate">
+    <tr class="request-line"><td class="pr-line-number" data-label="#"></td><td data-label="Sản phẩm"><input type="hidden" class="line-id" /><input type="hidden" class="item-kind" /><input type="hidden" class="variant-id" /><input type="hidden" class="conversion-id" /><input type="hidden" class="product-name-input" /><input type="hidden" class="unit-name-input" /><div class="fw-semibold pr-product-name"></div><small class="text-muted pr-product-sku"></small><small class="text-warning d-none pr-free-text-badge"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small><span class="badge bg-label-warning ms-2 d-none pr-open-request-badge">Đã có yêu cầu mở</span></td><td data-label="Đơn vị mua"><span class="badge bg-label-secondary pr-unit-name"></span><small class="text-muted d-block mt-1 pr-factor-wrap">Quy đổi ×<span class="pr-factor"></span></small></td><td data-label="Số lượng"><input class="form-control text-end quantity" type="number" min="0.001" step="0.001" required /></td><td class="text-end"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line" title="Xóa sản phẩm"><i class="bx bx-trash"></i></button></td></tr>
+</template>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+}
+@section PageScripts {
+    <script src="~/Admin/js/purchase-request-edit.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,286 @@
+﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
+
+@{
+    var generalInvoiceInfo = Model.Payload?.GeneralInvoiceInfo;
+
+    var isCorrectionPayload =
+        generalInvoiceInfo != null &&
+        !string.IsNullOrWhiteSpace(generalInvoiceInfo.AdjustmentType) &&
+        generalInvoiceInfo.AdjustmentType != "1";
+
+    var canShowCorrectionMenu = Model.IsIssued && !isCorrectionPayload;
+}
+
+<div class="card shadow-sm payload-card mb-3 viettel-toolbar-panel">
+    <div class="card-body">
+
+        <div class="viettel-toolbar-grid">
+
+            <div class="viettel-toolbar-section">
+                <div class="viettel-toolbar-title">
+                    Điều hướng
+                </div>
+
+                <div class="viettel-toolbar-actions payload-toolbar">
+                    <a asp-area="Admin"
+                           asp-controller="Invoice"
+                           asp-action="Detail"
+                           asp-route-id="@Model.InvoiceHeadId"
+                           class="btn btn-outline-secondary">
+                        <i class="bx bx-arrow-back"></i>
+                        Quay lại hóa đơn
+                    </a>
+                 
+                    @if (Model.IsIssued)
+                    {
+                        <button type="button" class="btn btn-success" disabled>
+                            <i class="bx bx-check-circle"></i>
+                            Đã phát hành: @(Model.ProviderInvoiceNo ?? "Đã phát hành")
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="btn btn-outline-secondary"
+                                disabled>
+                            <i class="bx bx-time"></i>
+                            @Model.ProviderStatusName
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="viettel-toolbar-section">
+                <div class="viettel-toolbar-title">
+                    Phát hành / đồng bộ
+                </div>
+
+                <div class="viettel-toolbar-actions payload-toolbar">
+                    @if (Model.CanPreviewDraft)
+                    {
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="ViettelDraftPreview"
+                               asp-route-id="@Model.InvoiceHeadId"
+                               target="_blank"
+                               class="btn btn-success">
+                            <i class="bx bx-file"></i>
+                            Mở PDF nháp
+                        </a>
+                    }
+
+                    @if (!Model.IsIssued && Model.CanIssue)
+                    {
+                        <form asp-area="Admin"
+                              asp-controller="Invoice"
+                              asp-action="ViettelIssue"
+                              asp-route-id="@Model.InvoiceHeadId"
+                              method="post"
+                              class="d-inline"
+                              data-submit-guard
+                              data-submit-loading-text="Đang phát hành..."
+                              onsubmit="return confirm('Xác nhận PHÁT HÀNH hóa đơn Viettel? Sau khi phát hành sẽ sinh số hóa đơn và không nên sửa nội dung nữa.');">
+                            @Html.AntiForgeryToken()
+
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bx bx-send"></i>
+                                Phát hành Viettel
+                            </button>
+                        </form>
+                    }
+                    else if (!Model.IsIssued)
+                    {
+                        <button type="button"
+                                class="btn btn-outline-danger"
+                                disabled
+                                title="@Model.IssueBlockReason">
+                            <i class="bx bx-lock"></i>
+                            Không thể phát hành
+                        </button>
+                    }
+
+                    @if (Model.CanSyncByUuid)
+                    {
+                        <form asp-area="Admin"
+                              asp-controller="Invoice"
+                              asp-action="SyncViettelByUuid"
+                              asp-route-id="@Model.InvoiceHeadId"
+                              method="post"
+                              class="d-inline"
+                              data-submit-guard
+                              data-submit-loading-text="Đang tra cứu..."
+                              onsubmit="return confirm('Tra cứu Viettel theo transactionUuid để đồng bộ trạng thái hóa đơn?');">
+                            @Html.AntiForgeryToken()
+
+                            <button type="submit" class="btn btn-outline-warning">
+                                <i class="bx bx-search-alt"></i>
+                                Tra cứu UUID
+                            </button>
+                        </form>
+                    }
+                </div>
+            </div>
+
+            <div class="viettel-toolbar-section">
+                <div class="viettel-toolbar-title">
+                    File hóa đơn
+                </div>
+
+                <div class="viettel-toolbar-actions payload-toolbar">
+                    @if (Model.CanDownloadOfficialFiles)
+                    {
+                        <form asp-area="Admin"
+                              asp-controller="Invoice"
+                              asp-action="DownloadOfficialPdf"
+                              asp-route-id="@Model.InvoiceHeadId"
+                              method="post"
+                              class="d-inline"
+                              data-submit-guard
+                              data-submit-loading-text="Đang tải..."
+                              data-submit-unlock-ms="10000">
+                            @Html.AntiForgeryToken()
+
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i class="bx bx-download"></i>
+                                Tải PDF bản thể hiện
+                            </button>
+                        </form>
+
+                        <form asp-area="Admin"
+                              asp-controller="Invoice"
+                              asp-action="DownloadOfficialZipXml"
+                              asp-route-id="@Model.InvoiceHeadId"
+                              method="post"
+                              class="d-inline"
+                              data-submit-guard
+                              data-submit-loading-text="Đang tải..."
+                              data-submit-unlock-ms="10000">
+                            @Html.AntiForgeryToken()
+
+                            <button type="submit" class="btn btn-outline-dark">
+                                <i class="bx bx-archive"></i>
+                                Tải ZIP/XML
+                            </button>
+                        </form>
+                    }
+
+                    @if (Model.CanViewSavedPdf)
+                    {
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="ViewOfficialPdf"
+                               asp-route-id="@Model.InvoiceHeadId"
+                               target="_blank"
+                               class="btn btn-outline-primary">
+                            <i class="bx bx-show"></i>
+                            Xem PDF bản thể hiện đã lưu
+                        </a>
+                    }
+
+                    @if (Model.CanDownloadSavedZip)
+                    {
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="DownloadSavedZipXml"
+                               asp-route-id="@Model.InvoiceHeadId"
+                               class="btn btn-outline-secondary">
+                            <i class="bx bx-package"></i>
+                            Tải ZIP/XML đã lưu
+                        </a>
+                    }
+                </div>
+            </div>
+
+            <div class="viettel-toolbar-section">
+                <div class="viettel-toolbar-title">
+                    Sau phát hành
+                </div>
+
+                <div class="viettel-toolbar-actions payload-toolbar">
+                    @if (Model.CanSendEmail)
+                    {
+                        <button type="button"
+                                class="btn btn-outline-success"
+                                data-bs-toggle="modal"
+                                data-bs-target="#sendViettelEmailModal">
+                            <i class="bx bx-envelope"></i>
+                            Gửi email hóa đơn
+                        </button>
+                    }
+
+                    @if (canShowCorrectionMenu)
+                    {
+                        <div class="btn-group">
+                            <button type="button"
+                                    class="btn btn-outline-danger dropdown-toggle"
+                                    data-bs-toggle="dropdown"
+                                    aria-expanded="false">
+                                <i class="bx bx-error-circle"></i>
+                                Xử lý sai sót
+                            </button>
+
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item"
+                                           asp-area="Admin"
+                                           asp-controller="InvoiceCorrection"
+                                           asp-action="Create"
+                                           asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                           asp-route-type="Replacement">
+                                        Lập hóa đơn thay thế
+                                    </a>
+                                </li>
+
+                                <li>
+                                    <a class="dropdown-item"
+                                           asp-area="Admin"
+                                           asp-controller="InvoiceCorrection"
+                                           asp-action="Create"
+                                           asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                           asp-route-type="AdjustmentAmount">
+                                        Lập hóa đơn điều chỉnh tiền
+                                    </a>
+                                </li>
+
+                                <li>
+                                    <a class="dropdown-item"
+                                           asp-area="Admin"
+                                           asp-controller="InvoiceCorrection"
+                                           asp-action="Create"
+                                           asp-route-originalInvoiceHeadId="@Model.InvoiceHeadId"
+                                           asp-route-type="AdjustmentInfo">
+                                        Lập hóa đơn điều chỉnh thông tin
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="viettel-toolbar-section viettel-toolbar-section-full">
+                <div class="viettel-toolbar-title">
+                    Công cụ
+                </div>
+
+                <div class="viettel-toolbar-actions payload-toolbar">
+                    <button type="button"
+                            class="btn btn-primary"
+                            onclick="copyPayloadJson()">
+                        <i class="bx bx-copy"></i>
+                        Copy JSON
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-outline-primary"
+                            onclick="location.reload()">
+                        <i class="bx bx-refresh"></i>
+                        Tải lại log
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>

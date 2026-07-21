@@ -1,0 +1,126 @@
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Application.DTOs.Invoices.InvoiceHeadDto
+
+@{
+    var isLocked = Model.IsLocked;
+
+    var manualLines = Model.Details
+        .Where(x => x.SourceType == InvoiceDetailSourceType.Manual)
+        .OrderBy(x => x.Id)
+        .ToList();
+}
+
+<div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-bold">
+        <span class="badge bg-warning text-dark me-2">MANUAL</span>
+        Dòng thêm tay
+    </div>
+
+    <div>
+        Tổng:
+        <strong>@manualLines.Count</strong>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+            <tr>
+                <th>#</th>
+                <th>Nội dung</th>
+                <th>ĐVT</th>
+                <th class="text-end">SL</th>
+                <th class="text-end">Đơn giá</th>
+                <th class="text-end">VAT %</th>
+                <th class="text-end">VAT tiền</th>
+                <th class="text-end">Thành tiền</th>
+                <th>Ghi chú</th>
+                <th class="text-end">Thao tác</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            @if (!manualLines.Any())
+            {
+                <tr>
+                    <td colspan="10" class="text-center text-muted py-4">
+                        Chưa có dòng manual.
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var item in manualLines)
+                {
+                    <tr class="manual-detail-row @(isLocked ? "is-locked" : "")"
+                        data-manual-detail-id="@item.Id"
+                        data-manual-quantity="@item.Quantity"
+                        data-manual-unit-price="@item.UnitPrice"
+                        data-manual-vat-rate="@item.VatRate"
+                        data-manual-note="@item.Note">
+
+                        <td>#@item.Id</td>
+
+                        <td>
+                            <div class="fw-semibold">@item.ItemName</div>
+
+                            <small class="text-muted">
+                                Manual line
+                            </small>
+
+                            @if (item.ProductVariantId.HasValue)
+                            {
+                                <div class="small text-muted">
+                                    VariantId: @item.ProductVariantId
+                                </div>
+                            }
+                        </td>
+
+                        <td>@item.UnitName</td>
+
+                        <td class="text-end" data-manual-display="quantity">
+                            @item.Quantity.ToString("N2")
+                        </td>
+
+                        <td class="text-end" data-manual-display="unitPrice">
+                            @item.UnitPrice.ToString("N0")
+                        </td>
+
+                        <td class="text-end" data-manual-display="vatRate">
+                            @item.VatRate.ToString("N2")
+                        </td>
+
+                        <td class="text-end">
+                            @item.VatAmount.ToString("N0")
+                        </td>
+
+                        <td class="text-end fw-bold text-danger" data-manual-display="totalAmount">
+                            @item.TotalAmount.ToString("N0")
+                        </td>
+
+                        <td data-manual-display="note">
+                            @item.Note
+                        </td>
+
+                        <td class="text-end">
+                            @if (!isLocked)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        data-delete-manual-detail-id="@item.Id"
+                                        data-delete-manual-detail-name="@item.ItemName">
+                                    <i class="bx bx-trash"></i>
+                                    Xóa
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="text-muted small">Đã khóa</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

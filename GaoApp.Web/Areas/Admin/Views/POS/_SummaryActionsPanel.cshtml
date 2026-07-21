@@ -1,0 +1,45 @@
+﻿@* =========================================================
+   PARTIAL VIEW: _SummaryActionsPanel.cshtml
+   Thanh action cố định dưới màn hình POS
+========================================================= *@
+
+<div class="pos-bottom-action-inner">
+    <div id="posSummaryActionGrid"
+         class="pos-action-grid pos-action-grid--smart pos-action-grid--bottom is-empty">
+
+        <button id="btnNewCart"
+                type="button"
+                class="d-none"
+                tabindex="-1"
+                aria-hidden="true">
+            Tạo giỏ mới
+        </button>
+
+        <button id="btnOpenPayment"
+                class="btn btn-info text-white pos-action-btn pos-action-btn--payment"
+                type="button">
+            <span>Thanh toán</span>
+            <span class="badge bg-light text-dark shortcut-badge">F3</span>
+        </button>
+
+        <button id="btnFinalizeCart"
+                class="btn btn-success pos-action-btn pos-action-btn--finalize"
+                type="button">
+            <span>Chốt đơn</span>
+            <span class="badge bg-light text-dark shortcut-badge">F4</span>
+        </button>
+
+        <button id="btnHoldCart"
+                class="btn btn-warning pos-action-btn pos-action-btn--secondary"
+                type="button">
+            <span>Giữ đơn</span>
+            <span class="badge bg-light text-dark shortcut-badge">F2</span>
+        </button>
+
+        <button id="btnCancelCart"
+                class="btn btn-outline-danger pos-action-btn pos-action-btn--danger-soft"
+                type="button">
+            <span>Hủy giỏ</span>
+        </button>
+    </div>
+</div>

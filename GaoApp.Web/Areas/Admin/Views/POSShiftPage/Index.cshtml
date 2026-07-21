@@ -1,0 +1,734 @@
+﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@{
+    ViewData["Title"] = "Ca POS";
+    Layout = "_ContentNavbarLayout";
+    var posCtx = ViewBag.POSHeaderContext as POSHeaderContextViewModel ?? new POSHeaderContextViewModel();
+}
+
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift.css" asp-append-version="true" />
+}
+
+@section header {
+    <div class="shift-title-only">
+        <h1>CA LÀM VIỆC</h1>
+
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+<partial name="~/Areas/Admin/Views/Shared/_POSWorkContextBar.cshtml" model="posCtx" />
+
+<div class="shift-shell">
+    @Html.AntiForgeryToken()
+
+    <div id="posErrorBanner" class="alert alert-warning d-none mt-3 shift-alert-banner" role="alert">
+        <div id="posErrorBannerMessage" class="fw-semibold"></div>
+        <div id="posErrorBannerHint" class="small mt-1"></div>
+    </div>
+
+    <div class="shift-hero-card">
+        <div class="shift-hero-card__content">
+            <div class="shift-hero-card__meta">
+                <div class="shift-hero-card__title">Điều hành ca POS</div>
+            </div>
+
+            <div class="shift-action-group">
+                <button id="btnShowOpenModal" type="button" class="btn btn-primary shift-toolbar-btn" style="display:none;">
+                    <i class="bx bx-play-circle"></i>
+                    <span>Mở ca</span>
+                </button>
+
+                <button id="btnShowCashTxnModal" type="button" class="btn btn-outline-primary shift-toolbar-btn" style="display:none;">
+                    <i class="bx bx-transfer-alt"></i>
+                    <span>Thu / Chi tiền mặt</span>
+                </button>
+
+                <button id="btnShowCloseModal" type="button" class="btn btn-danger shift-toolbar-btn" style="display:none;">
+                    <i class="bx bx-lock-alt"></i>
+                    <span>Đóng ca</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="noOpenShiftSection" class="shift-card shift-empty-card mb-3" style="display:none;">
+        <div class="card-body">
+            <div class="shift-empty">
+                <div class="shift-empty__icon">
+                    <i class="bx bx-time-five"></i>
+                </div>
+                <div class="shift-empty__title">Chưa có ca POS đang mở</div>
+                <div class="shift-empty__desc">
+                    Terminal này hiện chưa mở ca. Nhấn <strong>Mở ca</strong> để bắt đầu nhận ca và thao tác bán hàng.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="openShiftSection" style="display:none;">
+        <div class="shift-overview-grid">
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mã ca</div>
+                <div id="shiftId" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mã ca hệ thống</div>
+                <div id="shiftCode" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card">
+                <div class="shift-overview-card__label">Mở lúc</div>
+                <div id="openedAt" class="shift-overview-card__value">-</div>
+            </div>
+
+            <div class="shift-overview-card shift-overview-card--accent">
+                <div class="shift-overview-card__label">Tiền mặt dự kiến cuối ca</div>
+                <div id="closingCashExpected" class="shift-overview-card__value money">0</div>
+            </div>
+        </div>
+
+        <div class="shift-tabs-nav">
+            <button type="button" class="shift-tab-btn active" data-shift-tab="summaryTab">Thông tin ca hiện tại</button>
+            <button type="button" class="shift-tab-btn" data-shift-tab="historyTab">Lịch sử thu / chi tiền mặt</button>
+        </div>
+
+        <div id="summaryTab" class="shift-tab-pane active">
+            <div class="card shift-card">
+                <div class="card-body">
+                    <div class="shift-section-head">
+                        <div>
+                            <h4 class="shift-section-title">Tổng quan ca hiện tại</h4>
+                            
+                        </div>
+                    </div>
+
+                    <div class="shift-stat-grid shift-stat-grid--primary">
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Tiền đầu ca</div>
+                            <div id="openingCash" class="shift-stat-value money">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Doanh thu tiền mặt</div>
+                            <div id="cashSalesTotal" class="shift-stat-value money">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Doanh thu không tiền mặt</div>
+                            <div id="nonCashSalesTotal" class="shift-stat-value">0</div>
+                        </div>
+
+                        <div class="shift-stat-box accent">
+                            <div class="shift-stat-label">Tiền mặt dự kiến cuối ca</div>
+                            <div id="closingCashExpectedMirror" class="shift-stat-value money">0</div>
+                        </div>
+                    </div>
+
+                    <div class="shift-section-divider"></div>
+
+                    <div class="shift-stat-grid shift-stat-grid--secondary">
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Hoàn tiền mặt</div>
+                            <div id="cashRefundTotal" class="shift-stat-value negative">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Hoàn không tiền mặt</div>
+                            <div id="nonCashRefundTotal" class="shift-stat-value negative">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Tổng tiền hoàn</div>
+                            <div id="refundTotalShift" class="shift-stat-value negative">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Số giao dịch hoàn</div>
+                            <div id="refundCountShift" class="shift-stat-value">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Số đơn void</div>
+                            <div id="voidCountShift" class="shift-stat-value">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Thu thêm tiền mặt</div>
+                            <div id="cashInTotal" class="shift-stat-value positive">0</div>
+                        </div>
+
+                        <div class="shift-stat-box">
+                            <div class="shift-stat-label">Chi tiền mặt</div>
+                            <div id="cashOutTotal" class="shift-stat-value negative">0</div>
+                        </div>
+                    </div>
+
+                    <div class="shift-note-box mt-3">
+                        <div class="shift-note-label">Ghi chú mở ca</div>
+                        <div id="openNote" class="shift-note-text">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="historyTab" class="shift-tab-pane">
+            <div class="card shift-card">
+                <div class="card-body">
+                    <div class="shift-section-head">
+                        <div>
+                            <h4 class="shift-section-title">Lịch sử thu / chi tiền mặt</h4>
+                           
+                        </div>
+
+                        <div id="cashTxnPagerInfo" class="shift-history-counter">0 giao dịch</div>
+                    </div>
+
+                    <div class="shift-table-wrap">
+                        <div class="table-responsive">
+                            <table class="table align-middle shift-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:170px;">Thời gian</th>
+                                        <th style="width:150px;">Loại</th>
+                                        <th style="width:140px;">Số tiền</th>
+                                        <th style="width:180px;">Lý do</th>
+                                        <th>Ghi chú</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cashTxnBody">
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-4">Chưa có giao dịch.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="shift-pager">
+                        <div class="shift-pager-actions">
+                            <button id="btnCashTxnPrev" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                                <i class="bx bx-chevron-left"></i>
+                                <span>Trang trước</span>
+                            </button>
+                            <button id="btnCashTxnNext" type="button" class="btn btn-outline-secondary shift-pager-btn">
+                                <span>Trang sau</span>
+                                <i class="bx bx-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Giữ nguyên 4 modal như file hiện tại -->
+<!-- Open Shift Modal - UI chuẩn 3 cột -->
+<div class="modal fade shift-modal shift-open-cashier-modal" id="openShiftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-open-shift modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header shift-open-cashier-header">
+                <div class="shift-open-cashier-title">
+                    <div class="shift-open-cashier-icon">
+                        <i class="bx bx-store-alt"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title">MỞ CA MỚI</h5>
+                        <div class="shift-modal-subtitle">
+                            Nhập số tiền theo mệnh giá hoặc nhập trực tiếp để lấy tổng tiền đầu ca
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body shift-open-cashier-body">
+                <div class="shift-open-cashier-layout">
+
+                    <!-- CỘT TRÁI -->
+                    <div class="shift-open-left">
+                        <div class="shift-open-block shift-scan-slip-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-barcode-reader"></i>
+                                QUÉT / NHẬP MÃ PHIẾU
+                            </div>
+
+                            <div class="shift-scan-input-wrap">
+                                <input id="txtHandoverSlipBarcode"
+                                       type="text"
+                                       class="form-control shift-scan-input"
+                                       placeholder="Quét hoặc gõ mã phiếu rồi Enter" />
+
+                                <button id="btnLoadHandoverSlip"
+                                        type="button"
+                                        class="btn btn-primary shift-scan-btn">
+                                    Tải
+                                </button>
+                            </div>
+
+                            <input id="selectedHandoverSlipId" type="hidden" />
+
+                            <div id="handoverSlipInfo" class="shift-slip-info" style="display:none;"></div>
+                        </div>
+                        <div class="shift-open-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-home-alt"></i>
+                                KHO BÁN HÀNG
+                            </div>
+
+                            <select id="ddlWarehouse" class="form-select shift-open-select">
+                                <option value="">-- Chọn kho --</option>
+                            </select>
+
+                            <div class="shift-open-warehouse-note">
+                                <i class="bx bx-check-shield"></i>
+                                <span>Kho này sẽ là kho xuất bán mặc định trong ca hiện tại</span>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-divider"></div>
+
+                        <div class="shift-open-block">
+                            <div class="shift-open-small-label">TỔNG TIỀN ĐẦU CA</div>
+                            <div id="openLeftTotalText" class="shift-open-big-money">0 đ</div>
+                            <div id="openMoneyText" class="shift-open-money-words">Không đồng</div>
+                        </div>
+
+                        <div class="shift-open-block">
+                            <label class="shift-form-label">
+                                GHI CHÚ MỞ CA <span class="text-muted">(không bắt buộc)</span>
+                            </label>
+
+                            <textarea id="txtOpenNote"
+                                      class="form-control shift-open-note"
+                                      maxlength="200"
+                                      rows="4"
+                                      placeholder="Ví dụ: Bàn giao tiền lẻ, tình trạng quầy thu ngân..."></textarea>
+
+                            <div class="shift-note-counter">0/200</div>
+                        </div>
+
+                        <div class="shift-tip-box shift-tip-box-open">
+                            <div class="shift-tip-title">
+                                <i class="bx bx-bulb"></i>
+                                Gợi ý nhập nhanh
+                            </div>
+                            <div class="shift-tip-line">Chọn mệnh giá → nhập số tờ → cộng dồn</div>
+                            <div class="shift-tip-line">Có thể nhập trực tiếp tổng tiền bên phải</div>
+                            <div class="shift-tip-line">Ctrl + Enter để xác nhận mở ca</div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT GIỮA -->
+                    <div class="shift-open-middle">
+                        <div class="shift-open-money-table-card">
+                            <div class="shift-open-money-table-head">
+                                <div>
+                                    <div class="shift-open-block-title mb-0">NHẬP TIỀN THEO MỆNH GIÁ</div>
+                                </div>
+
+                                <div class="shift-open-head-actions">
+                                    <button id="btnResetOpenDenoms" type="button" class="btn btn-outline-danger shift-open-action-btn">
+                                        <i class="bx bx-trash"></i>
+                                        Xóa tất cả
+                                    </button>
+
+                                    <button id="btnAutoConvertOpenCash" type="button" class="btn btn-outline-primary shift-open-action-btn">
+                                        <i class="bx bx-sparkles"></i>
+                                        Tự động quy đổi
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="shift-open-money-table-header">
+                                <div>Mệnh giá</div>
+                                <div>Số tờ / số lượng</div>
+                                <div>Thành tiền</div>
+                                <div></div>
+                            </div>
+
+                            <div id="openDenomGrid" class="shift-open-money-table-body"></div>
+
+                            <div class="shift-open-quick-row">
+                                <div class="shift-open-quick-title">THIẾT LẬP NHANH</div>
+                                <div class="shift-open-quick-buttons">
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="500000">500K</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="1000000">1M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="2000000">2M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="5000000">5M</button>
+                                    <button type="button" class="shift-open-preset-btn" data-open-preset="10000000">10M</button>
+                                    <button type="button" class="shift-open-preset-btn custom" data-open-preset="custom">
+                                        TÙY CHỌN
+                                        <i class="bx bx-edit-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT PHẢI -->
+                    <div class="shift-open-right">
+                        <div class="shift-open-direct-card">
+                            <div class="shift-open-block-title">NHẬP TRỰC TIẾP</div>
+
+                            <div class="shift-open-direct-input-wrap">
+                                <input id="txtOpeningCash"
+                                       type="text"
+                                       inputmode="numeric"
+                                       class="form-control shift-open-direct-input"
+                                       value="0" />
+                                <span>đ</span>
+                            </div>
+
+                            <div class="shift-open-direct-hint">
+                                Nhấn Enter để cập nhật tổng tiền đầu ca
+                            </div>
+
+                            <div class="shift-keypad">
+                                <button type="button" data-keypad="7">7</button>
+                                <button type="button" data-keypad="8">8</button>
+                                <button type="button" data-keypad="9">9</button>
+                                <button type="button" data-keypad="back"><i class="bx bx-backspace"></i></button>
+
+                                <button type="button" data-keypad="4">4</button>
+                                <button type="button" data-keypad="5">5</button>
+                                <button type="button" data-keypad="6">6</button>
+                                <button type="button" data-keypad="plus">+</button>
+
+                                <button type="button" data-keypad="1">1</button>
+                                <button type="button" data-keypad="2">2</button>
+                                <button type="button" data-keypad="3">3</button>
+                                <button type="button" data-keypad="minus">−</button>
+
+                                <button type="button" data-keypad="000">000</button>
+                                <button type="button" data-keypad="0">0</button>
+                                <button type="button" data-keypad=",">,</button>
+                                <button type="button" class="clear" data-keypad="clear">C</button>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-summary-card">
+                            <div class="shift-open-block-title">TỔNG KẾT TIỀN ĐẦU CA</div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Số tờ / tiền đã nhập</span>
+                                <strong id="openBillCountText">0 tờ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tổng cộng</span>
+                                <strong id="openSummaryTotalText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Chênh lệch so với nhập trực tiếp</span>
+                                <strong id="openDirectDiffText" class="text-success">0 đ</strong>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-warning-card">
+                            <div class="shift-open-warning-title">
+                                <i class="bx bx-shield-quarter"></i>
+                                MẸO KIỂM SOÁT TIỀN
+                            </div>
+                            <div>Kiểm đếm kỹ trước khi xác nhận</div>
+                            <div>Đối chiếu lại tổng tiền đã nhập</div>
+                            <div>Ca bắt đầu sẽ không thể chỉnh sửa</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer shift-open-cashier-footer">
+                <button type="button" class="btn shift-open-cancel-btn" data-bs-dismiss="modal">
+                    <i class="bx bx-x"></i>
+                    Hủy
+                </button>
+
+                <button id="btnOpenShiftConfirm" type="button" class="btn shift-open-confirm-btn">
+                    <i class="bx bx-check-circle"></i>
+                    OK - Nhận ca
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Cash Transaction Modal -->
+<div class="modal fade shift-modal" id="cashTxnModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Thu / Chi tiền mặt</h5>
+                    <div class="shift-modal-subtitle">Ghi nhận các khoản phát sinh ngoài đơn bán trong ca</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="shift-form-label">Loại giao dịch</label>
+                    <select id="cashTxnType" class="form-select">
+                        <option value="1">Thu tiền mặt</option>
+                        <option value="2">Chi tiền mặt</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="shift-form-label">Số tiền</label>
+                    <input id="cashTxnAmount"
+                           type="number"
+                           step="0.01"
+                           class="form-control"
+                           value="0" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="shift-form-label">Lý do</label>
+                    <input id="cashTxnReason"
+                           class="form-control"
+                           placeholder="Ví dụ: bổ sung tiền lẻ, mua vật tư, thu hoàn ứng..." />
+                </div>
+
+                <div class="mb-0">
+                    <label class="shift-form-label">Ghi chú</label>
+                    <textarea id="cashTxnNote"
+                              class="form-control"
+                              rows="4"
+                              placeholder="Thông tin bổ sung nếu có"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">Hủy</button>
+                <button id="btnAddCashTxn" type="button" class="btn btn-primary shift-modal-btn">OK - Ghi nhận</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Close Shift Modal -->
+<!-- Close Shift Modal - UI chuẩn 3 cột -->
+<div class="modal fade shift-modal shift-open-cashier-modal shift-close-cashier-modal" id="closeShiftModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-open-shift modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header shift-open-cashier-header">
+                <div class="shift-open-cashier-title">
+                    <div class="shift-open-cashier-icon shift-close-icon">
+                        <i class="bx bx-lock-alt"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title">ĐÓNG CA HIỆN TẠI</h5>
+                        <div class="shift-modal-subtitle">
+                            Kiểm tiền cuối ca theo mệnh giá, đối chiếu tiền dự kiến và xác nhận bàn giao
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body shift-open-cashier-body">
+                <div class="shift-open-cashier-layout">
+
+                    <!-- CỘT TRÁI -->
+                    <div class="shift-open-left">
+                        <div class="shift-open-block">
+                            <div class="shift-open-block-title">
+                                <i class="bx bx-calculator"></i>
+                                ĐỐI SOÁT CUỐI CA
+                            </div>
+
+                            <div class="shift-close-compare-box">
+                                <div class="shift-close-compare-row">
+                                    <div class="shift-close-compare-label">Tiền dự kiến cuối ca</div>
+                                    <div id="closeExpectedCashText" class="shift-close-compare-value expected">0</div>
+                                </div>
+
+                                <div class="shift-close-compare-row">
+                                    <div class="shift-close-compare-label">Tiền thực đếm</div>
+                                    <div id="closeActualCashText" class="shift-close-compare-value actual">0</div>
+                                </div>
+
+                                <div class="shift-close-compare-row total">
+                                    <div class="shift-close-compare-label">Chênh lệch</div>
+                                    <div id="closeDiffCashText" class="shift-close-compare-value match">0</div>
+                                </div>
+
+                                <div id="closeDiffHint" class="shift-close-compare-hint match">
+                                    Chưa có dữ liệu đối soát.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="shift-open-divider"></div>
+
+                        <div class="shift-open-block">
+                            <div class="shift-open-small-label">TỔNG TIỀN THỰC ĐẾM</div>
+                            <div id="closeLeftTotalText" class="shift-open-big-money">0 đ</div>
+                            <div id="closeMoneyText" class="shift-open-money-words">Không đồng</div>
+                        </div>
+
+                        <div class="shift-open-block">
+                            <label class="shift-form-label">
+                                GHI CHÚ ĐÓNG CA <span class="text-muted">(nếu có)</span>
+                            </label>
+
+                            <textarea id="txtCloseNote"
+                                      class="form-control shift-open-note"
+                                      maxlength="300"
+                                      rows="4"
+                                      placeholder="Ví dụ: Lệch quỹ, bàn giao tiền, sự cố trong ca..."></textarea>
+                        </div>
+
+                        <div class="shift-open-warning-card">
+                            <div class="shift-open-warning-title">
+                                <i class="bx bx-shield-quarter"></i>
+                                LƯU Ý ĐÓNG CA
+                            </div>
+                            <div>Kiểm đếm kỹ trước khi đóng ca</div>
+                            <div>Nếu lệch quỹ, hệ thống sẽ yêu cầu xác nhận</div>
+                            <div>Số tờ cuối ca sẽ được lưu lại để in phiếu bàn giao</div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT GIỮA -->
+                    <div class="shift-open-middle">
+                        <div class="shift-open-money-table-card">
+                            <div class="shift-open-money-table-head">
+                                <div class="shift-open-block-title mb-0">KIỂM TIỀN THEO MỆNH GIÁ</div>
+
+                                <div class="shift-open-head-actions">
+                                    <button id="btnResetCloseDenoms" type="button" class="btn btn-outline-danger shift-open-action-btn">
+                                        <i class="bx bx-trash"></i>
+                                        Xóa tất cả
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="shift-open-money-table-header">
+                                <div>Mệnh giá</div>
+                                <div>Số tờ / số lượng</div>
+                                <div>Thành tiền</div>
+                                <div></div>
+                            </div>
+
+                            <div id="closeDenomGrid" class="shift-open-money-table-body"></div>
+                        </div>
+                    </div>
+
+                    <!-- CỘT PHẢI -->
+                    <div class="shift-open-right">
+                        <div class="shift-open-direct-card">
+                            <div class="shift-open-block-title">NHẬP TRỰC TIẾP</div>
+
+                            <div class="shift-open-direct-input-wrap">
+                                <input id="txtClosingCashActual"
+                                       type="text"
+                                       inputmode="numeric"
+                                       class="form-control shift-open-direct-input"
+                                       value="0" />
+                                <span>đ</span>
+                            </div>
+
+                            <div class="shift-open-direct-hint">
+                                Có thể nhập tổng tiền thực đếm hoặc dùng bảng mệnh giá
+                            </div>
+                        </div>
+
+                        <div class="shift-open-summary-card">
+                            <div class="shift-open-block-title">TỔNG KẾT ĐÓNG CA</div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Số tờ đã nhập</span>
+                                <strong id="closeBillCountText">0 tờ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tổng thực đếm</span>
+                                <strong id="closeSummaryTotalText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Tiền dự kiến</span>
+                                <strong id="closeSummaryExpectedText">0 đ</strong>
+                            </div>
+
+                            <div class="shift-open-summary-row">
+                                <span>Chênh lệch</span>
+                                <strong id="closeSummaryDiffText" class="text-success">0 đ</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer shift-open-cashier-footer">
+                <button type="button" class="btn shift-open-cancel-btn" data-bs-dismiss="modal">
+                    <i class="bx bx-x"></i>
+                    Hủy
+                </button>
+
+                <button id="btnCloseShift" type="button" class="btn shift-open-confirm-btn shift-close-confirm-btn">
+                    <i class="bx bx-check-circle"></i>
+                    OK - Đóng ca
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="posErrorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pos-error-modal shift-pos-error-modal">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">Không thể thực hiện thao tác</h5>
+                    <div class="shift-error-subtitle">Vui lòng kiểm tra thông tin ca POS hiện tại</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="posErrorModalMessage" class="shift-error-message"></div>
+                <div id="posErrorModalHint" class="shift-error-hint"></div>
+
+                <div id="posErrorModalMeta" class="shift-error-meta"></div>
+
+                <div id="posErrorModalActions" class="shift-error-actions"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-light shift-error-close-btn"
+                        data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.page.js" asp-append-version="true"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const source = document.getElementById('closingCashExpected');
+            const mirror = document.getElementById('closingCashExpectedMirror');
+            if (!source || !mirror || !window.MutationObserver) return;
+
+            mirror.textContent = source.textContent || '0';
+
+            const ob = new MutationObserver(function () {
+                mirror.textContent = source.textContent || '0';
+            });
+
+            ob.observe(source, { childList: true, subtree: true, characterData: true });
+        });
+    </script>
+}

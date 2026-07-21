@@ -1,0 +1,212 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseRequestPrepareViewModel
+@using GaoApp.Domain.Enums
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@using System.Globalization
+@{
+    ViewData["Title"] = "Lập đơn đặt hàng từ yêu cầu mua";
+    var preparation = Model.Preparation;
+    var order = Model.Request.Orders.Single();
+    var lineMap = preparation.Lines.ToDictionary(x => x.PurchaseRequestLineId);
+    var suggestedSuppliers = preparation.Lines
+        .Where(x => x.SuggestedSupplierId.HasValue && !string.IsNullOrWhiteSpace(x.SuggestedSupplierName))
+        .Select(x => new { x.SuggestedSupplierId, x.SuggestedSupplierName })
+        .Distinct()
+        .ToList();
+    var hasSingleSuggestion = suggestedSuppliers.Count == 1;
+    var totalQuantity = preparation.Lines.Sum(x => x.ApprovedQuantity);
+}
+
+@section VendorStyles {
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/purchase-request-prepare.css" asp-append-version="true" />
+}
+
+<div class="prc-page"
+     id="purchaseRequestPreparePage"
+     data-supplier-lookup-url="@Url.Action("SupplierLookup", "PurchaseRequests", new { area = "Admin" })">
+    <header class="prc-header">
+        <div class="prc-title-block">
+            <a class="prc-back" asp-action="Details" asp-route-id="@preparation.PurchaseRequestId" aria-label="Quay lại chi tiết yêu cầu">
+                <i class="bx bx-arrow-back"></i>
+            </a>
+            <div>
+                <div class="prc-eyebrow">Yêu cầu mua @preparation.RequestNumber</div>
+                <h4 class="prc-title">Lập một đơn đặt hàng</h4>
+                <p class="prc-subtitle mb-0">@preparation.Title</p>
+            </div>
+        </div>
+        <a class="btn btn-outline-secondary prc-details-button" asp-action="Details" asp-route-id="@preparation.PurchaseRequestId">
+            <i class="bx bx-file me-1"></i>Chi tiết yêu cầu
+        </a>
+    </header>
+
+    <div class="prc-progress" aria-label="Tiến trình mua hàng">
+        <div class="prc-progress-step is-complete"><span><i class="bx bx-check"></i></span><div><strong>Đã duyệt nhu cầu</strong><small>Số lượng đã được khóa</small></div></div>
+        <div class="prc-progress-line is-active"></div>
+        <div class="prc-progress-step is-active"><span>2</span><div><strong>Lập đơn đặt hàng</strong><small>Chọn NCC và nơi nhận</small></div></div>
+        <div class="prc-progress-line"></div>
+        <div class="prc-progress-step"><span>3</span><div><strong>Duyệt đơn mua</strong><small>Thực hiện sau khi tạo</small></div></div>
+    </div>
+
+    <div class="prc-summary-grid">
+        <div class="prc-summary-card"><span class="prc-summary-icon blue"><i class="bx bx-package"></i></span><div><small>Mặt hàng trong đơn</small><strong>@preparation.Lines.Count</strong></div></div>
+        <div class="prc-summary-card"><span class="prc-summary-icon purple"><i class="bx bx-purchase-tag-alt"></i></span><div><small>Số đơn sẽ tạo</small><strong>1</strong></div></div>
+        <div class="prc-summary-card"><span class="prc-summary-icon orange"><i class="bx bx-layer"></i></span><div><small>Tổng số lượng</small><strong>@PurchaseQuantityFormatter.Display(totalQuantity)</strong></div></div>
+        <div class="prc-summary-card"><span class="prc-summary-icon green"><i class="bx bx-check-shield"></i></span><div><small>Dữ liệu được giữ nguyên</small><strong>Tên · Đơn vị · SL</strong></div></div>
+    </div>
+
+    <form asp-action="Convert" asp-route-id="@preparation.PurchaseRequestId" method="post" id="purchaseRequestConvertForm" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="RowVersion" value="@Model.Request.RowVersion" />
+        <input type="hidden" name="Orders[0].ClientGroupKey" value="@order.ClientGroupKey" />
+        <input type="hidden" name="Orders[0].HasVat" value="false" />
+        <input type="hidden" id="supplierLabel" name="SupplierLabel" value="@Model.SupplierLabel" />
+
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div asp-validation-summary="All" class="alert alert-danger prc-validation-summary" role="alert"></div>
+        }
+
+        <section class="prc-order-card">
+            <div class="prc-order-card-header">
+                <div class="prc-order-identity">
+                    <span class="prc-order-number">PO</span>
+                    <div><h5 class="mb-0">Thông tin đơn đặt hàng</h5><small>Một yêu cầu mua tạo đúng một đơn nháp</small></div>
+                </div>
+                <span class="badge bg-label-primary">Đơn nháp</span>
+            </div>
+
+            <div class="prc-order-body">
+                <div class="prc-supplier-guidance @(hasSingleSuggestion ? "is-simple" : "is-mixed")">
+                    <i class="bx @(hasSingleSuggestion ? "bx-bulb" : "bx-info-circle")"></i>
+                    <div>
+                        @if (hasSingleSuggestion)
+                        {
+                            <strong>Nhà cung cấp gợi ý: @suggestedSuppliers[0].SuggestedSupplierName</strong>
+                            <span>Đã chọn sẵn theo cấu hình sản phẩm. Quản lý vẫn có thể chọn nhà cung cấp khác cho đơn này.</span>
+                        }
+                        else if (suggestedSuppliers.Count > 1)
+                        {
+                            <strong>Các sản phẩm đang được cấu hình với nhiều nhà cung cấp</strong>
+                            <span>@string.Join(" · ", suggestedSuppliers.Select(x => x.SuggestedSupplierName)). Hãy chọn một nhà cung cấp thực tế cho toàn bộ đơn.</span>
+                        }
+                        else
+                        {
+                            <strong>Hãy chọn nhà cung cấp thực tế cho toàn bộ đơn</strong>
+                            <span>Yêu cầu có mặt hàng chưa có trong danh mục nên hệ thống chưa thể gợi ý nhà cung cấp.</span>
+                        }
+                        <small>Việc chọn nhà cung cấp tại đây chỉ áp dụng cho đơn đặt hàng, không thay đổi nhà cung cấp trong danh mục sản phẩm.</small>
+                    </div>
+                </div>
+
+                <div class="prc-fields-grid">
+                    <div class="prc-field prc-field-supplier">
+                        <label class="form-label">Nhà cung cấp của đơn <span>*</span></label>
+                        <select class="form-select" id="supplierSelect" name="Orders[0].SupplierId" required>
+                            @if (order.SupplierId > 0)
+                            {
+                                <option value="@order.SupplierId" selected>@Model.SupplierLabel</option>
+                            }
+                        </select>
+                        <div class="form-text">Gõ tên, mã, số điện thoại hoặc mã số thuế.</div>
+                    </div>
+                    <div class="prc-field prc-field-title">
+                        <label class="form-label">Tiêu đề đơn</label>
+                        <input class="form-control" name="Orders[0].Title" value="@order.Title" maxlength="250" />
+                    </div>
+                    <div class="prc-field">
+                        <label class="form-label">LegalEntity <span>*</span></label>
+                        <select class="form-select" id="legalEntitySelect" name="Orders[0].LegalEntityId" required>
+                            <option value="">-- Chọn đơn vị --</option>
+                            @foreach (var legal in preparation.LegalEntities)
+                            {
+                                <option value="@legal.Id" selected="@(legal.Id == order.LegalEntityId)">@legal.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="prc-field">
+                        <label class="form-label">Kho dự kiến nhận <span>*</span></label>
+                        <select class="form-select" id="warehouseSelect" name="Orders[0].ExpectedWarehouseId" required>
+                            <option value="">-- Chọn kho --</option>
+                            @foreach (var warehouse in preparation.Warehouses)
+                            {
+                                <option value="@warehouse.Id" data-legal-entity-id="@warehouse.LegalEntityId" selected="@(warehouse.Id == order.ExpectedWarehouseId)">@warehouse.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="prc-field">
+                        <label class="form-label">Ngày đặt <span>*</span></label>
+                        <input class="form-control" id="orderDate" type="date" name="Orders[0].OrderDate" value="@order.OrderDate.ToString("yyyy-MM-dd")" required />
+                    </div>
+                    <div class="prc-field">
+                        <label class="form-label">Dự kiến giao</label>
+                        <input class="form-control" id="deliveryDate" type="date" name="Orders[0].ExpectedDeliveryDate" value="@order.ExpectedDeliveryDate?.ToString("yyyy-MM-dd")" />
+                    </div>
+                    <div class="prc-field prc-field-note">
+                        <label class="form-label">Ghi chú cho nhà cung cấp</label>
+                        <input class="form-control" name="Orders[0].Note" value="@order.Note" maxlength="1000" placeholder="Điều kiện giao hàng, người liên hệ..." />
+                    </div>
+                </div>
+
+                <div class="prc-lines-heading">
+                    <div><h6>Hàng hóa đặt mua</h6><p>Số lượng đã được quản lý duyệt và không thể thay đổi tại bước lập đơn.</p></div>
+                    <span><i class="bx bx-lock-alt"></i> Khóa số lượng</span>
+                </div>
+
+                <div class="prc-lines-wrap">
+                    <div class="table-responsive">
+                        <table class="table prc-lines-table mb-0">
+                            <thead><tr><th>#</th><th>Sản phẩm / đơn vị</th><th>NCC cấu hình</th><th class="text-end">Số lượng đặt</th></tr></thead>
+                            <tbody>
+                            @for (var lineIndex = 0; lineIndex < order.Lines.Count; lineIndex++)
+                            {
+                                var requestLine = order.Lines[lineIndex];
+                                if (!lineMap.TryGetValue(requestLine.PurchaseRequestLineId, out var line)) { continue; }
+                                <tr class="prc-line" data-suggested-supplier-id="@line.SuggestedSupplierId">
+                                    <td class="prc-line-number" data-label="#">@(lineIndex + 1)</td>
+                                    <td data-label="Sản phẩm">
+                                        <input type="hidden" name="Orders[0].Lines[@lineIndex].PurchaseRequestLineId" value="@line.PurchaseRequestLineId" />
+                                        <input type="hidden" class="line-quantity" name="Orders[0].Lines[@lineIndex].Quantity" value="@PurchaseQuantityFormatter.Invariant(line.ApprovedQuantity)" />
+                                        <input type="hidden" name="Orders[0].Lines[@lineIndex].UnitPriceBeforeVat" value="0" />
+                                        <input type="hidden" name="Orders[0].Lines[@lineIndex].TaxId" value="0" />
+                                        <div class="prc-product-name">@line.ProductName</div>
+                                        <div class="prc-product-meta">
+                                            @if (!string.IsNullOrWhiteSpace(line.Sku)) { <span>SKU: @line.Sku</span> }
+                                            <span>@line.UnitName@if(line.ItemKind == PurchaseItemKind.Catalog){<span> × @PurchaseQuantityFormatter.Display(line.ConversionFactor)</span>}</span>
+                                            @if(line.ItemKind == PurchaseItemKind.FreeText){<span class="badge bg-label-warning">Hàng chưa có trong danh mục</span>}
+                                        </div>
+                                    </td>
+                                    <td data-label="NCC cấu hình">@if(line.SuggestedSupplierId.HasValue){<span class="prc-configured-supplier">@line.SuggestedSupplierName</span><small class="prc-supplier-mismatch d-none"><i class="bx bx-info-circle"></i> Khác NCC của đơn</small>}else{<span class="text-muted">Chưa cấu hình</span>}</td>
+                                    <td class="text-end" data-label="Số lượng đặt"><span class="prc-locked-quantity">@PurchaseQuantityFormatter.Display(line.ApprovedQuantity) @line.UnitName <i class="bx bx-lock-alt"></i></span></td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="alert alert-info border-0 rounded-0 mb-0"><i class="bx bx-info-circle me-1"></i>Đơn đặt hàng chỉ xác nhận tên, đơn vị và số lượng. Giá thực tế, VAT và phí vận chuyển được nhập trên phiếu nhập kho khi hàng đến.</div>
+            </div>
+        </section>
+
+        <div class="prc-submit-bar">
+            <div class="prc-submit-summary"><span><strong>@preparation.Lines.Count</strong> mặt hàng · Tổng SL <strong>@PurchaseQuantityFormatter.Display(totalQuantity)</strong> · Một đơn đặt hàng</span></div>
+            <div class="prc-submit-actions">
+                <a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@preparation.PurchaseRequestId">Hủy</a>
+                <button class="btn btn-primary" type="submit" id="convertSubmitButton"><i class="bx bx-purchase-tag-alt me-1"></i><span>Tạo đơn đặt hàng</span><kbd>Ctrl+Enter</kbd></button>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section VendorScripts {
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/purchase-request-prepare.js" asp-append-version="true"></script>
+}

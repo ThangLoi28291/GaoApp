@@ -1,0 +1,739 @@
+﻿@using System.Security.Claims
+@{
+    ViewData["Title"] = "POS Bán hàng";
+    Layout = "_ContentNavbarLayout";
+    var currentStoreId = User.FindFirst("store_id")?.Value ?? "";
+    var currentTerminalId = User.FindFirst("terminal_id")?.Value ?? "";
+    var currentTerminalName = User.FindFirst("terminal_name")?.Value ?? "";
+    var currentTerminalCode = User.FindFirst("terminal_code")?.Value ?? "";
+}
+
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos.css" asp-append-version="true" />
+}
+@section header {
+    <div class="pos-header-center">
+
+        <h1 class="pos-page-title">
+            TÍNH TIỀN
+        </h1>
+    </div>
+}
+
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+
+<div class="pos-shell"
+     id="posShell"
+     data-store-id="@currentStoreId"
+     data-terminal-id="@currentTerminalId"
+     data-terminal-name="@currentTerminalName"
+     data-terminal-code="@currentTerminalCode">
+    @Html.AntiForgeryToken()
+    <div id="posErrorBanner"
+         class="alert alert-warning d-none mb-3"
+         role="alert">
+        <div id="posErrorBannerMessage" class="fw-semibold"></div>
+        <div id="posErrorBannerHint" class="small mt-1"></div>
+    </div>
+
+    <div id="posScreenRetryState" class="mb-3" style="display:none;"></div>
+
+    <div id="posBootstrapError"
+         data-error='@Html.Raw(ViewBag.PosBootstrapError ?? "null")'>
+    </div>
+    <div class="row g-3">
+        <!-- =========================================================
+             CỘT TRÁI: QUÉT HÀNG + GIỎ HIỆN TẠI + DANH SÁCH PAYMENT ĐÃ GHI NHẬN
+        ========================================================= -->
+        <div class="col-xl-8 col-lg-7">
+            <partial name="_Toolbar" />
+
+            <div id="posCartRetryState" class="mb-2" style="display:none;"></div>
+
+            <partial name="_CartTable" />
+        </div>
+
+        <!-- =========================================================
+             CỘT PHẢI: TỔNG KẾT + ACTION + META PHỤ + ĐƠN GIỮ
+        ========================================================= -->
+        <div class="col-xl-4 col-lg-5">
+            <div class="sticky-right">
+                <div class="pos-right-stack">
+                    <div class="pos-summary-sticky-wrap">
+                        <partial name="_SummaryPanel" />
+                    </div>
+
+                
+                    <partial name="_DraftMetaPanel" />
+
+                    <partial name="_HeldOrdersPanel" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="pos-bottom-action-bar">
+    <partial name="_SummaryActionsPanel" />
+</div>
+<!-- =========================================================
+     PAYMENT MODAL - COMPACT VIEW
+     - Giữ nguyên nghiệp vụ cũ:
+       + Ghi nhận nhiều payment
+       + Nhập thiếu vẫn lưu payment
+       + Đủ tiền mới chốt đơn
+       + Hỗ trợ tiền mặt / chuyển khoản / thẻ
+========================================================= -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered pos-payment-compact-dialog">
+        <div class="modal-content pos-card pos-payment-compact-modal">
+
+            <div class="modal-header border-0 pb-0">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Thanh toán</h5>
+                    <div class="pos-modal-subtitle">
+                        Nhập số tiền khách thanh toán. Có thể ghi nhận nhiều lần đến khi đủ tiền.
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="posPaymentRetryState" class="mb-3" style="display:none;"></div>
+
+                <!-- TỔNG QUAN -->
+                <div class="pos-payment-compact-summary mb-3">
+                    <div>
+                        <div class="text-muted small">Thành tiền</div>
+                        <div id="paySumGrandTotal" class="pos-payment-compact-total">0</div>
+                    </div>
+
+                    <div class="pos-payment-compact-summary-grid">
+                        <div>
+                            <span>Tạm tính</span>
+                            <strong id="paySumSubtotal">0</strong>
+                        </div>
+
+                        <div>
+                            <span>Giảm giá</span>
+                            <strong id="paySumDiscount">0</strong>
+                        </div>
+
+                        <div>
+                            <span>Đã thanh toán</span>
+                            <strong id="paySumPaid">0</strong>
+                        </div>
+
+                        <div>
+                            <span>Còn thiếu</span>
+                            <strong id="paySumBalance" class="text-danger">0</strong>
+                        </div>
+
+                        <div>
+                            <span>Tiền thừa</span>
+                            <strong id="paySumChange" class="text-success">0</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="paymentForm" class="pos-payment-form" onsubmit="return false;">
+
+                    <!-- NHẬP THANH TOÁN -->
+                    <div class="pos-payment-compact-input-box mb-3">
+                        <div class="row g-2">
+                            <div class="col-5">
+                                <label class="form-label fw-semibold">Phương thức</label>
+                                <select id="payMethod" class="form-select pos-payment-compact-method">
+                                    <option value="0">Tiền mặt</option>
+                                    <option value="1">Chuyển khoản</option>
+                                    <option value="2">Thẻ</option>
+                                </select>
+                            </div>
+
+                            <div class="col-7">
+                                <label class="form-label fw-semibold">Số tiền</label>
+                                <input id="payAmount"
+                                       type="number"
+                                       step="0.01"
+                                       class="form-control pos-payment-compact-amount"
+                                       placeholder="Nhập số tiền" />
+                            </div>
+                        </div>
+
+                        <!-- Giữ nút thu đủ nhưng làm nhỏ lại -->
+                        <div class="mt-2">
+                            <button id="btnPayExact"
+                                    type="button"
+                                    class="btn btn-sm btn-outline-success w-100 pos-payment-fill-balance-btn">
+                                Điền số tiền còn thiếu:
+                                <strong id="payExactAmount">0</strong>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PREVIEW SAU KHI NHẬP -->
+                    <div id="payPreviewBox" class="pay-preview-box pay-preview-box--empty mb-3">
+                        <div id="payPreviewStateText" class="pay-preview-state">
+                            Chưa nhập số tiền
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <span class="pay-preview-label">Còn thiếu sau lần này</span>
+                            <span id="payPreviewBalance" class="pay-preview-value">0</span>
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-1">
+                            <span class="pay-preview-label">Tiền thừa dự kiến</span>
+                            <span id="payPreviewChange" class="pay-preview-value">0</span>
+                        </div>
+                    </div>
+
+                    <!-- QR CHUYỂN KHOẢN - GIỮ CHỨC NĂNG CŨ -->
+                    <div id="paymentQrBox" class="pos-payment-qr-box mb-3" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold">QR chuyển khoản</div>
+                                <div id="paymentQrStatusText" class="text-muted small">
+                                    Nhập số tiền rồi bấm Enter để tạo QR.
+                                </div>
+                            </div>
+
+                            <button id="btnOpenPaymentQrPopup"
+                                    type="button"
+                                    class="btn btn-sm btn-outline-primary"
+                                    style="display:none;">
+                                Xem QR
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- THÔNG TIN BỔ SUNG - CHỈ DÙNG KHI CHUYỂN KHOẢN / THẺ -->
+                    <div class="pos-payment-extra-compact mb-3">
+                        <div class="row g-2">
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label fw-semibold">Mã tham chiếu</label>
+                                <input id="payReference"
+                                       class="form-control"
+                                       placeholder="Mã giao dịch" />
+                            </div>
+
+                            <div class="col-md-6 mb-2">
+                                <label class="form-label fw-semibold">Nhà cung cấp</label>
+                                <input id="payProvider"
+                                       class="form-control"
+                                       placeholder="ACB, VietQR..." />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GHI NHẬN PAYMENT -->
+                    <div class="d-grid mb-3">
+                        <button id="btnAddPayment"
+                                type="button"
+                                class="btn btn-primary pos-payment-add-compact-btn">
+                            Ghi nhận thanh toán
+                        </button>
+                    </div>
+                </form>
+
+                <!-- DANH SÁCH PAYMENT -->
+                <div class="pos-payment-list-compact">
+                    <div class="fw-bold mb-2">Đã ghi nhận</div>
+
+                    <div id="paymentModalListBox" class="border rounded-3 p-2 bg-light-subtle">
+                        <div class="text-muted">Chưa có thanh toán.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer pos-payment-footer pos-payment-compact-footer">
+                <div class="pos-payment-footer__status">
+                    <div id="paymentInlineErrorBox"
+                         class="pos-payment-footer__error"
+                         data-error-visible="false"
+                         style="display: none"></div>
+                    <div id="payFooterStateText" class="pos-payment-footer__state-text">
+                        Kiểm tra số tiền và hoàn tất thanh toán.
+                    </div>
+                </div>
+
+                <div class="pos-payment-footer__actions">
+                    <button type="button"
+                            class="btn btn-light pos-payment-footer__close-btn"
+                            data-bs-dismiss="modal">
+                        Đóng
+                    </button>
+
+                    <button id="btnFinalizeFromPaymentModal"
+                            type="button"
+                            class="btn btn-success pos-payment-footer__finalize-btn">
+                        Chốt đơn
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="paymentQrModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">QR chuyển khoản</h5>
+                    <div id="paymentQrPopupStatusText" class="pos-modal-subtitle">
+                        Khách quét mã để thanh toán
+                    </div>
+                    <div class="small text-muted mt-1">
+                        F9 = Đã nhận tiền · ESC = Đóng QR · F10 = Hủy QR
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body text-center">
+                <img id="paymentQrImage"
+                     src=""
+                     alt="QR chuyển khoản"
+                     style="width:260px;height:260px;object-fit:contain;" />
+
+                <div class="text-start small mt-3">
+                    <div>Ngân hàng: <strong id="paymentQrBankName">-</strong></div>
+                    <div>Số TK: <strong id="paymentQrAccountNumber">-</strong></div>
+                    <div>Chủ TK: <strong id="paymentQrAccountName">-</strong></div>
+                    <div>Số tiền: <strong id="paymentQrAmount">0</strong></div>
+                    <div>Nội dung: <strong id="paymentQrTransferContent">-</strong></div>
+                </div>
+
+                <div class="d-grid gap-2 mt-3">
+                    <button id="btnConfirmPaymentQrPaid"
+                            type="button"
+                            class="btn btn-success">
+                        <i class="bx bx-check-circle me-1"></i>
+                        Đã nhận chuyển khoản
+                    </button>
+
+                    <button id="btnCancelPaymentQr"
+                            type="button"
+                            class="btn btn-outline-danger">
+                        Không nhận được tiền / Hủy QR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     QUICK CREATE CUSTOMER MODAL
+========================================================= -->
+<div class="modal fade" id="quickCreateCustomerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Tạo nhanh khách hàng</h5>
+                    <div class="pos-modal-subtitle">Tạo khách mới và gán ngay vào giỏ hiện tại</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Tên khách hàng <span class="text-danger">*</span></label>
+                    <input id="qcCustomerName" class="form-control" placeholder="Nhập tên khách hàng" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Số điện thoại</label>
+                    <input id="qcCustomerPhone" class="form-control" placeholder="Nhập số điện thoại" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Loại khách</label>
+                    <select id="qcCustomerPriceTier" class="form-select">
+                        <option value="RETAIL" selected>Khách lẻ</option>
+                        <option value="WHOLESALE">Khách sỉ</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Địa chỉ</label>
+                    <input id="qcCustomerAddress" class="form-control" placeholder="Nhập địa chỉ" />
+                </div>
+
+                <div class="mb-0">
+                    <label class="form-label fw-semibold">Ghi chú</label>
+                    <textarea id="qcCustomerNote" class="form-control" rows="3" placeholder="Ghi chú thêm nếu cần"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnSubmitQuickCreateCustomer" type="button" class="btn btn-success">
+                    Lưu và chọn khách
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     HOLD MODAL
+========================================================= -->
+<div class="modal fade" id="holdModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Giữ đơn hiện tại</h5>
+                    <div class="pos-modal-subtitle">Đơn sẽ được đưa vào danh sách giữ để lấy lại sau</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="posHoldRetryState" class="mb-3" style="display:none;"></div>
+
+                <label class="form-label fw-semibold">Ghi chú giữ đơn</label>
+                <textarea id="txtHoldNote" class="form-control" rows="3" placeholder="Ví dụ: Khách đi lấy thêm hàng, chờ chuyển khoản..."></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnConfirmHold" type="button" class="btn btn-warning">Xác nhận giữ đơn</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     CONFIRM MODAL
+========================================================= -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-body text-center p-4">
+                <div class="pos-modal-danger-icon mx-auto mb-3">!</div>
+                <h5 id="confirmTitle" class="fw-bold mb-2">Xác nhận thao tác</h5>
+                <div id="confirmMessage" class="text-muted mb-3">Bạn có chắc chắn muốn thực hiện thao tác này?</div>
+                <div id="confirmNoteBox" class="pos-note-box text-start mb-3" style="display:none;">
+                    <label id="confirmNoteLabel" class="form-label fw-semibold">Nội dung</label>
+                    <textarea id="confirmNoteInput" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="d-flex justify-content-center gap-2">
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Đóng</button>
+                    <button id="btnConfirmAction" type="button" class="btn btn-danger px-4">Xác nhận</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="customerRewardModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Điểm thưởng khách hàng</h5>
+                    <div id="rewardCustomerName" class="pos-modal-subtitle">Khách hàng</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="rewardModalSummary" class="pos-reward-modal-summary">
+                    Đang tải...
+                </div>
+
+                <div class="mt-3">
+                    <label class="form-label fw-semibold">Số phiếu muốn đổi</label>
+                    <input id="rewardVoucherCount"
+                           type="number"
+                           min="1"
+                           step="1"
+                           value="1"
+                           class="form-control" />
+                    <div class="form-text">
+                        Mỗi phiếu sẽ trừ theo cấu hình điểm hiện tại.
+                    </div>
+                </div>
+
+                <div id="rewardModalError" class="alert alert-warning mt-3 d-none"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnRedeemRewardVoucher" type="button" class="btn btn-primary">
+                    Đổi phiếu
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="useRewardVoucherModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Dùng voucher</h5>
+                    <div id="useVoucherCustomerName" class="pos-modal-subtitle">Khách hàng</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="useVoucherList" class="pos-use-voucher-list">
+                    Đang tải...
+                </div>
+
+                <div class="pos-use-voucher-total mt-3">
+                    <span>Tổng giảm bằng voucher</span>
+                    <strong id="useVoucherTotal">0</strong>
+                </div>
+
+                <div id="useVoucherError" class="alert alert-warning mt-3 d-none"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnClearAppliedVouchers"
+                        type="button"
+                        class="btn btn-outline-danger">
+                    Bỏ voucher
+                </button>
+
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                    Đóng
+                </button>
+
+                <button id="btnApplyRewardVouchers"
+                        type="button"
+                        class="btn btn-primary">
+                    Áp dụng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     LINE DISCOUNT MODAL
+========================================================= -->
+<div class="modal fade" id="lineDiscountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Giảm giá dòng hàng</h5>
+                    <div id="lineDiscountItemName" class="pos-modal-subtitle">Sản phẩm</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="lineDiscountLineId" />
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Số tiền giảm giá</label>
+                    <input id="lineDiscountAmount"
+                           type="number"
+                           step="0.01"
+                           min="0"
+                           class="form-control"
+                           placeholder="Nhập số tiền giảm" />
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="btnClearLineDiscount" type="button" class="btn btn-outline-secondary">Xóa giảm giá</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnSaveLineDiscount" type="button" class="btn btn-warning">Lưu giảm giá</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     QTY EDIT MODAL
+========================================================= -->
+<div class="modal fade" id="qtyEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content pos-card">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title pos-modal-title">Chỉnh số lượng</h5>
+                    <div id="qtyEditItemName" class="pos-modal-subtitle">Sản phẩm</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <input type="hidden" id="qtyEditLineId" />
+
+                <div class="mb-0">
+                    <label class="form-label fw-semibold">Số lượng mới</label>
+                    <input id="qtyEditValue"
+                           type="number"
+                           min="1"
+                           step="1"
+                           class="form-control form-control-lg text-center fw-bold"
+                           placeholder="Nhập số lượng" />
+                    <div class="form-text">
+                        Enter để lưu, Esc để đóng.
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Đóng</button>
+                <button id="btnSaveQtyEdit" type="button" class="btn btn-primary">
+                    Cập nhật số lượng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content pos-image-preview-modal">
+            <div class="modal-body text-center p-2">
+                <img id="imagePreviewEl"
+                     src=""
+                     alt=""
+                     style="max-width:100%; max-height:70vh; object-fit:contain;" />
+            </div>
+        </div>
+    </div>
+</div>
+<!-- =========================================================
+     HELD ORDERS MODAL
+     - Modal xem chi tiết đơn giữ theo ca POS
+     - BƯỚC 2A: mới dựng khung, chưa bind dữ liệu thật
+========================================================= -->
+<div class="modal fade"
+     id="heldOrdersModal"
+     tabindex="-1"
+     aria-labelledby="heldOrdersModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content pos-held-modal">
+            <div class="modal-header border-0 pb-2">
+                <div>
+                    <h5 class="modal-title pos-modal-title mb-1" id="heldOrdersModalLabel">
+                        Danh sách đơn giữ
+                    </h5>
+                    <div class="pos-modal-subtitle">
+                        Xem chi tiết đơn giữ theo ca POS. Đơn của ca khác không ảnh hưởng việc chốt ca hiện tại.
+                    </div>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Đóng"></button>
+            </div>
+
+            <div class="modal-body pt-2">
+                <div class="pos-held-modal__grid">
+                    <section class="pos-held-modal-section pos-held-modal-section--current">
+                        <div class="pos-held-modal-section__header">
+                            <div>
+                                <div class="pos-held-modal-section__title">
+                                    Đơn giữ ca hiện tại
+                                </div>
+                                <div class="pos-held-modal-section__subtitle">
+                                    Các đơn này ảnh hưởng việc chốt ca hiện tại.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="heldOrdersCurrentShiftList" class="pos-held-modal-section__body">
+                            <div class="pos-held-modal-empty">
+                                Đang tải dữ liệu đơn giữ...
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="pos-held-modal-section pos-held-modal-section--other">
+                        <div class="pos-held-modal-section__header">
+                            <div>
+                                <div class="pos-held-modal-section__title">
+                                    Đơn giữ ca khác
+                                </div>
+                                <div class="pos-held-modal-section__subtitle">
+                                    Các đơn này chỉ để theo dõi và hỗ trợ xử lý khi cần.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="heldOrdersOtherShiftList" class="pos-held-modal-section__body">
+                            <div class="pos-held-modal-empty">
+                                Đang tải dữ liệu đơn giữ...
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 pt-0">
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="cartImageHoverPreview" class="pos-image-hover-preview" style="display:none;">
+    <img id="cartImageHoverPreviewImg" src="" alt="" />
+</div>
+<div class="modal fade" id="posErrorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pos-error-modal">
+            <div class="modal-header">
+                <h5 class="modal-title">Không thể thực hiện thao tác</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="posErrorModalMessage" class="mb-2 fw-semibold"></div>
+                <div id="posErrorModalHint" class="text-muted small mb-3"></div>
+                <div id="posErrorModalMeta" class="small mb-3"></div>
+
+                <div id="posErrorModalActions" class="d-flex flex-wrap gap-2"></div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button"
+                        class="btn btn-light"
+                        data-bs-dismiss="modal">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.state.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.dom.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.common.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.render.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.customer.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.payment.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.barcode.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.order.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.keyboard.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.app.js" asp-append-version="true"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async function () {
+            const app = window.PosApp.create();
+            await app.init();
+            window.posApp = app;
+        });
+    </script>
+}

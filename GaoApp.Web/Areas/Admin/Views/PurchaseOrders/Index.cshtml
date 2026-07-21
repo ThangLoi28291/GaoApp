@@ -1,0 +1,88 @@
+@model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseOrderIndexViewModel
+@using GaoApp.Web.Areas.Admin.Models.Purchases
+@{
+    ViewData["Title"] = "Đơn đặt hàng";
+    var result = Model.Result;
+    var query = result.Query;
+    var pagedOrders = result.Orders;
+    var tabs = new[]
+    {
+        new { Key = "awaiting", Label = "Chờ tôi duyệt", Icon = "bx-user-check", Visible = Model.CanApprove },
+        new { Key = "draft", Label = "Nháp / Cần sửa", Icon = "bx-edit", Visible = true },
+        new { Key = "approved", Label = "Đã duyệt", Icon = "bx-check-shield", Visible = true },
+        new { Key = "sent", Label = "Đã gửi NCC", Icon = "bx-send", Visible = true },
+        new { Key = "receiving", Label = "Đang nhận", Icon = "bx-package", Visible = true },
+        new { Key = "completed", Label = "Hoàn tất", Icon = "bx-check-circle", Visible = true },
+        new { Key = "closed", Label = "Hủy / Từ chối", Icon = "bx-archive", Visible = true },
+        new { Key = "all", Label = "Tất cả", Icon = "bx-list-ul", Visible = true }
+    };
+}
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-index.css" asp-append-version="true" /> }
+
+<div class="poi-page">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div><h4 class="mb-1">Đơn đặt hàng</h4><div class="text-muted">Kiểm soát cam kết mua, xét duyệt và tiến độ giao hàng theo từng đơn.</div></div>
+        @if (Model.CanCreate)
+        {
+            <a class="btn btn-primary" asp-action="Create"><i class="bx bx-plus me-1"></i>Tạo đơn ngoài yêu cầu</a>
+        }
+    </div>
+
+    @if (TempData["Success"] is string success) { <div class="alert alert-success">@success</div> }
+    @if (TempData["Error"] is string error) { <div class="alert alert-danger">@error</div> }
+
+    <div class="card poi-card mb-4">
+        <div class="poi-tabs">
+            @foreach (var tab in tabs.Where(x => x.Visible))
+            {
+                var active = string.Equals(query.Tab, tab.Key, StringComparison.OrdinalIgnoreCase);
+                var count = result.TabCounts.TryGetValue(tab.Key, out var value) ? value : 0;
+                <a class="poi-tab @(active ? "active" : null)" asp-action="Index" asp-route-tab="@tab.Key"
+                   asp-route-search="@query.Search" asp-route-legalEntityId="@query.LegalEntityId"
+                   asp-route-fromDate="@query.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate?.ToString("yyyy-MM-dd")">
+                    <i class="bx @tab.Icon"></i><span>@tab.Label</span><span class="poi-count">@count</span>
+                </a>
+            }
+        </div>
+        <div class="card-body border-top">
+            <form method="get" asp-action="Index" class="row g-3 align-items-end">
+                <input type="hidden" name="Tab" value="@query.Tab" />
+                <div class="col-12 col-lg-5"><label class="form-label" for="Search">Tìm đơn đặt hàng</label><div class="input-group"><span class="input-group-text"><i class="bx bx-search"></i></span><input class="form-control" id="Search" name="Search" value="@query.Search" maxlength="100" placeholder="Mã đơn, tên đơn hoặc nhà cung cấp..." /></div></div>
+                <div class="col-12 col-sm-6 col-lg-3"><label class="form-label" for="LegalEntityId">Đơn vị mua hàng</label><select class="form-select" id="LegalEntityId" name="LegalEntityId"><option value="">Tất cả HKD</option>@foreach (var item in Model.LegalEntities){<option value="@item.Id" selected="@(item.Id == query.LegalEntityId)">@item.Text</option>}</select></div>
+                <div class="col-6 col-lg-2"><label class="form-label" for="FromDate">Từ ngày</label><input class="form-control" id="FromDate" name="FromDate" type="date" value="@query.FromDate?.ToString("yyyy-MM-dd")" /></div>
+                <div class="col-6 col-lg-2"><label class="form-label" for="ToDate">Đến ngày</label><input class="form-control" id="ToDate" name="ToDate" type="date" value="@query.ToDate?.ToString("yyyy-MM-dd")" /></div>
+                <div class="col-12 d-flex justify-content-end gap-2"><a class="btn btn-label-secondary" asp-action="Index" asp-route-tab="@query.Tab">Đặt lại</a><button class="btn btn-primary" type="submit"><i class="bx bx-filter-alt me-1"></i>Lọc danh sách</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card poi-card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 poi-table">
+                <thead><tr><th>Đơn đặt hàng</th><th>Nhà cung cấp</th><th>Đơn vị / Kho nhận</th><th>Tiến độ giao</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                @if (!pagedOrders.Items.Any())
+                {
+                    <tr><td colspan="6"><div class="poi-empty"><span><i class="bx bx-purchase-tag-alt"></i></span><h6>Không có đơn phù hợp</h6><p>Thử đổi trạng thái hoặc điều kiện tìm kiếm.</p></div></td></tr>
+                }
+                @foreach (var item in pagedOrders.Items)
+                {
+                    var progress = item.OrderedQuantity <= 0 ? 0 : Math.Min(100m, item.ReceivedQuantity * 100m / item.OrderedQuantity);
+                    <tr>
+                        <td><a class="fw-semibold" asp-action="Details" asp-route-id="@item.Id">@(string.IsNullOrWhiteSpace(item.Title) ? item.OrderNumber : item.Title)</a><div class="small text-muted">@item.OrderNumber · @item.OrderDate.ToString("dd/MM/yyyy")</div><span class="poi-source @(item.SourcePurchaseRequestId.HasValue ? "source-request" : "source-direct")"><i class="bx @(item.SourcePurchaseRequestId.HasValue ? "bx-link-alt" : "bx-error-circle")"></i>@(item.SourcePurchaseRequestId.HasValue ? "Từ yêu cầu mua" : "Ngoài yêu cầu")</span></td>
+                        <td><div class="fw-medium">@item.SupplierName</div></td>
+                        <td><div>@item.LegalEntityName</div><small class="text-muted">@item.WarehouseName</small></td>
+                        <td><div class="d-flex justify-content-between small mb-1"><span>Nhận @PurchaseQuantityFormatter.Display(item.ReceivedQuantity) / @PurchaseQuantityFormatter.Display(item.OrderedQuantity)</span><span>@progress.ToString("0")%</span></div><div class="progress poi-progress"><div class="progress-bar" style="width:@progress.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div></div><small class="text-muted">Còn chờ @PurchaseQuantityFormatter.Display(item.PendingQuantity)</small></td>
+                        <td><span class="badge @PurchaseOrderPresentation.StatusClass(item.Status)">@PurchaseOrderPresentation.StatusLabel(item.Status)</span></td>
+                        <td class="text-end"><a class="btn btn-sm btn-icon btn-label-secondary" asp-action="Details" asp-route-id="@item.Id" aria-label="Xem chi tiết"><i class="bx bx-chevron-right"></i></a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        @if (pagedOrders.TotalPages > 1)
+        {
+            <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2"><small class="text-muted">Trang @pagedOrders.Page/@pagedOrders.TotalPages · @pagedOrders.TotalItems đơn</small><nav><ul class="pagination pagination-sm mb-0">@for(var p=1;p<=pagedOrders.TotalPages;p++){<li class="page-item @(p==pagedOrders.Page?"active":null)"><a class="page-link" asp-action="Index" asp-route-tab="@query.Tab" asp-route-search="@query.Search" asp-route-legalEntityId="@query.LegalEntityId" asp-route-fromDate="@query.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate?.ToString("yyyy-MM-dd")" asp-route-page="@p">@p</a></li>}</ul></nav></div>
+        }
+    </div>
+</div>

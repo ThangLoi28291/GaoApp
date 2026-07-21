@@ -1,0 +1,181 @@
+﻿@model GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto?
+
+@if (Model != null && Model.HasItems)
+{
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <span class="fw-semibold">Lịch sử xử lý sai sót</span>
+                <span class="text-muted small ms-2">
+                    Hóa đơn gốc: @(Model.OriginalInvoiceNo ?? ("#" + Model.OriginalInvoiceHeadId))
+                </span>
+            </div>
+
+            <span class="badge bg-primary">
+                @Model.Items.Count hồ sơ
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:70px;">Case</th>
+                        <th>Loại</th>
+                        <th>Hóa đơn mới</th>
+                        <th>Trạng thái hồ sơ</th>
+                        <th>Trạng thái Viettel</th>
+                        <th>Lý do</th>
+                        <th>Văn bản</th>
+                        <th>Ngày phát hành</th>
+                        <th class="text-end">Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @foreach (var item in Model.Items)
+                    {
+                        <tr>
+                            <td>
+                                #@item.CorrectionCaseId
+                            </td>
+
+                            <td>
+                                <span class="badge @item.TypeBadgeClass">
+                                    @item.TypeName
+                                </span>
+                            </td>
+
+                            <td>
+                                @if (item.NewInvoiceHeadId.HasValue)
+                                {
+                                    <div class="fw-semibold">
+                                        #@item.NewInvoiceHeadId
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(item.NewProviderInvoiceNo))
+                                    {
+                                        <span class="badge bg-success">
+                                            @item.NewProviderInvoiceNo
+                                        </span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(item.NewInvoiceNo))
+                                    {
+                                        <span class="badge bg-secondary">
+                                            @item.NewInvoiceNo
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">
+                                            Chưa có số
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Chưa tạo hóa đơn</span>
+                                }
+                            </td>
+
+                            <td>
+                                <span class="badge @item.StatusBadgeClass">
+                                    @item.StatusName
+                                </span>
+
+                                @if (!string.IsNullOrWhiteSpace(item.LastErrorMessage))
+                                {
+                                    <div class="small text-danger mt-1">
+                                        @item.LastErrorMessage
+                                    </div>
+                                }
+                            </td>
+
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(item.ProviderStatusName))
+                                {
+                                    <span class="text-muted small">
+                                        @item.ProviderStatusName
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">-</span>
+                                }
+                            </td>
+
+                            <td style="min-width:220px;">
+                                <div class="small">
+                                    @(item.Reason ?? "-")
+                                </div>
+                            </td>
+
+                            <td style="min-width:180px;">
+                                @if (!string.IsNullOrWhiteSpace(item.AgreementDocumentNo))
+                                {
+                                    <div class="small">
+                                        @item.AgreementDocumentNo
+                                    </div>
+
+                                    @if (item.AgreementDateUtc.HasValue)
+                                    {
+                                        <div class="text-muted small">
+                                            @item.AgreementDateUtc.Value.ToString("dd/MM/yyyy")
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">-</span>
+                                }
+                            </td>
+
+                            <td>
+                                @if (item.IssuedAtUtc.HasValue)
+                                {
+                                    <span class="small">
+                                        @item.IssuedAtUtc.Value.ToString("dd/MM/yyyy HH:mm")
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">-</span>
+                                }
+                            </td>
+
+                            <td class="text-end">
+                                @if (item.NewInvoiceHeadId.HasValue)
+                                {
+                                    <div class="btn-group btn-group-sm">
+                                        <a asp-area="Admin"
+                                               asp-controller="Invoice"
+                                               asp-action="Detail"
+                                               asp-route-id="@item.NewInvoiceHeadId"
+                                               class="btn btn-outline-primary">
+                                            Chi tiết
+                                        </a>
+
+                                        <a asp-area="Admin"
+                                               asp-controller="Invoice"
+                                               asp-action="ViettelPayload"
+                                               asp-route-id="@item.NewInvoiceHeadId"
+                                               class="btn btn-outline-info">
+                                            JSON
+                                        </a>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else if (Model != null && !Model.IsCurrentOriginal)
+{
+    <div class="alert alert-warning">
+        Hóa đơn này là hóa đơn xử lý sai sót của hóa đơn gốc
+        <strong>@(Model.OriginalInvoiceNo ?? ("#" + Model.OriginalInvoiceHeadId))</strong>.
+    </div>
+}

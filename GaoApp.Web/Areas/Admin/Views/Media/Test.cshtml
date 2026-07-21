@@ -1,0 +1,51 @@
+﻿@{
+    ViewData["Title"] = "Test Temp Upload";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link href="https://unpkg.com/filepond/dist/filepond.min.css" rel="stylesheet" />
+    <link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css" rel="stylesheet" />
+}
+
+<input type="file" id="testUpload" name="file" multiple />
+@Html.AntiForgeryToken()
+
+@section PageScripts {
+    <script src="https://unpkg.com/filepond/dist/filepond.min.js"></script>
+    <script src="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            // register plugin (optional)
+            if (window.FilePondPluginImagePreview) {
+                FilePond.registerPlugin(FilePondPluginImagePreview);
+            }
+
+            const input = document.querySelector('#testUpload');
+            if (!input) return;
+
+            // lấy antiforgery token
+            const tokenEl = document.querySelector('input[name="__RequestVerificationToken"]');
+            const csrf = tokenEl ? tokenEl.value : '';
+
+            FilePond.create(input, {
+                allowMultiple: true,
+                name: 'file', // field name gửi lên server
+                server: {
+                    process: {
+                        url: '/admin/media/temp',
+                        method: 'POST',
+                        headers: { 'RequestVerificationToken': csrf }
+                    },
+                    revert: {
+                        url: '/admin/media/temp',
+                        method: 'DELETE',
+                        headers: { 'RequestVerificationToken': csrf }
+                    }
+                }
+            });
+        });
+    </script>
+}

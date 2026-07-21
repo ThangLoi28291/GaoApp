@@ -1,0 +1,251 @@
+﻿@model GaoApp.Web.Areas.Admin.Models.Inventory.StockDocumentLinesTableViewModel
+
+@{
+    var canEdit = Model.CanEdit;
+    var canViewCost = Model.CanViewCost;
+    var lines = Model.Lines ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>();
+
+    var totalLines = lines.Count;
+    var totalQuantity = lines.Sum(x => x.Quantity);
+    var totalBaseQuantity = lines.Sum(x => x.BaseQuantity);
+    var totalAmount = canViewCost ? lines.Sum(x => x.LineTotal) : 0m;
+    var colspan = 7 + (canViewCost ? 2 : 0) + (canEdit ? 1 : 0);
+}
+
+<div class="sd-line-summary-grid">
+    <div class="sd-line-summary-item">
+        <div class="sd-line-summary-label">Số dòng</div>
+        <div class="sd-line-summary-value">@totalLines.ToString("N0")</div>
+    </div>
+
+    <div class="sd-line-summary-item">
+        <div class="sd-line-summary-label">Tổng SL nhập</div>
+        <div class="sd-line-summary-value">@totalQuantity.ToString("0.###")</div>
+    </div>
+
+    <div class="sd-line-summary-item">
+        <div class="sd-line-summary-label">Tổng SL quy đổi</div>
+        <div class="sd-line-summary-value">@totalBaseQuantity.ToString("0.###")</div>
+    </div>
+
+    @if (canViewCost)
+    {
+        <div class="sd-line-summary-item">
+            <div class="sd-line-summary-label">Tổng tiền dòng</div>
+            <div class="sd-line-summary-value text-primary">@totalAmount.ToString("N0")</div>
+        </div>
+    }
+</div>
+
+<div class="table-responsive sd-line-table-wrap">
+    <table class="table table-hover align-middle mb-0 sd-line-table">
+        <colgroup>
+            <col style="width:64px;" />
+            <col style="min-width:300px;" />
+            <col style="width:100px;" />
+            <col style="width:90px;" />
+            <col style="width:130px;" />
+            <col style="width:110px;" />
+            @if (canViewCost)
+            {
+                <col style="width:160px;" />
+                <col style="width:140px;" />
+            }
+            <col style="width:170px;" />
+            @if (canEdit)
+            {
+                <col style="width:150px;" />
+            }
+        </colgroup>
+        <thead>
+            <tr>
+                <th>Line</th>
+                <th>Sản phẩm</th>
+                <th>Đơn vị</th>
+                <th class="text-end">Factor</th>
+                <th class="text-end">SL nhập</th>
+                <th class="text-end">SL gốc</th>
+                @if (canViewCost)
+                {
+                    <th class="text-end">Giá nhập</th>
+                    <th class="text-end">Thành tiền</th>
+                }
+                <th>HĐ XML</th>
+
+                @if (canEdit)
+                {
+                    <th class="text-center text-nowrap">Thao tác</th>
+                }
+            </tr>
+        </thead>
+
+        <tbody id="stockLineTableBody">
+            @if (!lines.Any())
+            {
+                <tr>
+                    <td colspan="@colspan" class="text-center text-muted py-5">
+                        <div class="fw-semibold">Chưa có dòng chi tiết</div>
+                        <div class="small">Quét barcode hoặc tìm sản phẩm để thêm vào phiếu.</div>
+                    </td>
+                </tr>
+            }
+            else
+            {
+                foreach (var line in lines)
+                {
+                    var hasImage = !string.IsNullOrWhiteSpace(line.ProductImageUrl);
+
+                    // Ưu tiên BarcodeSnapshot, nếu chưa có thì tạm fallback SKU để không bị trống.
+                    // Muốn chuẩn tuyệt đối thì backend AddLine phải set BarcodeSnapshot từ lookup.
+                    var barcodeText = !string.IsNullOrWhiteSpace(line.BarcodeSnapshot)
+                        ? line.BarcodeSnapshot
+                        : (!string.IsNullOrWhiteSpace(line.SkuSnapshot) ? line.SkuSnapshot : "-");
+
+                    <tr data-line-id="@line.Id">
+                        <td class="text-center fw-bold text-muted">@line.LineNo</td>
+
+                        <td>
+                            <div class="sd-product-cell">
+                                <div class="sd-product-img-wrap">
+                                    @if (hasImage)
+                                    {
+                                        <img class="sd-product-img"
+                                             src="@line.ProductImageUrl"
+                                             alt="@line.ProductNameSnapshot" />
+
+                                        <div class="sd-img-preview">
+                                            <img src="@line.ProductImageUrl"
+                                                 alt="@line.ProductNameSnapshot" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="sd-product-img-empty">
+                                            <i class="bx bx-image"></i>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="sd-product-info">
+                                    <div class="sd-product-name">@line.ProductNameSnapshot</div>
+                                    <div class="sd-product-meta">
+                                        <i class="bx bx-barcode-reader"></i>
+                                        Barcode: @barcodeText
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(line.UnitName))
+                            {
+                                <span class="badge bg-label-secondary sd-unit-badge">@line.UnitName</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
+
+                        <td class="text-end">@line.Factor.ToString("0.###")</td>
+
+                        <td class="text-end">
+                            @if (canEdit)
+                            {
+                                <input type="number"
+                                       class="form-control form-control-sm text-end sd-inline-qty js-inline-line-qty"
+                                       value="@line.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
+                                       min="0.001"
+                                       step="0.001"
+                                       inputmode="decimal"
+                                       data-line-id="@line.Id"
+                                       data-unit-id="@line.UnitId"
+                                       data-note="@line.Note" />
+                            }
+                            else
+                            {
+                                <span class="fw-semibold">@line.Quantity.ToString("0.###")</span>
+                            }
+                        </td>
+
+                        <td class="text-end">@line.BaseQuantity.ToString("0.###")</td>
+
+                        @if (canViewCost)
+                        {
+                            <td class="text-end">
+                                <span class="fw-semibold">@line.UnitCost.ToString("N0")</span>
+                            </td>
+
+                            <td class="text-end sd-money">@line.LineTotal.ToString("N0")</td>
+                        }
+
+                        <td>
+                            <div class="sd-xml-box small">
+                                @if (line.UseInputInvoice)
+                                {
+                                    <span class="badge bg-label-primary mb-1">Có HĐ XML</span>
+
+                                    if (!string.IsNullOrWhiteSpace(line.XmlItemName))
+                                    {
+                                        <div class="text-muted text-truncate" style="max-width:240px;">
+                                            @line.XmlItemName
+                                        </div>
+                                    }
+
+                                    <div class="text-muted">
+                                        Lệch SL: @line.QuantityDifference.ToString("0.###")
+                                        @if (canViewCost)
+                                        {
+                                            <text>|
+                                            Lệch tiền: @line.AmountDifference.ToString("N0")</text>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-label-secondary">Không thuộc XML</span>
+                                }
+                            </div>
+
+                            @if (canEdit)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary mt-2 btn-map-input-invoice-line"
+                                        data-line-id="@line.Id">
+                                    Gắn XML
+                                </button>
+                            }
+                        </td>
+
+                        @if (canEdit)
+                        {
+                            <td class="text-center text-nowrap">
+                                <div class="sd-line-actions">
+                                    <button type="button"
+                                            class="btn btn-sm btn-warning btn-edit-line"
+                                            data-line-id="@line.Id"
+                                            data-product-name="@line.ProductNameSnapshot"
+                                            data-image-url="@line.ProductImageUrl"
+                                            data-unit-id="@line.UnitId"
+                                            data-unit-name="@line.UnitName"
+                                            data-factor="@line.Factor.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                            data-quantity="@line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                            data-note="@line.Note">
+                                        Sửa
+                                    </button>
+
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger btn-delete-line"
+                                            data-line-id="@line.Id"
+                                            data-product-name="@line.ProductNameSnapshot">
+                                        Xóa
+                                    </button>
+                                </div>
+                            </td>
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

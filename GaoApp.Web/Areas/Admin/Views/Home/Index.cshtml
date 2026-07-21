@@ -1,0 +1,53 @@
+﻿@{
+    ViewData["Title"] = "Trang chủ";
+}
+
+<div class="container-fluid py-4">
+
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-5">
+
+            <h2 class="fw-bold mb-3">
+                GaoApp Dashboard
+            </h2>
+
+            <p class="text-muted mb-4">
+                Trang điều hành hệ thống.
+            </p>
+
+            <div class="row g-3">
+
+                <div class="col-md-3">
+                    <a href="/admin/pos"
+                           class="btn btn-primary w-100 py-3 rounded-4">
+                        POS Bán hàng
+                    </a>
+                </div>
+
+                <div class="col-md-3">
+                    <a href="/admin/pos-shift"
+                           class="btn btn-outline-primary w-100 py-3 rounded-4">
+                        Ca POS
+                    </a>
+                </div>
+
+                <div class="col-md-3">
+                    <a href="/admin/orders"
+                           class="btn btn-outline-dark w-100 py-3 rounded-4">
+                        Đơn POS
+                    </a>
+                </div>
+
+                <div class="col-md-3">
+                    <a href="/admin/dashboard"
+                           class="btn btn-outline-success w-100 py-3 rounded-4">
+                        Dashboard
+                    </a>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+</div>

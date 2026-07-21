@@ -1,0 +1,221 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
+
+<style>
+    .pos-context-bar {
+        margin-bottom: 18px;
+        padding: 10px;
+        border-radius: 22px;
+        background: linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%);
+        border: 1px solid #e8edf3;
+    }
+
+    .pos-context-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .pos-context-item {
+        position: relative;
+        min-height: 102px;
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: #fff;
+        border: 1px solid #e9eef5;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, .03);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        transition: all .18s ease;
+    }
+
+        .pos-context-item:hover {
+            border-color: #d8e2ee;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+            transform: translateY(-1px);
+        }
+
+    .pos-context-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: .76rem;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #667085;
+    }
+
+    .pos-context-value {
+        font-size: 1.12rem;
+        line-height: 1.35;
+        font-weight: 800;
+        color: #111827;
+        word-break: break-word;
+    }
+
+    .pos-context-sub {
+        margin-top: 8px;
+        font-size: .84rem;
+        line-height: 1.4;
+        color: #667085;
+    }
+
+    .pos-context-inline-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #f2f4f7;
+        color: #475467;
+        font-size: .8rem;
+        font-weight: 700;
+        width: fit-content;
+        max-width: 100%;
+    }
+
+        .pos-context-inline-meta i {
+            font-size: .92rem;
+        }
+
+    .pos-shift-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        max-width: 100%;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: .84rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+        .pos-shift-pill.open {
+            background: #eafaf0;
+            color: #18794e;
+        }
+
+        .pos-shift-pill.warning {
+            background: #fff6e8;
+            color: #b54708;
+        }
+
+    .pos-context-item.shift-card {
+        background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
+    }
+
+    .pos-context-empty {
+        color: #98a2b3;
+    }
+
+    @@media (max-width: 1399.98px) {
+        .pos-context-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    @@media (max-width: 767.98px) {
+        .pos-context-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pos-context-item {
+            min-height: auto;
+            padding: 15px 16px;
+        }
+
+        .pos-context-value {
+            font-size: 1.02rem;
+        }
+    }
+</style>
+
+<div class="pos-context-bar">
+    <div class="pos-context-grid">
+
+        <div class="pos-context-item">
+            <div class="pos-context-label">
+                <i class="bx bx-store-alt"></i>
+                <span>Store</span>
+            </div>
+            <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.StoreName) ? "pos-context-empty" : "")">
+                @(string.IsNullOrWhiteSpace(Model.StoreName) ? "Chưa xác định store" : Model.StoreName)
+            </div>
+        </div>
+
+        <div class="pos-context-item">
+            <div class="pos-context-label">
+                <i class="bx bx-desktop"></i>
+                <span>Terminal</span>
+            </div>
+            <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.TerminalName) ? "pos-context-empty" : "")">
+                @(string.IsNullOrWhiteSpace(Model.TerminalName) ? "Chưa xác định terminal" : Model.TerminalName)
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.TerminalCode))
+            {
+                <div class="pos-context-inline-meta">
+                    <i class="bx bx-barcode"></i>
+                    <span>@Model.TerminalCode</span>
+                </div>
+            }
+        </div>
+
+        <div class="pos-context-item">
+            <div class="pos-context-label">
+                <i class="bx bx-user"></i>
+                <span>Nhân viên</span>
+            </div>
+            <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.UserName) ? "pos-context-empty" : "")">
+                @(string.IsNullOrWhiteSpace(Model.UserName) ? "Chưa xác định nhân viên" : Model.UserName)
+            </div>
+        </div>
+
+        <div class="pos-context-item shift-card">
+            <div class="pos-context-label">
+                <i class="bx bx-time-five"></i>
+                <span>Ca hiện tại</span>
+            </div>
+
+            <div class="pos-context-value" id="posCtxShiftValue">
+                @if (Model.HasOpenShift)
+                {
+                    <span class="pos-shift-pill open" id="posCtxShiftPill">
+                        <i class="bx bx-check-circle"></i>
+                        <span id="posCtxShiftCode">@Model.ShiftCode</span>
+                    </span>
+                }
+                else
+                {
+                    <span class="pos-shift-pill warning" id="posCtxShiftPill">
+                        <i class="bx bx-error-circle"></i>
+                        <span id="posCtxShiftCode">Chưa mở ca</span>
+                    </span>
+                }
+            </div>
+
+            <div class="pos-context-sub" id="posCtxShiftOpenedAt">
+                @if (Model.OpenedAtUtc.HasValue)
+                {
+                    <text>Mở lúc: @Model.OpenedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</text>
+                }
+            </div>
+        </div>
+
+        <div class="pos-context-item">
+            <div class="pos-context-label">
+                <i class="bx bx-package"></i>
+                <span>Kho bán</span>
+            </div>
+            <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.WarehouseName) ? "pos-context-empty" : "")" id="posCtxWarehouseName">
+                @(string.IsNullOrWhiteSpace(Model.WarehouseName) ? "Chưa chọn kho" : Model.WarehouseName)
+            </div>
+        </div>
+
+    </div>
+</div>

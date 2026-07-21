@@ -1,0 +1,224 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceCorrectionCreateViewModel
+
+@{
+    ViewData["Title"] = "Lập hóa đơn xử lý sai sót";
+
+    var info = Model.Info;
+    var req = Model.Request;
+}
+
+<div class="container-fluid">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div>
+            <h3 class="mb-1 fw-bold">
+                @info.TypeName
+            </h3>
+            <div class="text-muted">
+                Tạo hóa đơn mới liên kết với hóa đơn gốc đã phát hành Viettel.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="Invoice"
+               asp-action="ViettelPayload"
+               asp-route-id="@info.OriginalInvoiceHeadId"
+               class="btn btn-outline-secondary">
+            Quay lại hóa đơn gốc
+        </a>
+    </div>
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">
+            @TempData["Error"]
+        </div>
+    }
+
+    <div class="alert alert-warning">
+        <div class="fw-semibold">Lưu ý nghiệp vụ</div>
+        <div>
+            Hóa đơn đã phát hành không sửa trực tiếp. Hệ thống sẽ tạo hóa đơn mới để thay thế hoặc điều chỉnh.
+            Trước khi phát hành Viettel, cần kiểm tra kỹ thông tin và dòng hàng.
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">
+            Hóa đơn gốc
+        </div>
+
+        <div class="card-body">
+            <div class="row g-3">
+
+                <div class="col-md-3">
+                    <div class="text-muted small">Mã hóa đơn GaoApp</div>
+                    <div class="fw-semibold">#@info.OriginalInvoiceHeadId</div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="text-muted small">Số hóa đơn Viettel</div>
+                    <div class="fw-semibold text-success">
+                        @(info.ProviderInvoiceNo ?? info.OriginalInvoiceNo ?? "-")
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="text-muted small">Ngày phát hành</div>
+                    <div class="fw-semibold">
+                        @(info.IssuedAtUtc?.ToString("dd/MM/yyyy HH:mm") ?? "-")
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="text-muted small">Tổng tiền</div>
+                    <div class="fw-semibold">
+                        @info.GrandTotal.ToString("N0")
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="text-muted small">Người mua</div>
+                    <div class="fw-semibold">
+                        @(info.BuyerName ?? "-")
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="text-muted small">MST người mua</div>
+                    <div class="fw-semibold">
+                        @(info.BuyerTaxCode ?? "-")
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header bg-white fw-semibold">
+            Thông tin xử lý sai sót
+        </div>
+
+        <div class="card-body">
+            <form asp-area="Admin"
+                  asp-controller="InvoiceCorrection"
+                  asp-action="Create"
+                  method="post">
+                @Html.AntiForgeryToken()
+
+                <input type="hidden"
+                       name="OriginalInvoiceHeadId"
+                       value="@req.OriginalInvoiceHeadId" />
+
+                <input type="hidden"
+                       name="Type"
+                       value="@req.Type" />
+
+                <div class="row g-3">
+
+                    <div class="col-md-12">
+                        <label class="form-label">
+                            Lý do sai sót <span class="text-danger">*</span>
+                        </label>
+
+                        <textarea name="Reason"
+                                  class="form-control"
+                                  rows="3"
+                                  maxlength="255"
+                                  required
+                                  placeholder="Ví dụ: Sai thông tin người mua / sai đơn giá / sai số lượng / cần lập hóa đơn thay thế...">@req.Reason</textarea>
+
+                        <div class="form-text">
+                            Nội dung này sẽ đưa sang Viettel ở trường adjustedNote.
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">
+                            Số văn bản / biên bản thỏa thuận <span class="text-danger">*</span>
+                        </label>
+
+                        <input type="text"
+                               name="AgreementDocumentNo"
+                               class="form-control"
+                               value="@req.AgreementDocumentNo"
+                               maxlength="255"
+                               required />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">
+                            Ngày văn bản thỏa thuận <span class="text-danger">*</span>
+                        </label>
+
+                        <input type="date"
+                               name="AgreementDate"
+                               class="form-control"
+                               value="@req.AgreementDate.ToString("yyyy-MM-dd")"
+                               required />
+                    </div>
+
+                    <div class="col-md-12">
+                        <label class="form-label">
+                            Ghi chú nội bộ
+                        </label>
+
+                        <textarea name="Note"
+                                  class="form-control"
+                                  rows="2"
+                                  maxlength="1000"
+                                  placeholder="Ghi chú nội bộ, không bắt buộc">@req.Note</textarea>
+                    </div>
+
+                    @if (info.Type == GaoApp.Domain.Enums.InvoiceCorrectionType.Replacement)
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-info mb-0">
+                                Hệ thống sẽ tạo hóa đơn thay thế và copy toàn bộ dòng hàng từ hóa đơn gốc.
+                                Sau khi tạo xong, bạn có thể sửa lại thông tin/dòng hàng cho đúng rồi mới phát hành.
+                            </div>
+                        </div>
+                    }
+                    else if (info.Type == GaoApp.Domain.Enums.InvoiceCorrectionType.AdjustmentInfo)
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-info mb-0">
+                                Hệ thống sẽ tạo hóa đơn điều chỉnh thông tin và copy dòng hàng từ hóa đơn gốc.
+                                Dùng khi chỉ sai thông tin, không thay đổi tiền.
+                            </div>
+                        </div>
+                    }
+                    else if (info.Type == GaoApp.Domain.Enums.InvoiceCorrectionType.AdjustmentAmount)
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-info mb-0">
+                                Hệ thống sẽ tạo hóa đơn điều chỉnh tiền dạng rỗng.
+                                Sau khi tạo xong, vào chi tiết hóa đơn để thêm dòng điều chỉnh tăng/giảm.
+                                Dòng điều chỉnh giảm sẽ xử lý ở phase tiếp theo.
+                            </div>
+                        </div>
+                    }
+
+                    <div class="col-12 text-end">
+                        <a asp-area="Admin"
+                               asp-controller="Invoice"
+                               asp-action="ViettelPayload"
+                               asp-route-id="@info.OriginalInvoiceHeadId"
+                               class="btn btn-outline-secondary">
+                            Hủy
+                        </a>
+
+                        <button type="submit"
+                                class="btn btn-primary"
+                                onclick="return confirm('Xác nhận tạo hóa đơn xử lý sai sót?');">
+                            Tạo hóa đơn
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>

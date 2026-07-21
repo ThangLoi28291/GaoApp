@@ -1,0 +1,211 @@
+﻿@using GaoApp.Application.DTOs.AdminMenus
+@using GaoApp.Application.Interfaces.Services.AdminMenus
+@using Microsoft.AspNetCore.Hosting
+@using Microsoft.Extensions.Hosting
+
+@inject IAdminMenuService AdminMenuService
+@inject IWebHostEnvironment WebHostEnvironment
+
+@{
+    TempData.Keep();
+
+    string currentController =
+        ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+
+    string currentAction =
+        ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+
+    /*
+     * Lấy StoreId/UserId từ Claim.
+     * Nếu chưa có claim thì fallback StoreId = 1 vì seed menu hiện tại đang dùng StoreId = 1.
+     */
+    int storeId = GetClaimInt("StoreId")
+        ?? GetClaimInt("storeId")
+        ?? GetClaimInt("CurrentStoreId")
+        ?? 1;
+
+    int userId = GetClaimInt("UserId")
+        ?? GetClaimInt("userId")
+        ?? GetClaimInt("NameIdentifier")
+        ?? GetClaimInt(System.Security.Claims.ClaimTypes.NameIdentifier)
+        ?? 1;
+
+    /*
+     * Load menu theo quyền.
+     */
+    var dynamicMenus = await AdminMenuService.GetForRenderAsync(
+        storeId,
+        userId,
+        Context.RequestAborted);
+
+    /*
+     * Fallback khi đang DEV:
+     * Nếu permission chưa khớp làm menu rỗng thì vẫn hiện toàn bộ menu để test giao diện.
+     * Khi phân quyền đã chuẩn, có thể bỏ đoạn này.
+     */
+    if ((!dynamicMenus.Any()) && WebHostEnvironment.IsDevelopment())
+    {
+        dynamicMenus = await AdminMenuService.GetForAdminAsync(
+            storeId,
+            Context.RequestAborted);
+    }
+}
+
+<aside id="layout-menu"
+       class="layout-menu menu-vertical menu bg-menu-theme"
+       data-bg-class="bg-menu-theme">
+
+    <div class='app-brand demo @((ViewData["navbarFull"] != null
+                                                   && Convert.ToBoolean(ViewData["navbarFull"]))
+                                                   ? "d-xl-none"
+                                                   : "")'>
+
+        <a asp-area="Admin"
+               asp-controller="Home"
+               asp-action="Index"
+               class="app-brand-link">
+
+            <span class="app-brand-logo demo">
+                @await Html.PartialAsync("../_Partials/_Macros")
+            </span>
+
+            <span class="app-brand-text demo menu-text fw-bold ms-2">
+                @TempData.Peek("appName")
+            </span>
+        </a>
+
+        <a href="javascript:void(0);"
+               class="layout-menu-toggle menu-link text-large ms-auto">
+            <i class="icon-base bx bx-chevron-left d-block d-xl-none align-middle"></i>
+        </a>
+    </div>
+
+    <div class="menu-divider mt-0"></div>
+    <div class="menu-inner-shadow"></div>
+
+    <ul class="menu-inner py-1">
+
+        @if (dynamicMenus == null || !dynamicMenus.Any())
+        {
+            <li class="menu-item">
+                <a href="javascript:void(0);" class="menu-link">
+                    <i class="menu-icon icon-base bx bx-info-circle"></i>
+                    <div class="text-truncate">Chưa có menu</div>
+                </a>
+            </li>
+        }
+        else
+        {
+            foreach (var menu in dynamicMenus
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.SortOrder))
+            {
+                var children = menu.Children?
+                    .Where(x => x.IsActive)
+                    .OrderBy(x => x.SortOrder)
+                    .ToList() ?? new List<AdminMenuItemDto>();
+
+                var hasChildren = children.Any();
+
+                var isCurrentParent =
+                    IsCurrentMenu(menu.Controller, menu.Action, currentController, currentAction);
+
+                var isAnyChildActive =
+                    children.Any(x => IsCurrentMenu(x.Controller, x.Action, currentController, currentAction));
+
+                var parentCss = isCurrentParent || isAnyChildActive
+                    ? "active open"
+                    : "";
+
+                <li class="menu-item @parentCss">
+
+                    @if (hasChildren)
+                    {
+                        <a href="javascript:void(0);" class="menu-link menu-toggle">
+                            <i class="menu-icon icon-base @(string.IsNullOrWhiteSpace(menu.Icon) ? "bx bx-folder" : menu.Icon)"></i>
+                            <div class="text-truncate">@menu.Title</div>
+                        </a>
+
+                        <ul class="menu-sub">
+                            @foreach (var child in children)
+                            {
+                                var isChildActive =
+                                    IsCurrentMenu(child.Controller, child.Action, currentController, currentAction);
+
+                                <li class="menu-item @(isChildActive ? "active" : "")">
+                                    @if (!string.IsNullOrWhiteSpace(child.Url))
+                                    {
+                                        <a href="@child.Url" class="menu-link">
+                                            <div class="text-truncate">@child.Title</div>
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <a asp-area="@(string.IsNullOrWhiteSpace(child.Area) ? "Admin" : child.Area)"
+                                               asp-controller="@child.Controller"
+                                               asp-action="@(string.IsNullOrWhiteSpace(child.Action) ? "Index" : child.Action)"
+                                               class="menu-link">
+                                            <div class="text-truncate">@child.Title</div>
+                                        </a>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrWhiteSpace(menu.Url))
+                        {
+                            <a href="@menu.Url" class="menu-link">
+                                <i class="menu-icon icon-base @(string.IsNullOrWhiteSpace(menu.Icon) ? "bx bx-circle" : menu.Icon)"></i>
+                                <div class="text-truncate">@menu.Title</div>
+                            </a>
+                        }
+                        else
+                        {
+                            <a asp-area="@(string.IsNullOrWhiteSpace(menu.Area) ? "Admin" : menu.Area)"
+                                   asp-controller="@menu.Controller"
+                                   asp-action="@(string.IsNullOrWhiteSpace(menu.Action) ? "Index" : menu.Action)"
+                                   class="menu-link">
+                                <i class="menu-icon icon-base @(string.IsNullOrWhiteSpace(menu.Icon) ? "bx bx-circle" : menu.Icon)"></i>
+                                <div class="text-truncate">@menu.Title</div>
+                            </a>
+                        }
+                    }
+
+                </li>
+            }
+        }
+
+    </ul>
+</aside>
+
+@functions {
+    private int? GetClaimInt(string claimType)
+    {
+        var value = User.FindFirst(claimType)?.Value;
+
+        if (int.TryParse(value, out var result))
+            return result;
+
+        return null;
+    }
+
+    private static bool IsCurrentMenu(
+        string? menuController,
+        string? menuAction,
+        string currentController,
+        string currentAction)
+    {
+        if (string.IsNullOrWhiteSpace(menuController))
+            return false;
+
+        if (!string.Equals(menuController, currentController, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(menuAction))
+            return true;
+
+        return string.Equals(menuAction, currentAction, StringComparison.OrdinalIgnoreCase);
+    }
+}

@@ -1,0 +1,165 @@
+﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Web.Areas.Admin.ViewModels.Suppliers
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
+
+@model SupplierIndexVM
+
+@{
+    ViewData["Title"] = "Nhà cung cấp";
+    Layout = "_ContentNavbarLayout";
+
+    var canCreate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.Supplier.Create)).Succeeded;
+}
+
+@section Header {
+    <div class="sp-page-header">
+        <div>
+            <div class="sp-kicker">Catalog</div>
+            <h3 class="mb-1 fw-bold">Nhà cung cấp</h3>
+            <div class="text-muted">
+                Quản lý thông tin nhà cung cấp, liên hệ, mã số thuế và trạng thái giao dịch.
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            @if (canCreate)
+            {
+                <a asp-area="Admin"
+                       asp-controller="Supplier"
+                       asp-action="Create"
+                       class="btn btn-primary">
+                    <i class="bx bx-plus me-1"></i> Thêm nhà cung cấp
+                </a>
+            }
+        </div>
+    </div>
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/suppliers.css" asp-append-version="true" />
+}
+
+<div class="sp-shell"
+     data-search-url="@Url.Action("Search", "Supplier", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleStatus", "Supplier", new { area = "Admin" })"
+     data-delete-url="@Url.Action("DeleteAjax", "Supplier", new { area = "Admin" })">
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-primary-subtle text-primary">
+                    <i class="bx bx-store-alt"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Tổng nhà cung cấp</div>
+                    <div class="sp-stat-value">@Model.Paged.TotalItems</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-success-subtle text-success">
+                    <i class="bx bx-phone-call"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Thông tin liên hệ</div>
+                    <div class="sp-stat-value">SĐT / Email</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="sp-stat-card">
+                <div class="sp-stat-icon bg-info-subtle text-info">
+                    <i class="bx bx-search-alt"></i>
+                </div>
+                <div>
+                    <div class="sp-stat-label">Tìm kiếm</div>
+                    <div class="sp-stat-value">Mã / Tên / SĐT</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm sp-filter-card">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-7 col-md-6">
+                    <label class="form-label fw-semibold">Tìm kiếm</label>
+                    <div class="sp-search-box">
+                        <i class="bx bx-search"></i>
+
+                        <input id="txtSearch"
+                               class="form-control"
+                               placeholder="Nhập mã, tên hoặc số điện thoại..."
+                               autocomplete="off"
+                               value="@Model.SearchString" />
+
+                        <button type="button"
+                                id="btnClearSearch"
+                                class="sp-clear-search d-none"
+                                title="Xóa tìm kiếm">
+                            <i class="bx bx-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label fw-semibold">Số dòng</label>
+                    <select id="ddlPageSize" class="form-select">
+                        <option value="10" selected="@(Model.PageSize == 10)">10 dòng</option>
+                        <option value="20" selected="@(Model.PageSize == 20)">20 dòng</option>
+                        <option value="50" selected="@(Model.PageSize == 50)">50 dòng</option>
+                        <option value="100" selected="@(Model.PageSize == 100)">100 dòng</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-2 d-grid">
+                    <button type="button" id="btnReload" class="btn btn-label-primary">
+                        <i class="bx bx-refresh"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form id="antiForgeryForm" method="post" class="d-none">
+        @Html.AntiForgeryToken()
+    </form>
+
+    <div id="supplierTableWrapper" class="mt-4">
+        @await Html.PartialAsync("_SupplierTable", Model)
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content sp-modal">
+            <div class="modal-body text-center p-4">
+                <div class="sp-danger-icon mb-3">
+                    <i class="bx bx-trash"></i>
+                </div>
+
+                <h5 class="fw-bold mb-2">Xóa nhà cung cấp?</h5>
+                <div class="text-muted mb-3">
+                    Nhà cung cấp <b id="deleteName"></b> sẽ bị xóa khỏi danh sách.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-label-secondary w-50" data-bs-dismiss="modal">
+                        Hủy
+                    </button>
+                    <button type="button" class="btn btn-danger w-50" id="btnConfirmDelete">
+                        Xóa
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section PageScripts {
+    <script src="~/admin/js/suppliers.index.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,118 @@
+﻿@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Antiforgery
+
+@{
+    // Compact/Fluid class
+    ViewData["contentType"] = ViewData["container"] is string container && container == "container-xxl"
+        ? "layout-compact layout-menu-fixed"
+        : "";
+
+    var antiForgeryToken = Antiforgery.GetAndStoreTokens(Context).RequestToken;
+}
+
+@inject IHttpContextAccessor httpContextAccessor
+
+<!DOCTYPE html>
+<html lang="vi"
+      class="@(ViewData["navbarType"] is string navbarType ? navbarType : "")
+             @(ViewData["menuFixed"] is string menuFixed ? menuFixed : "")
+             @(ViewData["menuCollapsed"] is string menuCollapsed ? menuCollapsed : "")
+             @(ViewData["contentType"] is string contentType ? contentType : "")
+             @(ViewData["footerFixed"] is string footerFixed ? footerFixed : "")
+             @(ViewData["customizerHidden"] is string customizerHidden ? customizerHidden : "")"
+      dir="ltr"
+      data-skin="default"
+      data-bs-theme="light"
+      data-assets-path='@((httpContextAccessor.HttpContext?.Request.PathBase ?? "") + "/")'
+      data-template='@(("vertical-menu-template-free"))'>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="request-verification-token" content="@antiForgeryToken" />
+
+    @{
+        string title = ViewData["title"] as string ?? ViewData["Title"] as string ?? "";
+        string appName = TempData.Peek("appName") as string ?? "";
+        string productPage = TempData.Peek("productPage") as string ?? "";
+    }
+
+    <title>@title | @appName</title>
+    <meta name="description" content="" />
+
+    <link rel="canonical" href='@productPage'>
+    <link rel="icon" type="image/x-icon" href="~/img/favicon/favicon.ico" />
+
+    <!-- Core Styles -->
+    @await Html.PartialAsync("Sections/_Styles")
+
+    <!-- Vendor Styles -->
+    @RenderSection("VendorStyles", required: false)
+
+    <!-- Toastr CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.ui.css" asp-append-version="true" />
+
+    <!-- Page Styles -->
+    @RenderSection("PageStyles", required: false)
+
+    <!-- Include Scripts for customizer, helper, analytics, config -->
+    @await Html.PartialAsync("Sections/_ScriptsIncludes")
+</head>
+
+<body>
+    <!-- Layout Content -->
+    @RenderBody()
+    <!--/ Layout Content -->
+    <!-- Core Scripts -->
+    @await Html.PartialAsync("Sections/_Scripts")
+
+    <!-- Thư viện dùng chung. jQuery đã được nạp một lần trong Sections/_Scripts. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.ui.js" asp-append-version="true"></script>
+
+    <!-- Vendor Scripts -->
+    @RenderSection("VendorScripts", required: false)
+
+    <!-- Page Scripts (đúng chuẩn: render 1 lần) -->
+    @RenderSection("PageScripts", required: false)
+    @RenderSection("Scripts", required: false)
+
+    @using System.Text.Json
+    @{
+        // ✅ ĐỌC + XÓA NGAY TempData Toast
+        var success = TempData["Success"] as string;
+        var error = TempData["Error"] as string;
+        var warning = TempData["Warning"] as string;
+        var info = TempData["Info"] as string;
+
+        TempData.Remove("Success");
+        TempData.Remove("Error");
+        TempData.Remove("Warning");
+        TempData.Remove("Info");
+    }
+
+    <script>
+        (function () {
+            if (!window.GaoAppNotify) return;
+
+            const success = @Html.Raw(JsonSerializer.Serialize(success));
+            const error   = @Html.Raw(JsonSerializer.Serialize(error));
+            const warning = @Html.Raw(JsonSerializer.Serialize(warning));
+            const info    = @Html.Raw(JsonSerializer.Serialize(info));
+
+            if (success) GaoAppNotify.success(success);
+            if (error) GaoAppNotify.error(error);
+            if (warning) GaoAppNotify.warning(warning);
+            if (info) GaoAppNotify.info(info);
+        })();
+    </script>
+
+    <!-- Main JS -->
+    <script src="~/js/main.js" asp-append-version="true"></script>
+
+    <partial name="~/Areas/Admin/Views/Shared/_ToastMessages.cshtml" />
+</body>
+</html>

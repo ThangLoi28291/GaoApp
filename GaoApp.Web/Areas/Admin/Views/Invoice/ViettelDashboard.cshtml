@@ -1,0 +1,602 @@
+﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoiceDashboardDto
+@using GaoApp.Application.DTOs.Invoices
+@using GaoApp.Domain.Enums
+
+@{
+    ViewData["Title"] = "Dashboard Viettel";
+
+    var query = Model.Query;
+    var items = Model.Items.Items ?? new List<ViettelInvoiceDashboardItemDto>();
+    var totalPages = Model.Items.PageSize <= 0
+        ? 1
+        : (int)Math.Ceiling(Model.Items.TotalItems / (double)Model.Items.PageSize);
+
+    if (totalPages <= 0)
+        totalPages = 1;
+
+    var filters = new List<(ViettelInvoiceDashboardFilter Value, string Text)>
+    {
+        (ViettelInvoiceDashboardFilter.All, "Tất cả"),
+        (ViettelInvoiceDashboardFilter.IssuedMissingPdf, "Đã phát hành thiếu PDF"),
+        (ViettelInvoiceDashboardFilter.IssuedMissingZipXml, "Đã phát hành thiếu ZIP/XML"),
+        (ViettelInvoiceDashboardFilter.IssuedMissingEmail, "Đã phát hành chưa gửi email"),
+        (ViettelInvoiceDashboardFilter.PdfFailed, "Tải PDF lỗi"),
+        (ViettelInvoiceDashboardFilter.ZipXmlFailed, "Tải ZIP/XML lỗi"),
+        (ViettelInvoiceDashboardFilter.EmailFailed, "Gửi email lỗi"),
+        (ViettelInvoiceDashboardFilter.UuidNeedSync, "Cần tra cứu UUID"),
+        (ViettelInvoiceDashboardFilter.IssueFailed, "Phát hành lỗi"),
+        (ViettelInvoiceDashboardFilter.IssuedComplete, "Đủ PDF/ZIP/email")
+    };
+}
+
+<style>
+    .viettel-dashboard .page-title {
+        font-weight: 700;
+        letter-spacing: -.02em;
+    }
+
+    .summary-card {
+        border: 0;
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .summary-number {
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .summary-label {
+        color: #697a8d;
+        font-size: 13px;
+    }
+
+    .invoice-cell-main {
+        font-weight: 700;
+    }
+
+    .invoice-cell-sub {
+        font-size: 12px;
+        color: #697a8d;
+        word-break: break-word;
+    }
+
+    .status-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .action-stack {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+        .action-stack form {
+            margin: 0;
+        }
+
+    .dashboard-table th {
+        white-space: nowrap;
+        font-size: 13px;
+    }
+
+    .dashboard-table td {
+        vertical-align: middle;
+    }
+
+    @@media (max-width: 768px) {
+        .action-stack .btn,
+        .action-stack form,
+        .action-stack form button {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="container-fluid viettel-dashboard">
+    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <div>
+            <h3 class="mb-1 page-title">
+                Dashboard Viettel
+            </h3>
+            <div class="text-muted">
+                Theo dõi hóa đơn đã phát hành nhưng thiếu PDF, thiếu ZIP/XML, chưa gửi email hoặc cần tra cứu UUID.
+            </div>
+        </div>
+
+        <a asp-area="Admin"
+               asp-controller="Invoice"
+               asp-action="Index"
+               class="btn btn-outline-secondary">
+            Quay lại danh sách hóa đơn
+        </a>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bx bx-check-circle me-1"></i>
+            @TempData["Success"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bx bx-error-circle me-1"></i>
+            @TempData["Error"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Đóng"></button>
+        </div>
+    }
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.All">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number">@Model.Summary.TotalInvoices</div>
+                        <div class="summary-label">Tổng hóa đơn</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.IssuedMissingPdf">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number text-warning">@Model.Summary.MissingPdfCount</div>
+                        <div class="summary-label">Thiếu PDF</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.IssuedMissingZipXml">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number text-warning">@Model.Summary.MissingZipXmlCount</div>
+                        <div class="summary-label">Thiếu ZIP/XML</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.IssuedMissingEmail">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number text-info">@Model.Summary.MissingEmailCount</div>
+                        <div class="summary-label">Chưa gửi email</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.UuidNeedSync">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number text-danger">@Model.Summary.UuidNeedSyncCount</div>
+                        <div class="summary-label">Cần UUID</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-6 col-md-3 col-xl">
+            <a class="text-decoration-none"
+                   asp-action="ViettelDashboard"
+                   asp-route-Filter="@ViettelInvoiceDashboardFilter.IssuedComplete">
+                <div class="card summary-card shadow-sm">
+                    <div class="card-body">
+                        <div class="summary-number text-success">@Model.Summary.CompleteCount</div>
+                        <div class="summary-label">Đủ file/email</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <form asp-area="Admin"
+                  asp-controller="Invoice"
+                  asp-action="ViettelDashboard"
+                  method="get"
+                  class="row g-2 align-items-end">
+
+                <div class="col-md-2">
+                    <label class="form-label">Từ ngày</label>
+                    <input type="date"
+                           name="FromDate"
+                           value="@(query.FromDate?.ToString("yyyy-MM-dd"))"
+                           class="form-control" />
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label">Đến ngày</label>
+                    <input type="date"
+                           name="ToDate"
+                           value="@(query.ToDate?.ToString("yyyy-MM-dd"))"
+                           class="form-control" />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Từ khóa</label>
+                    <input type="text"
+                           name="Keyword"
+                           value="@query.Keyword"
+                           class="form-control"
+                           placeholder="Số HĐ, UUID, khách hàng, MST..." />
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Bộ lọc</label>
+                    <select name="Filter" class="form-select">
+                        @foreach (var filter in filters)
+                        {
+                            <option value="@filter.Value"
+                                    selected="@(query.Filter == filter.Value ? "selected" : null)">
+                                @filter.Text
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-1">
+                    <label class="form-label">Dòng</label>
+                    <select name="PageSize" class="form-select">
+                        <option value="20" selected="@(query.PageSize == 20 ? "selected" : null)">20</option>
+                        <option value="50" selected="@(query.PageSize == 50 ? "selected" : null)">50</option>
+                        <option value="100" selected="@(query.PageSize == 100 ? "selected" : null)">100</option>
+                    </select>
+                </div>
+
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-primary w-100">
+                        Lọc
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">
+                Danh sách cần kiểm tra
+            </div>
+
+            <span class="badge bg-secondary">
+                @Model.Items.TotalItems dòng
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 dashboard-table">
+                <thead class="table-light">
+                    <tr>
+                        <th>Hóa đơn</th>
+                        <th>Khách hàng</th>
+                        <th>Trạng thái</th>
+                        <th>File / Email</th>
+                        <th>Lỗi</th>
+                        <th class="text-end">Tổng tiền</th>
+                        <th>Thao tác nhanh</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    @if (!items.Any())
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-4">
+                                Không có dữ liệu phù hợp.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var item in items)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="invoice-cell-main">
+                                        #@item.Id
+                                        @if (!string.IsNullOrWhiteSpace(item.ProviderInvoiceNo))
+                                        {
+                                            <span class="text-success">
+                                                @item.ProviderInvoiceNo
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <div class="invoice-cell-sub">
+                                        Ngày: @item.InvoiceDate.ToString("dd/MM/yyyy")
+                                    </div>
+
+                                    @if (item.OrderId.HasValue)
+                                    {
+                                        <div class="invoice-cell-sub">
+                                            Order: #@item.OrderId @item.OrderNumber
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(item.TransactionUuid))
+                                    {
+                                        <div class="invoice-cell-sub">
+                                            UUID: @item.TransactionUuid
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="fw-semibold">
+                                        @(string.IsNullOrWhiteSpace(item.BuyerName) ? "-" : item.BuyerName)
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(item.BuyerTaxCode))
+                                    {
+                                        <div class="invoice-cell-sub">
+                                            MST: @item.BuyerTaxCode
+                                        </div>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(item.BuyerEmail))
+                                    {
+                                        <div class="invoice-cell-sub">
+                                            Email: @item.BuyerEmail
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="status-stack">
+                                        <span class="badge @item.ProviderStatusBadgeClass">
+                                            @item.ProviderStatusName
+                                        </span>
+
+                                        <span class="badge @item.ProblemBadgeClass">
+                                            @item.ProblemText
+                                        </span>
+                                    </div>
+
+                                    @if (item.IssuedAtUtc.HasValue)
+                                    {
+                                        <div class="invoice-cell-sub mt-1">
+                                            Phát hành UTC:
+                                            @item.IssuedAtUtc.Value.ToString("dd/MM HH:mm")
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    <div class="status-stack">
+                                        @if (item.HasOfficialPdf)
+                                        {
+                                            <span class="badge bg-success">PDF OK</span>
+                                        }
+                                        else if (item.OfficialPdfStatus == InvoiceFileDownloadStatus.Failed)
+                                        {
+                                            <span class="badge bg-danger">PDF lỗi</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Chưa PDF</span>
+                                        }
+
+                                        @if (item.HasOfficialZipXml)
+                                        {
+                                            <span class="badge bg-success">ZIP OK</span>
+                                        }
+                                        else if (item.OfficialZipXmlStatus == InvoiceFileDownloadStatus.Failed)
+                                        {
+                                            <span class="badge bg-danger">ZIP lỗi</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Chưa ZIP</span>
+                                        }
+
+                                        @if (item.EmailStatus == InvoiceEmailSendStatus.Sent)
+                                        {
+                                            <span class="badge bg-success">Email OK</span>
+                                        }
+                                        else if (item.EmailStatus == InvoiceEmailSendStatus.Failed)
+                                        {
+                                            <span class="badge bg-danger">Email lỗi</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Chưa email</span>
+                                        }
+                                    </div>
+
+                                    @if (item.EmailSendCount > 0)
+                                    {
+                                        <div class="invoice-cell-sub mt-1">
+                                            Số lần gửi email: @item.EmailSendCount
+                                        </div>
+                                    }
+                                </td>
+
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(item.LastErrorCode) ||
+                                         !string.IsNullOrWhiteSpace(item.LastErrorMessage) ||
+                                         !string.IsNullOrWhiteSpace(item.LastEmailErrorMessage))
+                                    {
+                                        @if (!string.IsNullOrWhiteSpace(item.LastErrorCode))
+                                        {
+                                            <div class="text-danger small">
+                                                @item.LastErrorCode
+                                            </div>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(item.LastErrorMessage))
+                                        {
+                                            <div class="text-danger small">
+                                                @item.LastErrorMessage
+                                            </div>
+                                        }
+
+                                        @if (!string.IsNullOrWhiteSpace(item.LastEmailErrorMessage))
+                                        {
+                                            <div class="text-danger small">
+                                                Email: @item.LastEmailErrorMessage
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+
+                                <td class="text-end">
+                                    @item.GrandTotal.ToString("N0")
+                                </td>
+
+                                <td>
+                                    <div class="action-stack">
+                                        <a asp-area="Admin"
+                                               asp-controller="Invoice"
+                                               asp-action="ViettelPayload"
+                                               asp-route-id="@item.Id"
+                                               class="btn btn-sm btn-outline-primary">
+                                            Xử lý
+                                        </a>
+
+                                        @if (item.CanSyncByUuid)
+                                        {
+                                            <form asp-area="Admin"
+                                                  asp-controller="Invoice"
+                                                  asp-action="SyncViettelByUuid"
+                                                  asp-route-id="@item.Id"
+                                                  method="post"
+                                                  data-submit-guard
+                                                  data-submit-loading-text="Đang tra cứu...">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-warning"
+                                                        onclick="return confirm('Tra cứu UUID hóa đơn này?');">
+                                                    UUID
+                                                </button>
+                                            </form>
+                                        }
+
+                                        @if (item.CanDownloadOfficialFiles)
+                                        {
+                                            <form asp-area="Admin"
+                                                  asp-controller="Invoice"
+                                                  asp-action="DownloadOfficialPdf"
+                                                  asp-route-id="@item.Id"
+                                                  method="post"
+                                                  data-submit-guard
+                                                  data-submit-loading-text="Đang tải..."
+                                                  data-submit-unlock-ms="10000">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-success"
+                                                        onclick="return confirm('Tải lại PDF chính thức?');">
+                                                    PDF
+                                                </button>
+                                            </form>
+
+                                            <form asp-area="Admin"
+                                                  asp-controller="Invoice"
+                                                  asp-action="DownloadOfficialZipXml"
+                                                  asp-route-id="@item.Id"
+                                                  method="post"
+                                                  data-submit-guard
+                                                  data-submit-loading-text="Đang tải..."
+                                                  data-submit-unlock-ms="10000">
+                                                @Html.AntiForgeryToken()
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-success"
+                                                        onclick="return confirm('Tải lại ZIP/XML chính thức?');">
+                                                    ZIP
+                                                </button>
+                                            </form>
+                                        }
+
+                                        @if (item.CanSendEmail)
+                                        {
+                                            <form asp-area="Admin"
+                                                  asp-controller="Invoice"
+                                                  asp-action="SendViettelEmail"
+                                                  method="post"
+                                                  data-submit-guard
+                                                  data-submit-loading-text="Đang gửi...">
+                                                @Html.AntiForgeryToken()
+
+                                                <input type="hidden"
+                                                       name="InvoiceHeadId"
+                                                       value="@item.Id" />
+
+                                                <input type="hidden"
+                                                       name="BuyerEmail"
+                                                       value="@item.BuyerEmail" />
+
+                                                <button type="submit"
+                                                        class="btn btn-sm btn-outline-info"
+                                                        onclick="return confirm('Gửi email hóa đơn cho người mua?');">
+                                                    Email
+                                                </button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="text-muted small">
+                Trang @Model.Items.Page / @totalPages
+            </div>
+
+            <div class="btn-group">
+                <a class="btn btn-outline-secondary @(Model.Items.Page <= 1 ? "disabled" : "")"
+                       asp-action="ViettelDashboard"
+                       asp-route-FromDate="@(query.FromDate?.ToString("yyyy-MM-dd"))"
+                       asp-route-ToDate="@(query.ToDate?.ToString("yyyy-MM-dd"))"
+                       asp-route-Keyword="@query.Keyword"
+                       asp-route-Filter="@query.Filter"
+                       asp-route-Page="@(Model.Items.Page - 1)"
+                       asp-route-PageSize="@Model.Items.PageSize">
+                    Trước
+                </a>
+
+                <a class="btn btn-outline-secondary @(Model.Items.Page >= totalPages ? "disabled" : "")"
+                       asp-action="ViettelDashboard"
+                       asp-route-FromDate="@(query.FromDate?.ToString("yyyy-MM-dd"))"
+                       asp-route-ToDate="@(query.ToDate?.ToString("yyyy-MM-dd"))"
+                       asp-route-Keyword="@query.Keyword"
+                       asp-route-Filter="@query.Filter"
+                       asp-route-Page="@(Model.Items.Page + 1)"
+                       asp-route-PageSize="@Model.Items.PageSize">
+                    Sau
+                </a>
+            </div>
+        </div>
+    </div>
+</div>

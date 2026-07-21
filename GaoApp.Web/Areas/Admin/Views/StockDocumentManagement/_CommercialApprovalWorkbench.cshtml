@@ -1,0 +1,247 @@
+@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@using System.Globalization
+@using GaoApp.Application.DTOs.Inventory
+@using GaoApp.Domain.Enums
+@{
+    var taxes = ViewData["ReceiptTaxOptions"] as IEnumerable<StockReceiptTaxOptionDto>
+        ?? Enumerable.Empty<StockReceiptTaxOptionDto>();
+    var readOnly = Model.Status == StockDocumentStatus.Confirmed;
+    // Số lượng/đơn vị đã được nhân viên xác nhận trước khi gửi duyệt.
+    // Workbench thương mại chỉ chốt giá, VAT và công nợ.
+    var canEditPhysical = false;
+}
+
+<section class="card sd-card sd-commercial-workbench mb-3"
+         id="commercialApprovalWorkbench"
+         data-readonly="@readOnly.ToString().ToLowerInvariant()">
+    <div class="card-header border-0 pb-0">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div class="d-flex align-items-start gap-3">
+                <span class="sd-commercial-icon"><i class="bx bx-calculator"></i></span>
+                <div>
+                    <h5 class="mb-1">Chốt giá nhập và công nợ</h5>
+                    <div class="text-muted small">
+                        Giá tại đây là giá thực tế nhà cung cấp giao. Tồn kho, FIFO và công nợ chỉ được ghi khi duyệt.
+                    </div>
+                </div>
+            </div>
+            <span class="badge bg-label-@(readOnly ? "success" : "warning") rounded-pill">
+                <i class="bx @(readOnly ? "bx-lock-alt" : "bx-edit") me-1"></i>
+                @(readOnly ? "Đã khóa sau duyệt" : "Đang chờ quản lý chốt")
+            </span>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div class="sd-commercial-settlement mb-4">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label d-block">Thuế giá trị gia tăng</label>
+                    <div class="sd-commercial-switch">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="commercialHasVat"
+                                   checked="@Model.HasVat" disabled="@readOnly" />
+                            <label class="form-check-label fw-semibold" for="commercialHasVat">Có VAT</label>
+                        </div>
+                        <small class="text-muted">Giá nhập là giá chưa VAT</small>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label" for="commercialSupplierId">
+                        Nhà cung cấp <span class="sd-supplier-required text-danger">*</span>
+                    </label>
+                    <select class="form-select" id="commercialSupplierId" disabled="@readOnly">
+                        <option value="">-- Chọn nhà cung cấp --</option>
+                        @if (Model.SupplierId.HasValue)
+                        {
+                            <option value="@Model.SupplierId" selected>@Model.SupplierName</option>
+                        }
+                    </select>
+                    <div class="form-text">Bắt buộc khi còn nợ tiền hàng.</div>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="form-label d-block">Thanh toán tiền hàng</label>
+                    <div class="form-check form-switch sd-paid-switch">
+                        <input class="form-check-input" type="checkbox" id="commercialMerchandisePaid"
+                               checked="@Model.IsMerchandisePaid" disabled="@readOnly" />
+                        <label class="form-check-label fw-semibold" for="commercialMerchandisePaid">Đã trả ngay</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label" for="commercialPayeeName">Người/đơn vị nhận tiền</label>
+                    <input class="form-control" id="commercialPayeeName" maxlength="250"
+                           value="@Model.MerchandisePayeeName" disabled="@readOnly"
+                           placeholder="Dùng khi trả ngay và chưa có NCC" />
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive sd-commercial-table-wrap">
+            <table class="table align-middle mb-0 sd-commercial-table">
+                <thead>
+                    <tr>
+                        <th style="min-width:270px">Hàng thực nhận</th>
+                        <th class="text-end" style="min-width:110px">Số lượng</th>
+                        <th class="text-end" style="min-width:155px">Giá chưa VAT</th>
+                        <th class="text-end" style="min-width:135px">Giá gần nhất</th>
+                        <th style="min-width:145px">Thuế suất</th>
+                        <th class="text-end" style="min-width:130px">Tiền VAT</th>
+                        <th class="text-end" style="min-width:155px">Tiền hàng sau VAT</th>
+                        <th class="text-end" style="min-width:145px">Phí phân bổ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var line in Model.Lines.OrderBy(x => x.LineNo))
+                    {
+                        var selectedTaxId = line.TaxId ?? (!readOnly ? line.SuggestedTaxId : null);
+                        <tr class="commercial-line"
+                            data-line-id="@line.Id"
+                            data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
+                            data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
+                            <td>
+                                <div class="fw-semibold">@line.ProductNameSnapshot</div>
+                                <div class="small text-muted">
+                                    @if (!string.IsNullOrWhiteSpace(line.SkuSnapshot))
+                                    {
+                                        <span>SKU: @line.SkuSnapshot · </span>
+                                    }
+                                    <span>@line.UnitName × @line.Factor.ToString("N3")</span>
+                                </div>
+                            </td>
+                            <td class="text-end">
+                                @if (canEditPhysical)
+                                {
+                                    <input class="form-control form-control-sm text-end commercial-quantity"
+                                           type="number" min="0.001" step="0.001"
+                                           value="@line.Quantity.ToString("0.###", CultureInfo.InvariantCulture)"
+                                           data-original="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
+                                           data-unit-id="@line.UnitId"
+                                           data-note="@line.Note"
+                                           aria-label="Số lượng thực nhận" />
+                                }
+                                else
+                                {
+                                <strong>@line.Quantity.ToString("0.###")</strong>
+                                <div class="small text-muted">@line.UnitName</div>
+                                }
+                            </td>
+                            <td>
+                                <div class="input-group input-group-sm">
+                                    <input class="form-control text-end commercial-unit-price" type="number"
+                                           min="0.01" step="0.01"
+                                           value="@line.UnitPriceBeforeVat.ToString("0.##", CultureInfo.InvariantCulture)"
+                                           disabled="@readOnly" aria-label="Giá nhập chưa VAT" />
+                                    <span class="input-group-text">đ</span>
+                                </div>
+                                <div class="small commercial-price-error text-danger"></div>
+                            </td>
+                            <td class="text-end">
+                                <span class="commercial-last-price" data-value="@(line.LastPurchaseUnitPriceBeforeVat?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)">
+                                    @(line.LastPurchaseUnitPriceBeforeVat.HasValue ? line.LastPurchaseUnitPriceBeforeVat.Value.ToString("N0") + " đ" : "Chưa có")
+                                </span>
+                                <div class="small commercial-price-variance text-muted"></div>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm commercial-tax" disabled="@(readOnly || !Model.HasVat)">
+                                    <option value="" data-rate="">-- Chọn thuế suất --</option>
+                                    @foreach (var tax in taxes)
+                                    {
+                                        <option value="@tax.Id" data-rate="@tax.Rate.ToString(CultureInfo.InvariantCulture)"
+                                                selected="@(selectedTaxId == tax.Id)">@tax.Name (@tax.Rate.ToString("0.##")%)</option>
+                                    }
+                                </select>
+                            </td>
+                            <td class="text-end commercial-line-vat">@line.VatAmount.ToString("N0") đ</td>
+                            <td class="text-end fw-semibold commercial-line-after-vat">@line.LineTotal.ToString("N0") đ</td>
+                            <td>
+                                <div class="input-group input-group-sm">
+                                    <input class="form-control text-end commercial-freight-allocation" type="number"
+                                           min="0" step="0.01"
+                                           value="@line.FreightAllocation.ToString("0.##", CultureInfo.InvariantCulture)"
+                                           disabled="@(readOnly || !Model.HasFreight)" aria-label="Phí vận chuyển phân bổ" />
+                                    <span class="input-group-text">đ</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sd-commercial-freight mt-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                    <h6 class="mb-1">Phí vận chuyển</h6>
+                    <div class="small text-muted">Mặc định phân bổ theo tiền hàng sau VAT; có thể sửa trực tiếp từng dòng.</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="commercialAutoAllocate" disabled="@(readOnly || !Model.HasFreight)">
+                    <i class="bx bx-reset me-1"></i>Đặt lại phân bổ tự động
+                </button>
+            </div>
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-2">
+                    <div class="form-check form-switch sd-paid-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="commercialHasFreight"
+                               checked="@Model.HasFreight" disabled="@readOnly" />
+                        <label class="form-check-label fw-semibold" for="commercialHasFreight">Có phí vận chuyển</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-2">
+                    <label class="form-label" for="commercialFreightTotal">Tổng phí</label>
+                    <div class="input-group">
+                        <input class="form-control text-end" type="number" min="0" step="0.01"
+                               id="commercialFreightTotal"
+                               value="@Model.FreightTotal.ToString("0.##", CultureInfo.InvariantCulture)"
+                               disabled="@(readOnly || !Model.HasFreight)" />
+                        <span class="input-group-text">đ</span>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label" for="commercialFreightPayee">Người/đơn vị nhận tiền</label>
+                    <input class="form-control" id="commercialFreightPayee" maxlength="250"
+                           value="@Model.FreightPayeeName" disabled="@(readOnly || !Model.HasFreight)" />
+                </div>
+                <div class="col-12 col-md-2">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="commercialFreightPaid"
+                               checked="@Model.IsFreightPaid" disabled="@(readOnly || !Model.HasFreight)" />
+                        <label class="form-check-label" for="commercialFreightPaid">Đã trả phí</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label" for="commercialFreightNote">Ghi chú vận chuyển</label>
+                    <input class="form-control" id="commercialFreightNote" maxlength="1000"
+                           value="@Model.FreightNote" disabled="@(readOnly || !Model.HasFreight)" />
+                </div>
+            </div>
+            <div class="sd-allocation-status mt-3" id="commercialAllocationStatus"></div>
+        </div>
+
+        <div class="sd-commercial-totals mt-4">
+            <div><span>Trước VAT</span><strong id="commercialSubtotal">0 đ</strong></div>
+            <div><span>Tiền VAT</span><strong id="commercialVatTotal">0 đ</strong></div>
+            <div><span>Tiền hàng</span><strong id="commercialMerchandiseTotal">0 đ</strong></div>
+            <div><span>Phí vận chuyển</span><strong id="commercialFreightSummary">0 đ</strong></div>
+            <div class="sd-commercial-grand-total"><span>Tổng giá vốn nhập</span><strong id="commercialLandedTotal">0 đ</strong></div>
+        </div>
+
+        <div class="alert alert-danger d-none mt-3 mb-0" id="commercialValidationMessage" role="alert"></div>
+    </div>
+
+    @if (!readOnly)
+    {
+        <div class="sd-commercial-sticky-actions">
+            <div class="small text-muted d-none d-lg-block">
+                Kiểm tra giá, VAT, công nợ và phân bổ · <kbd>Ctrl</kbd> + <kbd>Enter</kbd> để duyệt
+            </div>
+            <div class="d-flex gap-2 ms-auto">
+                <button type="button" class="btn btn-outline-danger" id="commercialRejectButton">
+                    <i class="bx bx-x me-1"></i>Từ chối
+                </button>
+                <button type="button" class="btn btn-success" id="commercialApproveButton">
+                    <i class="bx bx-check-shield me-1"></i>Duyệt và ghi sổ
+                </button>
+            </div>
+        </div>
+    }
+</section>
