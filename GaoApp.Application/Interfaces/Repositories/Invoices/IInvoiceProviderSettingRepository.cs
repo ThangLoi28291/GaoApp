@@ -6,7 +6,20 @@ public interface IInvoiceProviderSettingRepository
 {
     Task<List<InvoiceProviderSetting>> GetAllAsync(CancellationToken ct = default);
 
-    Task<InvoiceProviderSetting?> GetByIdAsync(int id, CancellationToken ct = default);
+    /// <summary>
+    /// Lấy cấu hình quản trị ở dạng đang lưu trong database.
+    /// Không giải mã mật khẩu; dùng cho xem/sửa metadata và bật/tắt.
+    /// </summary>
+    Task<InvoiceProviderSetting?> GetByIdAsync(
+        int id,
+        CancellationToken ct = default);
+    /// <summary>
+    /// Lấy cấu hình kèm mật khẩu đã giải mã cho các tác vụ thực sự cần
+    /// credential như test kết nối hoặc gọi API nhà cung cấp.
+    /// </summary>
+    Task<InvoiceProviderSetting?> GetByIdWithCredentialAsync(
+        int id,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Lấy cấu hình Viettel active mới nhất.

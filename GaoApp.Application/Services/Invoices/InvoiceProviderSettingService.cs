@@ -144,14 +144,13 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
         }
 
         var normalized = Normalize(request);
+        var hasNewPassword = !string.IsNullOrWhiteSpace(normalized.Password);
 
-        // Form edit không nhận lại secret cũ. Để trống nghĩa là giữ nguyên.
-        if (string.IsNullOrWhiteSpace(normalized.Password))
-        {
-            normalized.Password = entity.Password;
-        }
-
-        var validation = await ValidateAsync(normalized, ct);
+        var validation = await ValidateAsync(
+            normalized,
+            ct,
+            passwordRequired:
+                hasNewPassword || string.IsNullOrWhiteSpace(entity.Password));
 
         if (!validation.IsSuccess)
             return Result<int>.Failure(validation.Error!);
@@ -160,7 +159,12 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
         entity.IsProduction = normalized.IsProduction;
         entity.BaseUrl = normalized.BaseUrl;
         entity.Username = normalized.Username;
-        entity.Password = normalized.Password;
+
+        if (hasNewPassword)
+        {
+            entity.Password = normalized.Password;
+        }
+
         entity.SupplierTaxCode = normalized.SupplierTaxCode;
         entity.InvoiceType = normalized.InvoiceType;
         entity.TemplateCode = normalized.TemplateCode;
@@ -214,7 +218,7 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 Error.Validation("InvoiceProvider.InvalidId", "Id cấu hình không hợp lệ."));
         }
 
-        var entity = await _repository.GetByIdAsync(id, ct);
+        var entity = await _repository.GetByIdWithCredentialAsync(id, ct);
 
         if (entity == null)
         {
@@ -243,8 +247,9 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
     }
 
     private async Task<Result<bool>> ValidateAsync(
-        UpsertInvoiceProviderSettingRequest request,
-        CancellationToken ct)
+    UpsertInvoiceProviderSettingRequest request,
+    CancellationToken ct,
+    bool passwordRequired = true)
     {
         if (string.IsNullOrWhiteSpace(request.ProviderCode))
         {
@@ -264,13 +269,17 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 Error.Validation("InvoiceProvider.UsernameRequired", "Username không được trống."));
         }
 
-        if (string.IsNullOrWhiteSpace(request.Password))
+        if (passwordRequired &&
+    string.IsNullOrWhiteSpace(request.Password))
         {
             return Result<bool>.Failure(
-                Error.Validation("InvoiceProvider.PasswordRequired", "Password không được trống."));
+                Error.Validation(
+                    "InvoiceProvider.PasswordRequired",
+                    "Password không được trống."));
         }
 
-        if (request.Password.Length > 64)
+        if (!string.IsNullOrWhiteSpace(request.Password) &&
+            request.Password.Length > 64)
         {
             return Result<bool>.Failure(
                 Error.Validation(

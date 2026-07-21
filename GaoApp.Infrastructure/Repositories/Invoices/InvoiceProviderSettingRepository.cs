@@ -32,10 +32,23 @@ public class InvoiceProviderSettingRepository : IInvoiceProviderSettingRepositor
             .ToListAsync(ct);
     }
 
-    public async Task<InvoiceProviderSetting?> GetByIdAsync(int id, CancellationToken ct = default)
+    public Task<InvoiceProviderSetting?> GetByIdAsync(
+     int id,
+     CancellationToken ct = default)
+    {
+        return _db.InvoiceProviderSettings
+            .FirstOrDefaultAsync(
+                x => x.Id == id && !x.IsDeleted,
+                ct);
+    }
+    public async Task<InvoiceProviderSetting?> GetByIdWithCredentialAsync(
+    int id,
+    CancellationToken ct = default)
     {
         var entity = await _db.InvoiceProviderSettings
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct);
+            .FirstOrDefaultAsync(
+                x => x.Id == id && !x.IsDeleted,
+                ct);
 
         return await PrepareCredentialForUseAsync(entity, ct);
     }
