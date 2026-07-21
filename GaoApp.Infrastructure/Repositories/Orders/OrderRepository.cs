@@ -24,12 +24,12 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.InventoryIssue)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
-                    .ThenInclude(v => v.PrimaryProductImage)
+                .ThenInclude(l => l.Variant!)
+                    .ThenInclude(v => v.PrimaryProductImage!)
                         .ThenInclude(pi => pi.MediaAsset)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.Product)
                         .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
                             .ThenInclude(pi => pi.MediaAsset)
@@ -38,7 +38,7 @@ public sealed class OrderRepository : IOrderRepository
             // Load bảng quy đổi đơn vị để POS hiển thị bảng giá:
             // Cái / Lốc / Thùng, giá lẻ, giá sỉ.
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                         .ThenInclude(c => c.Unit)
 
@@ -61,19 +61,19 @@ public sealed class OrderRepository : IOrderRepository
           .Include(o => o.InventoryIssue)
 
           .Include(o => o.Lines.Where(l => !l.IsDeleted))
-              .ThenInclude(l => l.Variant)
-                  .ThenInclude(v => v.PrimaryProductImage)
+              .ThenInclude(l => l.Variant!)
+                  .ThenInclude(v => v.PrimaryProductImage!)
                       .ThenInclude(pi => pi.MediaAsset)
 
           .Include(o => o.Lines.Where(l => !l.IsDeleted))
-              .ThenInclude(l => l.Variant)
+              .ThenInclude(l => l.Variant!)
                   .ThenInclude(v => v.Product)
                       .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
                           .ThenInclude(pi => pi.MediaAsset)
 
           // NEW: bảng giá đơn vị cho popup POS
           .Include(o => o.Lines.Where(l => !l.IsDeleted))
-              .ThenInclude(l => l.Variant)
+              .ThenInclude(l => l.Variant!)
                   .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                       .ThenInclude(c => c.Unit)
 
@@ -217,19 +217,19 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Customer)
 
             .Include(o => o.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
-                    .ThenInclude(v => v.PrimaryProductImage)
+                .ThenInclude(l => l.Variant!)
+                    .ThenInclude(v => v.PrimaryProductImage!)
                         .ThenInclude(pi => pi.MediaAsset)
 
             .Include(o => o.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.Product)
                         .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
                             .ThenInclude(pi => pi.MediaAsset)
 
             // NEW: bảng giá đơn vị cho POS screen
             .Include(o => o.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                         .ThenInclude(c => c.Unit)
 
@@ -252,7 +252,7 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Store)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                         .ThenInclude(c => c.Unit)
 
@@ -272,7 +272,7 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Store)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                         .ThenInclude(c => c.Unit)
 
@@ -290,7 +290,7 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Store)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
+                .ThenInclude(l => l.Variant!)
                     .ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
                         .ThenInclude(c => c.Unit)
 
