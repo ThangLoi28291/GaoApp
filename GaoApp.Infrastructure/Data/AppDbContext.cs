@@ -5,6 +5,7 @@ using GaoApp.Domain.Entities;
 
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using System.Linq.Expressions;
 
 namespace GaoApp.Infrastructure.Data;
@@ -233,30 +234,405 @@ public class AppDbContext : DbContext
     }
 
     public override int SaveChanges()
+        => SaveChanges(acceptAllChangesOnSuccess: true);
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ApplyAuditAndTenantRules();
-        return base.SaveChanges();
+        ChangeTracker.DetectChanges();
+
+        var pendingChanges = CapturePendingChanges();
+        ValidateTenantOwnership(pendingChanges);
+        ApplyAuditAndTenantRules(pendingChanges);
+
+        return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override Task<int> SaveChangesAsync(
+        CancellationToken cancellationToken = default)
+        => SaveChangesAsync(
+            acceptAllChangesOnSuccess: true,
+            cancellationToken: cancellationToken);
+
+    public override async Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
     {
-        ApplyAuditAndTenantRules();
-        return base.SaveChangesAsync(cancellationToken);
+        ChangeTracker.DetectChanges();
+
+        var pendingChanges = CapturePendingChanges();
+        await ValidateTenantOwnershipAsync(
+            pendingChanges,
+            cancellationToken);
+
+        ApplyAuditAndTenantRules(pendingChanges);
+
+        return await base.SaveChangesAsync(
+            acceptAllChangesOnSuccess,
+            cancellationToken: cancellationToken);
     }
 
-    private void ApplyAuditAndTenantRules()
+    private List<PendingChange> CapturePendingChanges()
+    {
+        return ChangeTracker.Entries()
+            .Where(static entry =>
+                entry.State is EntityState.Added or
+                    EntityState.Modified or
+                    EntityState.Deleted)
+            .Select(static entry => new PendingChange(entry))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Phase A đồng bộ: xác minh quyền sở hữu tenant và lấy database values
+    /// cần thiết để soft delete detached entity mà không ghi đè dữ liệu nghiệp vụ.
+    /// Không thay đổi entity, audit field hoặc EntityState trong phase này.
+    /// </summary>
+    private void ValidateTenantOwnership(
+        IReadOnlyList<PendingChange> pendingChanges)
+    {
+        var currentStoreId = CurrentStoreId;
+
+        foreach (var pendingChange in pendingChanges)
+        {
+            ValidateAddedEntry(
+                pendingChange,
+                currentStoreId);
+
+            if (!RequiresDatabaseValues(
+                pendingChange,
+                currentStoreId))
+            {
+                continue;
+            }
+
+            // CaptureDatabaseValues vừa kiểm tra null, vừa trả về
+            // PropertyValues non-null cho các bước xác minh tiếp theo.
+            var databaseValues = CaptureDatabaseValues(
+                pendingChange,
+                pendingChange.Entry.GetDatabaseValues());
+
+            ValidateDatabaseOwnershipIfRequired(
+                pendingChange,
+                currentStoreId);
+
+            ValidateSafeSoftDeleteConcurrency(
+                pendingChange,
+                databaseValues);
+        }
+    }
+
+    /// <summary>
+    /// Phase A bất đồng bộ: xác minh quyền sở hữu tenant và lấy database values
+    /// cần thiết để soft delete detached entity mà không ghi đè dữ liệu nghiệp vụ.
+    /// Không thay đổi entity, audit field hoặc EntityState trong phase này.
+    /// </summary>
+    private async Task ValidateTenantOwnershipAsync(
+        IReadOnlyList<PendingChange> pendingChanges,
+        CancellationToken cancellationToken)
+    {
+        var currentStoreId = CurrentStoreId;
+
+        foreach (var pendingChange in pendingChanges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            ValidateAddedEntry(
+                pendingChange,
+                currentStoreId);
+
+            if (!RequiresDatabaseValues(
+                pendingChange,
+                currentStoreId))
+            {
+                continue;
+            }
+
+            // GetDatabaseValuesAsync có thể trả về null nếu row đã mất.
+            // CaptureDatabaseValues kiểm tra và trả về giá trị non-null.
+            var databaseValues = CaptureDatabaseValues(
+                pendingChange,
+                await pendingChange.Entry.GetDatabaseValuesAsync(
+                    cancellationToken));
+
+            ValidateDatabaseOwnershipIfRequired(
+                pendingChange,
+                currentStoreId);
+
+            ValidateSafeSoftDeleteConcurrency(
+                pendingChange,
+                databaseValues);
+        }
+    }
+
+    private static void ValidateAddedEntry(
+        PendingChange pendingChange,
+        int? currentStoreId)
+    {
+        if (pendingChange.StateBeforeAudit != EntityState.Added ||
+            !currentStoreId.HasValue ||
+            pendingChange.Entry.Entity is not BaseStoreEntity storeEntity)
+        {
+            return;
+        }
+
+        ValidateAddedStore(
+            storeEntity,
+            currentStoreId.Value);
+
+        pendingChange.VerifiedStoreId = currentStoreId.Value;
+    }
+
+    private static bool RequiresDatabaseValues(
+        PendingChange pendingChange,
+        int? currentStoreId)
+    {
+        if (pendingChange.StateBeforeAudit is not (
+            EntityState.Modified or EntityState.Deleted))
+        {
+            return false;
+        }
+
+        // Tenant context cần database StoreId thật để authorize
+        // Modified và Deleted, kể cả entity detached.
+        var requiresTenantOwnershipCheck =
+            currentStoreId.HasValue &&
+            pendingChange.Entry.Entity is BaseStoreEntity;
+
+        // Mọi BaseEntity soft delete phải lấy lại database values trước khi
+        // đổi Deleted -> Modified. Nếu không, Remove(detachedEntity) có thể
+        // ghi đè Code/Name/các field nghiệp vụ bằng dữ liệu client gửi.
+        var requiresSafeSoftDeleteValues =
+            pendingChange.StateBeforeAudit == EntityState.Deleted &&
+            pendingChange.Entry.Entity is BaseEntity &&
+            pendingChange.Entry.Entity is not ProductVariantAttributeValue;
+
+        return requiresTenantOwnershipCheck ||
+            requiresSafeSoftDeleteValues;
+    }
+
+    private static void ValidateAddedStore(
+        BaseStoreEntity storeEntity,
+        int currentStoreId)
+    {
+        if (storeEntity.StoreId > 0 &&
+            storeEntity.StoreId != currentStoreId)
+        {
+            throw new InvalidOperationException(
+                $"StoreId={storeEntity.StoreId} không khớp TenantContext={currentStoreId}");
+        }
+    }
+
+    private static PropertyValues CaptureDatabaseValues(
+      PendingChange pendingChange,
+      PropertyValues? databaseValues)
+    {
+        if (databaseValues is null)
+        {
+            throw new DbUpdateConcurrencyException(
+                $"Tenant guard không thể xác minh " +
+                $"{pendingChange.Entry.Metadata.ClrType.Name}: " +
+                "dữ liệu không còn tồn tại trong database.");
+        }
+
+        pendingChange.DatabaseValues = databaseValues;
+
+        return databaseValues;
+    }
+
+    private static void ValidateSafeSoftDeleteConcurrency(
+        PendingChange pendingChange,
+        PropertyValues databaseValues)
+    {
+        // InMemory không luôn mô phỏng rowversion giống SQL Server.
+        // So sánh token gốc với database trong phase xác minh giúp
+        // stale/missing token fail closed. Token gốc vẫn được giữ lại để
+        // provider relational tiếp tục đưa vào điều kiện optimistic concurrency.
+        if (pendingChange.StateBeforeAudit != EntityState.Deleted ||
+            pendingChange.Entry.Entity is not BaseEntity ||
+            pendingChange.Entry.Entity is ProductVariantAttributeValue)
+        {
+            return;
+        }
+
+        if (pendingChange.OriginalConcurrencyTokens.Count == 0)
+        {
+            throw new DbUpdateConcurrencyException(
+                $"Không thể soft delete " +
+                $"{pendingChange.Entry.Metadata.ClrType.Name}: " +
+                "không có concurrency token hợp lệ để xác minh.");
+        }
+
+        foreach (var concurrencyToken in
+            pendingChange.OriginalConcurrencyTokens)
+        {
+            var databaseValue = databaseValues[
+                concurrencyToken.PropertyName];
+
+            if (ConcurrencyValuesEqual(
+                concurrencyToken.OriginalValue,
+                databaseValue))
+            {
+                continue;
+            }
+
+            throw new DbUpdateConcurrencyException(
+                $"Không thể soft delete " +
+                $"{pendingChange.Entry.Metadata.ClrType.Name}: " +
+                $"concurrency token '{concurrencyToken.PropertyName}' " +
+                "đã thay đổi hoặc không hợp lệ.");
+        }
+    }
+
+    private static IReadOnlyList<ConcurrencyTokenSnapshot>
+        CaptureOriginalConcurrencyTokens(EntityEntry entry)
+    {
+        var snapshots = new List<ConcurrencyTokenSnapshot>();
+        var capturedPropertyNames = new HashSet<string>(
+            StringComparer.Ordinal);
+
+        // Thu thập toàn bộ concurrency token theo metadata của EF Core.
+        foreach (var property in entry.Metadata.GetProperties())
+        {
+            if (!property.IsConcurrencyToken ||
+                !capturedPropertyNames.Add(property.Name))
+            {
+                continue;
+            }
+
+            var originalValue = entry.Property(property.Name)
+                .OriginalValue;
+
+            snapshots.Add(
+                new ConcurrencyTokenSnapshot(
+                    property.Name,
+                    SnapshotConcurrencyValue(originalValue)));
+        }
+
+        // Defense-in-depth cho contract chung BaseEntity.RowVersion.
+        // Một số test provider có thể làm mất cờ IsConcurrencyToken dù
+        // production SQL Server vẫn dùng RowVersion. Không được vì vậy mà
+        // soft delete tự động chấp nhận token mới nhất từ database.
+        if (entry.Entity is BaseEntity)
+        {
+            var rowVersionProperty = entry.Metadata.FindProperty(
+                nameof(BaseEntity.RowVersion));
+
+            if (rowVersionProperty is not null &&
+                capturedPropertyNames.Add(rowVersionProperty.Name))
+            {
+                var originalValue = entry.Property(
+                    rowVersionProperty.Name).OriginalValue;
+
+                snapshots.Add(
+                    new ConcurrencyTokenSnapshot(
+                        rowVersionProperty.Name,
+                        SnapshotConcurrencyValue(originalValue)));
+            }
+        }
+
+        return snapshots;
+    }
+
+    private static void RestoreOriginalConcurrencyTokens(
+        EntityEntry entry,
+        IReadOnlyList<ConcurrencyTokenSnapshot> concurrencyTokens)
+    {
+        foreach (var concurrencyToken in concurrencyTokens)
+        {
+            var property = entry.Property(
+                concurrencyToken.PropertyName);
+
+            var originalValue = SnapshotConcurrencyValue(
+                concurrencyToken.OriginalValue);
+
+            // Giữ cả CurrentValue và OriginalValue ở token request/context
+            // ban đầu. Nhờ đó DetectChanges không đánh dấu token là cột UPDATE,
+            // còn provider relational vẫn dùng OriginalValue trong WHERE.
+            property.CurrentValue = originalValue;
+            property.OriginalValue = SnapshotConcurrencyValue(
+                concurrencyToken.OriginalValue);
+            property.IsModified = false;
+        }
+    }
+
+    private static object? SnapshotConcurrencyValue(object? value)
+    {
+        return value is Array array
+            ? array.Clone()
+            : value;
+    }
+
+    private static bool ConcurrencyValuesEqual(
+        object? originalValue,
+        object? databaseValue)
+    {
+        if (ReferenceEquals(originalValue, databaseValue))
+        {
+            return true;
+        }
+
+        if (originalValue is null || databaseValue is null)
+        {
+            return false;
+        }
+
+        if (originalValue is Array || databaseValue is Array)
+        {
+            return System.Collections.StructuralComparisons
+                .StructuralEqualityComparer
+                .Equals(originalValue, databaseValue);
+        }
+
+        return originalValue.Equals(databaseValue);
+    }
+
+    private static void ValidateDatabaseOwnershipIfRequired(
+        PendingChange pendingChange,
+        int? currentStoreId)
+    {
+        if (!currentStoreId.HasValue ||
+            pendingChange.Entry.Entity is not BaseStoreEntity)
+        {
+            return;
+        }
+
+        var databaseValues = pendingChange.DatabaseValues
+            ?? throw new InvalidOperationException(
+                "Tenant guard chưa lấy được database values.");
+
+        var databaseStoreId = databaseValues.GetValue<int>(
+            nameof(BaseStoreEntity.StoreId));
+
+        var operation = pendingChange.StateBeforeAudit == EntityState.Deleted
+            ? "DELETE"
+            : "UPDATE";
+
+        if (databaseStoreId != currentStoreId.Value)
+        {
+            throw new InvalidOperationException(
+                $"Tenant mismatch {operation}");
+        }
+
+        pendingChange.VerifiedStoreId = databaseStoreId;
+    }
+
+    /// <summary>
+    /// Phase B: chỉ chạy sau khi toàn bộ entry đã qua tenant verification.
+    /// Thực hiện audit, soft delete và khóa StoreId.
+    /// </summary>
+    private void ApplyAuditAndTenantRules(
+        IReadOnlyList<PendingChange> pendingChanges)
     {
         var now = DateTime.UtcNow;
         var userId = GetCurrentUserId();
 
-        foreach (var entry in ChangeTracker.Entries())
+        foreach (var pendingChange in pendingChanges)
         {
-            // =====================================================
-            // 1. AUDIT + SOFT DELETE
-            // =====================================================
+            var entry = pendingChange.Entry;
+
             if (entry.Entity is BaseEntity baseEntity)
             {
-                switch (entry.State)
+                switch (pendingChange.StateBeforeAudit)
                 {
                     case EntityState.Added:
                         baseEntity.CreatedAtUtc = now;
@@ -270,70 +646,138 @@ public class AppDbContext : DbContext
                         break;
 
                     case EntityState.Deleted:
+                        // Mapping này phải hard delete như nghiệp vụ cũ.
+                        if (entry.Entity is ProductVariantAttributeValue)
                         {
-                            // ⚠️ Ngoại lệ: cho phép hard delete mapping này
-                            if (entry.Entity is ProductVariantAttributeValue)
-                                break;
-
-                            // 🔥 convert sang soft delete
-                            entry.State = EntityState.Modified;
-                            baseEntity.IsDeleted = true;
-                            baseEntity.DeletedAtUtc = now;
-                            baseEntity.DeletedBy = userId;
                             break;
                         }
+
+                        ApplySafeSoftDelete(
+                            pendingChange,
+                            baseEntity,
+                            now,
+                            userId);
+                        break;
                 }
             }
 
-            // =====================================================
-            // 2. 🔥 TENANT HARD GUARD (CRITICAL)
-            // =====================================================
-            if (entry.Entity is BaseStoreEntity storeEntity)
-            {
-                var currentStoreId = _tenant?.StoreId;
-
-                // ✅ CHO PHÉP SYSTEM CONTEXT
-                if (!currentStoreId.HasValue)
-                {
-                    continue;
-                }
-
-                if (entry.State == EntityState.Added)
-                {
-                    if (storeEntity.StoreId > 0 && storeEntity.StoreId != currentStoreId.Value)
-                    {
-                        throw new InvalidOperationException(
-                            $"StoreId={storeEntity.StoreId} không khớp TenantContext={currentStoreId.Value}");
-                    }
-
-                    storeEntity.StoreId = currentStoreId.Value;
-                }
-
-                if (entry.State == EntityState.Modified)
-                {
-                    var originalStoreId = (int)entry.OriginalValues["StoreId"];
-
-                    if (originalStoreId != currentStoreId.Value)
-                    {
-                        throw new InvalidOperationException(
-                            $"Tenant mismatch UPDATE");
-                    }
-
-                    entry.Property("StoreId").IsModified = false;
-                }
-
-                if (entry.State == EntityState.Deleted)
-                {
-                    var originalStoreId = (int)entry.OriginalValues["StoreId"];
-
-                    if (originalStoreId != currentStoreId.Value)
-                    {
-                        throw new InvalidOperationException(
-                            $"Tenant mismatch DELETE");
-                    }
-                }
-            }
+            ProtectVerifiedStoreId(pendingChange);
         }
+    }
+
+    private static void ApplySafeSoftDelete(
+        PendingChange pendingChange,
+        BaseEntity baseEntity,
+        DateTime now,
+        int? userId)
+    {
+        var databaseValues = pendingChange.DatabaseValues
+            ?? throw new InvalidOperationException(
+                "Soft delete chưa lấy được database values.");
+
+        var entry = pendingChange.Entry;
+
+        // Khôi phục toàn bộ business fields từ database để entity detached
+        // không thể ghi đè Code/Name/IsActive hoặc dữ liệu nghiệp vụ khác.
+        entry.CurrentValues.SetValues(databaseValues);
+        entry.OriginalValues.SetValues(databaseValues);
+        entry.State = EntityState.Unchanged;
+
+        // Không chấp nhận token mới nhất từ database thay cho token mà
+        // request/context ban đầu mang theo. Việc khôi phục generic theo
+        // metadata bảo vệ mọi concurrency token, không hard-code RowVersion.
+        RestoreOriginalConcurrencyTokens(
+            entry,
+            pendingChange.OriginalConcurrencyTokens);
+
+        baseEntity.IsDeleted = true;
+        baseEntity.DeletedAtUtc = now;
+        baseEntity.DeletedBy = userId;
+
+        // Chỉ ba cột soft-delete được phép UPDATE.
+        entry.Property(nameof(BaseEntity.IsDeleted))
+            .IsModified = true;
+        entry.Property(nameof(BaseEntity.DeletedAtUtc))
+            .IsModified = true;
+        entry.Property(nameof(BaseEntity.DeletedBy))
+            .IsModified = true;
+    }
+
+    private static void ProtectVerifiedStoreId(
+        PendingChange pendingChange)
+    {
+        if (pendingChange.Entry.Entity is not BaseStoreEntity storeEntity ||
+            !pendingChange.VerifiedStoreId.HasValue)
+        {
+            return;
+        }
+
+        var verifiedStoreId = pendingChange.VerifiedStoreId.Value;
+
+        // Added: gán tenant hiện tại sau khi toàn bộ batch đã được xác minh.
+        if (pendingChange.StateBeforeAudit == EntityState.Added)
+        {
+            storeEntity.StoreId = verifiedStoreId;
+            return;
+        }
+
+        // Modified/Deleted: StoreId phải lấy từ database, không lấy từ client.
+        storeEntity.StoreId = verifiedStoreId;
+
+        var storeIdProperty = pendingChange.Entry.Property(
+            nameof(BaseStoreEntity.StoreId));
+
+        storeIdProperty.CurrentValue = verifiedStoreId;
+
+        // Không ghi đè OriginalValue nếu StoreId được cấu hình là
+        // concurrency token trong tương lai.
+        if (!storeIdProperty.Metadata.IsConcurrencyToken)
+        {
+            storeIdProperty.OriginalValue = verifiedStoreId;
+        }
+
+        if (pendingChange.Entry.State == EntityState.Modified)
+        {
+            storeIdProperty.IsModified = false;
+        }
+    }
+
+    private sealed class PendingChange
+    {
+        public PendingChange(EntityEntry entry)
+        {
+            Entry = entry;
+            StateBeforeAudit = entry.State;
+            OriginalConcurrencyTokens =
+                CaptureOriginalConcurrencyTokens(entry);
+        }
+
+        public EntityEntry Entry { get; }
+
+        public EntityState StateBeforeAudit { get; }
+
+        public IReadOnlyList<ConcurrencyTokenSnapshot>
+            OriginalConcurrencyTokens
+        { get; }
+
+        public int? VerifiedStoreId { get; set; }
+
+        public PropertyValues? DatabaseValues { get; set; }
+    }
+
+    private sealed class ConcurrencyTokenSnapshot
+    {
+        public ConcurrencyTokenSnapshot(
+            string propertyName,
+            object? originalValue)
+        {
+            PropertyName = propertyName;
+            OriginalValue = originalValue;
+        }
+
+        public string PropertyName { get; }
+
+        public object? OriginalValue { get; }
     }
 
     private void ApplyGlobalFilters(ModelBuilder builder)
