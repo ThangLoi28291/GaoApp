@@ -45,14 +45,29 @@ public sealed class PurchaseRequestRepository : IPurchaseRequestRepository
             .FirstOrDefaultAsync(x => x.Id == id && x.StoreId == storeId, ct);
     }
 
-    private static IQueryable<PurchaseRequest> IncludeDetail(IQueryable<PurchaseRequest> query)
-        => query
-            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x.Product).ThenInclude(x => x.Supplier)
-            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x.Product).ThenInclude(x => x.Tax)
-            .Include(x => x.Lines).ThenInclude(x => x.ProductUnitConversion).ThenInclude(x => x.Unit)
-            .Include(x => x.Actions)
-            .Include(x => x.PurchaseOrders).ThenInclude(x => x.Supplier)
-            .AsSplitQuery();
+    private static IQueryable<PurchaseRequest> IncludeDetail(
+      IQueryable<PurchaseRequest> query)
+      => query
+          .Include(request => request.Lines)
+              .ThenInclude(line => line.ProductVariant)
+                  .ThenInclude(variant => variant!.Product)
+                      .ThenInclude(product => product.Supplier)
+
+          .Include(request => request.Lines)
+              .ThenInclude(line => line.ProductVariant)
+                  .ThenInclude(variant => variant!.Product)
+                      .ThenInclude(product => product.Tax)
+
+          .Include(request => request.Lines)
+              .ThenInclude(line => line.ProductUnitConversion)
+                  .ThenInclude(conversion => conversion!.Unit)
+
+          .Include(request => request.Actions)
+
+          .Include(request => request.PurchaseOrders)
+              .ThenInclude(order => order.Supplier)
+
+          .AsSplitQuery();
 
     public Task AddAsync(PurchaseRequest entity, CancellationToken ct = default)
         => _db.PurchaseRequests.AddAsync(entity, ct).AsTask();
