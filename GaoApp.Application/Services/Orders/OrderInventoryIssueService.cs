@@ -146,7 +146,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 
         foreach (var line in activeLines)
         {
-            result.Lines.Add(await EvaluateLineAsync(issue, line, ct));
+            result.Lines.Add(EvaluateLine(line));
         }
 
         result.TotalLines = result.Lines.Count;
@@ -173,7 +173,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             throw new InvalidOperationException("Chỉ được approve case đang ở trạng thái ReadyForApproval.");
 
         var check = await ValidateBeforeApproveAsync(issueId, ct);
-        await ApplyResolutionResultToEntityAsync(issue, check, now, ct);
+        ApplyResolutionResultToEntity(issue, check, now);
 
         if (!check.CanApprove)
             throw new InvalidOperationException(check.ToUserMessage());
@@ -267,7 +267,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             line.Id,
             ct);
 
-        await RefreshSingleLineResolutionAsync(issue, line, DateTime.UtcNow, ct);
+        RefreshSingleLineResolution(issue, line, DateTime.UtcNow);
 
         _issueRepository.Update(issue);
         await SyncOrderMirrorAsync(issue, ct);
@@ -298,7 +298,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             line.Id,
             ct);
 
-        await RefreshSingleLineResolutionAsync(issue, line, DateTime.UtcNow, ct);
+        RefreshSingleLineResolution(issue, line, DateTime.UtcNow);
 
         _issueRepository.Update(issue);
         await SyncOrderMirrorAsync(issue, ct);
@@ -516,41 +516,50 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         CancellationToken ct)
     {
         var check = await ValidateBeforeApproveAsync(issue.Id, ct);
-        await ApplyResolutionResultToEntityAsync(issue, check, now, ct);
+        ApplyResolutionResultToEntity(issue, check, now);
 
         RefreshOverdueAndSeverity(issue, now);
     }
 
-    private async Task RefreshSingleLineResolutionAsync(
+    private static void RefreshSingleLineResolution(
         OrderInventoryIssue issue,
         OrderInventoryIssueLine line,
-        DateTime now,
-        CancellationToken ct)
+        DateTime now)
     {
-        var evaluation = await EvaluateLineAsync(issue, line, ct);
+        var evaluation = EvaluateLine(line);
 
         line.RevaluationAmount = evaluation.RevaluationAmount;
-        line.AutoDetectedRevaluationAmount = evaluation.RevaluationAmount;
+        line.AutoDetectedRevaluationAmount =
+            evaluation.RevaluationAmount;
 
-        line.AutoDetectedDocumentResolved = evaluation.DocumentResolved;
-        line.AutoDetectedCostResolved = evaluation.CostResolved;
+        line.AutoDetectedDocumentResolved =
+            evaluation.DocumentResolved;
+
+        line.AutoDetectedCostResolved =
+            evaluation.CostResolved;
 
         line.IsResolved = evaluation.IsResolved;
-        line.ResolvedAtUtc = evaluation.IsResolved ? now : null;
+        line.ResolvedAtUtc = evaluation.IsResolved
+            ? now
+            : null;
+
         line.LastAutoResolvedAtUtc = now;
 
         line.AutoResolveNote = evaluation.IsResolved
-            ? $"Đã auto-resolve line. Inbound={line.AutoDetectedInboundQty:N2}/{line.NegativeQty:N2}, Revaluation={(evaluation.RevaluationAmount?.ToString("N0") ?? "0")}."
+            ? $"Đã auto-resolve line. " +
+              $"Inbound={line.AutoDetectedInboundQty:N2}/" +
+              $"{line.NegativeQty:N2}, " +
+              $"Revaluation=" +
+              $"{(evaluation.RevaluationAmount?.ToString("N0") ?? "0")}."
             : string.Join(" | ", evaluation.Reasons);
 
         RefreshOverdueAndSeverity(issue, now);
     }
 
-    private async Task ApplyResolutionResultToEntityAsync(
+    private static void ApplyResolutionResultToEntity(
         OrderInventoryIssue issue,
         InventoryIssueApprovalCheckResultDto result,
-        DateTime now,
-        CancellationToken ct)
+        DateTime now)
     {
         var activeLines = issue.Lines
             .Where(x => !x.IsDeleted)
@@ -558,49 +567,63 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 
         foreach (var dto in result.Lines)
         {
-            if (!activeLines.TryGetValue(dto.IssueLineId, out var line))
+            if (!activeLines.TryGetValue(
+                dto.IssueLineId,
+                out var line))
+            {
                 continue;
+            }
 
-            // Mirror snapshot quan trọng để DB và UI đồng bộ
-            line.RevaluationAmount = dto.RevaluationAmount;
-            line.AutoDetectedRevaluationAmount = dto.RevaluationAmount;
+            // Mirror snapshot để DB và UI đồng bộ.
+            line.RevaluationAmount =
+                dto.RevaluationAmount;
 
-            line.AutoDetectedDocumentResolved = dto.DocumentResolved;
-            line.AutoDetectedCostResolved = dto.CostResolved;
+            line.AutoDetectedRevaluationAmount =
+                dto.RevaluationAmount;
 
-            // AutoDetectedInboundQty được RefreshAutoResolutionAsync tính rồi,
-            // ở đây không tính lại để tránh lệch allocation
+            line.AutoDetectedDocumentResolved =
+                dto.DocumentResolved;
+
+            line.AutoDetectedCostResolved =
+                dto.CostResolved;
+
+            // AutoDetectedInboundQty đã được auto engine tính.
+            // Không tính lại tại đây để tránh lệch allocation.
             line.IsResolved = dto.IsResolved;
-            line.ResolvedAtUtc = dto.IsResolved ? now : null;
+
+            line.ResolvedAtUtc = dto.IsResolved
+                ? now
+                : null;
 
             line.LastAutoResolvedAtUtc ??= now;
 
             if (dto.IsResolved)
             {
                 line.AutoResolveNote =
-                    $"Đã auto-resolve line. Inbound={line.AutoDetectedInboundQty:N2}/{line.NegativeQty:N2}, " +
-                    $"Revaluation={(dto.RevaluationAmount?.ToString("N0") ?? "0")}.";
+                    $"Đã auto-resolve line. " +
+                    $"Inbound={line.AutoDetectedInboundQty:N2}/" +
+                    $"{line.NegativeQty:N2}, " +
+                    $"Revaluation=" +
+                    $"{(dto.RevaluationAmount?.ToString("N0") ?? "0")}.";
             }
             else
             {
-                line.AutoResolveNote = string.Join(" | ", dto.Reasons);
+                line.AutoResolveNote =
+                    string.Join(" | ", dto.Reasons);
             }
         }
 
-        var resolvedLines = issue.Lines.Count(x => !x.IsDeleted && x.IsResolved);
+        var resolvedLines = issue.Lines.Count(
+            x => !x.IsDeleted && x.IsResolved);
 
         issue.AutoResolvedLineCount = resolvedLines;
         issue.LastAutoResolvedAtUtc = now;
 
         RefreshOverdueAndSeverity(issue, now);
-
-        await Task.CompletedTask;
     }
 
-    private async Task<InventoryIssueLineResolutionDto> EvaluateLineAsync(
-        OrderInventoryIssue issue,
-        OrderInventoryIssueLine line,
-        CancellationToken ct)
+    private static InventoryIssueLineResolutionDto EvaluateLine(
+      OrderInventoryIssueLine line)
     {
         var dto = new InventoryIssueLineResolutionDto
         {
@@ -608,43 +631,62 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             OrderLineId = line.OrderLineId,
             ProductId = line.ProductId,
             ProductVariantId = line.ProductVariantId,
-            ProductName = $"ProductVariant #{line.ProductVariantId}",
+            ProductName =
+                $"ProductVariant #{line.ProductVariantId}",
 
             OrderedQty = line.OrderedQty,
             StockBefore = line.StockBefore,
             StockAfter = line.StockAfter,
             NegativeQty = line.NegativeQty,
 
-            ProvisionalUnitCost = line.ProvisionalUnitCost,
-            ProvisionalCostAmount = line.ProvisionalCostAmount,
+            ProvisionalUnitCost =
+                line.ProvisionalUnitCost,
 
-            // Dùng snapshot từ AUTO ENGINE
-            RevaluationAmount = line.AutoDetectedRevaluationAmount,
+            ProvisionalCostAmount =
+                line.ProvisionalCostAmount,
 
-            CurrentAvailableQty = line.AutoDetectedInboundQty,
+            // Dùng snapshot từ auto engine.
+            RevaluationAmount =
+                line.AutoDetectedRevaluationAmount,
 
-            HasLinkedReceipt = line.AutoDetectedDocumentResolved,
+            CurrentAvailableQty =
+                line.AutoDetectedInboundQty,
+
+            HasLinkedReceipt =
+                line.AutoDetectedDocumentResolved,
+
             HasLinkedAdjustment = false,
 
-            QuantityResolved = line.AutoDetectedInboundQty >= line.NegativeQty,
-            DocumentResolved = line.AutoDetectedDocumentResolved,
-            CostResolved = line.AutoDetectedCostResolved
+            QuantityResolved =
+                line.AutoDetectedInboundQty >=
+                line.NegativeQty,
+
+            DocumentResolved =
+                line.AutoDetectedDocumentResolved,
+
+            CostResolved =
+                line.AutoDetectedCostResolved
         };
 
         if (!dto.QuantityResolved)
         {
             dto.Reasons.Add(
-                $"thiếu số lượng (auto inbound: {line.AutoDetectedInboundQty:N2}, cần: {line.NegativeQty:N2})");
+                $"thiếu số lượng " +
+                $"(auto inbound: " +
+                $"{line.AutoDetectedInboundQty:N2}, " +
+                $"cần: {line.NegativeQty:N2})");
         }
 
         if (!dto.DocumentResolved)
         {
-            dto.Reasons.Add("chưa có inbound hợp lệ");
+            dto.Reasons.Add(
+                "chưa có inbound hợp lệ");
         }
 
         if (!dto.CostResolved)
         {
-            dto.Reasons.Add("chưa finalize cost");
+            dto.Reasons.Add(
+                "chưa finalize cost");
         }
 
         dto.IsResolved =
@@ -762,7 +804,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         var issue = await RequireIssueDetailAsync(issueId, ct);
 
         var check = await ValidateBeforeApproveAsync(issueId, ct);
-        await ApplyResolutionResultToEntityAsync(issue, check, now, ct);
+        ApplyResolutionResultToEntity(issue, check, now);
 
         _issueRepository.Update(issue);
         await SyncOrderMirrorAsync(issue, ct);

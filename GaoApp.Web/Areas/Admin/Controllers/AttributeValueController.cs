@@ -3,7 +3,6 @@ using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.AttributeValues;
 using GaoApp.Application.Interfaces.Services.AttributeValues;
 using GaoApp.Application.Interfaces.Services.ProductAttributes;
-using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.AttributeValues;
 using GaoApp.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
@@ -17,24 +16,15 @@ public class AttributeValueController : BaseAdminController
 {
     private readonly IAttributeValueService _service;
     private readonly IProductAttributeService _attrService;
-    private readonly ITenantContext _tenant;
 
     public AttributeValueController(
         IAttributeValueService service,
-        IProductAttributeService attrService,
-        ITenantContext tenant)
+        IProductAttributeService attrService)
     {
         _service = service;
         _attrService = attrService;
-        _tenant = tenant;
     }
 
-    private int CurrentStoreId()
-    {
-        if (_tenant.StoreId is null)
-            throw new InvalidOperationException("Không xác định StoreId (Tenant).");
-        return _tenant.StoreId.Value;
-    }
 
     private static void NormalizePagination(ref int page, ref int pageSize)
     {
@@ -54,7 +44,7 @@ public class AttributeValueController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var attrs = await _attrService.GetAllAsync(storeId, ct);
         var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
 
@@ -81,7 +71,7 @@ public class AttributeValueController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var attrs = await _attrService.GetAllAsync(storeId, ct);
         var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
 
@@ -101,7 +91,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Create)]
     public async Task<IActionResult> Create(CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var attrs = await _attrService.GetAllAsync(storeId, ct);
 
         return View("Edit", new AttributeValueEditViewModel
@@ -116,7 +106,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Create)]
     public async Task<IActionResult> Create(AttributeValueEditViewModel vm, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         vm.Attributes = await _attrService.GetAllAsync(storeId, ct);
 
         if (!ModelState.IsValid)
@@ -148,7 +138,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.GetForEditAsync(storeId, id, ct);
         if (!result.IsSuccess)
         {
@@ -182,7 +172,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> Edit(AttributeValueEditViewModel vm, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         vm.Attributes = await _attrService.GetAllAsync(storeId, ct);
 
         if (!ModelState.IsValid)
@@ -217,7 +207,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.ToggleStatusAsync(storeId, id, userId: null, ct);
 
         return Json(new
@@ -232,7 +222,7 @@ public class AttributeValueController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.AttributeValue.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.SoftDeleteAsync(storeId, id, userId: null, ct);
 
         return Json(new

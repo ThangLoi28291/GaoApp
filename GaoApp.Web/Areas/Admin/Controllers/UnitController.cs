@@ -1,7 +1,6 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Units;
 using GaoApp.Application.Interfaces.Services.Units;
-using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.Units;
 using GaoApp.Web.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -11,20 +10,14 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class UnitController : BaseAdminController
 {
     private readonly IUnitService _service;
-    private readonly ITenantContext _tenant;
 
-    public UnitController(IUnitService service, ITenantContext tenant)
+    public UnitController(
+        IUnitService service)
     {
         _service = service;
-        _tenant = tenant;
     }
 
-    private int CurrentStoreId()
-    {
-        if (_tenant.StoreId is null)
-            throw new InvalidOperationException("Không xác định StoreId (Tenant).");
-        return _tenant.StoreId.Value;
-    }
+
 
     private static void NormalizePagination(ref int page, ref int pageSize)
     {
@@ -38,7 +31,7 @@ public class UnitController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return View(new UnitIndexVM
@@ -55,7 +48,7 @@ public class UnitController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return PartialView("_UnitTable", new UnitIndexVM
@@ -78,7 +71,7 @@ public class UnitController : BaseAdminController
         if (!ModelState.IsValid)
             return View("Edit", vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
 
         var result = await _service.CreateAsync(
             storeId,
@@ -106,7 +99,7 @@ public class UnitController : BaseAdminController
     [HttpGet]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.GetForEditAsync(storeId, id, ct);
 
         if (!result.IsSuccess)
@@ -136,7 +129,7 @@ public class UnitController : BaseAdminController
         if (!ModelState.IsValid)
             return View(vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
 
         var result = await _service.UpdateAsync(
             storeId,
@@ -167,7 +160,7 @@ public class UnitController : BaseAdminController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.ToggleStatusAsync(storeId, id, userId: null, ct);
 
         return Json(new
@@ -181,7 +174,7 @@ public class UnitController : BaseAdminController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.SoftDeleteAsync(storeId, id, userId: null, ct);
 
         return Json(new

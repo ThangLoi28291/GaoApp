@@ -15,7 +15,8 @@ public class InvoiceCorrectionCase : BaseStoreEntity
 
     public InvoiceCorrectionType Type { get; set; }
 
-    public InvoiceCorrectionStatus Status { get; set; } = InvoiceCorrectionStatus.Draft;
+    public InvoiceCorrectionStatus Status { get; set; }
+        = InvoiceCorrectionStatus.Draft;
 
     /// <summary>
     /// Lý do sai sót. Gửi sang Viettel ở adjustedNote.
@@ -23,7 +24,7 @@ public class InvoiceCorrectionCase : BaseStoreEntity
     public string Reason { get; set; } = string.Empty;
 
     /// <summary>
-    /// Số văn bản thỏa thuận / biên bản thỏa thuận.
+    /// Số văn bản thỏa thuận hoặc biên bản thỏa thuận.
     /// Gửi sang Viettel ở additionalReferenceDesc.
     /// </summary>
     public string AgreementDocumentNo { get; set; } = string.Empty;
@@ -35,8 +36,6 @@ public class InvoiceCorrectionCase : BaseStoreEntity
     public DateTime AgreementDateUtc { get; set; }
 
     public string? Note { get; set; }
-
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public int? CreatedByUserId { get; set; }
 

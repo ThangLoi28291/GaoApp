@@ -1,7 +1,6 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Taxes;
 using GaoApp.Application.Interfaces.Services.Taxes;
-using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.Taxes;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,20 +9,13 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class TaxController : BaseAdminController
 {
     private readonly ITaxService _service;
-    private readonly ITenantContext _tenant;
 
-    public TaxController(ITaxService service, ITenantContext tenant)
+    public TaxController(
+        ITaxService service)
     {
         _service = service;
-        _tenant = tenant;
     }
 
-    private int CurrentStoreId()
-    {
-        if (_tenant.StoreId is null)
-            throw new InvalidOperationException("Không xác định StoreId (Tenant).");
-        return _tenant.StoreId.Value;
-    }
 
     private static void NormalizePagination(ref int page, ref int pageSize)
     {
@@ -38,7 +30,7 @@ public class TaxController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return View(new TaxIndexVM
@@ -56,7 +48,7 @@ public class TaxController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return PartialView("_TaxTable", new TaxIndexVM
@@ -79,7 +71,7 @@ public class TaxController : BaseAdminController
     {
         if (!ModelState.IsValid) return View("Edit", vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         try
         {
             var dto = new CreateTaxRequest
@@ -105,7 +97,7 @@ public class TaxController : BaseAdminController
     [HttpGet]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var dto = await _service.GetForEditAsync(storeId, id, ct);
         if (dto == null) return NotFound();
 
@@ -128,7 +120,7 @@ public class TaxController : BaseAdminController
     {
         if (!ModelState.IsValid) return View(vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         try
         {
             var dto = new UpdateTaxRequest
@@ -161,7 +153,7 @@ public class TaxController : BaseAdminController
     {
         try
         {
-            var storeId = CurrentStoreId();
+            var storeId = CurrentStoreId;
             var ok = await _service.ToggleStatusAsync(storeId, id, userId: null, ct);
 
             if (!ok) return Json(new { success = false, message = "Không tìm thấy thuế." });
@@ -180,7 +172,7 @@ public class TaxController : BaseAdminController
     {
         try
         {
-            var storeId = CurrentStoreId();
+            var storeId = CurrentStoreId;
             var ok = await _service.SoftDeleteAsync(storeId, id, userId: null, ct);
 
             if (!ok) return Json(new { success = false, message = "Không tìm thấy thuế." });

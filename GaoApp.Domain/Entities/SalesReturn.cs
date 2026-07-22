@@ -17,6 +17,7 @@ public class SalesReturn : BaseStoreEntity, IAuditTrackedEntity
     /// Không sửa lịch sử đơn này, chỉ liên kết để truy vết.
     /// </summary>
     public int OrderId { get; set; }
+
     public Order Order { get; set; } = default!;
 
     /// <summary>
@@ -24,10 +25,13 @@ public class SalesReturn : BaseStoreEntity, IAuditTrackedEntity
     /// Dùng để khớp báo cáo ca.
     /// </summary>
     public int POSShiftId { get; set; }
+
     public POSShift POSShift { get; set; } = default!;
 
     public SalesReturnType Type { get; set; }
-    public SalesReturnStatus Status { get; set; } = SalesReturnStatus.Draft;
+
+    public SalesReturnStatus Status { get; set; }
+        = SalesReturnStatus.Draft;
 
     [Required]
     [StringLength(500)]
@@ -48,11 +52,14 @@ public class SalesReturn : BaseStoreEntity, IAuditTrackedEntity
     public decimal RefundTotal { get; set; }
 
     public int CreatedByUserId { get; set; }
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public int? CompletedByUserId { get; set; }
+
     public DateTime? CompletedAtUtc { get; set; }
 
-    public ICollection<SalesReturnLine> Lines { get; set; } = new List<SalesReturnLine>();
-    public ICollection<SalesReturnPayment> Payments { get; set; } = new List<SalesReturnPayment>();
+    public ICollection<SalesReturnLine> Lines { get; set; }
+        = new List<SalesReturnLine>();
+
+    public ICollection<SalesReturnPayment> Payments { get; set; }
+        = new List<SalesReturnPayment>();
 }

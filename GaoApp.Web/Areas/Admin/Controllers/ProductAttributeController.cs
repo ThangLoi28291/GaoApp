@@ -1,7 +1,7 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.ProductAttributes;
 using GaoApp.Application.Interfaces.Services.ProductAttributes;
-using GaoApp.Infrastructure.Tenant;
+
 using GaoApp.Web.Areas.Admin.ViewModels.ProductAttributes;
 using GaoApp.Web.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -14,20 +14,13 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class ProductAttributeController : BaseAdminController
 {
     private readonly IProductAttributeService _service;
-    private readonly ITenantContext _tenant;
 
-    public ProductAttributeController(IProductAttributeService service, ITenantContext tenant)
+    public ProductAttributeController(
+        IProductAttributeService service)
     {
         _service = service;
-        _tenant = tenant;
     }
 
-    private int CurrentStoreId()
-    {
-        if (_tenant.StoreId is null)
-            throw new InvalidOperationException("Không xác định StoreId (Tenant).");
-        return _tenant.StoreId.Value;
-    }
 
     private static void NormalizePagination(ref int page, ref int pageSize)
     {
@@ -41,7 +34,7 @@ public class ProductAttributeController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return View(new ProductAttributeIndexVM
@@ -58,7 +51,7 @@ public class ProductAttributeController : BaseAdminController
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
 
         return PartialView("_ProductAttributeTable", new ProductAttributeIndexVM
@@ -83,7 +76,7 @@ public class ProductAttributeController : BaseAdminController
         if (!ModelState.IsValid)
             return View("Edit", vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
 
         var result = await _service.CreateAsync(
             storeId,
@@ -110,7 +103,7 @@ public class ProductAttributeController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.GetForEditAsync(storeId, id, ct);
 
         if (!result.IsSuccess)
@@ -139,7 +132,7 @@ public class ProductAttributeController : BaseAdminController
         if (!ModelState.IsValid)
             return View(vm);
 
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
 
         var result = await _service.UpdateAsync(
             storeId,
@@ -169,7 +162,7 @@ public class ProductAttributeController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.ToggleStatusAsync(storeId, id, userId: null, ct);
 
         return Json(new
@@ -184,7 +177,7 @@ public class ProductAttributeController : BaseAdminController
     [Authorize(Policy = PermissionCodes.Catalog.ProductAttribute.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
-        var storeId = CurrentStoreId();
+        var storeId = CurrentStoreId;
         var result = await _service.SoftDeleteAsync(storeId, id, userId: null, ct);
 
         return Json(new

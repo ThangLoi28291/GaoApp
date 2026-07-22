@@ -3,7 +3,6 @@ using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Promotions;
 using GaoApp.Application.Interfaces.Services.Promotions;
 using GaoApp.Domain.Enums;
-using GaoApp.Infrastructure.Tenant;
 using GaoApp.Web.Areas.Admin.ViewModels.Promotions;
 using GaoApp.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
@@ -15,22 +14,13 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public sealed class PromotionController : BaseAdminController
 {
     private readonly IPromotionAdminService _service;
-    private readonly ITenantContext _tenant;
 
     public PromotionController(
-        IPromotionAdminService service,
-        ITenantContext tenant)
+        IPromotionAdminService service)
     {
         _service = service;
-        _tenant = tenant;
     }
 
-    private int CurrentStoreId()
-    {
-        if (_tenant.StoreId is null)
-            throw new InvalidOperationException("Không xác định StoreId.");
-        return _tenant.StoreId.Value;
-    }
 
     private static void NormalizePagination(ref int page, ref int pageSize)
     {
@@ -54,7 +44,7 @@ public sealed class PromotionController : BaseAdminController
         NormalizePagination(ref page, ref pageSize);
 
         var paged = await _service.GetPagedAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             type,
             isActive,
             customerPriceTier,
@@ -94,7 +84,7 @@ public sealed class PromotionController : BaseAdminController
         NormalizePagination(ref page, ref pageSize);
 
         var paged = await _service.GetPagedAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             type,
             isActive,
             customerPriceTier,
@@ -122,7 +112,7 @@ public sealed class PromotionController : BaseAdminController
     [HttpGet]
     public async Task<IActionResult> Get(int id, CancellationToken ct = default)
     {
-        var result = await _service.GetForEditAsync(CurrentStoreId(), id, ct);
+        var result = await _service.GetForEditAsync(CurrentStoreId, id, ct);
 
         return Json(new
         {
@@ -149,7 +139,7 @@ public sealed class PromotionController : BaseAdminController
         if (request.Id > 0)
         {
             var updateResult = await _service.UpdateAsync(
-                CurrentStoreId(),
+                CurrentStoreId,
                 request,
                 userId: null,
                 ct);
@@ -165,7 +155,7 @@ public sealed class PromotionController : BaseAdminController
         }
 
         var createResult = await _service.CreateAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             request,
             userId: null,
             ct);
@@ -184,7 +174,7 @@ public sealed class PromotionController : BaseAdminController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
-        var result = await _service.ToggleStatusAsync(CurrentStoreId(), id, userId: null, ct);
+        var result = await _service.ToggleStatusAsync(CurrentStoreId, id, userId: null, ct);
 
         return Json(new
         {
@@ -199,7 +189,7 @@ public sealed class PromotionController : BaseAdminController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
-        var result = await _service.SoftDeleteAsync(CurrentStoreId(), id, userId: null, ct);
+        var result = await _service.SoftDeleteAsync(CurrentStoreId, id, userId: null, ct);
 
         return Json(new
         {
@@ -214,7 +204,7 @@ public sealed class PromotionController : BaseAdminController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Duplicate(int id, CancellationToken ct = default)
     {
-        var result = await _service.DuplicateAsync(CurrentStoreId(), id, userId: null, ct);
+        var result = await _service.DuplicateAsync(CurrentStoreId, id, userId: null, ct);
 
         return Json(new
         {
@@ -231,7 +221,7 @@ public sealed class PromotionController : BaseAdminController
     CancellationToken ct = default)
     {
         var data = await _service.SearchProductsForPromotionAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             term,
             take,
             ct);
@@ -253,7 +243,7 @@ public sealed class PromotionController : BaseAdminController
         CancellationToken ct = default)
     {
         var data = await _service.GetUnitsForPromotionAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             variantId,
             ct);
 
@@ -265,7 +255,7 @@ public sealed class PromotionController : BaseAdminController
     CancellationToken ct = default)
     {
         var data = await _service.GetProductForPromotionAsync(
-            CurrentStoreId(),
+            CurrentStoreId,
             variantId,
             ct);
 

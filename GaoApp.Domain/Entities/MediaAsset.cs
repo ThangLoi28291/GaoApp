@@ -9,8 +9,10 @@ public class MediaAsset : BaseStoreEntity
 {
     [Required, StringLength(260)]
     public string StoragePath { get; set; } = default!;
-    // vd: uploads/_temp/2025/12/22/{token}/abc.png
-    // hoặc: uploads/products/2025/12/22/abc.png
+
+    // Ví dụ:
+    // uploads/_temp/2025/12/22/{token}/abc.png
+    // uploads/products/2025/12/22/abc.png
 
     [StringLength(260)]
     public string? OriginalFileName { get; set; }
@@ -23,20 +25,17 @@ public class MediaAsset : BaseStoreEntity
     [StringLength(64)]
     public string? Sha256 { get; set; }
 
-    /* =======================
-       🔥 BỔ SUNG CHO TEMP FLOW
-       ======================= */
-
-    public bool IsTemp { get; set; } = false;
+    // Temp upload flow
+    public bool IsTemp { get; set; }
 
     [StringLength(80)]
     public string? TempToken { get; set; }
 
-    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
-    public DateTime? ExpireAtUtc { get; set; }  // ✅ hết hạn temp (UTC)
+    /// <summary>
+    /// Thời điểm hết hạn của file tạm, theo UTC.
+    /// </summary>
+    public DateTime? ExpireAtUtc { get; set; }
 
-
-    // Navigation
-    public ICollection<ProductImage> ProductImages { get; set; } = new List<ProductImage>();
+    public ICollection<ProductImage> ProductImages { get; set; }
+        = new List<ProductImage>();
 }
-
