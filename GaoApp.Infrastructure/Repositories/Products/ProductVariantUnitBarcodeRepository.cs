@@ -47,11 +47,16 @@ public class ProductVariantUnitBarcodeRepository : IProductVariantUnitBarcodeRep
                 x.IsActive, ct);
     }
 
-    public async Task<ProductVariantUnitBarcode?> FindByBarcodeAsync(int storeId, string barcode, CancellationToken ct = default)
+    public async Task<ProductVariantUnitBarcode?> FindByBarcodeAsync(
+     int storeId,
+     string barcode,
+     CancellationToken ct = default)
     {
-        barcode = NormalizeBarcode(barcode);
-        if (barcode == null)
+        var normalizedBarcode = NormalizeBarcode(barcode);
+        if (normalizedBarcode is null)
+        {
             return null;
+        }
 
         return await _db.ProductVariantUnitBarcodes
             .AsNoTracking()
@@ -65,7 +70,7 @@ public class ProductVariantUnitBarcodeRepository : IProductVariantUnitBarcodeRep
                 x.StoreId == storeId &&
                 !x.IsDeleted &&
                 x.IsActive &&
-                x.Barcode == barcode &&
+                x.Barcode == normalizedBarcode &&
                 !x.ProductUnitConversion.IsDeleted &&
                 x.ProductUnitConversion.IsActive &&
                 !x.ProductUnitConversion.ProductVariant.IsDeleted &&
@@ -74,18 +79,25 @@ public class ProductVariantUnitBarcodeRepository : IProductVariantUnitBarcodeRep
                 ct);
     }
 
-    public async Task<bool> ExistsBarcodeAsync(int storeId, string barcode, int? excludeId = null, CancellationToken ct = default)
+    public async Task<bool> ExistsBarcodeAsync(
+     int storeId,
+     string barcode,
+     int? excludeId = null,
+     CancellationToken ct = default)
     {
-        barcode = NormalizeBarcode(barcode);
-        if (barcode == null)
+        var normalizedBarcode = NormalizeBarcode(barcode);
+        if (normalizedBarcode is null)
+        {
             return false;
+        }
 
         return await _db.ProductVariantUnitBarcodes
             .IgnoreQueryFilters()
             .AnyAsync(x =>
                 x.StoreId == storeId &&
-                x.Barcode == barcode &&
-                (!excludeId.HasValue || x.Id != excludeId.Value), ct);
+                x.Barcode == normalizedBarcode &&
+                (!excludeId.HasValue || x.Id != excludeId.Value),
+                ct);
     }
 
     /// <summary>
@@ -117,9 +129,11 @@ public class ProductVariantUnitBarcodeRepository : IProductVariantUnitBarcodeRep
     int? excludeId = null,
     CancellationToken ct = default)
     {
-        barcode = NormalizeBarcode(barcode);
-        if (barcode == null)
+        var normalizedBarcode = NormalizeBarcode(barcode);
+        if (normalizedBarcode is null)
+        {
             return null;
+        }
 
         return await _db.ProductVariantUnitBarcodes
             .IgnoreQueryFilters()
@@ -130,7 +144,7 @@ public class ProductVariantUnitBarcodeRepository : IProductVariantUnitBarcodeRep
                     .ThenInclude(v => v.Product)
             .FirstOrDefaultAsync(x =>
                 x.StoreId == storeId &&
-                x.Barcode == barcode &&
+                x.Barcode == normalizedBarcode &&
                 (!excludeId.HasValue || x.Id != excludeId.Value),
                 ct);
     }
