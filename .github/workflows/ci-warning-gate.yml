@@ -1,0 +1,48 @@
+name: GaoApp CI Warning Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaoapp-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warning-gate:
+    name: Warning-free build and regression tests
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK from global.json
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Run restore audit, warning gate, and full tests
+        shell: pwsh
+        run: ./eng/ci.ps1
+
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gaoapp-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            TestResults/CI/**
+          if-no-files-found: warn
+          retention-days: 14
