@@ -150,16 +150,15 @@ public class CategoryService : ICategoryService
         // =========================================================
         var entity = dto.ToEntity();
 
-        //entity.StoreId = storeId;
-        entity.Code = normalizedCode;
-        entity.Name = normalizedName;
+        // normalizedCode đã Trim ở trên.
+        // Null hoặc rỗng trong create có nghĩa là tự sinh mã.
+        var finalCode = normalizedCode is { Length: > 0 }
+            ? normalizedCode
+            : $"CAT-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
-        // Nếu create mà chưa nhập code, tự sinh code đơn giản.
-        // Sau này có thể thay bằng code generator riêng.
-        if (string.IsNullOrWhiteSpace(entity.Code))
-        {
-            entity.Code = $"CAT-{DateTime.UtcNow:yyyyMMddHHmmss}";
-        }
+        //entity.StoreId = storeId;
+        entity.Code = finalCode;
+        entity.Name = normalizedName;
 
         // =========================================================
         // 7. Save
@@ -231,7 +230,7 @@ public class CategoryService : ICategoryService
         // =========================================================
         // 5. Check trùng code
         // =========================================================
-        if (!string.IsNullOrWhiteSpace(normalizedCode))
+        if (normalizedCode is { Length: > 0 })
         {
             var codeExists = await _repository.ExistsCodeAsync(
                 storeId,
@@ -243,6 +242,10 @@ public class CategoryService : ICategoryService
             {
                 return Result.Failure(CategoryErrors.DuplicateCode);
             }
+
+            // Code ở màn hình edit là readonly.
+            // Request không gửi code thì giữ nguyên mã hiện có.
+            entity.Code = normalizedCode;
         }
 
         // =========================================================
@@ -263,7 +266,6 @@ public class CategoryService : ICategoryService
         // 7. Update entity
         // Không map đè cả object để tránh ảnh hưởng field không mong muốn
         // =========================================================
-        entity.Code = normalizedCode;
         entity.Name = normalizedName;
         entity.ParentId = dto.ParentId;
         entity.SortOrder = dto.SortOrder;

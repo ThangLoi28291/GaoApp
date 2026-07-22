@@ -213,4 +213,54 @@ public sealed class ManualMappingContractTests
         newEntity.CreatedAtUtc.Should().Be(createdAt);
         newEntity.UpdatedAtUtc.Should().Be(updatedAt);
     }
+    [Fact]
+    public void Category_mapping_should_preserve_missing_parent()
+    {
+        var entity = new Category
+        {
+            Id = 21,
+            Code = "CAT02",
+            Name = "Category without parent",
+            ParentId = null,
+            Parent = null,
+            SortOrder = 0,
+            IsActive = true
+        };
+
+        var listDto = entity.ToListItemDto();
+        var editDto = entity.ToEditDto();
+
+        listDto.ParentName.Should().BeNull();
+        editDto.ParentId.Should().BeNull();
+    }
+    [Fact]
+    public void Supplier_mapping_should_preserve_null_optional_fields()
+    {
+        var entity = new Supplier
+        {
+            Id = 31,
+            Code = "NCC02",
+            Name = "Supplier without optional data",
+            Phone = null,
+            Email = null,
+            Address = null,
+            ContactName = null,
+            TaxCode = null,
+            Note = null,
+            IsActive = true,
+            RowVersion = new byte[] { 7, 8 }
+        };
+
+        var listDto = entity.ToListItemDto();
+        var editDto = entity.ToEditDto();
+
+        listDto.Phone.Should().BeNull();
+
+        editDto.Phone.Should().BeNull();
+        editDto.Email.Should().BeNull();
+        editDto.Address.Should().BeNull();
+        editDto.ContactName.Should().BeNull();
+        editDto.TaxCode.Should().BeNull();
+        editDto.Note.Should().BeNull();
+    }
 }

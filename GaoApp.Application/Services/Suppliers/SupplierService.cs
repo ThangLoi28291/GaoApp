@@ -54,7 +54,7 @@ public sealed class SupplierService : ISupplierService
     {
         var editDto = NormalizeForValidation(new SupplierEditDto
         {
-            Code = dto.Code,
+            Code = dto.Code ?? string.Empty,
             Name = dto.Name,
             Phone = dto.Phone,
             Email = dto.Email,
@@ -238,7 +238,7 @@ public sealed class SupplierService : ISupplierService
 
     private static SupplierEditDto NormalizeForValidation(SupplierEditDto dto)
     {
-        dto.Code = NormalizeNullable(dto.Code)?.ToUpperInvariant();
+        dto.Code = NormalizeRequired(dto.Code).ToUpperInvariant();
         dto.Name = NormalizeRequired(dto.Name);
 
         dto.Phone = NormalizeNullable(dto.Phone);
