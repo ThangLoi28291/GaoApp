@@ -1,0 +1,18 @@
+# Historical EF Core migration class names are immutable after deployment.
+# Suppress CS8981 only for the explicitly listed legacy migrations below.
+# New migrations are intentionally not covered and must use PascalCase names.
+
+[20251231163031_barcode*.cs]
+dotnet_diagnostic.CS8981.severity = none
+
+[20260320151950_editbarcodehistory*.cs]
+dotnet_diagnostic.CS8981.severity = none
+
+[20260327032402_editfifo*.cs]
+dotnet_diagnostic.CS8981.severity = none
+
+[20260327081048_editfifoinventorycostlayer*.cs]
+dotnet_diagnostic.CS8981.severity = none
+
+[20260401035702_addpending*.cs]
+dotnet_diagnostic.CS8981.severity = none
