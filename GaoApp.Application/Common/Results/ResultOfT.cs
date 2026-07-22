@@ -36,13 +36,21 @@ public sealed class Result<T> : Result
 
     public static new Result<T> Failure(Error error) => new(error);
 
-    public static Result<T> ValidationFailure(IEnumerable<ValidationError> validationErrors)
+    /// <summary>
+    /// Factory validation failure có dữ liệu trả về.
+    /// Chủ ý che factory không generic của Result để giữ kiểu trả về Result&lt;T&gt;.
+    /// </summary>
+    public static new Result<T> ValidationFailure(
+        IEnumerable<ValidationError> validationErrors)
     {
-        var errors = validationErrors?.ToList() ?? new List<ValidationError>();
+        var errors = validationErrors?.ToList()
+            ?? new List<ValidationError>();
 
         if (errors.Count == 0)
         {
-            throw new ArgumentException("ValidationFailure phải có ít nhất 1 lỗi.", nameof(validationErrors));
+            throw new ArgumentException(
+                "ValidationFailure phải có ít nhất 1 lỗi.",
+                nameof(validationErrors));
         }
 
         return new(errors);
