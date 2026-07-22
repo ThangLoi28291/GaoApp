@@ -108,6 +108,46 @@ public class ProductVariantRepositorySearchTests
         stockResults.Single().Product.IsSellable.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GetActiveWithProductAsync_should_return_variant_without_primary_image()
+    {
+        var options = CreateOptions();
+        int variantId;
+
+        await using (var seedContext = CreateContext(options))
+        {
+            var unit = NewUnit();
+            var product = NewProduct(unit);
+
+            var variant = NewVariant(
+                product,
+                "Sản phẩm không có ảnh riêng",
+                "NO-IMAGE-001");
+
+            product.Variants.Add(variant);
+            seedContext.Products.Add(product);
+
+            await seedContext.SaveChangesAsync();
+
+            variantId = variant.Id;
+        }
+
+        await using var readContext = CreateContext(options);
+
+        var repository =
+            new ProductVariantRepository(readContext);
+
+        var result = await repository.GetActiveWithProductAsync(
+            variantId);
+
+        result.Should().NotBeNull();
+        result!.PrimaryProductImage.Should().BeNull();
+
+        result.Product.Should().NotBeNull();
+        result.Product.BaseUnit.Should().NotBeNull();
+        result.Product.BaseUnit.Name.Should().Be("Cái");
+    }
+
     private static void SeedSearchGraph(InMemoryAppDbContext context)
     {
         var unit = NewUnit();

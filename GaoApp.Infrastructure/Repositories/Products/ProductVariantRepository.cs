@@ -780,7 +780,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
               .ThenInclude(p => p.ProductImages.Where(pi => !pi.IsDeleted))
                   .ThenInclude(pi => pi.MediaAsset)
           .Include(v => v.PrimaryProductImage)
-              .ThenInclude(pi => pi.MediaAsset)
+              .ThenInclude(pi => pi!.MediaAsset)
           .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
               .ThenInclude(c => c.Unit)
           .Include(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
@@ -881,7 +881,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
             // Ảnh riêng của Variant
             .Include(x => x.PrimaryProductImage)
-                .ThenInclude(pi => pi.MediaAsset)
+                .ThenInclude(pi => pi!.MediaAsset)
 
             // Unit conversion
             .Include(x => x.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
