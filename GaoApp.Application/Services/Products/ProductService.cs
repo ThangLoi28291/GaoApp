@@ -76,20 +76,45 @@ public sealed class ProductService : IProductService
     }
 
     public async Task<Result<int>> CreateAsync(
-        int storeId,
-        ProductCreateDto dto,
-        int? userId,
-        CancellationToken ct = default)
+       int storeId,
+       ProductCreateDto dto,
+       int? userId,
+       CancellationToken ct = default)
     {
         try
         {
-            var aliasInput = string.IsNullOrWhiteSpace(dto.Alias) ? dto.Name : dto.Alias!;
-            var alias = await GetUniqueAliasAsync(storeId, aliasInput, excludeId: null, ct);
+            var normalizedName = dto.Name?.Trim();
+
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                return Result.ValidationFailure<int>(
+                    new[]
+                    {
+                    new ValidationError(
+                        nameof(dto.Name),
+                        "Vui lòng nhập tên sản phẩm.")
+                    });
+            }
+
+            // Create cho phép bỏ trống Alias.
+            // Khi đó sinh Alias từ Name như nghiệp vụ hiện tại.
+            var aliasInput = dto.Alias?.Trim();
+
+            if (string.IsNullOrWhiteSpace(aliasInput))
+            {
+                aliasInput = normalizedName;
+            }
+
+            var alias = await GetUniqueAliasAsync(
+                storeId,
+                aliasInput,
+                excludeId: null,
+                ct);
 
             var entity = new Product
             {
                 StoreId = storeId,
-                Name = dto.Name.Trim(),
+                Name = normalizedName,
                 Alias = alias,
                 CategoryId = dto.CategoryId!.Value,
                 SupplierId = dto.SupplierId!.Value,
@@ -120,7 +145,9 @@ public sealed class ProductService : IProductService
                 ProductId = entity.Id,
                 Sku = entity.Alias,
                 ProductVariantName = defaultVariantName,
-                ProductVariantNameNormalized = ProductVariantNameHelper.NormalizeForSearch(defaultVariantName),
+                ProductVariantNameNormalized =
+                    ProductVariantNameHelper.NormalizeForSearch(
+                        defaultVariantName),
                 CostPrice = 0m,
                 Price = null,
                 IsActive = true,
@@ -146,29 +173,37 @@ public sealed class ProductService : IProductService
                 SortOrder = 0
             };
 
-            await _repo.AddProductUnitConversionAsync(baseConversion, ct);
+            await _repo.AddProductUnitConversionAsync(
+                baseConversion,
+                ct);
+
             await _repo.SaveChangesAsync(ct);
 
             // =========================================================
             // 4) Tạo barcode nội bộ cho base unit
             // =========================================================
-            var internalBarcode = await GenerateAvailableInternalBarcodeAsync(
-                storeId,
-                defaultVariant.Id,
+            var internalBarcode =
+                await GenerateAvailableInternalBarcodeAsync(
+                    storeId,
+                    defaultVariant.Id,
+                    ct);
+
+            var defaultUnitBarcode =
+                new ProductVariantUnitBarcode
+                {
+                    StoreId = storeId,
+                    ProductUnitConversionId = baseConversion.Id,
+                    Barcode = internalBarcode,
+                    BarcodeType = BarcodeType.Internal,
+                    IsPrimary = true,
+                    IsActive = true,
+                    Note = "Tự sinh khi tạo sản phẩm mặc định"
+                };
+
+            await _repo.AddProductVariantUnitBarcodeAsync(
+                defaultUnitBarcode,
                 ct);
 
-            var defaultUnitBarcode = new ProductVariantUnitBarcode
-            {
-                StoreId = storeId,
-                ProductUnitConversionId = baseConversion.Id,
-                Barcode = internalBarcode,
-                BarcodeType = BarcodeType.Internal,
-                IsPrimary = true,
-                IsActive = true,
-                Note = "Tự sinh khi tạo sản phẩm mặc định"
-            };
-
-            await _repo.AddProductVariantUnitBarcodeAsync(defaultUnitBarcode, ct);
             await _repo.SaveChangesAsync(ct);
 
             // =========================================================
@@ -192,14 +227,16 @@ public sealed class ProductService : IProductService
         catch (InvalidOperationException ex)
         {
             return Result<int>.Failure(
-                Error.Validation("Product", ex.Message)
-            );
+                Error.Validation(
+                    "Product",
+                    ex.Message));
         }
         catch (Exception ex)
         {
             return Result<int>.Failure(
-                Error.Failure($"Tạo sản phẩm thất bại: {ex.InnerException?.Message ?? ex.Message}")
-            );
+                Error.Failure(
+                    $"Tạo sản phẩm thất bại: " +
+                    $"{ex.InnerException?.Message ?? ex.Message}"));
         }
     }
 
@@ -237,20 +274,62 @@ public sealed class ProductService : IProductService
     }
 
     public async Task<Result> UpdateAsync(
-        int storeId,
-        UpdateProductRequest dto,
-        int? userId,
-        CancellationToken ct = default)
+       int storeId,
+       UpdateProductRequest dto,
+       int? userId,
+       CancellationToken ct = default)
     {
         try
         {
-            var entity = await _repo.GetDetailAsync(storeId, dto.Id, ct);
-            if (entity == null)
-                return Result.Failure(Error.NotFound("Không tìm thấy sản phẩm."));
+            var entity = await _repo.GetDetailAsync(
+                storeId,
+                dto.Id,
+                ct);
 
+            if (entity == null)
+            {
+                return Result.Failure(
+                    Error.NotFound(
+                        "Không tìm thấy sản phẩm."));
+            }
+
+            var normalizedName = dto.Name?.Trim();
+
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                return Result.ValidationFailure(
+                    new[]
+                    {
+                    new ValidationError(
+                        nameof(dto.Name),
+                        "Vui lòng nhập tên sản phẩm.")
+                    });
+            }
+
+            var normalizedAlias = dto.Alias?.Trim();
+
+            if (string.IsNullOrWhiteSpace(normalizedAlias))
+            {
+                return Result.ValidationFailure(
+                    new[]
+                    {
+                    new ValidationError(
+                        nameof(dto.Alias),
+                        "Alias không hợp lệ.")
+                    });
+            }
+
+            // =========================================================
             // A) Update product fields
-            entity.Name = dto.Name.Trim();
-            entity.Alias = await GetUniqueAliasAsync(storeId, dto.Alias, dto.Id, ct);
+            // =========================================================
+            entity.Name = normalizedName;
+
+            entity.Alias = await GetUniqueAliasAsync(
+                storeId,
+                normalizedAlias,
+                dto.Id,
+                ct);
+
             entity.CategoryId = dto.CategoryId!.Value;
             entity.SupplierId = dto.SupplierId!.Value;
             entity.BrandId = dto.BrandId;
@@ -259,11 +338,17 @@ public sealed class ProductService : IProductService
             entity.BasePrice = dto.BasePrice;
             entity.Description = dto.Description?.Trim();
             entity.Content = dto.Content;
-            if (dto.IsSellable.HasValue)
-                entity.IsSellable = dto.IsSellable.Value;
 
+            if (dto.IsSellable.HasValue)
+            {
+                entity.IsSellable = dto.IsSellable.Value;
+            }
+
+            // =========================================================
             // B) Sync images
-            var orderedItems = ParseImageState(dto.ImagesStateJson);
+            // =========================================================
+            var orderedItems =
+                ParseImageState(dto.ImagesStateJson);
 
             await _productImageService.SyncEditAsync(
                 storeId,
@@ -275,10 +360,16 @@ public sealed class ProductService : IProductService
 
             await _repo.SaveChangesAsync(ct);
 
-            // C) Clear tracking ProductImages to avoid concurrency issues
-            await _productImageService.ClearImageTrackingAsync(storeId, dto.Id);
+            // =========================================================
+            // C) Clear tracking ProductImages
+            // =========================================================
+            await _productImageService.ClearImageTrackingAsync(
+                storeId,
+                dto.Id);
 
+            // =========================================================
             // D) Set primary image atomic
+            // =========================================================
             await _productImageService.SetPrimaryAsync(
                 storeId,
                 dto.Id,
@@ -290,14 +381,16 @@ public sealed class ProductService : IProductService
         catch (InvalidOperationException ex)
         {
             return Result.Failure(
-                Error.Validation("Product", ex.Message)
-            );
+                Error.Validation(
+                    "Product",
+                    ex.Message));
         }
         catch (Exception ex)
         {
             return Result.Failure(
-                Error.Failure($"Cập nhật sản phẩm thất bại: {ex.InnerException?.Message ?? ex.Message}")
-            );
+                Error.Failure(
+                    $"Cập nhật sản phẩm thất bại: " +
+                    $"{ex.InnerException?.Message ?? ex.Message}"));
         }
     }
 
