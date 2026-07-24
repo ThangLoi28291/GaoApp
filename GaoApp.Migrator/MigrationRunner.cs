@@ -24,6 +24,8 @@ public class MigrationRunner
 
     public async Task RunAsync(CancellationToken ct = default)
     {
+        ValidateSeedOptions();
+
         Console.WriteLine("=================================================");
         Console.WriteLine("GaoApp Migrator started");
         Console.WriteLine("=================================================");
@@ -85,5 +87,15 @@ public class MigrationRunner
         Console.WriteLine("=================================================");
         Console.WriteLine("GaoApp Migrator completed successfully");
         Console.WriteLine("=================================================");
+    }
+
+    private void ValidateSeedOptions()
+    {
+        if (_seedOptions.EnableDemoSeed &&
+            string.IsNullOrWhiteSpace(_seedOptions.DemoUserPassword))
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: SeedData:DemoUserPassword bắt buộc khi SeedData:EnableDemoSeed = true.");
+        }
     }
 }

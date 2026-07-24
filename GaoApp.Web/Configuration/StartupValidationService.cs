@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.Common.Options;
+using GaoApp.Application.Common.Options;
+using GaoApp.Infrastructure.Security;
+using System.Net;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
 
@@ -14,7 +16,11 @@ public class StartupValidationService : IStartupValidationService
     private readonly IOptions<AppUrlOptions> _appUrlOptions;
     private readonly IOptions<TenantOptions> _tenantOptions;
     private readonly IOptions<StorageOptions> _storageOptions;
-    private readonly IConfiguration _configuration;
+    private readonly IOptions<SeedDataOptions> _seedOptions;
+    private readonly IOptions<ProxyOptions> _proxyOptions;
+    private readonly IDataProtectionKeysPathResolver _dataProtectionKeysPathResolver;
+    private readonly IDataProtectionKeysDirectoryValidator _dataProtectionKeysDirectoryValidator;
+    private readonly DataProtectionKeysPathState _dataProtectionKeysPathState;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<StartupValidationService> _logger;
 
@@ -23,7 +29,11 @@ public class StartupValidationService : IStartupValidationService
         IOptions<AppUrlOptions> appUrlOptions,
         IOptions<TenantOptions> tenantOptions,
         IOptions<StorageOptions> storageOptions,
-        IConfiguration configuration,
+        IOptions<SeedDataOptions> seedOptions,
+        IOptions<ProxyOptions> proxyOptions,
+        IDataProtectionKeysPathResolver dataProtectionKeysPathResolver,
+        IDataProtectionKeysDirectoryValidator dataProtectionKeysDirectoryValidator,
+        DataProtectionKeysPathState dataProtectionKeysPathState,
         IWebHostEnvironment environment,
         ILogger<StartupValidationService> logger)
     {
@@ -31,7 +41,11 @@ public class StartupValidationService : IStartupValidationService
         _appUrlOptions = appUrlOptions;
         _tenantOptions = tenantOptions;
         _storageOptions = storageOptions;
-        _configuration = configuration;
+        _seedOptions = seedOptions;
+        _proxyOptions = proxyOptions;
+        _dataProtectionKeysPathResolver = dataProtectionKeysPathResolver;
+        _dataProtectionKeysDirectoryValidator = dataProtectionKeysDirectoryValidator;
+        _dataProtectionKeysPathState = dataProtectionKeysPathState;
         _environment = environment;
         _logger = logger;
     }
@@ -43,6 +57,8 @@ public class StartupValidationService : IStartupValidationService
         ValidateConnectionString();
         ValidateAppUrl();
         ValidateTenant();
+        ValidateSeedData();
+        ValidateProxy();
         ValidateStorage();
         ValidateDataProtection();
 
@@ -89,22 +105,29 @@ public class StartupValidationService : IStartupValidationService
     }
 
     /// <summary>
-    /// Kiểm tra BaseUrl là absolute URL hợp lệ.
+    /// Kiểm tra BaseUrl và AdminUrl là absolute URL http/https hợp lệ.
     /// </summary>
     private void ValidateAppUrl()
     {
         var options = _appUrlOptions.Value;
 
-        if (!Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out var baseUri))
+        ValidateHttpUrl(options.BaseUrl, "AppUrl:BaseUrl");
+        ValidateHttpUrl(options.AdminUrl, "AppUrl:AdminUrl");
+    }
+
+    private static void ValidateHttpUrl(string? value, string configurationKey)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            string.IsNullOrWhiteSpace(uri.Host))
         {
             throw new InvalidOperationException(
-                "Startup validation failed: AppUrl:BaseUrl không hợp lệ.");
+                $"Startup validation failed: {configurationKey} không phải absolute URL hợp lệ.");
         }
 
-        if (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps)
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
         {
             throw new InvalidOperationException(
-                "Startup validation failed: AppUrl:BaseUrl phải dùng http hoặc https.");
+                $"Startup validation failed: {configurationKey} phải dùng http hoặc https.");
         }
     }
 
@@ -114,37 +137,57 @@ public class StartupValidationService : IStartupValidationService
     private void ValidateTenant()
     {
         var options = _tenantOptions.Value;
+        var rootDomain = options.RootDomain;
 
-        if (string.IsNullOrWhiteSpace(options.RootDomain))
+        if (string.IsNullOrWhiteSpace(rootDomain))
         {
             throw new InvalidOperationException(
                 "Startup validation failed: Tenant:RootDomain bị thiếu.");
         }
 
-        if (options.RootDomain.Contains("://"))
+        if (rootDomain.Contains("://", StringComparison.Ordinal) ||
+            rootDomain.Contains('/') ||
+            rootDomain.Contains('\\') ||
+            rootDomain.Contains(':') ||
+            rootDomain.Any(char.IsWhiteSpace))
         {
             throw new InvalidOperationException(
-                "Startup validation failed: Tenant:RootDomain chỉ được chứa domain thuần, không gồm protocol.");
+                "Startup validation failed: Tenant:RootDomain phải là domain thuần, không chứa protocol, path, port hoặc khoảng trắng.");
         }
 
-        if (options.RootDomain.Contains("/"))
+        if (!IsValidRootDomain(rootDomain))
         {
             throw new InvalidOperationException(
-                "Startup validation failed: Tenant:RootDomain không được chứa ký tự '/'.");
+                "Startup validation failed: Tenant:RootDomain không phải domain hợp lệ.");
         }
 
-        if (string.Equals(options.RootDomain, "localhost", StringComparison.OrdinalIgnoreCase)
-            && _environment.IsProduction())
+        if (string.Equals(rootDomain, "localhost", StringComparison.OrdinalIgnoreCase) &&
+            _environment.IsProduction())
         {
             throw new InvalidOperationException(
                 "Startup validation failed: Production không được dùng Tenant:RootDomain = localhost.");
+        }
+
+        var adminSubdomain = options.AdminSubdomain;
+
+        if (string.IsNullOrWhiteSpace(adminSubdomain))
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: Tenant:AdminSubdomain bị thiếu.");
+        }
+
+        if (adminSubdomain.Any(char.IsWhiteSpace) ||
+            !IsValidDnsLabel(adminSubdomain))
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: Tenant:AdminSubdomain chỉ được là một nhãn gồm chữ, số hoặc dấu gạch ngang; không được là URL hoặc full domain.");
         }
     }
 
     /// <summary>
     /// Kiểm tra thư mục upload.
     /// Nếu CreateIfMissing = true thì tự tạo.
-    /// Nếu không tạo được thì fail startup.
+    /// Nếu không tạo được hoặc không ghi được thì fail startup.
     /// </summary>
     private void ValidateStorage()
     {
@@ -156,64 +199,222 @@ public class StartupValidationService : IStartupValidationService
                 "Startup validation failed: Storage:UploadRoot bị thiếu.");
         }
 
-        var absolutePath = Path.IsPathRooted(options.UploadRoot)
-            ? options.UploadRoot
-            : Path.Combine(_environment.ContentRootPath, options.UploadRoot);
+        var absolutePath = ResolvePath(options.UploadRoot, "Storage:UploadRoot");
 
-        if (_environment.IsProduction()
-            && (!Path.IsPathRooted(options.UploadRoot) || IsInsideContentRoot(absolutePath)))
+        if (_environment.IsProduction() &&
+            (!Path.IsPathFullyQualified(options.UploadRoot) ||
+             IsInsideContentRoot(absolutePath)))
         {
             throw new InvalidOperationException(
                 "Startup validation failed: Production phải dùng Storage:UploadRoot tuyệt đối và nằm ngoài thư mục publish.");
         }
 
-        if (!Directory.Exists(absolutePath))
-        {
-            if (!options.CreateIfMissing)
-            {
-                throw new InvalidOperationException(
-                    $"Startup validation failed: Thư mục upload không tồn tại: {absolutePath}");
-            }
-
-            Directory.CreateDirectory(absolutePath);
-            _logger.LogInformation("Đã tự tạo thư mục upload: {UploadPath}", absolutePath);
-        }
-
-        // Test quyền ghi cơ bản bằng cách tạo file tạm rồi xóa.
-        var testFile = Path.Combine(absolutePath, $".startup_write_test_{Guid.NewGuid():N}.tmp");
-
-        try
-        {
-            File.WriteAllText(testFile, "startup validation");
-            File.Delete(testFile);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Startup validation failed: Không có quyền ghi vào thư mục upload: {absolutePath}",
-                ex);
-        }
+        EnsureWritableDirectory(
+            absolutePath,
+            options.CreateIfMissing,
+            "Storage:UploadRoot",
+            logCreatedDirectory: true);
     }
 
     private void ValidateDataProtection()
     {
-        var keysPath = _configuration["DataProtection:KeysPath"];
+        var absolutePath = _dataProtectionKeysPathResolver.Resolve();
 
-        if (string.IsNullOrWhiteSpace(keysPath))
+        _dataProtectionKeysDirectoryValidator.Validate(absolutePath);
+
+        // Chỉ cho phép Data Protection cấu hình key repository sau khi
+        // đường dẫn đã được resolve và kiểm tra khả năng ghi thành công.
+        _dataProtectionKeysPathState.Initialize(absolutePath);
+    }
+
+    private void ValidateSeedData()
+    {
+        var options = _seedOptions.Value;
+
+        if (options.EnableDemoSeed &&
+            string.IsNullOrWhiteSpace(options.DemoUserPassword))
         {
             throw new InvalidOperationException(
-                "Startup validation failed: DataProtection:KeysPath bị thiếu.");
+                "Startup validation failed: SeedData:DemoUserPassword bắt buộc khi SeedData:EnableDemoSeed = true.");
+        }
+    }
+
+    private void ValidateProxy()
+    {
+        var options = _proxyOptions.Value;
+
+        if (!options.EnableForwardedHeaders)
+        {
+            return;
         }
 
-        var absolutePath = Path.IsPathRooted(keysPath)
-            ? Path.GetFullPath(keysPath)
-            : Path.GetFullPath(Path.Combine(_environment.ContentRootPath, keysPath));
+        var knownProxies = options.KnownProxies ?? new List<string>();
+        for (var index = 0; index < knownProxies.Count; index++)
+        {
+            if (!IPAddress.TryParse(knownProxies[index], out _))
+            {
+                throw new InvalidOperationException(
+                    $"Startup validation failed: Proxy:KnownProxies:{index} không phải địa chỉ IP hợp lệ.");
+            }
+        }
 
-        if (_environment.IsProduction()
-            && (!Path.IsPathRooted(keysPath) || IsInsideContentRoot(absolutePath)))
+        var knownNetworks = options.KnownNetworks ?? new List<string>();
+        for (var index = 0; index < knownNetworks.Count; index++)
+        {
+            ValidateCidr(knownNetworks[index], index);
+        }
+    }
+
+    private static void ValidateCidr(string? value, int index)
+    {
+        var parts = value?.Split('/', StringSplitOptions.None);
+
+        if (parts is null ||
+            parts.Length != 2 ||
+            string.IsNullOrWhiteSpace(parts[0]) ||
+            string.IsNullOrWhiteSpace(parts[1]) ||
+            !IPAddress.TryParse(parts[0], out var address) ||
+            !int.TryParse(parts[1], out var prefixLength))
         {
             throw new InvalidOperationException(
-                "Startup validation failed: Production phải dùng DataProtection:KeysPath tuyệt đối và nằm ngoài thư mục publish.");
+                $"Startup validation failed: Proxy:KnownNetworks:{index} không đúng định dạng CIDR.");
+        }
+
+        var maximumPrefixLength = address.AddressFamily switch
+        {
+            System.Net.Sockets.AddressFamily.InterNetwork => 32,
+            System.Net.Sockets.AddressFamily.InterNetworkV6 => 128,
+            _ => -1
+        };
+
+        if (maximumPrefixLength < 0 ||
+            prefixLength < 0 ||
+            prefixLength > maximumPrefixLength)
+        {
+            throw new InvalidOperationException(
+                $"Startup validation failed: Proxy:KnownNetworks:{index} có prefix length không hợp lệ.");
+        }
+    }
+
+    private static bool IsValidRootDomain(string value)
+    {
+        if (string.Equals(value, "localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (value.Length > 253 || value.StartsWith('.') || value.EndsWith('.'))
+        {
+            return false;
+        }
+
+        var labels = value.Split('.', StringSplitOptions.None);
+        return labels.Length >= 2 && labels.All(IsValidDnsLabel);
+    }
+
+    private static bool IsValidDnsLabel(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Length > 63 ||
+            value.StartsWith('-') ||
+            value.EndsWith('-'))
+        {
+            return false;
+        }
+
+        return value.All(character =>
+            (character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9') ||
+            character == '-');
+    }
+
+    private string ResolvePath(string path, string configurationKey)
+    {
+        try
+        {
+            if (Path.IsPathRooted(path) &&
+                !Path.IsPathFullyQualified(path))
+            {
+                throw new InvalidOperationException(
+                    $"Startup validation failed: {configurationKey} phải là đường dẫn tương đối hoặc fully qualified.");
+            }
+
+            return Path.IsPathFullyQualified(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(_environment.ContentRootPath, path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new InvalidOperationException(
+                $"Startup validation failed: {configurationKey} không phải đường dẫn hợp lệ.",
+                ex);
+        }
+    }
+
+    private void EnsureWritableDirectory(
+        string absolutePath,
+        bool createIfMissing,
+        string configurationKey,
+        bool logCreatedDirectory)
+    {
+        string? testFile = null;
+
+        try
+        {
+            if (!Directory.Exists(absolutePath))
+            {
+                if (!createIfMissing)
+                {
+                    throw new InvalidOperationException(
+                        $"Startup validation failed: Thư mục cấu hình bởi {configurationKey} không tồn tại: {absolutePath}");
+                }
+
+                Directory.CreateDirectory(absolutePath);
+
+                if (logCreatedDirectory)
+                {
+                    _logger.LogInformation(
+                        "Đã tự tạo thư mục cho {ConfigurationKey}: {DirectoryPath}",
+                        configurationKey,
+                        absolutePath);
+                }
+            }
+
+            testFile = Path.Combine(
+                absolutePath,
+                $".startup_write_test_{Guid.NewGuid():N}.tmp");
+
+            File.WriteAllText(testFile, "startup validation");
+            File.Delete(testFile);
+            testFile = null;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Startup validation failed: Không thể sử dụng thư mục cấu hình bởi {configurationKey}: {absolutePath}",
+                ex);
+        }
+        finally
+        {
+            if (testFile is not null)
+            {
+                try
+                {
+                    File.Delete(testFile);
+                }
+                catch (Exception cleanupException)
+                {
+                    _logger.LogWarning(
+                        cleanupException,
+                        "Không thể xóa file kiểm tra startup trong thư mục cấu hình bởi {ConfigurationKey}.",
+                        configurationKey);
+                }
+            }
         }
     }
 

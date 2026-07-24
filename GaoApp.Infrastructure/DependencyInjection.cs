@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Abstractions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Invoices;
@@ -68,6 +68,7 @@ using GaoApp.Infrastructure.Repositories.Suppliers;
 using GaoApp.Infrastructure.Repositories.Taxes;
 using GaoApp.Infrastructure.Repositories.Units;
 using GaoApp.Infrastructure.Repositories.Users;
+using GaoApp.Infrastructure.Security;
 using GaoApp.Infrastructure.Services.Audit;
 using GaoApp.Infrastructure.Services.Invoices;
 using GaoApp.Infrastructure.Services.Orders;
@@ -110,20 +111,20 @@ public static class DependencyInjection
         services.AddScoped<ICacheService, MemoryCacheService>();
 
         // Mật khẩu provider hóa đơn được bảo vệ trước khi ghi database.
-        // Key ring phải bền vững qua restart/deploy; production nên override
-        // DataProtection:KeysPath tới thư mục ngoài publish và giới hạn ACL.
-        var configuredKeysPath = configuration["DataProtection:KeysPath"];
-        var keysPath = string.IsNullOrWhiteSpace(configuredKeysPath)
-            ? Path.Combine(AppContext.BaseDirectory, "App_Data", "DataProtectionKeys")
-            : Path.IsPathRooted(configuredKeysPath)
-                ? configuredKeysPath
-                : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, configuredKeysPath));
-
-        Directory.CreateDirectory(keysPath);
+        // Resolver + state dùng chung bảo đảm validation và key repository
+        // luôn trỏ cùng một đường dẫn. Không tạo directory ở bước đăng ký DI.
+        services.AddSingleton<IDataProtectionKeysPathResolver,
+            DataProtectionKeysPathResolver>();
+        services.AddSingleton<IDataProtectionKeysDirectoryValidator,
+            DataProtectionKeysDirectoryValidator>();
+        services.AddSingleton<DataProtectionKeysPathState>();
+        services.AddSingleton<
+            Microsoft.Extensions.Options.IConfigureOptions<
+                Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>,
+            ConfigureDataProtectionKeyManagementOptions>();
 
         var dataProtection = services.AddDataProtection()
-            .SetApplicationName("GaoApp")
-            .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+            .SetApplicationName("GaoApp");
 
         if (OperatingSystem.IsWindows())
         {

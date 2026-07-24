@@ -281,6 +281,9 @@ try
 
     var app = builder.Build();
 
+    // Startup validation phải hoàn tất trước mọi migration/seed side effect.
+    await app.ValidateStartupAsync();
+
     // 9) DB MIGRATION + SEED
     // Development: web tự migrate + seed để dev nhanh
     // Production/Staging: KHÔNG tự migrate, dùng GaoApp.Migrator riêng

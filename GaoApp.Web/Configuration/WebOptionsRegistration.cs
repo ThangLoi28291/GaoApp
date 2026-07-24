@@ -31,8 +31,11 @@ public static class WebOptionsRegistration
             .Bind(configuration.GetSection(AppUrlOptions.SectionName))
             .ValidateDataAnnotations()
             .Validate(
-                x => Uri.TryCreate(x.BaseUrl, UriKind.Absolute, out _),
-                "AppUrl:BaseUrl phải là absolute URL hợp lệ.")
+                x => IsAbsoluteHttpUrl(x.BaseUrl),
+                "AppUrl:BaseUrl phải là absolute URL http/https hợp lệ.")
+            .Validate(
+                x => IsAbsoluteHttpUrl(x.AdminUrl),
+                "AppUrl:AdminUrl phải là absolute URL http/https hợp lệ.")
             .ValidateOnStart();
 
         // =========================================================
@@ -42,8 +45,8 @@ public static class WebOptionsRegistration
             .Bind(configuration.GetSection(TenantOptions.SectionName))
             .ValidateDataAnnotations()
             .Validate(
-                x => !x.RootDomain.StartsWith("http://") && !x.RootDomain.StartsWith("https://"),
-                "Tenant:RootDomain chỉ chứa domain, không kèm http/https.")
+                x => !string.IsNullOrWhiteSpace(x.RootDomain),
+                "Tenant:RootDomain không được để trống.")
             .Validate(
                 x => !string.IsNullOrWhiteSpace(x.AdminSubdomain),
                 "Tenant:AdminSubdomain không được để trống.")
@@ -65,6 +68,10 @@ public static class WebOptionsRegistration
         // =========================================================
         services.AddOptions<SeedDataOptions>()
             .Bind(configuration.GetSection(SeedDataOptions.SectionName))
+            .Validate(
+                x => !x.EnableDemoSeed ||
+                     !string.IsNullOrWhiteSpace(x.DemoUserPassword),
+                "SeedData:DemoUserPassword bắt buộc khi SeedData:EnableDemoSeed = true.")
             .ValidateOnStart();
 
         // =========================================================
@@ -77,4 +84,10 @@ public static class WebOptionsRegistration
 
         return services;
     }
+
+    private static bool IsAbsoluteHttpUrl(string? value)
+        => Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+           !string.IsNullOrWhiteSpace(uri.Host) &&
+           (uri.Scheme == Uri.UriSchemeHttp ||
+            uri.Scheme == Uri.UriSchemeHttps);
 }
