@@ -210,36 +210,64 @@ public static class DependencyInjection
         services.AddScoped<IPromotionRepository, PromotionRepository>();
 
         services.AddScoped<IInvoiceProviderSettingRepository, InvoiceProviderSettingRepository>();
-        services.AddHttpClient<IViettelInvoiceAuthClient, ViettelInvoiceAuthClient>(client =>
+        services.AddOptions<ExternalHttpResilienceOptions>()
+            .Bind(configuration.GetSection(ExternalHttpResilienceOptions.SectionName))
+            .Validate(
+                options => options.HasValidTimeouts(),
+                $"External HTTP timeouts must be between 1 and {ExternalHttpResilienceOptions.MaximumTimeoutSeconds} seconds.")
+            .ValidateOnStart();
+
+        services.AddHttpClient<IViettelInvoiceAuthClient, ViettelInvoiceAuthClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .AuthenticationTimeout;
         });
-        services.AddHttpClient<IViettelInvoicePreviewClient, ViettelInvoicePreviewClient>(client =>
+        services.AddHttpClient<IViettelInvoicePreviewClient, ViettelInvoicePreviewClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .NonIdempotentWriteTimeout;
         });
         services.AddScoped<IInvoiceIntegrationLogRepository, InvoiceIntegrationLogRepository>();
-        services.AddHttpClient<IViettelInvoiceIssueClient, ViettelInvoiceIssueClient>(client =>
+        services.AddHttpClient<IViettelInvoiceIssueClient, ViettelInvoiceIssueClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .NonIdempotentWriteTimeout;
         });
         services.AddScoped<IInvoiceFileStorage, InvoiceFileStorage>();
 
-        services.AddHttpClient<IViettelOfficialFileClient, ViettelOfficialFileClient>(client =>
+        services.AddHttpClient<IViettelOfficialFileClient, ViettelOfficialFileClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .FileDownloadTimeout;
         });
-        services.AddHttpClient<IViettelInvoiceLookupClient, ViettelInvoiceLookupClient>(client =>
+        services.AddHttpClient<IViettelInvoiceLookupClient, ViettelInvoiceLookupClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .SafeReadTimeout;
         });
-        services.AddHttpClient<IViettelInvoiceEmailClient, ViettelInvoiceEmailClient>(client =>
+        services.AddHttpClient<IViettelInvoiceEmailClient, ViettelInvoiceEmailClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(90);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .NonIdempotentWriteTimeout;
         });
-        services.AddHttpClient<IViettelInvoiceListClient, ViettelInvoiceListClient>(client =>
+        services.AddHttpClient<IViettelInvoiceListClient, ViettelInvoiceListClient>((sp, client) =>
         {
-            client.Timeout = TimeSpan.FromSeconds(120);
+            client.Timeout = sp
+                .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
+                .Value
+                .SafeReadTimeout;
         });
         services.AddScoped<IInvoiceCorrectionRepository, InvoiceCorrectionRepository>();
         services.Configure<TaxCodeLookupOptions>(
@@ -255,7 +283,9 @@ public static class DependencyInjection
 
             var timeoutSeconds = options.TimeoutSeconds <= 0
                 ? 10
-                : options.TimeoutSeconds;
+                : Math.Min(
+                    options.TimeoutSeconds,
+                    ExternalHttpResilienceOptions.MaximumTimeoutSeconds);
 
             client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
         });

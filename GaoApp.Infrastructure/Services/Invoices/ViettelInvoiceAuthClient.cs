@@ -127,34 +127,25 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                 {
                     sw.Stop();
 
-                    return Result<TestInvoiceProviderLoginResultDto>.Success(
-                        new TestInvoiceProviderLoginResultDto
-                        {
-                            IsSuccess = false,
-                            AuthModeName = "Basic Auth",
-                            DurationMs = sw.ElapsedMilliseconds,
-                            Message =
-                                $"Basic Auth gọi getCustomFields thất bại. HTTP {(int)customFieldsResponse.StatusCode}. " +
-                                $"Response: {ViettelClientHelper.Trim(customFieldsRaw, 700)}"
-                        });
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            "Viettel.BasicAuthHttpFailed",
+                            $"Basic Auth gọi getCustomFields thất bại. HTTP {(int)customFieldsResponse.StatusCode}."));
                 }
 
-                var customFieldsError = TryReadErrorMessage(customFieldsRaw);
+                var customFieldsResult =
+                    ParseCustomFieldsResponse(customFieldsRaw);
 
-                if (!string.IsNullOrWhiteSpace(customFieldsError))
+                if (!customFieldsResult.IsSuccess)
                 {
                     sw.Stop();
 
-                    return Result<TestInvoiceProviderLoginResultDto>.Success(
-                        new TestInvoiceProviderLoginResultDto
-                        {
-                            IsSuccess = false,
-                            AuthModeName = "Basic Auth",
-                            DurationMs = sw.ElapsedMilliseconds,
-                            Message =
-                                "Gọi getCustomFields được nhưng Viettel trả lỗi nghiệp vụ. " +
-                                $"Lỗi: {customFieldsError}. Response: {ViettelClientHelper.Trim(customFieldsRaw, 700)}"
-                        });
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            customFieldsResult.ErrorCode ??
+                                "Viettel.BasicAuthInvalidResponse",
+                            customFieldsResult.ErrorMessage ??
+                                "Viettel trả về phản hồi getCustomFields không hợp lệ."));
                 }
             }
 
@@ -209,37 +200,26 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
             if (!getInvoicesResponse.IsSuccessStatusCode)
             {
-                return Result<TestInvoiceProviderLoginResultDto>.Success(
-                    new TestInvoiceProviderLoginResultDto
-                    {
-                        IsSuccess = false,
-                        AuthModeName = "Basic Auth",
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Message =
-                            $"Basic Auth gọi getInvoices thất bại. HTTP {(int)getInvoicesResponse.StatusCode}. " +
-                            $"Response: {ViettelClientHelper.Trim(getInvoicesRaw, 700)}"
-                    });
+                return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.BasicAuthHttpFailed",
+                        $"Basic Auth gọi getInvoices thất bại. HTTP {(int)getInvoicesResponse.StatusCode}."));
             }
 
-            var getInvoicesError = TryReadErrorMessage(getInvoicesRaw);
+            var getInvoicesResult =
+                ParseBasicAuthGetInvoicesResponse(getInvoicesRaw);
 
-            if (!string.IsNullOrWhiteSpace(getInvoicesError))
+            if (!getInvoicesResult.IsSuccess)
             {
-                return Result<TestInvoiceProviderLoginResultDto>.Success(
-                    new TestInvoiceProviderLoginResultDto
-                    {
-                        IsSuccess = false,
-                        AuthModeName = "Basic Auth",
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Message =
-                            "Gọi getInvoices được nhưng Viettel trả lỗi nghiệp vụ. " +
-                            $"Lỗi: {getInvoicesError}. Response: {ViettelClientHelper.Trim(getInvoicesRaw, 700)}"
-                    });
+                return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                    Error.Validation(
+                        getInvoicesResult.ErrorCode ??
+                            "Viettel.BasicAuthInvalidResponse",
+                        getInvoicesResult.ErrorMessage ??
+                            "Viettel trả về phản hồi getInvoices không hợp lệ."));
             }
 
-            var totalRows =
-                TryReadIntProperty(getInvoicesRaw, "totalRows") ??
-                TryReadIntProperty(getInvoicesRaw, "totalRow");
+            var totalRows = getInvoicesResult.TotalRows;
 
             return Result<TestInvoiceProviderLoginResultDto>.Success(
                 new TestInvoiceProviderLoginResultDto
@@ -253,31 +233,27 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                         $"Đã test getCustomFields và getInvoices. Tổng hóa đơn đọc được: {(totalRows.HasValue ? totalRows.Value.ToString("N0") : "không xác định")}."
                 });
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            sw.Stop();
-
-            return Result<TestInvoiceProviderLoginResultDto>.Success(
-                new TestInvoiceProviderLoginResultDto
-                {
-                    IsSuccess = false,
-                    AuthModeName = "Basic Auth",
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Message = "Basic Auth test timeout. Kiểm tra mạng, BaseUrl hoặc server Viettel."
-                });
+            throw;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
-            return Result<TestInvoiceProviderLoginResultDto>.Success(
-                new TestInvoiceProviderLoginResultDto
-                {
-                    IsSuccess = false,
-                    AuthModeName = "Basic Auth",
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Message = $"Lỗi khi test Basic Auth Viettel: {ex.Message}"
-                });
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.BasicAuthTimeout",
+                    "Basic Auth test timeout. Kiểm tra mạng, BaseUrl hoặc server Viettel."));
+        }
+        catch (Exception)
+        {
+            sw.Stop();
+
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.BasicAuthTransportFailed",
+                    "Không gọi được dịch vụ kiểm tra Basic Auth Viettel."));
         }
     }
 
@@ -328,41 +304,92 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
             if (!response.IsSuccessStatusCode)
             {
-                return Result<TestInvoiceProviderLoginResultDto>.Success(
-                    new TestInvoiceProviderLoginResultDto
-                    {
-                        IsSuccess = false,
-                        AuthModeName = "Token Login",
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Message =
-                            $"Token Login thất bại. HTTP {(int)response.StatusCode}. " +
-                            $"Response: {ViettelClientHelper.Trim(raw, 700)}"
-                    });
+                return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.TokenLoginHttpFailed",
+                        $"Token Login thất bại. HTTP {(int)response.StatusCode}."));
             }
 
             string? token = null;
 
             if (!string.IsNullOrWhiteSpace(raw))
             {
-                using var doc = JsonDocument.Parse(raw);
+                var jsonValidation =
+                    ViettelClientHelper.TryParseStrictProviderJson(
+                        raw,
+                        out var document);
 
-                token =
-                    ViettelClientHelper.FindStringProperty(doc.RootElement, "access_token") ??
-                    ViettelClientHelper.FindStringProperty(doc.RootElement, "accessToken") ??
-                    ViettelClientHelper.FindStringProperty(doc.RootElement, "token");
+                if (jsonValidation != ProviderJsonValidationFailure.None ||
+                    document is null)
+                {
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            "Viettel.TokenLoginInvalidResponse",
+                            "Không đọc được phản hồi Token Login Viettel."));
+                }
+
+                using var strictDocument = document;
+                var root = strictDocument.RootElement;
+                var containers =
+                    ViettelClientHelper.GetDirectRecognizedContainers(
+                        root,
+                        allowResultArray: false,
+                        allowDataArray: false,
+                        out var hasInvalidEnvelope);
+
+                if (hasInvalidEnvelope)
+                {
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            "Viettel.TokenLoginInvalidResponse",
+                            "Viettel trả về envelope Token Login không hợp lệ."));
+                }
+
+                if (containers.Any(
+                        container =>
+                            ViettelClientHelper.HasDirectFailureMarker(
+                                container.Element,
+                                ViettelClientHelper.IsExplicitViettelSuccessCode)))
+                {
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            "Viettel.TokenLoginBusinessFailed",
+                            "Viettel trả lỗi Token Login."));
+                }
+
+                var candidates = containers
+                    .Select(
+                        container =>
+                            ViettelClientHelper.GetFirstDirectString(
+                                container.Element,
+                                "access_token",
+                                "accessToken",
+                                "token"))
+                    .Where(
+                        value =>
+                            !string.IsNullOrWhiteSpace(value))
+                    .ToList();
+
+                if (candidates.Count > 1)
+                {
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                        Error.Validation(
+                            "Viettel.TokenLoginConflictingResponse",
+                            "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận."));
+                }
+
+                if (candidates.Count == 1)
+                {
+                    token = candidates[0];
+                }
             }
 
             if (string.IsNullOrWhiteSpace(token))
             {
-                return Result<TestInvoiceProviderLoginResultDto>.Success(
-                    new TestInvoiceProviderLoginResultDto
-                    {
-                        IsSuccess = false,
-                        AuthModeName = "Token Login",
-                        DurationMs = sw.ElapsedMilliseconds,
-                        Message =
-                            $"Token Login có phản hồi nhưng không tìm thấy access_token. Response: {ViettelClientHelper.Trim(raw, 700)}"
-                    });
+                return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.TokenMissing",
+                        "Token Login có phản hồi nhưng không tìm thấy access_token."));
             }
 
             return Result<TestInvoiceProviderLoginResultDto>.Success(
@@ -375,31 +402,36 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                     TokenPreview = MaskToken(token)
                 });
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            sw.Stop();
-
-            return Result<TestInvoiceProviderLoginResultDto>.Success(
-                new TestInvoiceProviderLoginResultDto
-                {
-                    IsSuccess = false,
-                    AuthModeName = "Token Login",
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Message = "Token Login Viettel timeout. Kiểm tra mạng, BaseUrl hoặc server Viettel."
-                });
+            throw;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
-            return Result<TestInvoiceProviderLoginResultDto>.Success(
-                new TestInvoiceProviderLoginResultDto
-                {
-                    IsSuccess = false,
-                    AuthModeName = "Token Login",
-                    DurationMs = sw.ElapsedMilliseconds,
-                    Message = $"Lỗi khi Token Login Viettel: {ex.Message}"
-                });
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.TokenLoginTimeout",
+                    "Token Login Viettel timeout. Kiểm tra mạng, BaseUrl hoặc server Viettel."));
+        }
+        catch (JsonException)
+        {
+            sw.Stop();
+
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.TokenLoginInvalidResponse",
+                    "Không đọc được phản hồi Token Login Viettel."));
+        }
+        catch (Exception)
+        {
+            sw.Stop();
+
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.TokenLoginTransportFailed",
+                    "Không gọi được dịch vụ Token Login Viettel."));
         }
     }
 
@@ -435,69 +467,360 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
         return Result<bool>.Success(true);
     }
 
-    private static string? TryReadErrorMessage(string? raw)
+    private static BasicAuthResponseParseResult ParseCustomFieldsResponse(
+        string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return null;
+        {
+            return InvalidBasicAuthResponse(
+                "Viettel.BasicAuthInvalidResponse",
+                "Viettel không trả dữ liệu getCustomFields.");
+        }
 
         try
         {
-            using var doc = JsonDocument.Parse(raw);
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
-            var errorCode =
-                ViettelClientHelper.FindStringProperty(doc.RootElement, "errorCode") ??
-                ViettelClientHelper.FindStringProperty(doc.RootElement, "code");
-
-            var description =
-                ViettelClientHelper.FindStringProperty(doc.RootElement, "description") ??
-                ViettelClientHelper.FindStringProperty(doc.RootElement, "message");
-
-            if (!ViettelClientHelper.IsViettelSuccessCode(errorCode))
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
             {
-                return string.IsNullOrWhiteSpace(description)
-                    ? errorCode
-                    : $"{errorCode} - {description}";
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Không đọc được phản hồi getCustomFields từ Viettel.");
             }
 
-            return null;
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: true,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
+
+            if (hasInvalidEnvelope)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Viettel trả về envelope getCustomFields không hợp lệ.");
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthBusinessFailed",
+                    "Viettel trả lỗi getCustomFields.");
+            }
+
+            var payloadCandidates = containers
+                .Where(IsCustomFieldsPayloadCandidate)
+                .ToList();
+            var candidates = payloadCandidates.Count > 0
+                ? payloadCandidates
+                : containers
+                    .Where(
+                        container =>
+                            HasExplicitSuccessControlCode(
+                                container.Element))
+                    .ToList();
+
+            if (candidates.Count > 1)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthConflictingResponse",
+                    "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.");
+            }
+
+            if (candidates.Count == 0)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthAmbiguousResponse",
+                    "Viettel trả về phản hồi getCustomFields không nhận diện được.");
+            }
+
+            return new BasicAuthResponseParseResult
+            {
+                IsSuccess = true
+            };
         }
         catch
         {
-            return null;
+            return InvalidBasicAuthResponse(
+                "Viettel.BasicAuthInvalidResponse",
+                "Không đọc được phản hồi getCustomFields từ Viettel.");
         }
     }
 
-    private static int? TryReadIntProperty(
-        string? raw,
-        string propertyName)
+    private static bool IsCustomFieldsPayloadCandidate(
+        ProviderResponseContainer container)
+    {
+        if (container.Name.Equals(
+                "result",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return container.Element.ValueKind is
+                JsonValueKind.Object or JsonValueKind.Array;
+        }
+
+        if (container.Name.Equals(
+                "data",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return HasDirectResultShape(container.Element);
+        }
+
+        return false;
+    }
+
+    private static bool HasDirectResultShape(JsonElement element)
+    {
+        return ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "result",
+                   out var resultElement) ==
+               DirectPropertyLookupResult.Found &&
+               resultElement.ValueKind is
+                   JsonValueKind.Array or JsonValueKind.Object;
+    }
+
+    private static BasicAuthResponseParseResult
+        ParseBasicAuthGetInvoicesResponse(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return null;
+        {
+            return InvalidBasicAuthResponse(
+                "Viettel.BasicAuthInvalidResponse",
+                "Viettel không trả dữ liệu getInvoices.");
+        }
 
         try
         {
-            using var doc = JsonDocument.Parse(raw);
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
-            var value = ViettelClientHelper.FindStringProperty(
-                doc.RootElement,
-                propertyName);
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Không đọc được phản hồi getInvoices từ Viettel.");
+            }
 
-            if (int.TryParse(value, out var number))
-                return number;
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
 
-            return null;
+            if (hasInvalidEnvelope)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Viettel trả về envelope getInvoices không hợp lệ.");
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthBusinessFailed",
+                    "Viettel trả lỗi getInvoices.");
+            }
+
+            var candidates = containers
+                .Where(
+                    container =>
+                        HasDirectListShape(container.Element))
+                .ToList();
+
+            if (candidates.Count > 1)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthConflictingResponse",
+                    "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.");
+            }
+
+            if (candidates.Count == 0)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthAmbiguousResponse",
+                    "Viettel trả về phản hồi getInvoices không nhận diện được.");
+            }
+
+            var responseContainer = candidates[0].Element;
+            var hasInvoices =
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "invoices",
+                    out var invoicesElement) ==
+                DirectPropertyLookupResult.Found;
+
+            if (hasInvoices &&
+                invoicesElement.ValueKind != JsonValueKind.Array)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Viettel trả về trường invoices không hợp lệ.");
+            }
+
+            if (hasInvoices)
+            {
+                foreach (var item in invoicesElement.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object ||
+                        !HasStableInvoiceIdentity(item))
+                    {
+                        return InvalidBasicAuthResponse(
+                            "Viettel.BasicAuthInvalidResponse",
+                            "Viettel trả về phần tử hóa đơn thiếu định danh ổn định.");
+                    }
+                }
+            }
+
+            var hasTotalRows =
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "totalRows",
+                    out var totalRowsElement) ==
+                DirectPropertyLookupResult.Found;
+            var hasTotalRow =
+                !hasTotalRows &&
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "totalRow",
+                    out totalRowsElement) ==
+                DirectPropertyLookupResult.Found;
+            var hasTotal = hasTotalRows || hasTotalRow;
+            int? totalRows = null;
+
+            if (hasTotal)
+            {
+                var totalRowsText = totalRowsElement.ValueKind switch
+                {
+                    JsonValueKind.Number => totalRowsElement.ToString(),
+                    JsonValueKind.String => totalRowsElement.GetString(),
+                    _ => null
+                };
+
+                if (!int.TryParse(totalRowsText, out var parsedTotalRows) ||
+                    parsedTotalRows < 0)
+                {
+                    return InvalidBasicAuthResponse(
+                        "Viettel.BasicAuthInvalidResponse",
+                        "Viettel trả về tổng số hóa đơn không hợp lệ.");
+                }
+
+                totalRows = parsedTotalRows;
+            }
+
+            if (!hasInvoices && !hasTotal)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthAmbiguousResponse",
+                    "Viettel trả về phản hồi getInvoices không nhận diện được.");
+            }
+
+            if (!hasInvoices && totalRows > 0)
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthAmbiguousResponse",
+                    "Viettel trả về tổng số hóa đơn nhưng thiếu danh sách hóa đơn.");
+            }
+
+            return new BasicAuthResponseParseResult
+            {
+                IsSuccess = true,
+                TotalRows = totalRows ??
+                    invoicesElement.GetArrayLength()
+            };
         }
         catch
         {
-            return null;
+            return InvalidBasicAuthResponse(
+                "Viettel.BasicAuthInvalidResponse",
+                "Không đọc được phản hồi getInvoices từ Viettel.");
         }
     }
+
+    private static bool HasDirectListShape(JsonElement element)
+    {
+        return ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "invoices",
+                   out _) == DirectPropertyLookupResult.Found ||
+               ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "totalRows",
+                   out _) == DirectPropertyLookupResult.Found ||
+               ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "totalRow",
+                   out _) == DirectPropertyLookupResult.Found;
+    }
+
+    private static bool HasStableInvoiceIdentity(JsonElement item)
+    {
+        return !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetDirectString(
+                       item,
+                       "invoiceNo")) ||
+               !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetDirectString(
+                       item,
+                       "invoiceId")) ||
+               !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetDirectString(
+                       item,
+                       "transactionUuid"));
+    }
+
+    private static bool HasExplicitSuccessControlCode(JsonElement container)
+    {
+        return ViettelClientHelper.IsExplicitViettelSuccessCode(
+            ViettelClientHelper.GetFirstDirectString(
+                container,
+                "errorCode",
+                "code"));
+    }
+
+    private static BasicAuthResponseParseResult InvalidBasicAuthResponse(
+        string errorCode,
+        string errorMessage) =>
+        new()
+        {
+            IsSuccess = false,
+            ErrorCode = errorCode,
+            ErrorMessage = errorMessage
+        };
 
     private static string MaskToken(string token)
     {
-        if (token.Length <= 12)
-            return "***";
+        return "***";
+    }
 
-        return token[..6] + "..." + token[^6..];
+    private sealed class BasicAuthResponseParseResult
+    {
+        public bool IsSuccess { get; set; }
+
+        public int? TotalRows { get; set; }
+
+        public string? ErrorCode { get; set; }
+
+        public string? ErrorMessage { get; set; }
     }
 }

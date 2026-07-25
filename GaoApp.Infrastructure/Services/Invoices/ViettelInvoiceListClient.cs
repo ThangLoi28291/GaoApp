@@ -134,7 +134,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     return Result<ViettelInvoiceListSyncResultDto>.Failure(
                         Error.Validation(
                             "Viettel.GetInvoicesFailed",
-                            $"Đồng bộ danh sách Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
+                            $"Đồng bộ danh sách Viettel thất bại. HTTP {(int)response.StatusCode}."));
                 }
 
                 var parsed = ParseGetInvoicesResponse(raw);
@@ -145,7 +145,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
 
                     return Result<ViettelInvoiceListSyncResultDto>.Failure(
                         Error.Validation(
-                            "Viettel.GetInvoicesBusinessFailed",
+                            parsed.ErrorCode ?? "Viettel.GetInvoicesBusinessFailed",
                             parsed.ErrorMessage ?? "Viettel trả lỗi khi lấy danh sách hóa đơn."));
                 }
 
@@ -171,7 +171,11 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     DurationMs = sw.ElapsedMilliseconds
                 });
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -180,78 +184,197 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                     "Viettel.GetInvoicesTimeout",
                     "Đồng bộ danh sách Viettel timeout."));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             sw.Stop();
 
             return Result<ViettelInvoiceListSyncResultDto>.Failure(
                 Error.Validation(
                     "Viettel.GetInvoicesException",
-                    $"Lỗi đồng bộ danh sách Viettel: {ex.Message}"));
+                    "Không gọi được dịch vụ đồng bộ danh sách Viettel."));
         }
     }
 
     private static GetInvoicesParseResult ParseGetInvoicesResponse(string raw)
     {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return InvalidResponse(
+                "Viettel.GetInvoicesInvalidResponse",
+                "Viettel không trả dữ liệu danh sách hóa đơn.");
+        }
+
         try
         {
-            using var doc = JsonDocument.Parse(raw);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
-            var errorCode =
-                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
-                ViettelClientHelper.FindStringProperty(root, "code");
-
-            var description =
-                ViettelClientHelper.FindStringProperty(root, "description") ??
-                ViettelClientHelper.FindStringProperty(root, "message");
-
-            if (!ViettelClientHelper.IsViettelSuccessCode(errorCode))
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
             {
-                return new GetInvoicesParseResult
-                {
-                    IsSuccess = false,
-                    ErrorCode = errorCode,
-                    ErrorMessage = description ?? errorCode
-                };
+                return InvalidResponse(
+                    "Viettel.GetInvoicesInvalidResponse",
+                    "Không đọc được phản hồi getInvoices từ Viettel.");
             }
 
-            var totalRows = FindIntProperty(root, "totalRows") ??
-                            FindIntProperty(root, "totalRow") ??
-                            0;
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
 
+            if (hasInvalidEnvelope)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesInvalidResponse",
+                    "Viettel trả về envelope danh sách hóa đơn không hợp lệ.");
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesBusinessFailed",
+                    "Viettel trả lỗi khi lấy danh sách hóa đơn.");
+            }
+
+            var candidates = containers
+                .Where(
+                    container =>
+                        HasDirectListShape(container.Element))
+                .ToList();
+
+            if (candidates.Count > 1)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesConflictingResponse",
+                    "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.");
+            }
+
+            if (candidates.Count == 0)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesAmbiguousResponse",
+                    "Viettel trả về phản hồi danh sách hóa đơn không nhận diện được.");
+            }
+
+            var responseContainer = candidates[0].Element;
             var items = new List<ViettelInvoiceListItemDto>();
+            var hasInvoices =
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "invoices",
+                    out var invoicesElement) ==
+                DirectPropertyLookupResult.Found;
 
-            if (ViettelClientHelper.TryFindProperty(root, "invoices", out var invoicesElement) &&
-                invoicesElement.ValueKind == JsonValueKind.Array)
+            if (hasInvoices &&
+                invoicesElement.ValueKind != JsonValueKind.Array)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesInvalidResponse",
+                    "Viettel trả về trường invoices không hợp lệ.");
+            }
+
+            if (hasInvoices)
             {
                 foreach (var item in invoicesElement.EnumerateArray())
                 {
-                    items.Add(new ViettelInvoiceListItemDto
+                    if (item.ValueKind != JsonValueKind.Object)
                     {
-                        InvoiceId = ViettelClientHelper.FindStringProperty(item, "invoiceId"),
-                        InvoiceType = ViettelClientHelper.FindStringProperty(item, "invoiceType"),
-                        TemplateCode = ViettelClientHelper.FindStringProperty(item, "templateCode"),
-                        InvoiceSeri = ViettelClientHelper.FindStringProperty(item, "invoiceSeri"),
-                        InvoiceNumber = ViettelClientHelper.FindStringProperty(item, "invoiceNumber"),
-                        InvoiceNo = ViettelClientHelper.FindStringProperty(item, "invoiceNo"),
-                        Currency = ViettelClientHelper.FindStringProperty(item, "currency"),
+                        return InvalidResponse(
+                            "Viettel.GetInvoicesInvalidResponse",
+                            "Viettel trả về phần tử hóa đơn không hợp lệ.");
+                    }
+
+                    var parsedItem = new ViettelInvoiceListItemDto
+                    {
+                        InvoiceId = ViettelClientHelper.GetDirectString(item, "invoiceId"),
+                        InvoiceType = ViettelClientHelper.GetDirectString(item, "invoiceType"),
+                        TemplateCode = ViettelClientHelper.GetDirectString(item, "templateCode"),
+                        InvoiceSeri = ViettelClientHelper.GetDirectString(item, "invoiceSeri"),
+                        InvoiceNumber = ViettelClientHelper.GetDirectString(item, "invoiceNumber"),
+                        InvoiceNo = ViettelClientHelper.GetDirectString(item, "invoiceNo"),
+                        Currency = ViettelClientHelper.GetDirectString(item, "currency"),
                         Total = FindDecimalProperty(item, "total"),
                         TotalBeforeTax = FindDecimalProperty(item, "totalBeforeTax"),
                         TaxAmount = FindDecimalProperty(item, "taxAmount"),
                         IssueDate = FindLongProperty(item, "issueDate"),
-                        IssueDateStr = ViettelClientHelper.FindStringProperty(item, "issueDateStr"),
+                        IssueDateStr = ViettelClientHelper.GetDirectString(item, "issueDateStr"),
                         State = FindIntProperty(item, "state"),
                         StateCode = FindIntProperty(item, "stateCode"),
                         PaymentStatus = FindIntProperty(item, "paymentStatus"),
-                        PaymentStatusName = ViettelClientHelper.FindStringProperty(item, "paymentStatusName"),
-                        BuyerName = ViettelClientHelper.FindStringProperty(item, "buyerName"),
-                        BuyerTaxCode = ViettelClientHelper.FindStringProperty(item, "buyerTaxCode"),
-                        SupplierTaxCode = ViettelClientHelper.FindStringProperty(item, "supplierTaxCode"),
-                        TransactionUuid = ViettelClientHelper.FindStringProperty(item, "transactionUuid"),
-                        OriginalInvoiceId = ViettelClientHelper.FindStringProperty(item, "originalInvoiceId")
-                    });
+                        PaymentStatusName = ViettelClientHelper.GetDirectString(item, "paymentStatusName"),
+                        BuyerName = ViettelClientHelper.GetDirectString(item, "buyerName"),
+                        BuyerTaxCode = ViettelClientHelper.GetDirectString(item, "buyerTaxCode"),
+                        SupplierTaxCode = ViettelClientHelper.GetDirectString(item, "supplierTaxCode"),
+                        TransactionUuid = ViettelClientHelper.GetDirectString(item, "transactionUuid"),
+                        OriginalInvoiceId = ViettelClientHelper.GetDirectString(item, "originalInvoiceId")
+                    };
+
+                    if (string.IsNullOrWhiteSpace(parsedItem.InvoiceNo) &&
+                        string.IsNullOrWhiteSpace(parsedItem.InvoiceId) &&
+                        string.IsNullOrWhiteSpace(parsedItem.TransactionUuid))
+                    {
+                        return InvalidResponse(
+                            "Viettel.GetInvoicesInvalidResponse",
+                            "Viettel trả về hóa đơn thiếu định danh ổn định.");
+                    }
+
+                    items.Add(parsedItem);
                 }
+            }
+
+            var hasTotalRows =
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "totalRows",
+                    out var totalRowsElement) ==
+                DirectPropertyLookupResult.Found;
+            var hasTotalRow =
+                !hasTotalRows &&
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    responseContainer,
+                    "totalRow",
+                    out totalRowsElement) ==
+                DirectPropertyLookupResult.Found;
+            var hasTotal = hasTotalRows || hasTotalRow;
+            var totalRows = items.Count;
+
+            if (hasTotal &&
+                !TryReadNonNegativeInt(totalRowsElement, out totalRows))
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesInvalidResponse",
+                    "Viettel trả về tổng số hóa đơn không hợp lệ.");
+            }
+
+            if (!hasInvoices && !hasTotal)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesAmbiguousResponse",
+                    "Viettel trả về phản hồi danh sách hóa đơn không nhận diện được.");
+            }
+
+            if (!hasInvoices && totalRows > 0)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesAmbiguousResponse",
+                    "Viettel trả về tổng số hóa đơn nhưng thiếu danh sách hóa đơn.");
+            }
+
+            if (hasInvoices && hasTotal && totalRows < items.Count)
+            {
+                return InvalidResponse(
+                    "Viettel.GetInvoicesInvalidResponse",
+                    "Viettel trả về tổng số hóa đơn nhỏ hơn số phần tử trong danh sách.");
             }
 
             return new GetInvoicesParseResult
@@ -261,22 +384,69 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
                 Items = items
             };
         }
-        catch (Exception ex)
+        catch
         {
-            return new GetInvoicesParseResult
-            {
-                IsSuccess = false,
-                ErrorCode = "PARSE_ERROR",
-                ErrorMessage = $"Không đọc được response getInvoices: {ex.Message}"
-            };
+            return InvalidResponse(
+                "Viettel.GetInvoicesInvalidResponse",
+                "Không đọc được phản hồi getInvoices từ Viettel.");
         }
+    }
+
+    private static bool HasDirectListShape(JsonElement element)
+    {
+        return ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "invoices",
+                   out _) == DirectPropertyLookupResult.Found ||
+               ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "totalRows",
+                   out _) == DirectPropertyLookupResult.Found ||
+               ViettelClientHelper.GetUniqueDirectProperty(
+                   element,
+                   "totalRow",
+                   out _) == DirectPropertyLookupResult.Found;
+    }
+
+    private static GetInvoicesParseResult InvalidResponse(
+        string errorCode,
+        string errorMessage) =>
+        new()
+        {
+            IsSuccess = false,
+            ErrorCode = errorCode,
+            ErrorMessage = errorMessage
+        };
+
+    private static bool TryReadNonNegativeInt(
+        JsonElement element,
+        out int value)
+    {
+        if (element.ValueKind == JsonValueKind.Number &&
+            element.TryGetInt32(out value))
+        {
+            return value >= 0;
+        }
+
+        if (element.ValueKind == JsonValueKind.String &&
+            int.TryParse(
+                element.GetString(),
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out value))
+        {
+            return value >= 0;
+        }
+
+        value = 0;
+        return false;
     }
 
     private static int? FindIntProperty(
         JsonElement element,
         string propertyName)
     {
-        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.GetDirectString(element, propertyName);
 
         if (int.TryParse(value, out var result))
             return result;
@@ -288,7 +458,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         JsonElement element,
         string propertyName)
     {
-        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.GetDirectString(element, propertyName);
 
         if (long.TryParse(value, out var result))
             return result;
@@ -300,7 +470,7 @@ public class ViettelInvoiceListClient : IViettelInvoiceListClient
         JsonElement element,
         string propertyName)
     {
-        var value = ViettelClientHelper.FindStringProperty(element, propertyName);
+        var value = ViettelClientHelper.GetDirectString(element, propertyName);
 
         if (decimal.TryParse(
                 value,

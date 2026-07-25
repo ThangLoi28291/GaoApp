@@ -125,12 +125,10 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
                 return Result<ViettelInvoicePreviewFileDto>.Failure(
                     Error.Validation(
                         "Viettel.PreviewFailed",
-                        $"Viettel preview thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
+                        $"Viettel preview thất bại. HTTP {(int)response.StatusCode}."));
             }
 
-            if (ViettelClientHelper.IsPdfBytes(responseBytes) ||
-                contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase) ||
-                contentType.Contains("octet-stream", StringComparison.OrdinalIgnoreCase))
+            if (ViettelClientHelper.IsPdfBytes(responseBytes))
             {
                 await WritePreviewLogAsync(
                     invoiceHeadId: invoiceHeadId,
@@ -195,9 +193,13 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
             return Result<ViettelInvoicePreviewFileDto>.Failure(
                 Error.Validation(
                     "Viettel.PreviewUnknownResponse",
-                    $"Viettel trả response không nhận diện được PDF. Content-Type: {contentType}. Response: {ViettelClientHelper.Trim(rawText, 1000)}"));
+                    $"Viettel trả phản hồi không nhận diện được PDF. Content-Type: {contentType}."));
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -211,7 +213,7 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
                 errorMessage: "Gọi Viettel preview timeout.",
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelInvoicePreviewFileDto>.Failure(
                 Error.Validation(
@@ -222,6 +224,8 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
         {
             sw.Stop();
 
+            var exceptionType = ViettelClientHelper.ExceptionType(ex);
+
             await WritePreviewLogAsync(
                 invoiceHeadId: invoiceHeadId,
                 requestUrl: url,
@@ -229,15 +233,15 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
                 responseBody: null,
                 isSuccess: false,
                 errorCode: "EXCEPTION",
-                errorMessage: ex.Message,
+                errorMessage: exceptionType,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelInvoicePreviewFileDto>.Failure(
                 Error.Validation(
                     "Viettel.PreviewException",
-                    $"Lỗi khi gọi Viettel preview: {ex.Message}"));
+                    "Không gọi được dịch vụ preview Viettel."));
         }
     }
 
@@ -259,9 +263,9 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.PreviewDraft,
-                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
-                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
-                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
+                RequestUrl = "Viettel:PreviewInvoice",
+                RequestBody = ViettelClientHelper.RedactedRequestSummary("PreviewInvoice"),
+                ResponseBody = ViettelClientHelper.RedactedResponseSummary(responseBody),
                 IsSuccess = isSuccess,
                 ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
                 ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
@@ -272,6 +276,10 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
 
             await _logRepository.AddAsync(log, ct);
             await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -293,33 +301,90 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
 
         try
         {
-            using var doc = JsonDocument.Parse(rawText);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    rawText,
+                    out var document);
 
-            var errorCode = ViettelClientHelper.FindStringProperty(root, "errorCode");
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
+            {
+                return Result<ViettelInvoicePreviewFileDto>.Failure(
+                    Error.Validation(
+                        "Viettel.PreviewInvalidResponse",
+                        "Không đọc được phản hồi preview Viettel."));
+            }
 
-            var description =
-                ViettelClientHelper.FindStringProperty(root, "description") ??
-                ViettelClientHelper.FindStringProperty(root, "message");
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
 
-            if (!ViettelClientHelper.IsViettelSuccessCode(errorCode))
+            if (hasInvalidEnvelope)
+            {
+                return Result<ViettelInvoicePreviewFileDto>.Failure(
+                    Error.Validation(
+                        "Viettel.PreviewInvalidResponse",
+                        "Viettel trả về envelope preview không hợp lệ."));
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
             {
                 return Result<ViettelInvoicePreviewFileDto>.Failure(
                     Error.Validation(
                         "Viettel.PreviewBusinessError",
-                        $"Viettel trả lỗi preview: {errorCode} - {description}"));
+                        "Viettel trả lỗi preview."));
             }
 
-            var fileName = ViettelClientHelper.FindStringProperty(root, "fileName");
+            var candidates = containers
+                .Where(
+                    container =>
+                        ViettelClientHelper.GetUniqueDirectProperty(
+                            container.Element,
+                            "fileToBytes",
+                            out _) ==
+                        DirectPropertyLookupResult.Found)
+                .ToList();
 
-            var fileBytes = ViettelClientHelper.TryReadFileToBytes(root);
+            if (candidates.Count > 1)
+            {
+                return Result<ViettelInvoicePreviewFileDto>.Failure(
+                    Error.Validation(
+                        "Viettel.PreviewConflictingResponse",
+                        "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận."));
+            }
 
-            if (fileBytes == null || fileBytes.Length == 0)
+            if (candidates.Count == 0)
             {
                 return Result<ViettelInvoicePreviewFileDto>.Failure(
                     Error.Validation(
                         "Viettel.PreviewNoFile",
-                        $"Viettel preview thành công nhưng không có fileToBytes. Response: {ViettelClientHelper.Trim(rawText, 1000)}"));
+                        "Viettel không trả fileToBytes PDF hợp lệ."));
+            }
+
+            var payload = candidates[0].Element;
+            var fileName =
+                ViettelClientHelper.GetDirectString(
+                    payload,
+                    "fileName");
+            var fileBytes =
+                ViettelClientHelper.TryGetDirectFileBytes(payload);
+
+            if (fileBytes == null ||
+                !ViettelClientHelper.IsPdfBytes(fileBytes))
+            {
+                return Result<ViettelInvoicePreviewFileDto>.Failure(
+                    Error.Validation(
+                        "Viettel.PreviewNoFile",
+                        "Viettel không trả fileToBytes PDF hợp lệ."));
             }
 
             return Result<ViettelInvoicePreviewFileDto>.Success(
@@ -331,7 +396,7 @@ public class ViettelInvoicePreviewClient : IViettelInvoicePreviewClient
                         : fileName,
                     ContentType = "application/pdf",
                     FileBytes = fileBytes,
-                    RawResponsePreview = ViettelClientHelper.Trim(rawText, 1000)
+                    RawResponsePreview = null
                 });
         }
         catch

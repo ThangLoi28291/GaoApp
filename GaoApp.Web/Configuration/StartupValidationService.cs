@@ -1,5 +1,6 @@
 using GaoApp.Application.Common.Options;
 using GaoApp.Infrastructure.Security;
+using GaoApp.Infrastructure.Services.Invoices;
 using System.Net;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,8 @@ public class StartupValidationService : IStartupValidationService
     private readonly IOptions<StorageOptions> _storageOptions;
     private readonly IOptions<SeedDataOptions> _seedOptions;
     private readonly IOptions<ProxyOptions> _proxyOptions;
+    private readonly IOptions<ExternalHttpResilienceOptions>
+        _externalHttpResilienceOptions;
     private readonly IDataProtectionKeysPathResolver _dataProtectionKeysPathResolver;
     private readonly IDataProtectionKeysDirectoryValidator _dataProtectionKeysDirectoryValidator;
     private readonly DataProtectionKeysPathState _dataProtectionKeysPathState;
@@ -31,6 +34,7 @@ public class StartupValidationService : IStartupValidationService
         IOptions<StorageOptions> storageOptions,
         IOptions<SeedDataOptions> seedOptions,
         IOptions<ProxyOptions> proxyOptions,
+        IOptions<ExternalHttpResilienceOptions> externalHttpResilienceOptions,
         IDataProtectionKeysPathResolver dataProtectionKeysPathResolver,
         IDataProtectionKeysDirectoryValidator dataProtectionKeysDirectoryValidator,
         DataProtectionKeysPathState dataProtectionKeysPathState,
@@ -43,6 +47,7 @@ public class StartupValidationService : IStartupValidationService
         _storageOptions = storageOptions;
         _seedOptions = seedOptions;
         _proxyOptions = proxyOptions;
+        _externalHttpResilienceOptions = externalHttpResilienceOptions;
         _dataProtectionKeysPathResolver = dataProtectionKeysPathResolver;
         _dataProtectionKeysDirectoryValidator = dataProtectionKeysDirectoryValidator;
         _dataProtectionKeysPathState = dataProtectionKeysPathState;
@@ -52,6 +57,10 @@ public class StartupValidationService : IStartupValidationService
 
     public Task ValidateAsync(CancellationToken cancellationToken = default)
     {
+        // Kích hoạt validator đã đăng ký trong Infrastructure trước mọi
+        // phép thử có ghi hoặc thao tác migration/seed ở Development.
+        _ = _externalHttpResilienceOptions.Value;
+
         _logger.LogInformation("Bắt đầu chạy Startup Validation...");
 
         ValidateConnectionString();

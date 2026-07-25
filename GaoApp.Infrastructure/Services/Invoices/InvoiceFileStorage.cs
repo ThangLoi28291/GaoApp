@@ -38,11 +38,33 @@ public class InvoiceFileStorage : IInvoiceFileStorage
             uploadRoot,
             $"{relativeFolder}/{fileName}");
 
-        await File.WriteAllBytesAsync(fullPath, bytes, ct);
+        var temporaryPath = ResolveInsideUploadRoot(
+            uploadRoot,
+            $"{relativeFolder}/.{fileName}.{Guid.NewGuid():N}.tmp");
+
+        try
+        {
+            await WriteTemporaryFileAsync(temporaryPath, bytes, ct);
+            ct.ThrowIfCancellationRequested();
+
+            // File tạm và file đích nằm cùng thư mục để publish bằng một thao tác đổi tên hoàn chỉnh.
+            File.Move(temporaryPath, fullPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
 
         // Lưu path tương đối để dùng web.
         return $"uploads/{relativeFolder}/{fileName}".Replace("\\", "/");
     }
+
+    protected virtual Task WriteTemporaryFileAsync(
+        string temporaryPath,
+        byte[] bytes,
+        CancellationToken ct) =>
+        File.WriteAllBytesAsync(temporaryPath, bytes, ct);
 
     public async Task<(byte[] Bytes, string ContentType, string FileName)?> ReadAsync(
         string storedPath,

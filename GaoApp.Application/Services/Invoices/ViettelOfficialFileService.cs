@@ -191,21 +191,27 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
                 file.FileBytes,
                 ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            throw;
+        }
+        catch
+        {
+            const string message = "Không lưu được file hóa đơn trên máy chủ.";
+
             MarkFileDownloadFailed(
                 invoice,
                 fileType,
-                ex.Message);
+                message);
 
             invoice.LastSyncedAtUtc = DateTime.UtcNow;
             invoice.LastErrorCode = "Invoice.FileSaveFailed";
-            invoice.LastErrorMessage = ex.Message;
+            invoice.LastErrorMessage = message;
 
             await _invoiceRepository.SaveChangesAsync(ct);
 
             return Result<ViettelOfficialFileResultDto>.Failure(
-                Error.Failure($"Lưu file hóa đơn thất bại: {ex.Message}"));
+                Error.Failure(message));
         }
 
         file.StoredPath = storedPath;

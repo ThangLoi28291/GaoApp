@@ -136,12 +136,11 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
                 return Result<ViettelOfficialFileResultDto>.Failure(
                     Error.Validation(
                         "Viettel.DownloadFileFailed",
-                        $"Tải file Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
+                        $"Tải file Viettel thất bại. HTTP {(int)response.StatusCode}."));
             }
 
             if (fileType == ViettelOfficialFileType.Pdf &&
-                (ViettelClientHelper.IsPdfBytes(responseBytes) ||
-                 contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase)))
+                ViettelClientHelper.IsPdfBytes(responseBytes))
             {
                 await WriteLogAsync(
                     invoiceHeadId: invoiceHeadId,
@@ -171,9 +170,7 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
             }
 
             if (fileType == ViettelOfficialFileType.ZipXml &&
-                (ViettelClientHelper.IsZipBytes(responseBytes) ||
-                 contentType.Contains("zip", StringComparison.OrdinalIgnoreCase) ||
-                 contentType.Contains("octet-stream", StringComparison.OrdinalIgnoreCase)))
+                ViettelClientHelper.IsZipBytes(responseBytes))
             {
                 await WriteLogAsync(
                     invoiceHeadId: invoiceHeadId,
@@ -244,9 +241,13 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
             return Result<ViettelOfficialFileResultDto>.Failure(
                 Error.Validation(
                     "Viettel.UnknownFileResponse",
-                    $"Viettel trả response không nhận diện được file. Content-Type: {contentType}. Response: {ViettelClientHelper.Trim(rawText, 1000)}"));
+                    $"Viettel trả phản hồi không nhận diện được file. Content-Type: {contentType}."));
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -261,7 +262,7 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
                 errorMessage: "Tải file Viettel timeout.",
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelOfficialFileResultDto>.Failure(
                 Error.Validation(
@@ -272,6 +273,8 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
         {
             sw.Stop();
 
+            var exceptionType = ViettelClientHelper.ExceptionType(ex);
+
             await WriteLogAsync(
                 invoiceHeadId: invoiceHeadId,
                 actionType: actionType,
@@ -280,15 +283,15 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
                 responseBody: null,
                 isSuccess: false,
                 errorCode: "EXCEPTION",
-                errorMessage: ex.Message,
+                errorMessage: exceptionType,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelOfficialFileResultDto>.Failure(
                 Error.Validation(
                     "Viettel.DownloadException",
-                    $"Lỗi tải file Viettel: {ex.Message}"));
+                    "Không gọi được dịch vụ tải file Viettel."));
         }
     }
 
@@ -308,37 +311,94 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
 
         try
         {
-            using var doc = JsonDocument.Parse(rawText);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    rawText,
+                    out var document);
 
-            var errorCode =
-                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
-                ViettelClientHelper.FindStringProperty(root, "code");
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
+            {
+                return Result<ViettelOfficialFileResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.FileInvalidResponse",
+                        "Không đọc được phản hồi tải file Viettel."));
+            }
 
-            var description =
-                ViettelClientHelper.FindStringProperty(root, "description") ??
-                ViettelClientHelper.FindStringProperty(root, "message") ??
-                ViettelClientHelper.FindStringProperty(root, "data");
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
 
-            if (!ViettelClientHelper.IsViettelSuccessCode(errorCode))
+            if (hasInvalidEnvelope)
+            {
+                return Result<ViettelOfficialFileResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.FileInvalidResponse",
+                        "Viettel trả về envelope tải file không hợp lệ."));
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
             {
                 return Result<ViettelOfficialFileResultDto>.Failure(
                     Error.Validation(
                         "Viettel.FileBusinessError",
-                        $"Viettel trả lỗi tải file: {errorCode} - {description}"));
+                        "Viettel trả lỗi tải file."));
             }
 
-            var fileBytes = ViettelClientHelper.TryReadFileToBytes(root);
+            var candidates = containers
+                .Where(
+                    container =>
+                        ViettelClientHelper.GetUniqueDirectProperty(
+                            container.Element,
+                            "fileToBytes",
+                            out _) ==
+                        DirectPropertyLookupResult.Found)
+                .ToList();
 
-            if (fileBytes == null || fileBytes.Length == 0)
+            if (candidates.Count > 1)
+            {
+                return Result<ViettelOfficialFileResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.DownloadFileConflictingResponse",
+                        "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận."));
+            }
+
+            if (candidates.Count == 0)
             {
                 return Result<ViettelOfficialFileResultDto>.Failure(
                     Error.Validation(
                         "Viettel.NoFileToBytes",
-                        $"Viettel không trả fileToBytes. Response: {ViettelClientHelper.Trim(rawText, 1000)}"));
+                        "Viettel không trả fileToBytes hợp lệ."));
             }
 
-            var fileName = ViettelClientHelper.FindStringProperty(root, "fileName");
+            var payload = candidates[0].Element;
+            var fileBytes =
+                ViettelClientHelper.TryGetDirectFileBytes(payload);
+
+            if (fileBytes == null ||
+                (fileType == ViettelOfficialFileType.Pdf
+                    ? !ViettelClientHelper.IsPdfBytes(fileBytes)
+                    : !ViettelClientHelper.IsZipBytes(fileBytes)))
+            {
+                return Result<ViettelOfficialFileResultDto>.Failure(
+                    Error.Validation(
+                        "Viettel.NoFileToBytes",
+                        "Viettel không trả fileToBytes hợp lệ."));
+            }
+
+            var fileName =
+                ViettelClientHelper.GetDirectString(
+                    payload,
+                    "fileName");
 
             if (string.IsNullOrWhiteSpace(fileName))
             {
@@ -359,7 +419,7 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
                     FileName = fileName,
                     ContentType = contentType,
                     FileBytes = fileBytes,
-                    RawResponsePreview = ViettelClientHelper.Trim(rawText, 1000)
+                    RawResponsePreview = null
                 });
         }
         catch
@@ -387,9 +447,11 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = actionType,
-                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
-                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
-                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
+                RequestUrl = actionType == InvoiceIntegrationActionType.DownloadPdf
+                    ? "Viettel:DownloadPdf"
+                    : "Viettel:DownloadZip",
+                RequestBody = ViettelClientHelper.RedactedRequestSummary("DownloadOfficialFile"),
+                ResponseBody = ViettelClientHelper.RedactedResponseSummary(responseBody),
                 IsSuccess = isSuccess,
                 ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
                 ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
@@ -400,6 +462,10 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
 
             await _logRepository.AddAsync(log, ct);
             await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -461,7 +527,7 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
             return Result<long>.Failure(
                 Error.Validation(
                     "Viettel.ResolveIssueDateFailed",
-                    $"Không tra được ngày phát hành từ getInvoices. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
+                    $"Không tra được ngày phát hành từ getInvoices. HTTP {(int)response.StatusCode}."));
         }
 
         var issueDateStr = FindInvoiceIssueDateStr(raw, invoiceNo);
@@ -494,10 +560,59 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
         if (string.IsNullOrWhiteSpace(rawJson))
             return null;
 
-        using var doc = JsonDocument.Parse(rawJson);
+        var jsonValidation =
+            ViettelClientHelper.TryParseStrictProviderJson(
+                rawJson,
+                out var document);
 
-        if (!ViettelClientHelper.TryFindProperty(doc.RootElement, "invoices", out var invoicesElement))
+        if (jsonValidation != ProviderJsonValidationFailure.None ||
+            document is null)
+        {
             return null;
+        }
+
+        using var strictDocument = document;
+        var root = strictDocument.RootElement;
+        var containers =
+            ViettelClientHelper.GetDirectRecognizedContainers(
+                root,
+                allowResultArray: false,
+                allowDataArray: false,
+                out var hasInvalidEnvelope);
+
+        if (hasInvalidEnvelope ||
+            containers.Any(
+                container =>
+                    ViettelClientHelper.HasDirectFailureMarker(
+                        container.Element,
+                        ViettelClientHelper.IsExplicitViettelSuccessCode)))
+        {
+            return null;
+        }
+
+        var candidates = containers
+            .Where(
+                container =>
+                    ViettelClientHelper.GetUniqueDirectProperty(
+                        container.Element,
+                        "invoices",
+                        out _) ==
+                    DirectPropertyLookupResult.Found)
+            .ToList();
+
+        if (candidates.Count != 1)
+            return null;
+
+        var responseContainer = candidates[0].Element;
+
+        if (ViettelClientHelper.GetUniqueDirectProperty(
+                responseContainer,
+                "invoices",
+                out var invoicesElement) !=
+            DirectPropertyLookupResult.Found)
+        {
+            return null;
+        }
 
         if (invoicesElement.ValueKind != JsonValueKind.Array)
             return null;
@@ -505,14 +620,14 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
         foreach (var item in invoicesElement.EnumerateArray())
         {
             var currentInvoiceNo =
-                ViettelClientHelper.FindStringProperty(item, "invoiceNo");
+                ViettelClientHelper.GetDirectString(item, "invoiceNo");
 
             if (!string.Equals(currentInvoiceNo, invoiceNo, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             return
-                ViettelClientHelper.FindStringProperty(item, "issueDateStr") ??
-                ViettelClientHelper.FindStringProperty(item, "issueDate");
+                ViettelClientHelper.GetDirectString(item, "issueDateStr") ??
+                ViettelClientHelper.GetDirectString(item, "issueDate");
         }
 
         return null;

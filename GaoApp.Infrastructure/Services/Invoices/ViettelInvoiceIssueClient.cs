@@ -122,7 +122,7 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                     IsSuccess = false,
                     ErrorCode = $"HTTP_{(int)response.StatusCode}",
                     ErrorMessage = $"Viettel phát hành thất bại. HTTP {(int)response.StatusCode}.",
-                    RawResponse = ViettelClientHelper.Trim(responseText, 10000),
+                    RawResponse = string.Empty,
                     DurationMs = sw.ElapsedMilliseconds
                 };
 
@@ -138,7 +138,10 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                     durationMs: sw.ElapsedMilliseconds,
                     ct: ct);
 
-                return Result<ViettelInvoiceIssueResultDto>.Success(failDto);
+                return Result<ViettelInvoiceIssueResultDto>.Failure(
+                    Error.Validation(
+                        failDto.ErrorCode,
+                        failDto.ErrorMessage));
             }
 
             var parsed = ParseIssueResponse(
@@ -158,9 +161,18 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 durationMs: sw.ElapsedMilliseconds,
                 ct: ct);
 
-            return Result<ViettelInvoiceIssueResultDto>.Success(parsed);
+            return parsed.IsSuccess
+                ? Result<ViettelInvoiceIssueResultDto>.Success(parsed)
+                : Result<ViettelInvoiceIssueResultDto>.Failure(
+                    Error.Validation(
+                        parsed.ErrorCode ?? "Viettel.IssueFailed",
+                        parsed.ErrorMessage ?? "Viettel trả lỗi phát hành."));
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -176,21 +188,18 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 errorMessage: message,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
-            return Result<ViettelInvoiceIssueResultDto>.Success(
-                new ViettelInvoiceIssueResultDto
-                {
-                    InvoiceHeadId = invoiceHeadId,
-                    IsSuccess = false,
-                    ErrorCode = "TIMEOUT",
-                    ErrorMessage = message,
-                    DurationMs = sw.ElapsedMilliseconds
-                });
+            return Result<ViettelInvoiceIssueResultDto>.Failure(
+                Error.Validation("Viettel.IssueTimeout", message));
         }
         catch (Exception ex)
         {
             sw.Stop();
+
+            var exceptionType = ViettelClientHelper.ExceptionType(ex);
+            const string message =
+                "Không gọi được dịch vụ phát hành Viettel. Cần tra cứu lại bằng transactionUuid trước khi thử lại.";
 
             await WriteIssueLogAsync(
                 invoiceHeadId: invoiceHeadId,
@@ -199,20 +208,13 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
                 responseBody: null,
                 isSuccess: false,
                 errorCode: "EXCEPTION",
-                errorMessage: ex.Message,
+                errorMessage: exceptionType,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
-            return Result<ViettelInvoiceIssueResultDto>.Success(
-                new ViettelInvoiceIssueResultDto
-                {
-                    InvoiceHeadId = invoiceHeadId,
-                    IsSuccess = false,
-                    ErrorCode = "EXCEPTION",
-                    ErrorMessage = ex.Message,
-                    DurationMs = sw.ElapsedMilliseconds
-                });
+            return Result<ViettelInvoiceIssueResultDto>.Failure(
+                Error.Validation("Viettel.IssueTransportFailed", message));
         }
     }
 
@@ -227,7 +229,7 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 IsSuccess = false,
-                ErrorCode = "EMPTY_RESPONSE",
+                ErrorCode = "Viettel.IssueInvalidResponse",
                 ErrorMessage = "Viettel không trả dữ liệu.",
                 RawResponse = string.Empty,
                 DurationMs = durationMs
@@ -236,81 +238,174 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
 
         try
         {
-            using var doc = JsonDocument.Parse(responseText);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    responseText,
+                    out var document);
 
-            var errorCode =
-                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
-                ViettelClientHelper.FindStringProperty(root, "code");
-
-            var description =
-                ViettelClientHelper.FindStringProperty(root, "description") ??
-                ViettelClientHelper.FindStringProperty(root, "message");
-
-            var isError = !ViettelClientHelper.IsViettelSuccessCode(errorCode);
-
-            if (isError)
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
             {
                 return new ViettelInvoiceIssueResultDto
                 {
                     InvoiceHeadId = invoiceHeadId,
                     IsSuccess = false,
-                    ErrorCode = errorCode,
-                    ErrorMessage = string.IsNullOrWhiteSpace(description)
-                        ? "Viettel trả lỗi phát hành."
-                        : description,
-                    RawResponse = ViettelClientHelper.Trim(responseText, 10000),
+                    ErrorCode = "Viettel.IssueInvalidResponse",
+                    ErrorMessage = "Không đọc được phản hồi phát hành Viettel.",
+                    RawResponse = string.Empty,
                     DurationMs = durationMs
                 };
             }
 
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
+
+            if (hasInvalidEnvelope)
+            {
+                return new ViettelInvoiceIssueResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    ErrorCode = "Viettel.IssueInvalidResponse",
+                    ErrorMessage = "Viettel trả về envelope phát hành không hợp lệ.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
+            {
+                return new ViettelInvoiceIssueResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    ErrorCode = "Viettel.IssueBusinessFailed",
+                    ErrorMessage = "Viettel trả lỗi phát hành.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var candidates = containers
+                .Where(
+                    container =>
+                        HasIssueConfirmation(container.Element))
+                .ToList();
+
+            if (candidates.Count > 1)
+            {
+                return new ViettelInvoiceIssueResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    ErrorCode = "Viettel.IssueConflictingResponse",
+                    ErrorMessage =
+                        "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (candidates.Count == 0)
+            {
+                return new ViettelInvoiceIssueResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    ErrorCode = "Viettel.IssueAmbiguousResponse",
+                    ErrorMessage =
+                        "Viettel trả về phản hồi chưa đủ thông tin xác nhận phát hành. " +
+                        "Cần tra cứu lại theo transactionUuid trước khi thử lại.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var payload = candidates[0].Element;
             var invoiceNo =
-                ViettelClientHelper.FindStringProperty(root, "invoiceNo") ??
-                ViettelClientHelper.FindStringProperty(root, "invoiceNumber");
+                ViettelClientHelper.GetFirstDirectString(
+                    payload,
+                    "invoiceNo",
+                    "invoiceNumber");
 
             var transactionId =
-                ViettelClientHelper.FindStringProperty(root, "transactionID") ??
-                ViettelClientHelper.FindStringProperty(root, "transactionId") ??
-                ViettelClientHelper.FindStringProperty(root, "transactionIDStr") ??
-                ViettelClientHelper.FindStringProperty(root, "invoiceId");
+                ViettelClientHelper.GetFirstDirectString(
+                    payload,
+                    "transactionID",
+                    "transactionId",
+                    "transactionIDStr",
+                    "invoiceId");
 
             var reservationCode =
-                ViettelClientHelper.FindStringProperty(root, "reservationCode");
+                ViettelClientHelper.GetFirstDirectString(
+                    payload,
+                    "reservationCode");
 
             var codeOfTax =
-                ViettelClientHelper.FindStringProperty(root, "codeOfTax");
-
-            var success =
-                !string.IsNullOrWhiteSpace(invoiceNo) ||
-                !string.IsNullOrWhiteSpace(transactionId) ||
-                ViettelClientHelper.IsViettelSuccessCode(errorCode);
+                ViettelClientHelper.GetFirstDirectString(
+                    payload,
+                    "codeOfTax");
 
             return new ViettelInvoiceIssueResultDto
             {
                 InvoiceHeadId = invoiceHeadId,
-                IsSuccess = success,
+                IsSuccess = true,
                 InvoiceNo = invoiceNo,
                 TransactionId = transactionId,
                 ReservationCode = reservationCode,
                 CodeOfTax = codeOfTax,
-                ErrorCode = success ? null : errorCode,
-                ErrorMessage = success ? null : description,
-                RawResponse = ViettelClientHelper.Trim(responseText, 10000),
+                ErrorCode = null,
+                ErrorMessage = null,
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
-        catch (Exception ex)
+        catch
         {
             return new ViettelInvoiceIssueResultDto
             {
                 InvoiceHeadId = invoiceHeadId,
                 IsSuccess = false,
-                ErrorCode = "PARSE_ERROR",
-                ErrorMessage = $"Không đọc được response Viettel: {ex.Message}",
-                RawResponse = ViettelClientHelper.Trim(responseText, 10000),
+                ErrorCode = "Viettel.IssueInvalidResponse",
+                ErrorMessage = "Không đọc được phản hồi phát hành Viettel.",
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
+    }
+
+    private static bool HasIssueConfirmation(JsonElement container)
+    {
+        return !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetFirstDirectString(
+                       container,
+                       "invoiceNo",
+                       "invoiceNumber")) ||
+               !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetFirstDirectString(
+                       container,
+                       "transactionID",
+                       "transactionId",
+                       "transactionIDStr",
+                       "invoiceId")) ||
+               !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetDirectString(
+                       container,
+                       "reservationCode")) ||
+               !string.IsNullOrWhiteSpace(
+                   ViettelClientHelper.GetDirectString(
+                       container,
+                       "codeOfTax"));
     }
 
     private async Task WriteIssueLogAsync(
@@ -331,9 +426,9 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.IssueInvoice,
-                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
-                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
-                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
+                RequestUrl = "Viettel:IssueInvoice",
+                RequestBody = ViettelClientHelper.RedactedRequestSummary("IssueInvoice"),
+                ResponseBody = ViettelClientHelper.RedactedResponseSummary(responseBody),
                 IsSuccess = isSuccess,
                 ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
                 ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
@@ -344,6 +439,10 @@ public class ViettelInvoiceIssueClient : IViettelInvoiceIssueClient
 
             await _logRepository.AddAsync(log, ct);
             await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

@@ -36,6 +36,35 @@ internal static class ViettelClientHelper
             });
     }
 
+    public static ProviderJsonValidationFailure TryParseStrictProviderJson(
+        string? json,
+        out JsonDocument? document)
+    {
+        document = null;
+
+        if (string.IsNullOrWhiteSpace(json))
+            return ProviderJsonValidationFailure.MalformedJson;
+
+        try
+        {
+            var parsedDocument = JsonDocument.Parse(json);
+
+            if (!ValidateNoDuplicatePropertyNames(
+                    parsedDocument.RootElement))
+            {
+                parsedDocument.Dispose();
+                return ProviderJsonValidationFailure.DuplicatePropertyName;
+            }
+
+            document = parsedDocument;
+            return ProviderJsonValidationFailure.None;
+        }
+        catch (JsonException)
+        {
+            return ProviderJsonValidationFailure.MalformedJson;
+        }
+    }
+
     public static bool IsPdfBytes(byte[] bytes)
     {
         return bytes.Length >= 4 &&
@@ -49,7 +78,10 @@ internal static class ViettelClientHelper
     {
         return bytes.Length >= 4 &&
                bytes[0] == 0x50 &&
-               bytes[1] == 0x4B;
+               bytes[1] == 0x4B &&
+               ((bytes[2] == 0x03 && bytes[3] == 0x04) ||
+                (bytes[2] == 0x05 && bytes[3] == 0x06) ||
+                (bytes[2] == 0x07 && bytes[3] == 0x08));
     }
 
     public static string SafeReadText(byte[] bytes)
@@ -81,10 +113,42 @@ internal static class ViettelClientHelper
         });
     }
 
-    public static byte[]? TryReadFileToBytes(JsonElement root)
+    public static string RedactedRequestSummary(string operation)
     {
-        if (!TryFindProperty(root, "fileToBytes", out var fileElement))
+        return JsonSerializer.Serialize(new
+        {
+            operation,
+            redacted = true
+        });
+    }
+
+    public static string? RedactedResponseSummary(
+        string? responseBody,
+        int? statusCode = null)
+    {
+        if (responseBody == null && !statusCode.HasValue)
             return null;
+
+        return JsonSerializer.Serialize(new
+        {
+            statusCode,
+            responseLength = responseBody?.Length ?? 0,
+            redacted = true
+        });
+    }
+
+    public static string ExceptionType(Exception exception) =>
+        exception.GetType().Name;
+
+    public static byte[]? TryGetDirectFileBytes(JsonElement container)
+    {
+        if (GetUniqueDirectProperty(
+                container,
+                "fileToBytes",
+                out var fileElement) != DirectPropertyLookupResult.Found)
+        {
+            return null;
+        }
 
         if (fileElement.ValueKind == JsonValueKind.String)
         {
@@ -109,13 +173,13 @@ internal static class ViettelClientHelper
 
             foreach (var item in fileElement.EnumerateArray())
             {
-                if (item.ValueKind == JsonValueKind.Number &&
-                    item.TryGetInt32(out var number) &&
-                    number >= 0 &&
-                    number <= 255)
-                {
-                    bytes.Add((byte)number);
-                }
+                if (item.ValueKind != JsonValueKind.Number ||
+                    !item.TryGetInt32(out var number) ||
+                    number < 0 ||
+                    number > 255)
+                    return null;
+
+                bytes.Add((byte)number);
             }
 
             return bytes.ToArray();
@@ -124,55 +188,224 @@ internal static class ViettelClientHelper
         return null;
     }
 
-    public static bool TryFindProperty(
+    public static DirectPropertyLookupResult GetUniqueDirectProperty(
         JsonElement element,
         string propertyName,
         out JsonElement value)
     {
-        if (element.ValueKind == JsonValueKind.Object)
+        if (element.ValueKind != JsonValueKind.Object)
         {
-            foreach (var prop in element.EnumerateObject())
-            {
-                if (string.Equals(prop.Name, propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = prop.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(prop.Value, propertyName, out value))
-                    return true;
-            }
+            value = default;
+            return DirectPropertyLookupResult.Missing;
         }
 
-        if (element.ValueKind == JsonValueKind.Array)
+        var matchCount = 0;
+        value = default;
+
+        foreach (var property in element.EnumerateObject())
         {
-            foreach (var item in element.EnumerateArray())
+            if (!string.Equals(
+                    property.Name,
+                    propertyName,
+                    StringComparison.OrdinalIgnoreCase))
             {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
+                continue;
             }
+
+            matchCount++;
+
+            if (matchCount == 1)
+                value = property.Value;
+        }
+
+        return matchCount switch
+        {
+            0 => DirectPropertyLookupResult.Missing,
+            1 => DirectPropertyLookupResult.Found,
+            _ => DirectPropertyLookupResult.Duplicate
+        };
+    }
+
+    public static IReadOnlyList<ProviderResponseContainer>
+        GetDirectRecognizedContainers(
+            JsonElement root,
+            bool allowResultArray,
+            bool allowDataArray,
+            out bool hasInvalidEnvelope)
+    {
+        var containers = new List<ProviderResponseContainer>();
+        hasInvalidEnvelope = false;
+
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            hasInvalidEnvelope = true;
+            return containers;
+        }
+
+        containers.Add(new ProviderResponseContainer("root", root));
+
+        AddDirectEnvelope(
+            containers,
+            root,
+            "result",
+            allowResultArray,
+            ref hasInvalidEnvelope);
+        AddDirectEnvelope(
+            containers,
+            root,
+            "data",
+            allowDataArray,
+            ref hasInvalidEnvelope);
+
+        return containers;
+    }
+
+    public static string? GetDirectString(
+        JsonElement element,
+        string propertyName)
+    {
+        if (GetUniqueDirectProperty(
+                element,
+                propertyName,
+                out var value) != DirectPropertyLookupResult.Found)
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.ToString(),
+            _ => null
+        };
+    }
+
+    public static string? GetFirstDirectString(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var value = GetDirectString(element, propertyName);
+
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+
+    public static bool TryGetDirectBoolean(
+        JsonElement element,
+        string propertyName,
+        out bool value)
+    {
+        if (GetUniqueDirectProperty(
+                element,
+                propertyName,
+                out var property) != DirectPropertyLookupResult.Found)
+        {
+            value = default;
+            return false;
+        }
+
+        if (property.ValueKind == JsonValueKind.True)
+        {
+            value = true;
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.False)
+        {
+            value = false;
+            return true;
+        }
+
+        if (property.ValueKind == JsonValueKind.String &&
+            bool.TryParse(property.GetString(), out value))
+        {
+            return true;
         }
 
         value = default;
         return false;
     }
 
-    public static string? FindStringProperty(
-        JsonElement element,
-        string propertyName)
+    public static bool HasDirectFailureMarker(
+        JsonElement container,
+        Func<string, bool> isAcceptedControlCode)
     {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
+        if (container.ValueKind != JsonValueKind.Object)
+            return false;
 
-        return value.ValueKind switch
+        var status = GetDirectString(container, "status");
+
+        if (IsExplicitViettelFailureStatus(status))
+            return true;
+
+        foreach (var markerName in new[] { "success", "isSuccess" })
         {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.ToString(),
-            JsonValueKind.True => "true",
-            JsonValueKind.False => "false",
-            JsonValueKind.Null => null,
-            _ => value.ToString()
-        };
+            var markerLookup = GetUniqueDirectProperty(
+                container,
+                markerName,
+                out var marker);
+
+            if (markerLookup == DirectPropertyLookupResult.Duplicate)
+                return true;
+
+            if (markerLookup == DirectPropertyLookupResult.Missing)
+            {
+                continue;
+            }
+
+            if (marker.ValueKind == JsonValueKind.Null)
+                continue;
+
+            if (!TryGetDirectBoolean(
+                    container,
+                    markerName,
+                    out var markerValue) ||
+                !markerValue)
+            {
+                return true;
+            }
+        }
+
+        foreach (var codeName in new[] { "errorCode", "code" })
+        {
+            var codeLookup = GetUniqueDirectProperty(
+                container,
+                codeName,
+                out var codeElement);
+
+            if (codeLookup == DirectPropertyLookupResult.Duplicate)
+                return true;
+
+            if (codeLookup == DirectPropertyLookupResult.Missing)
+            {
+                continue;
+            }
+
+            if (codeElement.ValueKind == JsonValueKind.Null)
+                continue;
+
+            if (codeElement.ValueKind is not
+                (JsonValueKind.String or JsonValueKind.Number))
+            {
+                return true;
+            }
+
+            var code = GetDirectString(container, codeName);
+
+            if (string.IsNullOrWhiteSpace(code))
+                continue;
+
+            if (!isAcceptedControlCode(code))
+                return true;
+        }
+
+        return HasMeaningfulDirectError(container, "error") ||
+               HasMeaningfulDirectError(container, "errors");
     }
 
     public static string Trim(string? value, int maxLength)
@@ -199,11 +432,140 @@ internal static class ViettelClientHelper
             : value[..maxLength] + "...";
     }
 
-    public static bool IsViettelSuccessCode(string? errorCode)
+    public static bool IsExplicitViettelSuccessCode(string? errorCode)
     {
-        return string.IsNullOrWhiteSpace(errorCode) ||
-               errorCode.Equals("null", StringComparison.OrdinalIgnoreCase) ||
-               errorCode.Equals("200", StringComparison.OrdinalIgnoreCase) ||
-               errorCode.Equals("OK", StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(errorCode) &&
+               (errorCode.Equals("200", StringComparison.OrdinalIgnoreCase) ||
+                errorCode.Equals("OK", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool IsExplicitViettelFailureStatus(string? status)
+    {
+        return !string.IsNullOrWhiteSpace(status) &&
+               (status.Equals("ERROR", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("FAILED", StringComparison.OrdinalIgnoreCase) ||
+                status.Equals("FAIL", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AddDirectEnvelope(
+        ICollection<ProviderResponseContainer> containers,
+        JsonElement root,
+        string envelopeName,
+        bool allowArray,
+        ref bool hasInvalidEnvelope)
+    {
+        var envelopeLookup = GetUniqueDirectProperty(
+            root,
+            envelopeName,
+            out var envelope);
+
+        if (envelopeLookup == DirectPropertyLookupResult.Missing)
+        {
+            return;
+        }
+
+        if (envelopeLookup == DirectPropertyLookupResult.Duplicate)
+        {
+            hasInvalidEnvelope = true;
+            return;
+        }
+
+        if (envelope.ValueKind == JsonValueKind.Null)
+            return;
+
+        if (envelope.ValueKind == JsonValueKind.Object ||
+            (allowArray &&
+             envelope.ValueKind == JsonValueKind.Array))
+        {
+            containers.Add(
+                new ProviderResponseContainer(
+                    envelopeName,
+                    envelope));
+            return;
+        }
+
+        hasInvalidEnvelope = true;
+    }
+
+    private static bool HasMeaningfulDirectError(
+        JsonElement container,
+        string propertyName)
+    {
+        var errorLookup = GetUniqueDirectProperty(
+            container,
+            propertyName,
+            out var errorElement);
+
+        if (errorLookup == DirectPropertyLookupResult.Duplicate)
+            return true;
+
+        if (errorLookup == DirectPropertyLookupResult.Missing ||
+            errorElement.ValueKind == JsonValueKind.Null)
+        {
+            return false;
+        }
+
+        return errorElement.ValueKind switch
+        {
+            JsonValueKind.String =>
+                !string.IsNullOrWhiteSpace(errorElement.GetString()),
+            JsonValueKind.False => false,
+            JsonValueKind.Array when
+                propertyName.Equals(
+                    "errors",
+                    StringComparison.OrdinalIgnoreCase) =>
+                errorElement.GetArrayLength() > 0,
+            _ => true
+        };
+    }
+
+    private static bool ValidateNoDuplicatePropertyNames(
+        JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var property in element.EnumerateObject())
+            {
+                if (!names.Add(property.Name) ||
+                    !ValidateNoDuplicatePropertyNames(property.Value))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (!ValidateNoDuplicatePropertyNames(item))
+                    return false;
+            }
+        }
+
+        return true;
     }
 }
+
+internal enum ProviderJsonValidationFailure
+{
+    None,
+    MalformedJson,
+    DuplicatePropertyName
+}
+
+internal enum DirectPropertyLookupResult
+{
+    Missing,
+    Found,
+    Duplicate
+}
+
+internal readonly record struct ProviderResponseContainer(
+    string Name,
+    JsonElement Element);

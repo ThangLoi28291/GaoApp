@@ -136,7 +136,7 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     TransactionUuid = transactionUuid,
                     ErrorCode = $"HTTP_{(int)response.StatusCode}",
                     ErrorMessage = $"Tra cứu Viettel thất bại. HTTP {(int)response.StatusCode}.",
-                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                    RawResponse = string.Empty,
                     DurationMs = sw.ElapsedMilliseconds
                 };
 
@@ -152,7 +152,8 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     durationMs: sw.ElapsedMilliseconds,
                     ct: ct);
 
-                return Result<ViettelInvoiceLookupResultDto>.Success(fail);
+                return Result<ViettelInvoiceLookupResultDto>.Failure(
+                    Error.Validation(fail.ErrorCode, fail.ErrorMessage));
             }
 
             var parsed = ParseLookupResponse(
@@ -166,16 +167,25 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 requestUrl: url,
                 requestBody: requestBodyForLog,
                 responseBody: raw,
-                isSuccess: parsed.IsFound,
+                isSuccess: parsed.ErrorCode is null or "NOT_FOUND_DATA",
                 errorCode: parsed.ErrorCode,
                 errorMessage: parsed.ErrorMessage,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
                 ct: ct);
 
-            return Result<ViettelInvoiceLookupResultDto>.Success(parsed);
+            return parsed.ErrorCode is null or "NOT_FOUND_DATA"
+                ? Result<ViettelInvoiceLookupResultDto>.Success(parsed)
+                : Result<ViettelInvoiceLookupResultDto>.Failure(
+                    Error.Validation(
+                        parsed.ErrorCode,
+                        parsed.ErrorMessage ?? "Tra cứu Viettel thất bại."));
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -191,22 +201,16 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 errorMessage: message,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
-            return Result<ViettelInvoiceLookupResultDto>.Success(
-                new ViettelInvoiceLookupResultDto
-                {
-                    InvoiceHeadId = invoiceHeadId,
-                    IsFound = false,
-                    TransactionUuid = transactionUuid,
-                    ErrorCode = "TIMEOUT",
-                    ErrorMessage = message,
-                    DurationMs = sw.ElapsedMilliseconds
-                });
+            return Result<ViettelInvoiceLookupResultDto>.Failure(
+                Error.Validation("Viettel.LookupTimeout", message));
         }
         catch (Exception ex)
         {
             sw.Stop();
+
+            var exceptionType = ViettelClientHelper.ExceptionType(ex);
 
             await WriteLookupLogAsync(
                 invoiceHeadId: invoiceHeadId,
@@ -215,21 +219,15 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 responseBody: null,
                 isSuccess: false,
                 errorCode: "EXCEPTION",
-                errorMessage: ex.Message,
+                errorMessage: exceptionType,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
-            return Result<ViettelInvoiceLookupResultDto>.Success(
-                new ViettelInvoiceLookupResultDto
-                {
-                    InvoiceHeadId = invoiceHeadId,
-                    IsFound = false,
-                    TransactionUuid = transactionUuid,
-                    ErrorCode = "EXCEPTION",
-                    ErrorMessage = ex.Message,
-                    DurationMs = sw.ElapsedMilliseconds
-                });
+            return Result<ViettelInvoiceLookupResultDto>.Failure(
+                Error.Validation(
+                    "Viettel.LookupTransportFailed",
+                    "Không gọi được dịch vụ tra cứu Viettel."));
         }
     }
 
@@ -246,7 +244,7 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                 InvoiceHeadId = invoiceHeadId,
                 IsFound = false,
                 TransactionUuid = transactionUuid,
-                ErrorCode = "EMPTY_RESPONSE",
+                ErrorCode = "Viettel.LookupInvalidResponse",
                 ErrorMessage = "Viettel không trả dữ liệu.",
                 RawResponse = string.Empty,
                 DurationMs = durationMs
@@ -255,64 +253,117 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
 
         try
         {
-            using var doc = JsonDocument.Parse(raw);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
-            var message =
-                ViettelClientHelper.FindStringProperty(root, "message") ??
-                ViettelClientHelper.FindStringProperty(root, "description") ??
-                ViettelClientHelper.FindStringProperty(root, "data");
-
-            var errorCode =
-                ViettelClientHelper.FindStringProperty(root, "errorCode") ??
-                ViettelClientHelper.FindStringProperty(root, "code");
-
-            var invoiceNo =
-                ViettelClientHelper.FindStringProperty(root, "invoiceNo") ??
-                ViettelClientHelper.FindStringProperty(root, "invoiceNumber") ??
-                ViettelClientHelper.FindStringProperty(root, "supplierInvoiceNo");
-
-            var transactionId =
-                ViettelClientHelper.FindStringProperty(root, "transactionID") ??
-                ViettelClientHelper.FindStringProperty(root, "transactionId") ??
-                ViettelClientHelper.FindStringProperty(root, "transactionIDStr") ??
-                ViettelClientHelper.FindStringProperty(root, "invoiceId");
-
-            var reservationCode =
-                ViettelClientHelper.FindStringProperty(root, "reservationCode") ??
-                ViettelClientHelper.FindStringProperty(root, "reservationNo");
-
-            var codeOfTax =
-                ViettelClientHelper.FindStringProperty(root, "codeOfTax");
-
-            var issueDateText =
-                ViettelClientHelper.FindStringProperty(root, "issueDateStr") ??
-                ViettelClientHelper.FindStringProperty(root, "issueDate") ??
-                ViettelClientHelper.FindStringProperty(root, "invoiceIssuedDate");
-
-            var issueDateUtc = TryParseIssueDateUtc(issueDateText);
-
-            if (!string.IsNullOrWhiteSpace(invoiceNo))
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
             {
                 return new ViettelInvoiceLookupResultDto
                 {
                     InvoiceHeadId = invoiceHeadId,
-                    IsFound = true,
+                    IsFound = false,
                     TransactionUuid = transactionUuid,
-                    InvoiceNo = invoiceNo,
-                    TransactionId = transactionId,
-                    ReservationCode = reservationCode,
-                    CodeOfTax = codeOfTax,
-                    IssueDateUtc = issueDateUtc,
-                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                    ErrorCode = "Viettel.LookupInvalidResponse",
+                    ErrorMessage = "Không đọc được phản hồi tra cứu UUID từ Viettel.",
+                    RawResponse = string.Empty,
                     DurationMs = durationMs
                 };
             }
 
-            var normalizedMessage = message ?? string.Empty;
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: true,
+                    allowDataArray: true,
+                    out var hasInvalidEnvelope);
+            var locations =
+                GetLookupLocations(
+                    containers,
+                    out var hasInvalidArrayPayload);
 
-            if (normalizedMessage.Contains("NOT_FOUND_DATA", StringComparison.OrdinalIgnoreCase) ||
-                normalizedMessage.Contains("Không tìm thấy", StringComparison.OrdinalIgnoreCase))
+            if (hasInvalidEnvelope || hasInvalidArrayPayload)
+            {
+                return new ViettelInvoiceLookupResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsFound = false,
+                    TransactionUuid = transactionUuid,
+                    ErrorCode = "Viettel.LookupInvalidResponse",
+                    ErrorMessage = "Viettel trả về envelope tra cứu không hợp lệ.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (locations.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            IsAcceptedLookupControlCode)))
+            {
+                return new ViettelInvoiceLookupResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsFound = false,
+                    TransactionUuid = transactionUuid,
+                    ErrorCode = "Viettel.LookupBusinessFailed",
+                    ErrorMessage = "Viettel trả lỗi tra cứu hóa đơn.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var candidates = locations
+                .Select(
+                    location =>
+                        new LookupCandidate(
+                            GetLookupCandidateKind(location.Element),
+                            location.Element))
+                .Where(
+                    candidate =>
+                        candidate.Kind != LookupCandidateKind.None)
+                .ToList();
+
+            if (candidates.Any(
+                    candidate =>
+                        candidate.Kind == LookupCandidateKind.Conflicting) ||
+                candidates.Count > 1)
+            {
+                return new ViettelInvoiceLookupResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsFound = false,
+                    TransactionUuid = transactionUuid,
+                    ErrorCode = "Viettel.LookupConflictingResponse",
+                    ErrorMessage =
+                        "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (candidates.Count == 0)
+            {
+                return new ViettelInvoiceLookupResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsFound = false,
+                    TransactionUuid = transactionUuid,
+                    ErrorCode = "Viettel.LookupAmbiguousResponse",
+                    ErrorMessage = "Viettel trả về phản hồi tra cứu không nhận diện được.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var candidate = candidates[0];
+
+            if (candidate.Kind == LookupCandidateKind.NotFound)
             {
                 return new ViettelInvoiceLookupResultDto
                 {
@@ -321,40 +372,178 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
                     TransactionUuid = transactionUuid,
                     ErrorCode = "NOT_FOUND_DATA",
                     ErrorMessage = "Không tìm thấy hóa đơn trên Viettel theo transactionUuid.",
-                    RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                    RawResponse = string.Empty,
                     DurationMs = durationMs
                 };
             }
 
+            var payload = candidate.Element;
+
             return new ViettelInvoiceLookupResultDto
             {
                 InvoiceHeadId = invoiceHeadId,
-                IsFound = false,
+                IsFound = true,
                 TransactionUuid = transactionUuid,
-                ErrorCode = string.IsNullOrWhiteSpace(errorCode)
-                    ? "NOT_FOUND_DATA"
-                    : errorCode,
-                ErrorMessage = string.IsNullOrWhiteSpace(message)
-                    ? "Không tìm thấy hóa đơn trên Viettel theo transactionUuid."
-                    : message,
-                RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                InvoiceNo =
+                    ViettelClientHelper.GetFirstDirectString(
+                        payload,
+                        "invoiceNo",
+                        "invoiceNumber",
+                        "supplierInvoiceNo"),
+                TransactionId =
+                    ViettelClientHelper.GetFirstDirectString(
+                        payload,
+                        "transactionID",
+                        "transactionId",
+                        "transactionIDStr",
+                        "invoiceId"),
+                ReservationCode =
+                    ViettelClientHelper.GetFirstDirectString(
+                        payload,
+                        "reservationCode",
+                        "reservationNo"),
+                CodeOfTax =
+                    ViettelClientHelper.GetDirectString(
+                        payload,
+                        "codeOfTax"),
+                IssueDateUtc =
+                    TryParseIssueDateUtc(
+                        ViettelClientHelper.GetFirstDirectString(
+                            payload,
+                            "issueDateStr",
+                            "issueDate",
+                            "invoiceIssuedDate")),
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
-        catch (Exception ex)
+        catch
         {
             return new ViettelInvoiceLookupResultDto
             {
                 InvoiceHeadId = invoiceHeadId,
                 IsFound = false,
                 TransactionUuid = transactionUuid,
-                ErrorCode = "PARSE_ERROR",
-                ErrorMessage = $"Không đọc được response tra cứu UUID: {ex.Message}",
-                RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                ErrorCode = "Viettel.LookupInvalidResponse",
+                ErrorMessage = "Không đọc được phản hồi tra cứu UUID từ Viettel.",
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
     }
+
+    private static IReadOnlyList<ProviderResponseContainer>
+        GetLookupLocations(
+            IReadOnlyList<ProviderResponseContainer> containers,
+            out bool hasInvalidArrayPayload)
+    {
+        var locations = new List<ProviderResponseContainer>();
+        hasInvalidArrayPayload = false;
+
+        foreach (var container in containers)
+        {
+            if (container.Element.ValueKind == JsonValueKind.Object)
+            {
+                locations.Add(container);
+                continue;
+            }
+
+            if (container.Element.ValueKind != JsonValueKind.Array)
+            {
+                hasInvalidArrayPayload = true;
+                continue;
+            }
+
+            if (container.Element.GetArrayLength() == 0)
+                continue;
+
+            if (container.Element.GetArrayLength() != 1)
+            {
+                hasInvalidArrayPayload = true;
+                continue;
+            }
+
+            var item = container.Element.EnumerateArray().First();
+
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                hasInvalidArrayPayload = true;
+                continue;
+            }
+
+            locations.Add(
+                new ProviderResponseContainer(
+                    container.Name,
+                    item));
+        }
+
+        return locations;
+    }
+
+    private static LookupCandidateKind GetLookupCandidateKind(
+        JsonElement container)
+    {
+        var hasInvoice =
+            !string.IsNullOrWhiteSpace(
+                ViettelClientHelper.GetFirstDirectString(
+                    container,
+                    "invoiceNo",
+                    "invoiceNumber",
+                    "supplierInvoiceNo"));
+        var errorCode =
+            ViettelClientHelper.GetFirstDirectString(
+                container,
+                "errorCode",
+                "code");
+        var message =
+            ViettelClientHelper.GetFirstDirectString(
+                container,
+                "message",
+                "description") ??
+            string.Empty;
+        var isNotFound =
+            string.Equals(
+                errorCode,
+                "NOT_FOUND_DATA",
+                StringComparison.OrdinalIgnoreCase) ||
+            message.Contains(
+                "NOT_FOUND_DATA",
+                StringComparison.OrdinalIgnoreCase) ||
+            message.Contains(
+                "Không tìm thấy",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (hasInvoice && isNotFound)
+            return LookupCandidateKind.Conflicting;
+
+        if (hasInvoice)
+            return LookupCandidateKind.Found;
+
+        return isNotFound
+            ? LookupCandidateKind.NotFound
+            : LookupCandidateKind.None;
+    }
+
+    private static bool IsAcceptedLookupControlCode(string code)
+    {
+        return ViettelClientHelper.IsExplicitViettelSuccessCode(code) ||
+               string.Equals(
+                   code,
+                   "NOT_FOUND_DATA",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private enum LookupCandidateKind
+    {
+        None,
+        Found,
+        NotFound,
+        Conflicting
+    }
+
+    private readonly record struct LookupCandidate(
+        LookupCandidateKind Kind,
+        JsonElement Element);
 
     private async Task WriteLookupLogAsync(
         int invoiceHeadId,
@@ -374,9 +563,9 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.SearchByTransactionUuid,
-                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
-                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
-                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
+                RequestUrl = "Viettel:LookupByTransactionUuid",
+                RequestBody = ViettelClientHelper.RedactedRequestSummary("LookupByTransactionUuid"),
+                ResponseBody = ViettelClientHelper.RedactedResponseSummary(responseBody),
                 IsSuccess = isSuccess,
                 ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
                 ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
@@ -387,6 +576,10 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
 
             await _logRepository.AddAsync(log, ct);
             await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

@@ -131,7 +131,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 return Result<ViettelInvoiceSendEmailResultDto>.Failure(
                     Error.Validation(
                         "Viettel.SendEmailHttpFailed",
-                        $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}. Response: {ViettelClientHelper.Trim(raw, 1000)}"));
+                        $"Gửi email Viettel thất bại. HTTP {(int)response.StatusCode}."));
             }
 
             var parsed = ParseResponse(
@@ -158,13 +158,17 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             {
                 return Result<ViettelInvoiceSendEmailResultDto>.Failure(
                     Error.Validation(
-                        "Viettel.SendEmailBusinessFailed",
-                        $"Viettel không gửi được email. Mã lỗi: {parsed.Code}. Nội dung: {parsed.Message}"));
+                        parsed.Code ?? "Viettel.SendEmailBusinessFailed",
+                        parsed.Message ?? "Viettel không gửi được email."));
             }
 
             return Result<ViettelInvoiceSendEmailResultDto>.Success(parsed);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
         {
             sw.Stop();
 
@@ -178,7 +182,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 errorMessage: "Gửi email Viettel timeout.",
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
                 Error.Validation(
@@ -189,6 +193,9 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
         {
             sw.Stop();
 
+            var exceptionType = ViettelClientHelper.ExceptionType(ex);
+            const string message = "Không gọi được dịch vụ gửi email Viettel.";
+
             await WriteLogAsync(
                 invoiceHeadId: invoiceHeadId,
                 requestUrl: url,
@@ -196,15 +203,15 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 responseBody: null,
                 isSuccess: false,
                 errorCode: "EXCEPTION",
-                errorMessage: ex.Message,
+                errorMessage: exceptionType,
                 startedAtUtc: startedAtUtc,
                 durationMs: sw.ElapsedMilliseconds,
-                ct: CancellationToken.None);
+                ct: ct);
 
             return Result<ViettelInvoiceSendEmailResultDto>.Failure(
                 Error.Validation(
                     "Viettel.SendEmailException",
-                    $"Lỗi gửi email Viettel: {ex.Message}"));
+                    message));
         }
     }
 
@@ -225,7 +232,7 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 BuyerEmail = buyerEmail,
                 TransactionUuid = transactionUuid,
                 ProviderInvoiceNo = providerInvoiceNo,
-                Code = "EMPTY_RESPONSE",
+                Code = "Viettel.SendEmailInvalidResponse",
                 Message = "Viettel không trả dữ liệu.",
                 RawResponse = string.Empty,
                 DurationMs = durationMs
@@ -234,36 +241,133 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
 
         try
         {
-            using var doc = JsonDocument.Parse(raw);
-            var root = doc.RootElement;
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
+            {
+                return new ViettelInvoiceSendEmailResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    BuyerEmail = buyerEmail,
+                    TransactionUuid = transactionUuid,
+                    ProviderInvoiceNo = providerInvoiceNo,
+                    Code = "Viettel.SendEmailInvalidResponse",
+                    Message = "Không đọc được phản hồi gửi email Viettel.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+            var containers =
+                ViettelClientHelper.GetDirectRecognizedContainers(
+                    root,
+                    allowResultArray: false,
+                    allowDataArray: false,
+                    out var hasInvalidEnvelope);
+
+            if (hasInvalidEnvelope)
+            {
+                return new ViettelInvoiceSendEmailResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    BuyerEmail = buyerEmail,
+                    TransactionUuid = transactionUuid,
+                    ProviderInvoiceNo = providerInvoiceNo,
+                    Code = "Viettel.SendEmailInvalidResponse",
+                    Message = "Viettel trả về envelope gửi email không hợp lệ.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (containers.Any(
+                    container =>
+                        ViettelClientHelper.HasDirectFailureMarker(
+                            container.Element,
+                            ViettelClientHelper.IsExplicitViettelSuccessCode)))
+            {
+                return new ViettelInvoiceSendEmailResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    BuyerEmail = buyerEmail,
+                    TransactionUuid = transactionUuid,
+                    ProviderInvoiceNo = providerInvoiceNo,
+                    Code = "Viettel.SendEmailBusinessFailed",
+                    Message = "Viettel trả lỗi gửi email.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var candidates = containers
+                .Where(
+                    container =>
+                        HasEmailSuccessMarker(container.Element))
+                .ToList();
+
+            if (candidates.Count > 1)
+            {
+                return new ViettelInvoiceSendEmailResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    BuyerEmail = buyerEmail,
+                    TransactionUuid = transactionUuid,
+                    ProviderInvoiceNo = providerInvoiceNo,
+                    Code = "Viettel.SendEmailConflictingResponse",
+                    Message =
+                        "Viettel trả về phản hồi mâu thuẫn hoặc không đủ điều kiện xác nhận.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            if (candidates.Count == 0)
+            {
+                return new ViettelInvoiceSendEmailResultDto
+                {
+                    InvoiceHeadId = invoiceHeadId,
+                    IsSuccess = false,
+                    BuyerEmail = buyerEmail,
+                    TransactionUuid = transactionUuid,
+                    ProviderInvoiceNo = providerInvoiceNo,
+                    Code = "Viettel.SendEmailAmbiguousResponse",
+                    Message = "Viettel trả về phản hồi chưa đủ thông tin xác nhận gửi email.",
+                    RawResponse = string.Empty,
+                    DurationMs = durationMs
+                };
+            }
+
+            var payload = candidates[0].Element;
             var code =
-                ViettelClientHelper.FindStringProperty(root, "code") ??
-                ViettelClientHelper.FindStringProperty(root, "errorCode");
-
-            var message =
-                ViettelClientHelper.FindStringProperty(root, "message") ??
-                ViettelClientHelper.FindStringProperty(root, "description");
-
-            var isSuccess =
-                string.Equals(code, "200", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(message, "OK", StringComparison.OrdinalIgnoreCase) ||
-                ViettelClientHelper.IsViettelSuccessCode(code);
+                ViettelClientHelper.GetFirstDirectString(
+                    payload,
+                    "code",
+                    "errorCode");
 
             return new ViettelInvoiceSendEmailResultDto
             {
                 InvoiceHeadId = invoiceHeadId,
-                IsSuccess = isSuccess,
+                IsSuccess = true,
                 BuyerEmail = buyerEmail,
                 TransactionUuid = transactionUuid,
                 ProviderInvoiceNo = providerInvoiceNo,
                 Code = code,
-                Message = message,
-                RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                Message = "OK",
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
-        catch (Exception ex)
+        catch
         {
             return new ViettelInvoiceSendEmailResultDto
             {
@@ -272,12 +376,32 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
                 BuyerEmail = buyerEmail,
                 TransactionUuid = transactionUuid,
                 ProviderInvoiceNo = providerInvoiceNo,
-                Code = "PARSE_ERROR",
-                Message = $"Không đọc được response gửi email: {ex.Message}",
-                RawResponse = ViettelClientHelper.Trim(raw, 10000),
+                Code = "Viettel.SendEmailInvalidResponse",
+                Message = "Không đọc được phản hồi gửi email Viettel.",
+                RawResponse = string.Empty,
                 DurationMs = durationMs
             };
         }
+    }
+
+    private static bool HasEmailSuccessMarker(JsonElement container)
+    {
+        var code =
+            ViettelClientHelper.GetFirstDirectString(
+                container,
+                "code",
+                "errorCode");
+        var message =
+            ViettelClientHelper.GetFirstDirectString(
+                container,
+                "message",
+                "description");
+
+        return ViettelClientHelper.IsExplicitViettelSuccessCode(code) ||
+               string.Equals(
+                   message,
+                   "OK",
+                   StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task WriteLogAsync(
@@ -298,9 +422,9 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
             {
                 InvoiceHeadId = invoiceHeadId,
                 ActionType = InvoiceIntegrationActionType.SendEmail,
-                RequestUrl = ViettelClientHelper.TrimNullable(requestUrl, 500),
-                RequestBody = ViettelClientHelper.TrimNullable(requestBody, 10000),
-                ResponseBody = ViettelClientHelper.TrimNullable(responseBody, 10000),
+                RequestUrl = "Viettel:SendEmail",
+                RequestBody = ViettelClientHelper.RedactedRequestSummary("SendEmail"),
+                ResponseBody = ViettelClientHelper.RedactedResponseSummary(responseBody),
                 IsSuccess = isSuccess,
                 ErrorCode = ViettelClientHelper.TrimNullable(errorCode, 100),
                 ErrorMessage = ViettelClientHelper.TrimNullable(errorMessage, 1000),
@@ -311,6 +435,10 @@ public class ViettelInvoiceEmailClient : IViettelInvoiceEmailClient
 
             await _logRepository.AddAsync(log, ct);
             await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

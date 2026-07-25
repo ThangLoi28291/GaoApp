@@ -75,8 +75,10 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
             : _options.BaseUrl.Trim().TrimEnd('/');
 
         var timeoutSeconds = _options.TimeoutSeconds <= 0
-            ? 8
-            : _options.TimeoutSeconds;
+            ? 10
+            : Math.Min(
+                _options.TimeoutSeconds,
+                ExternalHttpResilienceOptions.MaximumTimeoutSeconds);
 
         var candidates = BuildLookupCandidates(originalTaxCode);
 
@@ -86,58 +88,110 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
         {
             var url = $"{baseUrl}/v2/business/{Uri.EscapeDataString(lookupTaxCode)}";
 
-            try
+            for (var retry = 0;
+                 retry <= ExternalHttpResilienceOptions.SafeGetTransientRetryCount;
+                 retry++)
             {
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-
-                using var request = new HttpRequestMessage(HttpMethod.Get, url);
-
-                request.Headers.Accept.Clear();
-                request.Headers.Accept.ParseAdd("application/json");
-
-                using var response = await _httpClient.SendAsync(
-                    request,
-                    timeoutCts.Token);
-
-                var raw = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-
-                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                try
                 {
-                    lastErrorMessage = "API tra cứu MST đang bị giới hạn lượt gọi. Vui lòng thử lại sau.";
-                    continue;
-                }
+                    using var timeoutCts =
+                        CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
-                if (!response.IsSuccessStatusCode)
+                    using var request = new HttpRequestMessage(HttpMethod.Get, url);
+
+                    request.Headers.Accept.Clear();
+                    request.Headers.Accept.ParseAdd("application/json");
+
+                    using var response = await _httpClient.SendAsync(
+                        request,
+                        timeoutCts.Token);
+
+                    var raw = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+
+                    if (IsTransientStatusCode(response.StatusCode) &&
+                        retry < ExternalHttpResilienceOptions.SafeGetTransientRetryCount)
+                    {
+                        await DelayBeforeSafeGetRetryAsync(ct);
+                        continue;
+                    }
+
+                    if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        return Result<TaxCodeLookupResultDto>.Failure(
+                            Error.Failure(
+                                "API tra cứu MST đang bị giới hạn lượt gọi. Vui lòng thử lại sau."));
+                    }
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        lastErrorMessage =
+                            $"Tra cứu MST thất bại. HTTP {(int)response.StatusCode}.";
+
+                        if (response.StatusCode == HttpStatusCode.NotFound)
+                            break;
+
+                        return Result<TaxCodeLookupResultDto>.Failure(
+                            Error.Failure(lastErrorMessage));
+                    }
+
+                    var parsed = ParseVietQrResponse(
+                        originalTaxCode,
+                        raw,
+                        out var hasInvalidProviderResponse);
+
+                    if (hasInvalidProviderResponse)
+                    {
+                        return Result<TaxCodeLookupResultDto>.Failure(
+                            Error.Validation(
+                                "TaxCodeLookup.InvalidProviderResponse",
+                                "VietQR trả về phản hồi không hợp lệ."));
+                    }
+
+                    if (parsed != null)
+                    {
+                        return Result<TaxCodeLookupResultDto>.Success(parsed);
+                    }
+
+                    lastErrorMessage =
+                        "Không tìm thấy thông tin doanh nghiệp từ VietQR.";
+                    break;
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
-                    lastErrorMessage = $"Tra cứu MST thất bại. HTTP {(int)response.StatusCode}.";
-                    continue;
+                    throw;
                 }
-
-                var parsed = ParseVietQrResponse(
-                    originalTaxCode,
-                    raw);
-
-                if (parsed != null)
+                catch (OperationCanceledException)
                 {
-                    return Result<TaxCodeLookupResultDto>.Success(parsed);
+                    if (retry < ExternalHttpResilienceOptions.SafeGetTransientRetryCount)
+                    {
+                        await DelayBeforeSafeGetRetryAsync(ct);
+                        continue;
+                    }
+
+                    return Result<TaxCodeLookupResultDto>.Failure(
+                        Error.Failure("Tra cứu VietQR quá thời gian chờ."));
                 }
+                catch (HttpRequestException ex)
+                {
+                    if (retry < ExternalHttpResilienceOptions.SafeGetTransientRetryCount)
+                    {
+                        await DelayBeforeSafeGetRetryAsync(ct);
+                        continue;
+                    }
 
-                lastErrorMessage = "Không tìm thấy thông tin doanh nghiệp từ VietQR.";
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                lastErrorMessage = "Tra cứu VietQR quá thời gian chờ.";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "VietQR tax code lookup failed. TaxCode={TaxCode}, LookupTaxCode={LookupTaxCode}",
-                    originalTaxCode,
-                    lookupTaxCode);
+                    LogProviderException(ex);
 
-                lastErrorMessage = "Không gọi được VietQR.";
+                    return Result<TaxCodeLookupResultDto>.Failure(
+                        Error.Failure("Không gọi được VietQR."));
+                }
+                catch (Exception ex)
+                {
+                    LogProviderException(ex);
+
+                    return Result<TaxCodeLookupResultDto>.Failure(
+                        Error.Failure("Không gọi được VietQR."));
+                }
             }
         }
 
@@ -146,6 +200,27 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
                 string.IsNullOrWhiteSpace(lastErrorMessage)
                     ? "Không tìm thấy thông tin doanh nghiệp từ API tra MST."
                     : lastErrorMessage));
+    }
+
+    private static bool IsTransientStatusCode(HttpStatusCode statusCode) =>
+        statusCode == HttpStatusCode.RequestTimeout ||
+        statusCode == HttpStatusCode.TooManyRequests ||
+        (int)statusCode >= 500;
+
+    private static async Task DelayBeforeSafeGetRetryAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        await Task.Delay(
+            ExternalHttpResilienceOptions.SafeGetTransientRetryDelay,
+            ct);
+    }
+
+    private void LogProviderException(Exception exception)
+    {
+        _logger.LogWarning(
+            "VietQR tax code lookup failed. ExceptionType={ExceptionType}",
+            exception.GetType().Name);
     }
 
     private static List<string> BuildLookupCandidates(string taxCode)
@@ -172,25 +247,52 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
 
     private static TaxCodeLookupResultDto? ParseVietQrResponse(
         string originalTaxCode,
-        string raw)
+        string raw,
+        out bool hasInvalidProviderResponse)
     {
+        hasInvalidProviderResponse = false;
+
         if (string.IsNullOrWhiteSpace(raw))
+        {
+            hasInvalidProviderResponse = true;
             return null;
+        }
 
         try
         {
-            using var doc = JsonDocument.Parse(raw);
+            var jsonValidation =
+                ViettelClientHelper.TryParseStrictProviderJson(
+                    raw,
+                    out var document);
 
-            var root = doc.RootElement;
+            if (jsonValidation != ProviderJsonValidationFailure.None ||
+                document is null)
+            {
+                hasInvalidProviderResponse = true;
+                return null;
+            }
+
+            using var strictDocument = document;
+            var root = strictDocument.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                hasInvalidProviderResponse = true;
+                return null;
+            }
 
             var code =
-                FindString(root, "code") ??
-                FindString(root, "errorCode");
+                ViettelClientHelper.GetFirstDirectString(
+                    root,
+                    "code",
+                    "errorCode");
 
             var desc =
-                FindString(root, "desc") ??
-                FindString(root, "message") ??
-                FindString(root, "description");
+                ViettelClientHelper.GetFirstDirectString(
+                    root,
+                    "desc",
+                    "message",
+                    "description");
 
             // VietQR thường trả code "00" khi thành công.
             if (!string.IsNullOrWhiteSpace(code) &&
@@ -201,41 +303,63 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
             }
 
             JsonElement data = root;
+            var dataLookup =
+                ViettelClientHelper.GetUniqueDirectProperty(
+                    root,
+                    "data",
+                    out var dataElement);
 
-            if (TryFindProperty(root, "data", out var dataElement) &&
-                dataElement.ValueKind == JsonValueKind.Object)
+            if (dataLookup == DirectPropertyLookupResult.Found)
             {
+                if (dataElement.ValueKind != JsonValueKind.Object)
+                {
+                    hasInvalidProviderResponse = true;
+                    return null;
+                }
+
                 data = dataElement;
             }
 
             var name =
-                FindString(data, "name") ??
-                FindString(data, "companyName") ??
-                FindString(data, "businessName") ??
-                FindString(data, "legalName");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "name",
+                    "companyName",
+                    "businessName",
+                    "legalName");
 
             var internationalName =
-                FindString(data, "internationalName") ??
-                FindString(data, "international_name");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "internationalName",
+                    "international_name");
 
             var shortName =
-                FindString(data, "shortName") ??
-                FindString(data, "short_name");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "shortName",
+                    "short_name");
 
             var address =
-                FindString(data, "address") ??
-                FindString(data, "companyAddress") ??
-                FindString(data, "businessAddress");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "address",
+                    "companyAddress",
+                    "businessAddress");
 
             var representative =
-                FindString(data, "representativeName") ??
-                FindString(data, "legalRepresentative") ??
-                FindString(data, "ownerName");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "representativeName",
+                    "legalRepresentative",
+                    "ownerName");
 
             var returnedTaxCode =
-                FindString(data, "id") ??
-                FindString(data, "taxCode") ??
-                FindString(data, "mst");
+                ViettelClientHelper.GetFirstDirectString(
+                    data,
+                    "id",
+                    "taxCode",
+                    "mst");
 
             if (string.IsNullOrWhiteSpace(name) &&
                 string.IsNullOrWhiteSpace(address))
@@ -264,58 +388,9 @@ public class VietQrTaxCodeLookupService : ITaxCodeLookupService
         }
         catch
         {
+            hasInvalidProviderResponse = true;
             return null;
         }
-    }
-
-    private static bool TryFindProperty(
-        JsonElement element,
-        string propertyName,
-        out JsonElement value)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var property in element.EnumerateObject())
-            {
-                if (property.NameEquals(propertyName) ||
-                    property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    value = property.Value;
-                    return true;
-                }
-
-                if (TryFindProperty(property.Value, propertyName, out value))
-                    return true;
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-            {
-                if (TryFindProperty(item, propertyName, out value))
-                    return true;
-            }
-        }
-
-        value = default;
-        return false;
-    }
-
-    private static string? FindString(
-        JsonElement element,
-        string propertyName)
-    {
-        if (!TryFindProperty(element, propertyName, out var value))
-            return null;
-
-        return value.ValueKind switch
-        {
-            JsonValueKind.String => value.GetString(),
-            JsonValueKind.Number => value.ToString(),
-            JsonValueKind.True => "true",
-            JsonValueKind.False => "false",
-            _ => null
-        };
     }
 
     private static string NormalizeTaxCodeForLookup(string? taxCode)
