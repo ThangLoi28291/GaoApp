@@ -360,7 +360,7 @@ public static class DependencyInjection
                     "ConnectionStrings:DefaultConnection chưa được cấu hình hoặc đang rỗng.");
             }
 
-            options.UseSqlServer(connectionString);
+            options.UseGaoAppSqlServer(connectionString);
 
             options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
         });
@@ -374,7 +374,7 @@ public static class DependencyInjection
                     "ConnectionStrings:DefaultConnection chưa được cấu hình hoặc đang rỗng.");
             }
 
-            options.UseSqlServer(connectionString);
+            options.UseGaoAppSqlServer(connectionString);
 
             // KHÔNG add interceptor ở context này
         }, ServiceLifetime.Scoped);

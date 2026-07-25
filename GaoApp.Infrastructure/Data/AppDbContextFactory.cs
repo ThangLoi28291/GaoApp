@@ -49,7 +49,7 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
             throw new InvalidOperationException("Không tìm thấy connection string 'DefaultConnection'.");
 
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
-        optionsBuilder.UseSqlServer(connectionString);
+        optionsBuilder.UseGaoAppSqlServer(connectionString);
 
         // Tenant giả cho design-time
         // Migration chỉ cần model metadata, không cần tenant runtime thật.

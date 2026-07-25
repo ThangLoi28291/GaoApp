@@ -48,6 +48,6 @@ public static class HealthCheckResponseWriter
             WriteIndented = true
         });
 
-        await context.Response.WriteAsync(json);
+        await context.Response.WriteAsync(json, context.RequestAborted);
     }
 }

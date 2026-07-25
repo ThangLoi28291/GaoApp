@@ -35,6 +35,7 @@
     <ProjectReference Include="..\GaoApp.Application\GaoApp.Application.csproj" />
     <ProjectReference Include="..\GaoApp.Infrastructure\GaoApp.Infrastructure.csproj" />
     <ProjectReference Include="..\GaoApp.Domain\GaoApp.Domain.csproj" />
+    <ProjectReference Include="..\GaoApp.Web\GaoApp.Web.csproj" />
   </ItemGroup>
 
 </Project>

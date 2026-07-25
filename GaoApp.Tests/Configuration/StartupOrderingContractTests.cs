@@ -22,6 +22,30 @@ public sealed class StartupOrderingContractTests
     }
 
     [Fact]
+    public void ProductionWeb_DoesNotOwnDatabaseMigration()
+    {
+        var source = ReadRepositoryFile("GaoApp.Web", "Program.cs");
+        var migrationIndex = source.IndexOf(
+            "await app.MigrateAndSeedDatabaseAsync();",
+            StringComparison.Ordinal);
+        var developmentGuardIndex = source.LastIndexOf(
+            "if (app.Environment.IsDevelopment())",
+            migrationIndex,
+            StringComparison.Ordinal);
+        var guardEndIndex = source.IndexOf(
+            "\n    }",
+            migrationIndex,
+            StringComparison.Ordinal);
+
+        Assert.True(migrationIndex >= 0, "Web migration call was not found.");
+        Assert.True(
+            developmentGuardIndex >= 0 &&
+            developmentGuardIndex < migrationIndex &&
+            guardEndIndex > migrationIndex,
+            "Web migration must remain inside the Development-only guard.");
+    }
+
+    [Fact]
     public void WebStartup_RethrowsStartupExceptions()
     {
         var source = ReadRepositoryFile("GaoApp.Web", "Program.cs");
