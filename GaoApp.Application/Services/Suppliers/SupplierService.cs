@@ -165,12 +165,9 @@ public sealed class SupplierService : ISupplierService
             await _repo.SaveChangesAsync(ct);
             return Result.Success();
         }
-        catch (Exception ex)
+        catch (ConcurrencyException)
         {
-            if (ex.GetType().Name == "DbUpdateConcurrencyException")
-                return Result.Failure(SupplierErrors.ConcurrencyConflict);
-
-            return Result.Failure(SupplierErrors.UpdateFailed);
+            return Result.Failure(SupplierErrors.ConcurrencyConflict);
         }
     }
 

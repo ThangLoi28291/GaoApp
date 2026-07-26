@@ -9,6 +9,7 @@ using GaoApp.Infrastructure.Interceptors.Auditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Infrastructure.Interceptors;
 
@@ -23,6 +24,7 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 {
     private readonly IAuditExecutionContextAccessor _auditExecutionContextAccessor;
     private readonly IDbContextFactory<AuditLogDbContext> _auditLogDbContextFactory;
+    private readonly ILogger<AuditSaveChangesInterceptor> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -50,10 +52,12 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 
     public AuditSaveChangesInterceptor(
         IAuditExecutionContextAccessor auditExecutionContextAccessor,
-        IDbContextFactory<AuditLogDbContext> auditLogDbContextFactory)
+        IDbContextFactory<AuditLogDbContext> auditLogDbContextFactory,
+        ILogger<AuditSaveChangesInterceptor> logger)
     {
         _auditExecutionContextAccessor = auditExecutionContextAccessor;
         _auditLogDbContextFactory = auditLogDbContextFactory;
+        _logger = logger;
     }
 
     public override InterceptionResult<int> SavingChanges(
@@ -198,6 +202,16 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             auditDbContext.AuditLogs.AddRange(logs);
             auditDbContext.SaveChanges();
         }
+        catch (Exception ex)
+        {
+            // Primary SaveChanges has already succeeded. Audit persistence is
+            // best-effort so it must not turn a committed write into a failure.
+            _logger.LogError(
+                "Audit persistence failed after primary SaveChanges; primary data remains committed. AuditCount={AuditCount}; TraceId={TraceId}; ExceptionType={ExceptionType}",
+                pendingItems.Count,
+                pendingItems[0].TraceId,
+                ex.GetType().Name);
+        }
         finally
         {
             _pendingAudits.Remove(context);
@@ -226,6 +240,20 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 
             auditDbContext.AuditLogs.AddRange(logs);
             await auditDbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Primary SaveChanges has already succeeded. Audit persistence is
+            // best-effort so it must not turn a committed write into a failure.
+            _logger.LogError(
+                "Audit persistence failed after primary SaveChanges; primary data remains committed. AuditCount={AuditCount}; TraceId={TraceId}; ExceptionType={ExceptionType}",
+                pendingItems.Count,
+                pendingItems[0].TraceId,
+                ex.GetType().Name);
         }
         finally
         {

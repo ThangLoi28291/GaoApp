@@ -8,6 +8,8 @@ using GaoApp.Application.Interfaces.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Purchases;
 
 public sealed class PurchaseRequestService : IPurchaseRequestService
@@ -91,7 +93,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ArgumentNullException.ThrowIfNull(request);
         request.Lines ??= new List<PurchaseRequestLineInputDto>();
         if (request.Lines.Any(x => x is null))
-            throw new InvalidOperationException("Dữ liệu dòng hàng không hợp lệ.");
+            throw new BusinessRuleException("Dữ liệu dòng hàng không hợp lệ.");
         var storeId = RequireStoreId();
         var userId = RequireCurrentUserId();
         ValidateHeader(request);
@@ -116,7 +118,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             else
             {
                 entity = await _repository.GetDetailAsync(request.Id!.Value, true, ct)
-                    ?? throw new InvalidOperationException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
+                    ?? throw new BusinessRuleException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
                 EnsureOwner(entity, userId);
                 EnsureEditable(entity.Status);
                 EnsureRowVersion(entity.RowVersion, request.RowVersion);
@@ -130,13 +132,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
             var existingIdList = request.Lines.Where(x => x.Id.HasValue).Select(x => x.Id!.Value).ToList();
             if (existingIdList.Count != existingIdList.Distinct().Count())
-                throw new InvalidOperationException("Dữ liệu dòng hàng bị trùng. Vui lòng tải lại trang.");
+                throw new BusinessRuleException("Dữ liệu dòng hàng bị trùng. Vui lòng tải lại trang.");
 
             var existingIds = existingIdList.ToHashSet();
             foreach (var oldLine in entity.Lines.Where(x => !x.IsDeleted && !existingIds.Contains(x.Id)).ToList())
             {
                 if (oldLine.ConvertedQuantity > 0)
-                    throw new InvalidOperationException("Không thể xóa dòng đã được chuyển sang đơn đặt hàng.");
+                    throw new BusinessRuleException("Không thể xóa dòng đã được chuyển sang đơn đặt hàng.");
                 oldLine.IsDeleted = true;
                 await _repository.RemoveLineAsync(oldLine, ct);
             }
@@ -147,28 +149,28 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             foreach (var input in request.Lines)
             {
                 var quantity = PurchasePricingPolicy.RoundQuantity(input.Quantity);
-                if (quantity <= 0) throw new InvalidOperationException($"Dòng {row}: số lượng phải lớn hơn 0.");
+                if (quantity <= 0) throw new BusinessRuleException($"Dòng {row}: số lượng phải lớn hơn 0.");
 
                 var line = input.Id.HasValue
                     ? entity.Lines.FirstOrDefault(x => x.Id == input.Id.Value && !x.IsDeleted)
-                        ?? throw new InvalidOperationException($"Dòng {row} không thuộc yêu cầu mua hàng này.")
+                        ?? throw new BusinessRuleException($"Dòng {row} không thuộc yêu cầu mua hàng này.")
                     : new PurchaseRequestLine { LineNo = nextLineNo++ };
 
                 if (line.ConvertedQuantity > 0)
-                    throw new InvalidOperationException($"Dòng {row} đã được chuyển sang đơn đặt hàng nên không thể sửa.");
+                    throw new BusinessRuleException($"Dòng {row} đã được chuyển sang đơn đặt hàng nên không thể sửa.");
 
                 if (input.ItemKind == PurchaseItemKind.Catalog)
                 {
                     if (!input.ProductVariantId.HasValue || !input.ProductUnitConversionId.HasValue)
-                        throw new InvalidOperationException($"Dòng {row}: phải chọn sản phẩm và đơn vị mua.");
+                        throw new BusinessRuleException($"Dòng {row}: phải chọn sản phẩm và đơn vị mua.");
                     var conversion = await _repository.GetConversionAsync(input.ProductUnitConversionId.Value, ct)
-                        ?? throw new InvalidOperationException($"Dòng {row}: đơn vị mua không tồn tại hoặc đã ngừng hoạt động.");
+                        ?? throw new BusinessRuleException($"Dòng {row}: đơn vị mua không tồn tại hoặc đã ngừng hoạt động.");
                     var variant = await _repository.GetVariantAsync(input.ProductVariantId.Value, ct)
-                        ?? throw new InvalidOperationException($"Dòng {row}: sản phẩm không tồn tại hoặc đã ngừng hoạt động.");
+                        ?? throw new BusinessRuleException($"Dòng {row}: sản phẩm không tồn tại hoặc đã ngừng hoạt động.");
                     if (conversion.ProductVariantId != variant.Id)
-                        throw new InvalidOperationException($"Dòng {row}: đơn vị mua không thuộc sản phẩm đã chọn.");
+                        throw new BusinessRuleException($"Dòng {row}: đơn vị mua không thuộc sản phẩm đã chọn.");
                     if (!itemKeys.Add($"catalog:{conversion.Id}"))
-                        throw new InvalidOperationException($"Dòng {row}: sản phẩm và đơn vị mua đã bị trùng.");
+                        throw new BusinessRuleException($"Dòng {row}: sản phẩm và đơn vị mua đã bị trùng.");
 
                     line.ItemKind = PurchaseItemKind.Catalog;
                     line.ProductVariantId = variant.Id;
@@ -182,13 +184,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 else if (input.ItemKind == PurchaseItemKind.FreeText)
                 {
                     if (input.ProductVariantId.HasValue || input.ProductUnitConversionId.HasValue)
-                        throw new InvalidOperationException($"Dòng {row}: hàng tự nhập không được gửi ID sản phẩm danh mục.");
+                        throw new BusinessRuleException($"Dòng {row}: hàng tự nhập không được gửi ID sản phẩm danh mục.");
                     var productName = NormalizeRequiredSnapshot(input.ProductName, 250,
                         $"Dòng {row}: bắt buộc nhập tên hàng.");
                     var unitName = NormalizeRequiredSnapshot(input.UnitName, 100,
                         $"Dòng {row}: bắt buộc nhập đơn vị.");
                     if (!itemKeys.Add($"free:{productName}:{unitName}"))
-                        throw new InvalidOperationException($"Dòng {row}: tên hàng và đơn vị tự nhập đã bị trùng.");
+                        throw new BusinessRuleException($"Dòng {row}: tên hàng và đơn vị tự nhập đã bị trùng.");
 
                     line.ItemKind = PurchaseItemKind.FreeText;
                     line.ProductVariantId = null;
@@ -204,7 +206,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 }
                 else
                 {
-                    throw new InvalidOperationException($"Dòng {row}: loại hàng mua không hợp lệ.");
+                    throw new BusinessRuleException($"Dòng {row}: loại hàng mua không hợp lệ.");
                 }
 
                 line.RequestedQuantity = quantity;
@@ -256,14 +258,14 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         request.Lines ??= new List<PurchaseRequestApprovalLineRequest>();
         if (request.Lines.Any(x => x is null))
-            throw new InvalidOperationException("Dữ liệu số lượng duyệt không hợp lệ.");
+            throw new BusinessRuleException("Dữ liệu số lượng duyệt không hợp lệ.");
         var entity = await GetTrackingAsync(id, ct);
         EnsureRowVersion(entity.RowVersion, request.RowVersion);
         if (entity.Status != PurchaseRequestStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ yêu cầu đang chờ duyệt mới có thể được duyệt.");
+            throw new BusinessRuleException("Chỉ yêu cầu đang chờ duyệt mới có thể được duyệt.");
 
         var activeLines = entity.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.LineNo).ToList();
-        if (activeLines.Count == 0) throw new InvalidOperationException("Yêu cầu mua hàng chưa có dòng hàng.");
+        if (activeLines.Count == 0) throw new BusinessRuleException("Yêu cầu mua hàng chưa có dòng hàng.");
 
         if (request.Lines.Count == 0)
         {
@@ -272,30 +274,30 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         else
         {
             var duplicates = request.Lines.GroupBy(x => x.PurchaseRequestLineId).FirstOrDefault(x => x.Count() > 1);
-            if (duplicates != null) throw new InvalidOperationException("Danh sách số lượng duyệt có dòng bị trùng.");
+            if (duplicates != null) throw new BusinessRuleException("Danh sách số lượng duyệt có dòng bị trùng.");
             if (request.Lines.Count != activeLines.Count ||
                 request.Lines.Any(x => activeLines.All(l => l.Id != x.PurchaseRequestLineId)))
-                throw new InvalidOperationException("Phải xác nhận số lượng cho đầy đủ mọi dòng của yêu cầu.");
+                throw new BusinessRuleException("Phải xác nhận số lượng cho đầy đủ mọi dòng của yêu cầu.");
 
             foreach (var line in activeLines)
             {
                 var approved = PurchasePricingPolicy.RoundQuantity(
                     request.Lines.Single(x => x.PurchaseRequestLineId == line.Id).ApprovedQuantity);
                 if (approved < 0 || approved > 999999999999m)
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng {line.LineNo}: số lượng duyệt nằm ngoài giới hạn cho phép.");
                 line.ApprovedQuantity = approved;
             }
         }
 
         if (activeLines.All(x => (x.ApprovedQuantity ?? 0m) == 0m))
-            throw new InvalidOperationException("Phải duyệt ít nhất một sản phẩm với số lượng lớn hơn 0.");
+            throw new BusinessRuleException("Phải duyệt ít nhất một sản phẩm với số lượng lớn hơn 0.");
 
         var quantityWasAdjusted = activeLines.Any(x =>
             PurchasePricingPolicy.RoundQuantity(x.ApprovedQuantity ?? 0m) !=
             PurchasePricingPolicy.RoundQuantity(x.RequestedQuantity));
         if (quantityWasAdjusted && string.IsNullOrWhiteSpace(request.Note))
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Bắt buộc nhập lý do khi số lượng duyệt khác số lượng nhân viên đề nghị.");
 
         var from = entity.Status;
@@ -331,7 +333,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (requireOwnership) EnsureOwner(entity, RequireCurrentUserId());
         EnsureRowVersion(entity.RowVersion, request.RowVersion);
         if (entity.Status is PurchaseRequestStatus.Converted or PurchaseRequestStatus.PartiallyConverted or PurchaseRequestStatus.Cancelled)
-            throw new InvalidOperationException("Không thể hủy yêu cầu đã chuyển thành đơn đặt hàng hoặc đã hủy.");
+            throw new BusinessRuleException("Không thể hủy yêu cầu đã chuyển thành đơn đặt hàng hoặc đã hủy.");
         var from = entity.Status;
         entity.Status = PurchaseRequestStatus.Cancelled;
         entity.CancelledAtUtc = DateTime.UtcNow;
@@ -347,7 +349,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         CancellationToken ct = default)
     {
         var entity = await _repository.GetDetailAsync(id, false, ct)
-            ?? throw new InvalidOperationException("Yêu cầu mua hàng không tồn tại.");
+            ?? throw new BusinessRuleException("Yêu cầu mua hàng không tồn tại.");
         EnsureCleanApprovedRequestForConversion(entity);
 
         var legalEntities = await _repository.GetLegalEntitiesAsync(ct);
@@ -402,18 +404,18 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         ArgumentNullException.ThrowIfNull(request);
         request.Orders ??= new List<PurchaseRequestOrderGroupRequest>();
         if (request.Orders.Any(x => x is null))
-            throw new InvalidOperationException("Dữ liệu nhóm đơn không hợp lệ.");
+            throw new BusinessRuleException("Dữ liệu nhóm đơn không hợp lệ.");
         if (request.Orders.Count != 1)
-            throw new InvalidOperationException("Mỗi yêu cầu mua chỉ được tạo đúng một đơn đặt hàng.");
+            throw new BusinessRuleException("Mỗi yêu cầu mua chỉ được tạo đúng một đơn đặt hàng.");
 
         var onlyOrderInput = request.Orders[0];
         onlyOrderInput.Lines ??= new List<PurchaseRequestConversionLineRequest>();
         if (onlyOrderInput.Lines.Any(x => x is null))
-            throw new InvalidOperationException("Đơn đặt hàng có dòng dữ liệu không hợp lệ.");
+            throw new BusinessRuleException("Đơn đặt hàng có dòng dữ liệu không hợp lệ.");
 
         var keys = request.Orders.Select(x => NormalizeConversionKey(x.ClientGroupKey)).ToList();
         if (keys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != keys.Count)
-            throw new InvalidOperationException("Khóa nhóm đơn bị trùng.");
+            throw new BusinessRuleException("Khóa nhóm đơn bị trùng.");
 
         // Fast idempotency path: retry nguyên request đã thành công trả lại đúng các PO cũ,
         // kể cả RowVersion phía trình duyệt đã cũ.
@@ -426,7 +428,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         if (existingOrders.Count == keys.Count)
         {
             var current = await _repository.GetDetailAsync(id, false, ct)
-                ?? throw new InvalidOperationException("Yêu cầu mua hàng không tồn tại.");
+                ?? throw new BusinessRuleException("Yêu cầu mua hàng không tồn tại.");
             return new ConvertPurchaseRequestResultDto
             {
                 RequestStatus = current.Status,
@@ -435,13 +437,13 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             };
         }
         if (existingOrders.Count > 0)
-            throw new InvalidOperationException("Một phần nhóm đơn đã được tạo. Vui lòng tải lại yêu cầu trước khi tiếp tục.");
+            throw new BusinessRuleException("Một phần nhóm đơn đã được tạo. Vui lòng tải lại yêu cầu trước khi tiếp tục.");
 
         await using var tx = await _unitOfWork.BeginTransactionAsync(ct);
         try
         {
             var entity = await _repository.GetDetailForConversionAsync(id, RequireStoreId(), ct)
-                ?? throw new InvalidOperationException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
+                ?? throw new BusinessRuleException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
 
             // Recheck sau khi đã giữ lock để concurrent retry cùng key vẫn idempotent.
             var concurrentlyCreated = entity.PurchaseOrders.FirstOrDefault(x =>
@@ -466,12 +468,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 .ToDictionary(x => x.Id);
             var allConversionLines = onlyOrderInput.Lines.ToList();
             if (allConversionLines.Count != approvedLines.Count)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     "Đơn đặt hàng phải chứa đầy đủ, đúng một lần mọi dòng có số lượng duyệt lớn hơn 0.");
             var duplicateAcrossGroups = allConversionLines.GroupBy(x => x.PurchaseRequestLineId)
                 .FirstOrDefault(x => x.Count() > 1);
             if (duplicateAcrossGroups != null)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng yêu cầu #{duplicateAcrossGroups.Key} bị gửi lặp trong đơn đặt hàng.");
             var proposed = allConversionLines.ToDictionary(
                 x => x.PurchaseRequestLineId,
@@ -479,10 +481,10 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             foreach (var item in proposed)
             {
                 if (!approvedLines.TryGetValue(item.Key, out var sourceLine))
-                    throw new InvalidOperationException($"Dòng yêu cầu #{item.Key} không thuộc yêu cầu này.");
+                    throw new BusinessRuleException($"Dòng yêu cầu #{item.Key} không thuộc yêu cầu này.");
                 var approvedQuantity = PurchasePricingPolicy.RoundQuantity(sourceLine.ApprovedQuantity ?? 0m);
                 if (item.Value != approvedQuantity)
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng {sourceLine.LineNo}: số lượng lập đơn phải đúng bằng số lượng đã duyệt {approvedQuantity.ToString("0.###", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))} {sourceLine.UnitNameSnapshot}.");
             }
             const PurchaseRequestStatus targetRequestStatus = PurchaseRequestStatus.Converted;
@@ -493,21 +495,21 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 var input = request.Orders[groupIndex];
                 input.Lines ??= new List<PurchaseRequestConversionLineRequest>();
                 if (input.Lines.Any(x => x is null))
-                    throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1} có dòng dữ liệu không hợp lệ.");
+                    throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1} có dòng dữ liệu không hợp lệ.");
                 if (input.Lines.Count == 0)
-                    throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1} chưa có sản phẩm.");
+                    throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1} chưa có sản phẩm.");
                 if (input.Lines.Select(x => x.PurchaseRequestLineId).Distinct().Count() != input.Lines.Count)
-                    throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1} có dòng sản phẩm bị trùng.");
+                    throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1} có dòng sản phẩm bị trùng.");
                 ValidateOrderDates(input, groupIndex + 1);
 
                 var supplier = await _repository.GetSupplierAsync(input.SupplierId, ct)
-                    ?? throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1}: nhà cung cấp không hợp lệ.");
+                    ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: nhà cung cấp không hợp lệ.");
                 var warehouse = await _repository.GetWarehouseAsync(input.ExpectedWarehouseId, ct)
-                    ?? throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1}: kho nhận không hợp lệ.");
+                    ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: kho nhận không hợp lệ.");
                 var legalEntity = await _repository.GetLegalEntityAsync(input.LegalEntityId, ct)
-                    ?? throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1}: HKD không hợp lệ.");
+                    ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: HKD không hợp lệ.");
                 if (warehouse.LegalEntityId != legalEntity.Id)
-                    throw new InvalidOperationException($"Nhóm đơn {groupIndex + 1}: kho nhận không thuộc HKD đã chọn.");
+                    throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: kho nhận không thuộc HKD đã chọn.");
 
                 var sequence = await _numberSequence.GetNextNumberAsync(
                     RequireStoreId(), DocumentNumberSequenceType.PurchaseOrder, input.OrderDate, ct);
@@ -532,27 +534,27 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 foreach (var lineInput in input.Lines)
                 {
                     if (!activeLines.TryGetValue(lineInput.PurchaseRequestLineId, out var sourceLine))
-                        throw new InvalidOperationException($"Dòng yêu cầu #{lineInput.PurchaseRequestLineId} không hợp lệ.");
+                        throw new BusinessRuleException($"Dòng yêu cầu #{lineInput.PurchaseRequestLineId} không hợp lệ.");
                     var quantity = PurchasePricingPolicy.RoundQuantity(lineInput.Quantity);
-                    if (quantity <= 0) throw new InvalidOperationException("Số lượng lập đơn phải lớn hơn 0.");
+                    if (quantity <= 0) throw new BusinessRuleException("Số lượng lập đơn phải lớn hơn 0.");
 
                     if (sourceLine.ItemKind == PurchaseItemKind.Catalog)
                     {
                         if (!sourceLine.ProductVariantId.HasValue ||
                             !sourceLine.ProductUnitConversionId.HasValue ||
                             !sourceLine.UnitId.HasValue)
-                            throw new InvalidOperationException(
+                            throw new BusinessRuleException(
                                 $"Dòng {sourceLine.LineNo}: thiếu liên kết sản phẩm danh mục.");
                         var currentConversion = await _repository.GetConversionAsync(
                             sourceLine.ProductUnitConversionId.Value, ct)
-                            ?? throw new InvalidOperationException(
+                            ?? throw new BusinessRuleException(
                                 $"Dòng {sourceLine.LineNo}: đơn vị mua đã ngừng hoạt động hoặc không còn thuộc cửa hàng.");
                         var currentVariant = await _repository.GetVariantAsync(sourceLine.ProductVariantId.Value, ct)
-                            ?? throw new InvalidOperationException(
+                            ?? throw new BusinessRuleException(
                                 $"Dòng {sourceLine.LineNo}: sản phẩm đã ngừng hoạt động hoặc không còn thuộc cửa hàng.");
                         if (currentConversion.ProductVariantId != currentVariant.Id ||
                             currentConversion.UnitId != sourceLine.UnitId.Value)
-                            throw new InvalidOperationException(
+                            throw new BusinessRuleException(
                                 $"Dòng {sourceLine.LineNo}: cấu hình sản phẩm/đơn vị đã thay đổi. Vui lòng tạo yêu cầu mới.");
                     }
                     else if (sourceLine.ItemKind == PurchaseItemKind.FreeText)
@@ -564,7 +566,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Dòng {sourceLine.LineNo}: loại hàng mua không hợp lệ.");
+                        throw new BusinessRuleException($"Dòng {sourceLine.LineNo}: loại hàng mua không hợp lệ.");
                     }
 
                     order.Lines.Add(new PurchaseOrderLine
@@ -682,7 +684,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
         var entity = await GetTrackingAsync(id, ct);
         EnsureRowVersion(entity.RowVersion, request.RowVersion);
         if (entity.Status != PurchaseRequestStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ yêu cầu đang chờ duyệt mới có thể xử lý.");
+            throw new BusinessRuleException("Chỉ yêu cầu đang chờ duyệt mới có thể xử lý.");
         var from = entity.Status;
         entity.Status = target;
         entity.WorkflowNote = NormalizeNote(request.Note);
@@ -704,9 +706,9 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private void ApplySubmit(PurchaseRequest entity, string? note = null)
     {
         if (entity.Status is not (PurchaseRequestStatus.Draft or PurchaseRequestStatus.ReturnedForRevision))
-            throw new InvalidOperationException("Chỉ yêu cầu nháp hoặc được trả sửa mới có thể gửi duyệt.");
+            throw new BusinessRuleException("Chỉ yêu cầu nháp hoặc được trả sửa mới có thể gửi duyệt.");
         if (!entity.Lines.Any(x => !x.IsDeleted))
-            throw new InvalidOperationException("Yêu cầu mua hàng chưa có sản phẩm.");
+            throw new BusinessRuleException("Yêu cầu mua hàng chưa có sản phẩm.");
         var from = entity.Status;
         entity.Status = PurchaseRequestStatus.PendingApproval;
         entity.SubmittedAtUtc = DateTime.UtcNow;
@@ -724,7 +726,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
 
     private async Task<PurchaseRequest> GetTrackingAsync(int id, CancellationToken ct)
         => await _repository.GetDetailAsync(id, true, ct)
-           ?? throw new InvalidOperationException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
+           ?? throw new BusinessRuleException("Yêu cầu mua hàng không tồn tại trong cửa hàng hiện tại.");
 
     private void AddAction(
         PurchaseRequest entity,
@@ -745,79 +747,81 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     private static void ValidateHeader(SavePurchaseRequestRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Title))
-            throw new InvalidOperationException("Bắt buộc nhập tên yêu cầu mua hàng.");
+            throw new BusinessRuleException("Bắt buộc nhập tên yêu cầu mua hàng.");
         if (request.Title.Trim().Length > 250)
-            throw new InvalidOperationException("Tên yêu cầu mua hàng không được vượt quá 250 ký tự.");
+            throw new BusinessRuleException("Tên yêu cầu mua hàng không được vượt quá 250 ký tự.");
         if (request.Lines.Count == 0)
-            throw new InvalidOperationException("Yêu cầu mua hàng phải có ít nhất một sản phẩm.");
+            throw new BusinessRuleException("Yêu cầu mua hàng phải có ít nhất một sản phẩm.");
         if (request.NeedByDate.HasValue && request.NeedByDate.Value.Date < request.RequestDate.Date)
-            throw new InvalidOperationException("Ngày cần hàng không được trước ngày yêu cầu.");
+            throw new BusinessRuleException("Ngày cần hàng không được trước ngày yêu cầu.");
         if (request.Note?.Length > 1000)
-            throw new InvalidOperationException("Ghi chú không được vượt quá 1.000 ký tự.");
+            throw new BusinessRuleException("Ghi chú không được vượt quá 1.000 ký tự.");
     }
 
     private static void ValidateOrderDates(PurchaseRequestOrderGroupRequest request, int groupNo)
     {
         if (request.ExpectedDeliveryDate.HasValue &&
             request.ExpectedDeliveryDate.Value.Date < request.OrderDate.Date)
-            throw new InvalidOperationException($"Nhóm đơn {groupNo}: ngày dự kiến giao không được trước ngày đặt.");
+            throw new BusinessRuleException($"Nhóm đơn {groupNo}: ngày dự kiến giao không được trước ngày đặt.");
         if (request.Title?.Trim().Length > 250)
-            throw new InvalidOperationException($"Nhóm đơn {groupNo}: tên đơn không được vượt quá 250 ký tự.");
+            throw new BusinessRuleException($"Nhóm đơn {groupNo}: tên đơn không được vượt quá 250 ký tự.");
         if (request.Note?.Length > 1000)
-            throw new InvalidOperationException($"Nhóm đơn {groupNo}: ghi chú không được vượt quá 1.000 ký tự.");
+            throw new BusinessRuleException($"Nhóm đơn {groupNo}: ghi chú không được vượt quá 1.000 ký tự.");
     }
 
     private static void EnsureEditable(PurchaseRequestStatus status)
     {
         if (status is not (PurchaseRequestStatus.Draft or PurchaseRequestStatus.ReturnedForRevision))
-            throw new InvalidOperationException("Yêu cầu đã gửi duyệt không được sửa dữ liệu cốt lõi.");
+            throw new BusinessRuleException("Yêu cầu đã gửi duyệt không được sửa dữ liệu cốt lõi.");
     }
 
     private static void EnsureCleanApprovedRequestForConversion(PurchaseRequest entity)
     {
         if (entity.Status != PurchaseRequestStatus.Approved)
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Chỉ yêu cầu đã duyệt và chưa chuyển đơn mới có thể lập đơn đặt hàng.");
         if (entity.Lines.Any(x => !x.IsDeleted && x.ConvertedQuantity != 0m))
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Yêu cầu có số lượng đã chuyển từ luồng cũ; không thể tạo thêm đơn đặt hàng.");
         if (entity.PurchaseOrders.Any(x => !x.IsDeleted))
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Yêu cầu này đã từng tạo một đơn đặt hàng và không được phép tạo đơn thứ hai, kể cả khi đơn trước đã bị hủy hoặc từ chối.");
         if (!entity.Lines.Any(x => !x.IsDeleted && (x.ApprovedQuantity ?? 0m) > 0m))
-            throw new InvalidOperationException("Yêu cầu không có số lượng được duyệt để lập đơn.");
+            throw new BusinessRuleException("Yêu cầu không có số lượng được duyệt để lập đơn.");
     }
 
     private static void EnsureOwner(PurchaseRequest entity, int userId)
     {
         if (entity.RequestedByUserId != userId)
-            throw new InvalidOperationException("Bạn chỉ được sửa hoặc gửi yêu cầu do chính mình tạo.");
+            throw new BusinessRuleException("Bạn chỉ được sửa hoặc gửi yêu cầu do chính mình tạo.");
     }
 
     private static void EnsureRowVersion(byte[] current, string? posted)
     {
         if (string.IsNullOrWhiteSpace(posted))
-            throw new InvalidOperationException("Thiếu RowVersion. Vui lòng tải lại yêu cầu.");
+            throw new BusinessRuleException("Thiếu RowVersion. Vui lòng tải lại yêu cầu.");
         byte[] expected;
         try { expected = Convert.FromBase64String(posted); }
-        catch (FormatException) { throw new InvalidOperationException("RowVersion không hợp lệ."); }
+        catch (FormatException) { throw new BusinessRuleException("RowVersion không hợp lệ."); }
         if (!current.SequenceEqual(expected))
-            throw new InvalidOperationException("Yêu cầu đã được người khác cập nhật. Vui lòng tải lại trang.");
+            throw new BusinessRuleException("Yêu cầu đã được người khác cập nhật. Vui lòng tải lại trang.");
     }
 
     private static PurchaseRequestWorkflowRequest RequireNote(
         PurchaseRequestWorkflowRequest request,
         string error)
     {
-        if (string.IsNullOrWhiteSpace(request.Note)) throw new InvalidOperationException(error);
+        if (string.IsNullOrWhiteSpace(request.Note)) throw new BusinessRuleException(error);
         return request;
     }
 
     private int RequireStoreId()
-        => _tenant.StoreId ?? throw new InvalidOperationException("Không xác định được cửa hàng hiện tại.");
+        => _tenant.StoreId ?? throw new InvalidOperationException(
+            "Current store context is unavailable.");
 
     private int RequireCurrentUserId()
-        => _currentUser.UserId ?? throw new InvalidOperationException("Không xác định được người dùng hiện tại.");
+        => _currentUser.UserId ?? throw new InvalidOperationException(
+            "Current user context is unavailable.");
 
     private static decimal Remaining(PurchaseRequestLine line)
         => Math.Max(0m, PurchasePricingPolicy.RoundQuantity(
@@ -847,9 +851,9 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         value = value?.Trim();
         if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException(requiredMessage);
+            throw new BusinessRuleException(requiredMessage);
         if (value.Length > maxLength)
-            throw new InvalidOperationException($"Giá trị không được vượt quá {maxLength} ký tự.");
+            throw new BusinessRuleException($"Giá trị không được vượt quá {maxLength} ký tự.");
         return value;
     }
 
@@ -869,7 +873,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         value = value?.Trim() ?? string.Empty;
         if (value.Length is < 8 or > 64)
-            throw new InvalidOperationException("Khóa nhóm đơn phải từ 8 đến 64 ký tự.");
+            throw new BusinessRuleException("Khóa nhóm đơn phải từ 8 đến 64 ký tự.");
         return value;
     }
 

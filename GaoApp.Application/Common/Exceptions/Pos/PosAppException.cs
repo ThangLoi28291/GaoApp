@@ -78,7 +78,7 @@ public class PosAppException : AppException
         object? metadata = null,
         int? statusCode = null,
         Exception? innerException = null)
-        : base(message)
+        : base(message, innerException)
     {
         if (string.IsNullOrWhiteSpace(errorCode))
             throw new ArgumentException("Error code không được để trống.", nameof(errorCode));

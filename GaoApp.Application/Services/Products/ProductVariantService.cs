@@ -4,6 +4,8 @@ using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Repositories.Products;
 using GaoApp.Application.Interfaces.Services.Products;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Products;
 
 /// <summary>
@@ -109,13 +111,12 @@ public sealed class ProductVariantService : IProductVariantService
             await _repo.SaveVariantsAsync(storeId, productId, variants, userId, ct);
             return Result.Success();
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return Result.Failure(Error.Validation("Variants", ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+            return Result.Failure(
+                Error.Validation(
+                    "ProductVariant.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -135,13 +136,12 @@ public sealed class ProductVariantService : IProductVariantService
                 ? Result.Success()
                 : Result.Failure(Error.NotFound("Không thể đổi trạng thái biến thể."));
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return Result.Failure(Error.Validation("Variant", ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+            return Result.Failure(
+                Error.Validation(
+                    "ProductVariant.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -162,13 +162,12 @@ public sealed class ProductVariantService : IProductVariantService
                 ? Result.Success()
                 : Result.Failure(Error.NotFound("Xóa biến thể thất bại."));
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return Result.Failure(Error.Validation("Variant", ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+            return Result.Failure(
+                Error.Validation(
+                    "ProductVariant.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -195,13 +194,12 @@ public sealed class ProductVariantService : IProductVariantService
                 ? Result.Success()
                 : Result.Failure(Error.NotFound("Không lưu được ảnh biến thể."));
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return Result.Failure(Error.Validation("VariantImage", ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+            return Result.Failure(
+                Error.Validation(
+                    "ProductVariant.ImageBusinessRule",
+                    ex.SafeMessage));
         }
     }
 }

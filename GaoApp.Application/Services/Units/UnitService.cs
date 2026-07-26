@@ -75,20 +75,13 @@ public sealed class UnitService : IUnitService
         var entity = editDto.ToEntity();
         entity.StoreId = storeId;
 
-        try
-        {
-            await _repo.AddAsync(entity, ct);
-            await _repo.SaveChangesAsync(ct);
+        await _repo.AddAsync(entity, ct);
+        await _repo.SaveChangesAsync(ct);
 
-            if (entity.Id <= 0)
-                return Result.Failure<int>(UnitErrors.CreateFailed);
-
-            return Result.Success(entity.Id);
-        }
-        catch
-        {
+        if (entity.Id <= 0)
             return Result.Failure<int>(UnitErrors.CreateFailed);
-        }
+
+        return Result.Success(entity.Id);
     }
 
     public async Task<Result> UpdateAsync(int storeId, UpdateUnitRequest dto, int? userId, CancellationToken ct = default)
@@ -128,13 +121,9 @@ public sealed class UnitService : IUnitService
             await _repo.SaveChangesAsync(ct);
             return Result.Success();
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
+        catch (ConcurrencyException)
         {
             return Result.Failure(UnitErrors.ConcurrencyConflict);
-        }
-        catch
-        {
-            return Result.Failure(UnitErrors.UpdateFailed);
         }
     }
 
@@ -149,15 +138,8 @@ public sealed class UnitService : IUnitService
 
         entity.IsActive = !entity.IsActive;
 
-        try
-        {
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success(entity.IsActive);
-        }
-        catch
-        {
-            return Result.Failure<bool>(UnitErrors.ToggleStatusFailed);
-        }
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success(entity.IsActive);
     }
 
     public async Task<Result> SoftDeleteAsync(int storeId, int id, int? userId, CancellationToken ct = default)
@@ -169,16 +151,9 @@ public sealed class UnitService : IUnitService
         if (entity == null)
             return Result.Failure(UnitErrors.NotFound);
 
-        try
-        {
-            _repo.Remove(entity);
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success();
-        }
-        catch
-        {
-            return Result.Failure(UnitErrors.DeleteFailed);
-        }
+        _repo.Remove(entity);
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     private static void Normalize(UnitEditDto dto)

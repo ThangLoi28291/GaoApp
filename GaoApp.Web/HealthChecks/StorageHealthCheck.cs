@@ -28,8 +28,12 @@ public class StorageHealthCheck : IHealthCheck
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
+        string? testFile = null;
+
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (string.IsNullOrWhiteSpace(_storageOptions.UploadRoot))
             {
                 return Task.FromResult(
@@ -49,23 +53,46 @@ public class StorageHealthCheck : IHealthCheck
                 else
                 {
                     return Task.FromResult(
-                        HealthCheckResult.Unhealthy($"Upload directory does not exist: {absolutePath}"));
+                        HealthCheckResult.Unhealthy("Upload directory does not exist."));
                 }
             }
 
-            var testFile = Path.Combine(absolutePath, $".healthcheck_{Guid.NewGuid():N}.tmp");
+            testFile = Path.Combine(absolutePath, $".healthcheck_{Guid.NewGuid():N}.tmp");
 
             File.WriteAllText(testFile, "health-check");
+            cancellationToken.ThrowIfCancellationRequested();
             File.Delete(testFile);
 
             return Task.FromResult(
-                HealthCheckResult.Healthy($"Storage is writable: {absolutePath}"));
+                HealthCheckResult.Healthy("Storage is writable."));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Storage health check failed.");
+            _logger.LogError(
+                "Storage health check failed. ExceptionType={ExceptionType}",
+                ex.GetType().Name);
             return Task.FromResult(
-                HealthCheckResult.Unhealthy("Storage health check failed.", ex));
+                HealthCheckResult.Unhealthy("Storage health check failed."));
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(testFile) && File.Exists(testFile))
+            {
+                try
+                {
+                    File.Delete(testFile);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogWarning(
+                        "Storage health-check cleanup failed. ExceptionType={ExceptionType}",
+                        cleanupEx.GetType().Name);
+                }
+            }
         }
     }
 }

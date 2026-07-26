@@ -108,7 +108,10 @@ public sealed class BrandService : IBrandService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Create brand failed. StoreId={StoreId}", storeId);
+            _logger.LogError(
+                "Create brand failed. StoreId={StoreId}; ExceptionType={ExceptionType}",
+                storeId,
+                ex.GetType().Name);
             return Result.Failure<int>(BrandErrors.CreateFailed);
         }
     }
@@ -157,14 +160,22 @@ public sealed class BrandService : IBrandService
         {
             throw;
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
+        catch (ConcurrencyException ex)
         {
-            _logger.LogWarning(ex, "Brand concurrency conflict. StoreId={StoreId}; BrandId={BrandId}", storeId, dto.Id);
+            _logger.LogWarning(
+                "Brand concurrency conflict. StoreId={StoreId}; BrandId={BrandId}; ExceptionType={ExceptionType}",
+                storeId,
+                dto.Id,
+                ex.GetType().Name);
             return Result.Failure(BrandErrors.ConcurrencyConflict);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Update brand failed. StoreId={StoreId}; BrandId={BrandId}", storeId, dto.Id);
+            _logger.LogError(
+                "Update brand failed. StoreId={StoreId}; BrandId={BrandId}; ExceptionType={ExceptionType}",
+                storeId,
+                dto.Id,
+                ex.GetType().Name);
             return Result.Failure(BrandErrors.UpdateFailed);
         }
     }
@@ -195,7 +206,11 @@ public sealed class BrandService : IBrandService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Toggle brand status failed. StoreId={StoreId}; BrandId={BrandId}", storeId, id);
+            _logger.LogError(
+                "Toggle brand status failed. StoreId={StoreId}; BrandId={BrandId}; ExceptionType={ExceptionType}",
+                storeId,
+                id,
+                ex.GetType().Name);
             return Result.Failure<bool>(BrandErrors.ToggleStatusFailed);
         }
     }
@@ -225,7 +240,11 @@ public sealed class BrandService : IBrandService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Delete brand failed. StoreId={StoreId}; BrandId={BrandId}", storeId, id);
+            _logger.LogError(
+                "Delete brand failed. StoreId={StoreId}; BrandId={BrandId}; ExceptionType={ExceptionType}",
+                storeId,
+                id,
+                ex.GetType().Name);
             return Result.Failure(BrandErrors.DeleteFailed);
         }
     }

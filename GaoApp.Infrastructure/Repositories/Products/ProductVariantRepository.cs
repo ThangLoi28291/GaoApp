@@ -6,6 +6,8 @@ using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Infrastructure.Repositories.Products;
 
 /// <summary>
@@ -66,9 +68,9 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 return candidate;
         }
 
-        throw new InvalidOperationException(
-            $"Không thể tự sinh barcode nội bộ cho variant {variantId} trong store {storeId}. " +
-            "Tất cả prefix từ 20 đến 29 đều đã bị chiếm.");
+        throw new BusinessRuleException(
+            "Không thể cấp barcode nội bộ cho biến thể. " +
+            "Vui lòng thử lại hoặc liên hệ quản lý.");
     }
 
     /// <summary>
@@ -394,7 +396,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
         if (valueAttributeMap.Count != normalizedValueIds.Count)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Có AttributeValueId không hợp lệ hoặc không thuộc store hiện tại.");
         }
 
@@ -404,7 +406,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
         if (duplicatedAttribute != null)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Một biến thể không được chứa nhiều giá trị của cùng một thuộc tính.");
         }
 
@@ -487,7 +489,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         {
             var normalizedSku = (row.Sku ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(normalizedSku))
-                throw new InvalidOperationException("SKU không được rỗng.");
+                throw new BusinessRuleException("SKU không được rỗng.");
 
             var normalizedValueIds = NormalizeAttributeValueIds(row.AttributeValueIds);
 
@@ -521,7 +523,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
                     if (!oldCombo.SequenceEqual(normalizedValueIds))
                     {
-                        throw new InvalidOperationException(
+                        throw new BusinessRuleException(
                             "Biến thể đã phát sinh bán hàng, không được thay đổi tổ hợp thuộc tính.");
                     }
                 }
@@ -537,11 +539,11 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 {
                     if (!comboConflict.IsDeleted)
                     {
-                        throw new InvalidOperationException(
+                        throw new BusinessRuleException(
                             "Biến thể với tổ hợp thuộc tính này đã tồn tại.");
                     }
 
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         "Tổ hợp thuộc tính này đã tồn tại ở biến thể đã xóa. Hãy khôi phục biến thể cũ thay vì đổi chồng.");
                 }
 
@@ -556,7 +558,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
                 if (skuExists)
                 {
-                    throw new InvalidOperationException($"SKU đã tồn tại: {normalizedSku}");
+                    throw new BusinessRuleException($"SKU đã tồn tại: {normalizedSku}");
                 }
 
                 variant.Sku = normalizedSku;
@@ -605,7 +607,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 // Nếu combo đang active thì không tạo trùng
                 if (!existingByCombo.IsDeleted)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         "Biến thể với tổ hợp thuộc tính này đã tồn tại. Không thể tạo trùng.");
                 }
 
@@ -645,7 +647,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
 
             if (activeSkuExists)
             {
-                throw new InvalidOperationException($"SKU đã tồn tại: {normalizedSku}");
+                throw new BusinessRuleException($"SKU đã tồn tại: {normalizedSku}");
             }
 
             variant = new ProductVariant
@@ -716,7 +718,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         var hasUsage = await HasOrderLineUsageAsync(storeId, variantId, ct);
         if (hasUsage)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Biến thể đã phát sinh bán hàng, không thể xóa. Hãy chuyển sang ngưng bán.");
         }
 

@@ -23,16 +23,13 @@ public class GlobalExceptionMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<GlobalExceptionMiddleware> _logger;
-    private readonly IHostEnvironment _environment;
 
     public GlobalExceptionMiddleware(
         RequestDelegate next,
-        ILogger<GlobalExceptionMiddleware> logger,
-        IHostEnvironment environment)
+        ILogger<GlobalExceptionMiddleware> logger)
     {
         _next = next;
         _logger = logger;
-        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -48,9 +45,20 @@ public class GlobalExceptionMiddleware
                 "Request cancelled by client. TraceId={TraceId}; Path={Path}",
                 context.TraceIdentifier,
                 context.Request.Path);
+            throw;
         }
         catch (Exception ex)
         {
+            if (context.Response.HasStarted)
+            {
+                _logger.LogWarning(
+                    "Cannot write error response because the response has already started. TraceId={TraceId}; Path={Path}; ExceptionType={ExceptionType}",
+                    context.TraceIdentifier,
+                    context.Request.Path,
+                    ex.GetType().Name);
+                throw;
+            }
+
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -74,34 +82,31 @@ public class GlobalExceptionMiddleware
 
         var mapped = MapException(exception);
 
-        // Ghi log có cấu trúc hơn một chút để dễ tra production
-        if (exception is PosAppException posEx)
+        if (mapped.StatusCode < StatusCodes.Status500InternalServerError)
         {
             _logger.LogWarning(
-                exception,
-                "POS exception handled. TraceId={TraceId}; ErrorCode={ErrorCode}; ErrorType={ErrorType}; StatusCode={StatusCode}; Path={Path}",
+                "Expected request failure handled. TraceId={TraceId}; ErrorCode={ErrorCode}; ErrorType={ErrorType}; StatusCode={StatusCode}; Path={Path}; ExceptionType={ExceptionType}",
                 traceId,
-                posEx.ErrorCode,
-                posEx.ErrorType,
+                mapped.ErrorCode,
+                mapped.ErrorType,
                 mapped.StatusCode,
-                context.Request.Path);
+                context.Request.Path,
+                exception.GetType().Name);
         }
         else
         {
+            var diagnostic = SafeExceptionDiagnosticBuilder.Build(exception);
             _logger.LogError(
-                exception,
-                "Unhandled exception. TraceId={TraceId}; StatusCode={StatusCode}; Path={Path}",
+                "Unhandled exception. TraceId={TraceId}; StatusCode={StatusCode}; Method={Method}; Path={Path}; ExceptionType={ExceptionType}; HResult={HResult}; StackFrames={StackFrames}; InnerExceptionTypes={InnerExceptionTypes}; Fingerprint={Fingerprint}",
                 traceId,
                 mapped.StatusCode,
-                context.Request.Path);
-        }
-
-        if (context.Response.HasStarted)
-        {
-            _logger.LogWarning(
-                "Cannot write error response because the response has already started. TraceId={TraceId}",
-                traceId);
-            return;
+                context.Request.Method,
+                context.Request.Path,
+                diagnostic.ExceptionType,
+                diagnostic.HResult,
+                diagnostic.StackFrames,
+                diagnostic.InnerExceptionTypes,
+                diagnostic.Fingerprint);
         }
 
         context.Response.Clear();
@@ -114,7 +119,7 @@ public class GlobalExceptionMiddleware
             Message = mapped.Message,
             StatusCode = mapped.StatusCode,
             TraceId = traceId,
-            Detail = _environment.IsDevelopment() ? exception.ToString() : null,
+            Detail = null,
 
             // Field mới cho POS / UI mapping
             ErrorCode = mapped.ErrorCode,
@@ -201,38 +206,37 @@ public class GlobalExceptionMiddleware
             };
         }
 
+        if (exception is BusinessRuleException businessRuleEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = businessRuleEx.Message,
+                ErrorType = PosErrorTypes.BusinessRule
+            };
+        }
+
+        if (exception is ConcurrencyException concurrencyEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status409Conflict,
+                Message = concurrencyEx.Message,
+                ErrorType = PosErrorTypes.StateConflict
+            };
+        }
+
         // =========================================================
         // 3) CÁC EXCEPTION THƯỜNG GẶP
         // =========================================================
-        if (exception is UnauthorizedAccessException unauthorizedEx)
+        if (exception is DbUpdateConcurrencyException)
         {
             return new ErrorEnvelope
             {
-                StatusCode = StatusCodes.Status401Unauthorized,
-                Message = unauthorizedEx.Message,
-                ErrorCode = PosErrorCodes.AuthUnauthorized,
-                ActionHint = "Vui lòng đăng nhập lại để tiếp tục.",
-                ErrorType = PosErrorTypes.Authentication
-            };
-        }
-
-        if (exception is ArgumentException argumentEx)
-        {
-            return new ErrorEnvelope
-            {
-                StatusCode = StatusCodes.Status400BadRequest,
-                Message = argumentEx.Message,
-                ErrorType = PosErrorTypes.Validation
-            };
-        }
-
-        if (exception is InvalidOperationException invalidOperationEx)
-        {
-            return new ErrorEnvelope
-            {
-                StatusCode = StatusCodes.Status400BadRequest,
-                Message = invalidOperationEx.Message,
-                ErrorType = PosErrorTypes.BusinessRule
+                StatusCode = StatusCodes.Status409Conflict,
+                Message = "Dữ liệu đã được thay đổi bởi một thao tác khác.",
+                ActionHint = "Vui lòng tải lại dữ liệu và thử lại.",
+                ErrorType = PosErrorTypes.StateConflict
             };
         }
 
@@ -247,16 +251,6 @@ public class GlobalExceptionMiddleware
             };
         }
 
-        if (exception is JsonException)
-        {
-            return new ErrorEnvelope
-            {
-                StatusCode = StatusCodes.Status400BadRequest,
-                Message = "Dữ liệu gửi lên không hợp lệ.",
-                ErrorType = PosErrorTypes.Validation
-            };
-        }
-
         if (exception is BadHttpRequestException)
         {
             return new ErrorEnvelope
@@ -264,17 +258,6 @@ public class GlobalExceptionMiddleware
                 StatusCode = StatusCodes.Status400BadRequest,
                 Message = "Yêu cầu gửi lên không hợp lệ.",
                 ErrorType = PosErrorTypes.Validation
-            };
-        }
-
-        if (exception is OperationCanceledException)
-        {
-            return new ErrorEnvelope
-            {
-                StatusCode = StatusCodes.Status408RequestTimeout,
-                Message = "Yêu cầu đã bị hủy hoặc quá thời gian xử lý.",
-                ActionHint = "Vui lòng thử lại.",
-                ErrorType = PosErrorTypes.Technical
             };
         }
 

@@ -7,6 +7,8 @@ using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using System.Globalization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -17,19 +19,22 @@ public class ViettelInvoiceListSyncService : IViettelInvoiceListSyncService
     private readonly IInvoiceIntegrationLogRepository _logRepository;
     private readonly IViettelInvoiceListClient _client;
     private readonly ILegalEntityRepository _legalEntityRepository;
+    private readonly ILogger<ViettelInvoiceListSyncService> _logger;
 
     public ViettelInvoiceListSyncService(
         IInvoiceProviderSettingRepository settingRepository,
         IInvoiceRepository invoiceRepository,
         IInvoiceIntegrationLogRepository logRepository,
         IViettelInvoiceListClient client,
-        ILegalEntityRepository legalEntityRepository)
+        ILegalEntityRepository legalEntityRepository,
+        ILogger<ViettelInvoiceListSyncService>? logger = null)
     {
         _settingRepository = settingRepository;
         _invoiceRepository = invoiceRepository;
         _logRepository = logRepository;
         _client = client;
         _legalEntityRepository = legalEntityRepository;
+        _logger = logger ?? NullLogger<ViettelInvoiceListSyncService>.Instance;
     }
 
     public async Task<Result<ViettelInvoiceListSyncResultDto>> SyncAsync(
@@ -326,23 +331,36 @@ public class ViettelInvoiceListSyncService : IViettelInvoiceListSyncService
             DurationMs = result.DurationMs
         };
 
-        await _logRepository.AddAsync(log, ct);
-        await _logRepository.SaveChangesAsync(ct);
+        try
+        {
+            await _logRepository.AddAsync(log, ct);
+            await _logRepository.SaveChangesAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Local invoice updates have already been persisted.
+            _logger.LogWarning(
+                "Invoice sync-log persistence failed; synchronized invoice updates remain successful. InvoiceHeadId={InvoiceHeadId}; ExceptionType={ExceptionType}",
+                invoiceHeadId,
+                ex.GetType().Name);
+        }
     }
 
     private static DateTime? ParseIssueDateUtc(ViettelInvoiceListItemDto item)
     {
         if (item.IssueDate.HasValue && item.IssueDate.Value > 0)
         {
-            try
+            const long maxUnixTimeMilliseconds = 253402300799999;
+
+            if (item.IssueDate.Value <= maxUnixTimeMilliseconds)
             {
                 return DateTimeOffset
                     .FromUnixTimeMilliseconds(item.IssueDate.Value)
                     .UtcDateTime;
-            }
-            catch
-            {
-                // bỏ qua
             }
         }
 

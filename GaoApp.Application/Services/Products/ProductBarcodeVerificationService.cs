@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Infrastructure.Services.Products;
 
 public class ProductBarcodeVerificationService : IProductBarcodeVerificationService
@@ -56,7 +58,7 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
             var exists = await _repository.BarcodeExistsAsync(storeId, item.SuggestedBarcode!, ct);
 
             if (exists)
-                throw new InvalidOperationException($"Barcode {item.SuggestedBarcode} đã tồn tại.");
+                throw new BusinessRuleException($"Barcode {item.SuggestedBarcode} đã tồn tại.");
         }
 
         var conversionIds = items.Select(x => x.ProductUnitConversionId).ToList();
@@ -131,23 +133,23 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
         var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
 
         if (request == null)
-            throw new InvalidOperationException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
+            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
 
         if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new InvalidOperationException("Yêu cầu này đã được xử lý.");
+            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
 
         if (request.RequestType != BarcodeVerificationRequestType.SupplierBarcode)
-            throw new InvalidOperationException("Yêu cầu này không phải loại đề xuất barcode.");
+            throw new BusinessRuleException("Yêu cầu này không phải loại đề xuất barcode.");
 
         var barcode = NormalizeBarcode(request.SuggestedBarcode);
 
         if (string.IsNullOrWhiteSpace(barcode))
-            throw new InvalidOperationException("Yêu cầu này chưa có barcode để duyệt.");
+            throw new BusinessRuleException("Yêu cầu này chưa có barcode để duyệt.");
 
         var exists = await _repository.BarcodeExistsAsync(storeId, barcode, ct);
 
         if (exists)
-            throw new InvalidOperationException($"Barcode {barcode} đã tồn tại trong hệ thống.");
+            throw new BusinessRuleException($"Barcode {barcode} đã tồn tại trong hệ thống.");
 
         var conversion = await _repository.GetConversionForBarcodeCreateAsync(
             storeId,
@@ -155,7 +157,7 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
             ct);
 
         if (conversion == null)
-            throw new InvalidOperationException("Không tìm thấy đơn vị quy đổi cần tạo barcode.");
+            throw new BusinessRuleException("Không tìm thấy đơn vị quy đổi cần tạo barcode.");
 
         var newBarcode = new ProductVariantUnitBarcode
         {
@@ -194,10 +196,10 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
         var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
 
         if (request == null)
-            throw new InvalidOperationException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
+            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
 
         if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new InvalidOperationException("Yêu cầu này đã được xử lý.");
+            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
 
         request.Status = BarcodeVerificationRequestStatus.Rejected;
         request.ManagerNote = managerNote?.Trim();
@@ -217,10 +219,10 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
         var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
 
         if (request == null)
-            throw new InvalidOperationException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
+            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
 
         if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new InvalidOperationException("Yêu cầu này đã được xử lý.");
+            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
 
         request.Status = BarcodeVerificationRequestStatus.ConfirmedNoBarcode;
         request.ManagerNote = managerNote?.Trim();

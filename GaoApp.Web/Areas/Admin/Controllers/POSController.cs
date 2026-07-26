@@ -9,14 +9,14 @@ using System.Security.Claims;
 using GaoApp.Application.DTOs.POSPaymentQrs;
 using GaoApp.Application.Interfaces.Services.POSPaymentQrs;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos")]
 public class POSController : BasePOSPageController
 {
-    private const int ClientClosedRequestStatusCode = 499;
-
     private readonly IPOSService _pos;
     private readonly IPOSShiftService _posShiftService;
     private readonly IPosRealtimeNotifier _posRealtimeNotifier;
@@ -555,7 +555,7 @@ public class POSController : BasePOSPageController
 
         var draft = await _pos.AddPaymentToCurrentCartAsync(request, ct)
             ?? throw new InvalidOperationException(
-                "Không nhận được dữ liệu giỏ hàng sau khi thêm thanh toán.");
+                "POS service returned no cart after adding a payment.");
 
         await NotifyTerminalAsync(
                 eventType: PosRealtimeEventTypes.PaymentChanged,
@@ -578,7 +578,7 @@ public class POSController : BasePOSPageController
 
         var finalizedDraft = await _pos.FinalizeCurrentCartAsync(ct)
             ?? throw new InvalidOperationException(
-                "Không nhận được kết quả sau khi tự động chốt đơn.");
+                "POS service returned no result after automatic finalization.");
 
         await NotifyStoreAsync(
                 eventType: PosRealtimeEventTypes.OrderFinalized,
@@ -669,7 +669,7 @@ public class POSController : BasePOSPageController
 
         var result = await _pos.FinalizeCurrentCartAsync(ct)
               ?? throw new InvalidOperationException(
-                 "Không nhận được kết quả sau khi chốt đơn.");
+                 "POS service returned no result after finalization.");
 
         await NotifyStoreAsync(
             eventType: PosRealtimeEventTypes.OrderFinalized,
@@ -703,19 +703,12 @@ public class POSController : BasePOSPageController
             ex.ErrorCode == PosErrorCodes.ShiftOwnedByAnotherUser ||
             ex.ErrorCode == "POS_SHIFT_OWNED_BY_ANOTHER_USER")
         {
-            try
-            {
-                await BindPOSHeaderContextAsync(ct);
-            }
-            catch
-            {
-                // Không để lỗi phụ ở header context làm hỏng bootstrap error
-            }
+            await BindPOSHeaderContextAsync(ct);
 
             ViewBag.PosBootstrapError = System.Text.Json.JsonSerializer.Serialize(new
             {
                 success = false,
-                message = ex.Message,
+                message = ex.SafeMessage,
                 errorCode = ex.ErrorCode,
                 actionHint = ex.ActionHint,
                 errorType = ex.ErrorType,
@@ -736,17 +729,8 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
     [HttpGet("products/search")]
     public async Task<IActionResult> SearchProducts([FromQuery] string keyword, [FromQuery] int take = 20, CancellationToken ct = default)
     {
-        try
-        {
-            var result = await _pos.SearchProductsForPOSAsync(keyword, take, ct);
-            return Ok(result);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            // Autocomplete chủ động hủy request cũ khi người dùng gõ tiếp.
-            // Đây không phải lỗi server và không được ghi nhận thành HTTP 500.
-            return StatusCode(ClientClosedRequestStatusCode);
-        }
+        var result = await _pos.SearchProductsForPOSAsync(keyword, take, ct);
+        return Ok(result);
     }
 
     [HttpGet("customers/search")]

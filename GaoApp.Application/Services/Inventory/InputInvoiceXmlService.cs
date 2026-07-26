@@ -8,6 +8,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Inventory;
 
 public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
@@ -25,13 +27,13 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         CancellationToken ct = default)
     {
         if (storeId <= 0)
-            throw new InvalidOperationException("StoreId không hợp lệ.");
+            throw new BusinessRuleException("StoreId không hợp lệ.");
 
         if (request.StockDocumentId <= 0)
-            throw new InvalidOperationException("Phiếu nhập không hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
 
         if (request.FileBytes == null || request.FileBytes.Length == 0)
-            throw new InvalidOperationException("File XML rỗng.");
+            throw new BusinessRuleException("File XML rỗng.");
 
         var document = await _repository.GetStockDocumentWithLinesAsync(
             storeId,
@@ -39,7 +41,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             ct);
 
         if (document == null)
-            throw new InvalidOperationException("Không tìm thấy phiếu nhập kho.");
+            throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
 
         var xmlHash = ComputeSha256(request.FileBytes);
 
@@ -112,10 +114,10 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
     CancellationToken ct = default)
     {
         if (storeId <= 0)
-            throw new InvalidOperationException("StoreId không hợp lệ.");
+            throw new BusinessRuleException("StoreId không hợp lệ.");
 
         if (stockDocumentId <= 0)
-            throw new InvalidOperationException("Phiếu nhập không hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
 
         var invoices = await _repository.GetByStockDocumentAsync(
             storeId,
@@ -190,13 +192,13 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         CancellationToken ct = default)
     {
         if (storeId <= 0)
-            throw new InvalidOperationException("StoreId không hợp lệ.");
+            throw new BusinessRuleException("StoreId không hợp lệ.");
 
         if (stockDocumentId <= 0)
-            throw new InvalidOperationException("Phiếu nhập không hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
 
         if (request.StockDocumentLineId <= 0)
-            throw new InvalidOperationException("Dòng nhập không hợp lệ.");
+            throw new BusinessRuleException("Dòng nhập không hợp lệ.");
 
         var line = await _repository.GetStockDocumentLineAsync(
             storeId,
@@ -204,7 +206,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             ct);
 
         if (line == null || line.StockDocumentId != stockDocumentId)
-            throw new InvalidOperationException("Dòng nhập không thuộc phiếu hiện tại.");
+            throw new BusinessRuleException("Dòng nhập không thuộc phiếu hiện tại.");
 
         var map = await _repository.GetLineMapAsync(
             storeId,
@@ -221,7 +223,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             };
 
             // Nếu repository chưa có Add riêng thì có thể thêm method AddLineMapAsync.
-            throw new InvalidOperationException("Map dòng chưa được khởi tạo. Hãy reload phiếu hoặc gọi AddMissingLineMapsAsync trước.");
+            throw new BusinessRuleException("Map dòng chưa được khởi tạo. Hãy reload phiếu hoặc gọi AddMissingLineMapsAsync trước.");
         }
 
         map.UseInputInvoice = request.UseInputInvoice;
@@ -254,7 +256,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                     ct);
 
                 if (xmlLine == null)
-                    throw new InvalidOperationException("Không tìm thấy dòng XML.");
+                    throw new BusinessRuleException("Không tìm thấy dòng XML.");
 
                 map.InputInvoiceDetailId = xmlLine.Id;
 
@@ -277,10 +279,10 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
     CancellationToken ct = default)
     {
         if (storeId <= 0)
-            throw new InvalidOperationException("StoreId không hợp lệ.");
+            throw new BusinessRuleException("StoreId không hợp lệ.");
 
         if (stockDocumentId <= 0)
-            throw new InvalidOperationException("Phiếu nhập không hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
 
         // Đảm bảo mỗi dòng nhập đều có map
         await _repository.AddMissingLineMapsAsync(storeId, stockDocumentId, ct);
@@ -351,7 +353,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         var xdoc = XDocument.Parse(xmlText, LoadOptions.PreserveWhitespace);
 
         var root = xdoc.Root
-            ?? throw new InvalidOperationException("XML không hợp lệ.");
+            ?? throw new BusinessRuleException("XML không hợp lệ.");
 
         var ttChung = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "TTChung");
         var nBan = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "NBan");
@@ -415,7 +417,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         }
 
         if (head.Details.Count == 0)
-            throw new InvalidOperationException("XML không có dòng hàng hóa dịch vụ.");
+            throw new BusinessRuleException("XML không có dòng hàng hóa dịch vụ.");
 
         return head;
     }

@@ -107,20 +107,13 @@ public sealed class AttributeValueService : IAttributeValueService
         entity.CreatedAtUtc = DateTime.UtcNow;
         entity.CreatedBy = userId;
 
-        try
-        {
-            await _repo.AddAsync(entity, ct);
-            await _repo.SaveChangesAsync(ct);
+        await _repo.AddAsync(entity, ct);
+        await _repo.SaveChangesAsync(ct);
 
-            if (entity.Id <= 0)
-                return Result.Failure<int>(AttributeValueErrors.CreateFailed);
-
-            return Result.Success(entity.Id);
-        }
-        catch
-        {
+        if (entity.Id <= 0)
             return Result.Failure<int>(AttributeValueErrors.CreateFailed);
-        }
+
+        return Result.Success(entity.Id);
     }
 
     public async Task<Result> UpdateAsync(
@@ -169,13 +162,9 @@ public sealed class AttributeValueService : IAttributeValueService
             await _repo.SaveChangesAsync(ct);
             return Result.Success();
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
+        catch (ConcurrencyException)
         {
             return Result.Failure(AttributeValueErrors.ConcurrencyConflict);
-        }
-        catch
-        {
-            return Result.Failure(AttributeValueErrors.UpdateFailed);
         }
     }
 
@@ -196,15 +185,8 @@ public sealed class AttributeValueService : IAttributeValueService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = userId;
 
-        try
-        {
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success(entity.Status);
-        }
-        catch
-        {
-            return Result.Failure<bool>(AttributeValueErrors.ToggleStatusFailed);
-        }
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success(entity.Status);
     }
 
     public async Task<Result> SoftDeleteAsync(
@@ -228,15 +210,8 @@ public sealed class AttributeValueService : IAttributeValueService
         entity.DeletedAtUtc = DateTime.UtcNow;
         entity.DeletedBy = userId;
 
-        try
-        {
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success();
-        }
-        catch
-        {
-            return Result.Failure(AttributeValueErrors.DeleteFailed);
-        }
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     private static void Normalize(AttributeValueEditDto dto)

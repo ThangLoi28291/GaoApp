@@ -106,17 +106,10 @@ public sealed class PromotionAdminService : IPromotionAdminService
 
         ReplaceChildren(entity, request, storeId, userId);
 
-        try
-        {
-            await _repo.AddAsync(entity, ct);
-            await _repo.SaveChangesAsync(ct);
+        await _repo.AddAsync(entity, ct);
+        await _repo.SaveChangesAsync(ct);
 
-            return Result.Success(entity.Id);
-        }
-        catch
-        {
-            return Result.Failure<int>(PromotionErrors.CreateFailed);
-        }
+        return Result.Success(entity.Id);
     }
 
     public async Task<Result> UpdateAsync(
@@ -169,13 +162,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
             await _repo.SaveChangesAsync(ct);
             return Result.Success();
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
+        catch (ConcurrencyException)
         {
             return Result.Failure(PromotionErrors.ConcurrencyConflict);
-        }
-        catch
-        {
-            return Result.Failure(PromotionErrors.UpdateFailed);
         }
     }
 
@@ -193,15 +182,8 @@ public sealed class PromotionAdminService : IPromotionAdminService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = userId;
 
-        try
-        {
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success(entity.IsActive);
-        }
-        catch
-        {
-            return Result.Failure<bool>(PromotionErrors.ToggleFailed);
-        }
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success(entity.IsActive);
     }
 
     public async Task<Result> SoftDeleteAsync(
@@ -232,15 +214,8 @@ public sealed class PromotionAdminService : IPromotionAdminService
             rule.DeletedBy = userId;
         }
 
-        try
-        {
-            await _repo.SaveChangesAsync(ct);
-            return Result.Success();
-        }
-        catch
-        {
-            return Result.Failure(PromotionErrors.DeleteFailed);
-        }
+        await _repo.SaveChangesAsync(ct);
+        return Result.Success();
     }
 
     public async Task<Result<int>> DuplicateAsync(

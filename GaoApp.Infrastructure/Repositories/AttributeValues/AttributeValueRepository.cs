@@ -1,4 +1,5 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.AttributeValues;
+using GaoApp.Application.Common;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -79,8 +80,18 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
 
     public void Remove(AttributeValue entity)
     => _db.Set<AttributeValue>().Remove(entity);
-    public Task SaveChangesAsync(CancellationToken ct = default)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConcurrencyException(
+                "Dữ liệu đã được người khác thay đổi. Vui lòng tải lại và thử lại.");
+        }
+    }
     public async Task<bool> IsUsedAsync(
     int storeId,
     int id,

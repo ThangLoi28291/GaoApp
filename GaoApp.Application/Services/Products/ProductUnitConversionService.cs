@@ -8,6 +8,8 @@ using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Products;
 
 /// <summary>
@@ -87,13 +89,13 @@ public class ProductUnitConversionService : IProductUnitConversionService
         CancellationToken ct = default)
     {
         if (dto == null)
-            throw new InvalidOperationException("Dữ liệu conversion không được null.");
+            throw new BusinessRuleException("Dữ liệu conversion không được null.");
 
         if (dto.ProductVariantId <= 0)
-            throw new InvalidOperationException("ProductVariantId không hợp lệ.");
+            throw new BusinessRuleException("ProductVariantId không hợp lệ.");
 
         if (dto.UnitId <= 0)
-            throw new InvalidOperationException("UnitId không hợp lệ.");
+            throw new BusinessRuleException("UnitId không hợp lệ.");
 
         var factor = dto.Factor <= 0 ? 1m : dto.Factor;
 
@@ -101,7 +103,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
         {
             var entity = await _conversionRepo.GetByIdAsync(dto.Id.Value, ct);
             if (entity == null)
-                throw new InvalidOperationException("Không tìm thấy ProductUnitConversion.");
+                throw new BusinessRuleException("Không tìm thấy ProductUnitConversion.");
 
             var exists = await _conversionRepo.ExistsByVariantAndUnitAsync(
                 dto.ProductVariantId,
@@ -110,7 +112,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
                 ct);
 
             if (exists)
-                throw new InvalidOperationException("Biến thể đã có đơn vị này.");
+                throw new BusinessRuleException("Biến thể đã có đơn vị này.");
 
             if (dto.IsBaseUnit)
                 factor = 1m;
@@ -165,10 +167,10 @@ public class ProductUnitConversionService : IProductUnitConversionService
       CancellationToken ct = default)
     {
         if (dto == null)
-            throw new InvalidOperationException("Dữ liệu barcode không được null.");
+            throw new BusinessRuleException("Dữ liệu barcode không được null.");
 
         if (dto.ProductUnitConversionId <= 0)
-            throw new InvalidOperationException("ProductUnitConversionId không hợp lệ.");
+            throw new BusinessRuleException("ProductUnitConversionId không hợp lệ.");
 
         var storeId = _currentStore.StoreId;
         var inputBarcode = NormalizeBarcode(dto.Barcode);
@@ -180,14 +182,15 @@ public class ProductUnitConversionService : IProductUnitConversionService
         {
             var entity = await _barcodeRepo.GetByIdAsync(dto.Id.Value, ct);
             if (entity == null)
-                throw new InvalidOperationException("Không tìm thấy barcode.");
+                throw new BusinessRuleException("Không tìm thấy barcode.");
 
             var conversion = await _conversionRepo.GetByIdAsync(entity.ProductUnitConversionId, ct);
             if (conversion == null)
-                throw new InvalidOperationException("Không tìm thấy đơn vị quy đổi của barcode.");
+                throw new BusinessRuleException("Không tìm thấy đơn vị quy đổi của barcode.");
 
             if (conversion.ProductVariantId <= 0)
-                throw new InvalidOperationException("ProductVariantId của đơn vị quy đổi không hợp lệ.");
+                throw new InvalidOperationException(
+                    "Stored product-unit conversion has an invalid product variant.");
 
             var oldBarcodeValue = entity.Barcode;
             var oldIsPrimary = entity.IsPrimary;
@@ -215,7 +218,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
                     var sku = duplicate.ProductUnitConversion?.ProductVariant?.Sku ?? "(không rõ SKU)";
                     var unitName = duplicate.ProductUnitConversion?.Unit?.Name ?? "(không rõ đơn vị)";
 
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Barcode '{inputBarcode}' đã thuộc sản phẩm '{productName}' / SKU '{sku}' / đơn vị '{unitName}'.");
                 }
 
@@ -246,7 +249,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
 
                 if (replacement == null)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         "Không thể ngưng barcode chính vì không còn barcode active nào khác để thay thế.");
                 }
 
@@ -381,7 +384,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
                 var sku = duplicate.ProductUnitConversion?.ProductVariant?.Sku ?? "(không rõ SKU)";
                 var unitName = duplicate.ProductUnitConversion?.Unit?.Name ?? "(không rõ đơn vị)";
 
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Barcode '{inputBarcode}' đã thuộc sản phẩm '{productName}' / SKU '{sku}' / đơn vị '{unitName}'.");
             }
 
@@ -398,10 +401,11 @@ public class ProductUnitConversionService : IProductUnitConversionService
         }
 
         var createConversion = await _conversionRepo.GetByIdAsync(dto.ProductUnitConversionId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy ProductUnitConversion.");
+            ?? throw new BusinessRuleException("Không tìm thấy ProductUnitConversion.");
 
         if (createConversion.ProductVariantId <= 0)
-            throw new InvalidOperationException("ProductVariantId của đơn vị quy đổi không hợp lệ.");
+            throw new InvalidOperationException(
+                "Stored product-unit conversion has an invalid product variant.");
 
         var existingBarcodes = await _barcodeRepo.GetByConversionIdAsync(dto.ProductUnitConversionId, ct);
         var hasAnyBarcode = existingBarcodes.Any(x => !x.IsDeleted);
@@ -477,13 +481,13 @@ public class ProductUnitConversionService : IProductUnitConversionService
         CancellationToken ct = default)
     {
         if (request.StoreId <= 0)
-            throw new InvalidOperationException("StoreId không hợp lệ.");
+            throw new BusinessRuleException("StoreId không hợp lệ.");
 
         if (request.ProductVariantId <= 0)
-            throw new InvalidOperationException("ProductVariantId không hợp lệ.");
+            throw new BusinessRuleException("ProductVariantId không hợp lệ.");
 
         if (request.UnitId <= 0)
-            throw new InvalidOperationException("UnitId không hợp lệ.");
+            throw new BusinessRuleException("UnitId không hợp lệ.");
 
         var factor = request.Factor <= 0 ? 1m : request.Factor;
 
@@ -497,7 +501,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
             ct);
 
         if (exists)
-            throw new InvalidOperationException("Biến thể đã có đơn vị này.");
+            throw new BusinessRuleException("Biến thể đã có đơn vị này.");
 
         var conversion = new ProductUnitConversion
         {
@@ -613,7 +617,7 @@ public class ProductUnitConversionService : IProductUnitConversionService
                 return barcode;
         }
 
-        throw new InvalidOperationException("Không thể sinh barcode EAN13 duy nhất.");
+        throw new BusinessRuleException("Không thể sinh barcode EAN13 duy nhất.");
     }
 
     private static string? NormalizeBarcode(string? barcode)

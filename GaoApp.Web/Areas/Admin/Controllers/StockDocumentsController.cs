@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 /// <summary>
@@ -441,13 +443,13 @@ public class StockDocumentsController : ControllerBase
                 redirectUrl = Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })
             });
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return BadRequest(new { message = ex.SafeMessage });
         }
         catch (DbUpdateConcurrencyException)
         {
-            return BadRequest(new
+            return Conflict(new
             {
                 message = "Phiếu đã được người khác thay đổi. Vui lòng tải lại trước khi duyệt."
             });
@@ -647,11 +649,11 @@ public class StockDocumentsController : ControllerBase
                 message = "Đã cập nhật map dòng XML."
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -691,11 +693,11 @@ public class StockDocumentsController : ControllerBase
                     : "Đã bỏ chọn tất cả dòng khỏi hóa đơn XML."
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -726,11 +728,11 @@ public class StockDocumentsController : ControllerBase
                 redirectUrl = Url.Action("Detail", "WarehouseReceiving", new { area = "Admin", id })
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -769,11 +771,11 @@ public class StockDocumentsController : ControllerBase
                 redirectUrl = Url.Action("Edit", "StockDocumentManagement", new { area = "Admin", id })
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }

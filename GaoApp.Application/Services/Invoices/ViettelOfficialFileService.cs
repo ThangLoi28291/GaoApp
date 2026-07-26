@@ -4,6 +4,7 @@ using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
+using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -13,17 +14,20 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
     private readonly IInvoiceProviderSettingRepository _settingRepository;
     private readonly IViettelOfficialFileClient _client;
     private readonly IInvoiceFileStorage _storage;
+    private readonly ILogger<ViettelOfficialFileService> _logger;
 
     public ViettelOfficialFileService(
         IInvoiceRepository invoiceRepository,
         IInvoiceProviderSettingRepository settingRepository,
         IViettelOfficialFileClient client,
-        IInvoiceFileStorage storage)
+        IInvoiceFileStorage storage,
+        ILogger<ViettelOfficialFileService> logger)
     {
         _invoiceRepository = invoiceRepository;
         _settingRepository = settingRepository;
         _client = client;
         _storage = storage;
+        _logger = logger;
     }
 
     public async Task<Result<ViettelOfficialFileResultDto>> DownloadAndSaveAsync(
@@ -195,9 +199,15 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
             const string message = "Không lưu được file hóa đơn trên máy chủ.";
+
+            _logger.LogWarning(
+                "Invoice file storage failed. InvoiceHeadId={InvoiceHeadId}; FileType={FileType}; ExceptionType={ExceptionType}",
+                invoiceHeadId,
+                fileType,
+                ex.GetType().Name);
 
             MarkFileDownloadFailed(
                 invoice,

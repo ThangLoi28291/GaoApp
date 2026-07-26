@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Services.Taxes;
 using GaoApp.Web.Areas.Admin.ViewModels.Taxes;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 public class TaxController : BaseAdminController
@@ -86,9 +88,9 @@ public class TaxController : BaseAdminController
             TempData["ToastSuccess"] = "Đã tạo thuế.";
             return RedirectToAction(nameof(Index));
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            ModelState.AddModelError("", ex.SafeMessage);
             return View("Edit", vm);
         }
     }
@@ -139,9 +141,9 @@ public class TaxController : BaseAdminController
             TempData["ToastSuccess"] = "Đã cập nhật thuế.";
             return RedirectToAction(nameof(Index));
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError("", ex.Message);
+            ModelState.AddModelError("", ex.SafeMessage);
             return View(vm);
         }
     }
@@ -159,9 +161,9 @@ public class TaxController : BaseAdminController
             if (!ok) return Json(new { success = false, message = "Không tìm thấy thuế." });
             return Json(new { success = true, message = "Đã cập nhật trạng thái." });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            return Json(new { success = false, message = ex.Message });
+            return Json(new { success = false, message = ex.SafeMessage });
         }
     }
 
@@ -178,9 +180,9 @@ public class TaxController : BaseAdminController
             if (!ok) return Json(new { success = false, message = "Không tìm thấy thuế." });
             return Json(new { success = true, message = "Đã xóa thuế." });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            return Json(new { success = false, message = ex.Message });
+            return Json(new { success = false, message = ex.SafeMessage });
         }
     }
 }

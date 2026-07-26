@@ -1,9 +1,9 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Options;
+using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -18,7 +18,7 @@ namespace GaoApp.Web.Middlewares;
 /// - ghi vào TenantContext để các layer dưới dùng
 ///
 /// Lưu ý:
-/// - Nếu DB lỗi => trả 503 Service Unavailable
+/// - Lỗi DB/framework được propagate tới global exception owner
 /// - Nếu host/tenant không hợp lệ => trả lỗi business phù hợp
 /// - Bỏ qua /health để health endpoint không phụ thuộc tenant
 /// - Host/Scheme/IP ở đây đã được normalize nếu UseForwardedHeaders
@@ -84,17 +84,19 @@ public class TenantResolutionMiddleware
             {
                 var normalized = fakeTenant.Trim().ToLowerInvariant();
 
-                var store = await dbContext.Stores
+                var localStore = await dbContext.Stores
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(x =>
-                        x.SubDomainNormalized == normalized &&
-                        x.IsActive);
+                    .FirstOrDefaultAsync(
+                        x =>
+                            x.SubDomainNormalized == normalized &&
+                            x.IsActive,
+                        context.RequestAborted);
 
-                if (store != null)
+                if (localStore != null)
                 {
-                    tenantContextWriter.SetStore(store.Id, normalized);
+                    tenantContextWriter.SetStore(localStore.Id, normalized);
 
-                    BindStoreItems(context, store);
+                    BindStoreItems(context, localStore);
                 }
             }
 
@@ -154,72 +156,32 @@ public class TenantResolutionMiddleware
 
         var normalizedSubdomain = subdomain.Trim().ToLowerInvariant();
 
-        try
+        var store = await dbContext.Stores
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x =>
+                    x.SubDomainNormalized == normalizedSubdomain &&
+                    x.IsActive,
+                context.RequestAborted);
+
+        if (store == null)
         {
-            var store = await dbContext.Stores
-                .AsNoTracking()
-                .FirstOrDefaultAsync(
-                    x =>
-                        x.SubDomainNormalized == normalizedSubdomain &&
-                        x.IsActive,
-                    context.RequestAborted);
-
-            if (store == null)
-            {
-                await WriteProblemAsync(
-                    context,
-                    StatusCodes.Status404NotFound,
-                    $"Không tìm thấy tenant '{normalizedSubdomain}'.");
-                return;
-            }
-
-            // IMPORTANT:
-            // Set đúng subdomain, không set store.Name.
-            tenantContextWriter.SetStore(store.Id, normalizedSubdomain);
-
-            // Reuse the Store already resolved for this request. Downstream
-            // terminal resolution validates this ID against ICurrentStore
-            // before trusting it, avoiding a duplicate read of Stores.
-            context.Items["CurrentStoreId"] = store.Id.ToString();
-            context.Items["CurrentStoreName"] = store.Name;
-        }
-        catch (SqlException ex)
-        {
-            _logger.LogError(
-                ex,
-                "Tenant resolution failed due to SQL error. Host={Host}, Subdomain={Subdomain}",
-                host,
-                normalizedSubdomain);
-
             await WriteProblemAsync(
                 context,
-                StatusCodes.Status503ServiceUnavailable,
-                "Hệ thống đang tạm thời không kết nối được cơ sở dữ liệu. Vui lòng thử lại sau.");
+                StatusCodes.Status404NotFound,
+                $"Không tìm thấy tenant '{normalizedSubdomain}'.");
             return;
         }
-        catch (DbUpdateException ex)
-        {
-            _logger.LogError(
-                ex,
-                "Tenant resolution failed due to DbUpdateException. Host={Host}, Subdomain={Subdomain}",
-                host,
-                normalizedSubdomain);
 
-            await WriteProblemAsync(
-                context,
-                StatusCodes.Status503ServiceUnavailable,
-                "Dịch vụ dữ liệu đang tạm thời không sẵn sàng. Vui lòng thử lại sau.");
-            return;
-        }
-        catch (OperationCanceledException ex) when (context.RequestAborted.IsCancellationRequested)
-        {
-            _logger.LogWarning(
-                ex,
-                "Tenant resolution cancelled by client. Host={Host}, Subdomain={Subdomain}",
-                host,
-                normalizedSubdomain);
-            return;
-        }
+        // IMPORTANT:
+        // Set đúng subdomain, không set store.Name.
+        tenantContextWriter.SetStore(store.Id, normalizedSubdomain);
+
+        // Reuse the Store already resolved for this request. Downstream
+        // terminal resolution validates this ID against ICurrentStore
+        // before trusting it, avoiding a duplicate read of Stores.
+        context.Items["CurrentStoreId"] = store.Id.ToString();
+        context.Items["CurrentStoreName"] = store.Name;
 
         await _next(context);
     }
@@ -274,10 +236,9 @@ public class TenantResolutionMiddleware
 
         await context.Response.WriteAsJsonAsync(payload);
     }
-    private static void BindStoreItems(HttpContext context, dynamic store)
+    private static void BindStoreItems(HttpContext context, Store store)
     {
         context.Items["CurrentStoreId"] = store.Id.ToString();
         context.Items["CurrentStoreName"] = store.Name;
-        context.Items["CurrentStoreCode"] = store.Code;
     }
 }

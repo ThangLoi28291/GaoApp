@@ -53,11 +53,22 @@ public abstract class BasePOSPageController : BaseAdminController
                 vm.OpenedAtUtc = shift.OpenedAtUtc;
             }
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             // Không chặn render page chỉ vì không load được ca hiện tại
             vm.ShiftStatusText = "NoShift";
             vm.ShiftCode = "Chưa mở ca";
+
+            var logger = HttpContext.RequestServices
+                .GetRequiredService<ILogger<BasePOSPageController>>();
+            logger.LogWarning(
+                "POS header context could not load the current shift; page rendering continues. TraceId={TraceId}; ExceptionType={ExceptionType}",
+                HttpContext.TraceIdentifier,
+                ex.GetType().Name);
         }
 
         ViewBag.POSHeaderContext = vm;

@@ -25,37 +25,26 @@ public class SupplierLookupController : ControllerBase
     [HttpGet("select2")]
     public async Task<IActionResult> Select2([FromQuery] string? term, CancellationToken ct)
     {
-        try
-        {
-            if (!_tenantContext.StoreId.HasValue || _tenantContext.StoreId.Value <= 0)
-            {
-                return StatusCode(500, new
-                {
-                    message = "Không lấy được StoreId hiện tại từ TenantContext."
-                });
-            }
-
-            var items = await _supplierService.SearchSelect2Async(
-                _tenantContext.StoreId.Value,
-                term,
-                ct);
-
-            return Ok(new
-            {
-                results = items.Select(x => new
-                {
-                    id = x.Id,
-                    text = x.Text
-                })
-            });
-        }
-        catch (Exception ex)
+        if (!_tenantContext.StoreId.HasValue || _tenantContext.StoreId.Value <= 0)
         {
             return StatusCode(500, new
             {
-                message = ex.Message,
-                detail = ex.InnerException?.Message
+                message = "Không lấy được StoreId hiện tại từ TenantContext."
             });
         }
+
+        var items = await _supplierService.SearchSelect2Async(
+            _tenantContext.StoreId.Value,
+            term,
+            ct);
+
+        return Ok(new
+        {
+            results = items.Select(x => new
+            {
+                id = x.Id,
+                text = x.Text
+            })
+        });
     }
 }

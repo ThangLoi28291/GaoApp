@@ -1,4 +1,5 @@
 ﻿using GaoApp.Application.DTOs.Promotions;
+using GaoApp.Application.Common;
 using GaoApp.Application.Interfaces.Repositories.Promotions;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -186,8 +187,18 @@ public sealed class PromotionRepository : IPromotionRepository
     public void Update(Promotion entity)
         => _db.Promotions.Update(entity);
 
-    public Task SaveChangesAsync(CancellationToken ct = default)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConcurrencyException(
+                "Dữ liệu đã được người khác thay đổi. Vui lòng tải lại và thử lại.");
+        }
+    }
     public async Task<List<PromotionProductLookupDto>> SearchProductsForPromotionAsync(
      int storeId,
      string keyword,

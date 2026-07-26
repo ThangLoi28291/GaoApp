@@ -10,6 +10,8 @@ using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Application.Services.Purchases;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Inventory;
 
 public class StockDocumentService : IStockDocumentService
@@ -129,11 +131,11 @@ public class StockDocumentService : IStockDocumentService
     public async Task<int> CreateReceiptAsync(CreateStockDocumentRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.DirectReceiptReason))
-            throw new InvalidOperationException("Phiếu nhập ngoài đơn bắt buộc phải chọn nguồn nhập.");
+            throw new BusinessRuleException("Phiếu nhập ngoài đơn bắt buộc phải chọn nguồn nhập.");
         var directReceiptSource = AllowedDirectReceiptSources.FirstOrDefault(x =>
             string.Equals(x, request.DirectReceiptReason.Trim(), StringComparison.OrdinalIgnoreCase));
         if (directReceiptSource == null)
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Nguồn nhập ngoài đơn không hợp lệ. Chỉ chấp nhận: NCC chào hàng, Mua gấp, Hàng đổi/trả hoặc Khác.");
 
         var warehouse = await _warehouseRepository.GetByIdAsync(request.WarehouseId, ct);
@@ -145,7 +147,7 @@ public class StockDocumentService : IStockDocumentService
         {
             var supplierExists = await _stockDocumentRepository.SupplierExistsAsync(request.SupplierId.Value, ct);
             if (!supplierExists)
-                throw new InvalidOperationException("Nhà cung cấp không tồn tại.");
+                throw new BusinessRuleException("Nhà cung cấp không tồn tại.");
         }
 
         var documentDate = request.DocumentDate ?? DateTime.UtcNow;
@@ -188,14 +190,14 @@ public class StockDocumentService : IStockDocumentService
         CancellationToken ct = default)
     {
         var order = await _stockDocumentRepository.GetPurchaseOrderForReceiptAsync(purchaseOrderId, ct)
-            ?? throw new InvalidOperationException("Đơn đặt hàng không tồn tại.");
+            ?? throw new BusinessRuleException("Đơn đặt hàng không tồn tại.");
 
         if (order.Status is not (PurchaseOrderStatus.Approved or PurchaseOrderStatus.SentToSupplier or PurchaseOrderStatus.PartiallyReceived))
-            throw new InvalidOperationException("Chỉ đơn đã duyệt/gửi nhà cung cấp hoặc đang nhận một phần mới được tạo phiếu nhập.");
+            throw new BusinessRuleException("Chỉ đơn đã duyệt/gửi nhà cung cấp hoặc đang nhận một phần mới được tạo phiếu nhập.");
         if (request.Lines.Count == 0)
-            throw new InvalidOperationException("Vui lòng chọn ít nhất một dòng cần nhận.");
+            throw new BusinessRuleException("Vui lòng chọn ít nhất một dòng cần nhận.");
         if (request.Lines.GroupBy(x => x.PurchaseOrderLineId).Any(x => x.Count() > 1))
-            throw new InvalidOperationException("Một dòng đơn đặt hàng chỉ được xuất hiện một lần trên phiếu nhập.");
+            throw new BusinessRuleException("Một dòng đơn đặt hàng chỉ được xuất hiện một lần trên phiếu nhập.");
 
         var date = request.DocumentDate ?? DateTime.UtcNow;
         var storeId = RequireStoreId();
@@ -226,7 +228,7 @@ public class StockDocumentService : IStockDocumentService
         foreach (var input in request.Lines)
         {
             var orderLine = order.Lines.FirstOrDefault(x => x.Id == input.PurchaseOrderLineId && !x.IsDeleted)
-                ?? throw new InvalidOperationException($"Dòng đơn đặt hàng #{input.PurchaseOrderLineId} không hợp lệ.");
+                ?? throw new BusinessRuleException($"Dòng đơn đặt hàng #{input.PurchaseOrderLineId} không hợp lệ.");
             var decision = PurchaseReceiptPolicy.ValidateLine(
                 orderLine.PendingQuantity,
                 input.Quantity,
@@ -239,7 +241,7 @@ public class StockDocumentService : IStockDocumentService
                 !orderLine.UnitId.HasValue ||
                 orderLine.ProductVariant == null ||
                 orderLine.ProductUnitConversion == null)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {orderLine.LineNo} là hàng mô tả chưa liên kết sản phẩm. " +
                     "Vui lòng liên kết hoặc tạo sản phẩm trước khi lập phiếu nhập kho.");
             var variant = orderLine.ProductVariant;
@@ -251,7 +253,7 @@ public class StockDocumentService : IStockDocumentService
                 conversion.UnitId != orderLine.UnitId.Value ||
                 variant.StoreId != order.StoreId || variant.Product.StoreId != order.StoreId ||
                 conversion.StoreId != order.StoreId || conversion.Unit.StoreId != order.StoreId)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {orderLine.LineNo} đang liên kết sản phẩm/đơn vị không hợp lệ hoặc đã ngừng hoạt động. " +
                     "Vui lòng liên kết lại trước khi lập phiếu nhập.");
 
@@ -463,20 +465,20 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetDetailAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         EnsureEditable(document.Status);
         EnsureDirectLineEditing(document);
 
         if (request.Quantity <= 0)
-            throw new InvalidOperationException("Số lượng phải lớn hơn 0.");
+            throw new BusinessRuleException("Số lượng phải lớn hơn 0.");
 
         var variant = await _stockDocumentRepository.GetVariantForStockDocumentAsync(
             request.ProductVariantId,
             ct);
 
         if (variant == null)
-            throw new InvalidOperationException("Sản phẩm không tồn tại.");
+            throw new BusinessRuleException("Sản phẩm không tồn tại.");
 
         var conversion = await _inventoryUnitResolver.ResolveAsync(
      request.ProductVariantId,
@@ -496,7 +498,7 @@ public class StockDocumentService : IStockDocumentService
             var taxId = request.TaxId ?? variant.Product?.TaxId;
             if (taxId.HasValue)
                 tax = await _stockDocumentRepository.GetTaxAsync(taxId.Value, ct)
-                    ?? throw new InvalidOperationException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
+                    ?? throw new BusinessRuleException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
         }
 
         // Nhân viên ghi nhận hàng thực nhận, chưa chốt giá thương mại. Giá 0/1
@@ -595,25 +597,26 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetDetailAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException($"Phiếu nhập kho không tồn tại. documentId={documentId}");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         EnsureEditable(document.Status);
         EnsureDirectLineEditing(document);
 
         var barcode = (request.Barcode ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(barcode))
-            throw new InvalidOperationException("Barcode không được để trống.");
+            throw new BusinessRuleException("Barcode không được để trống.");
 
         if (request.Quantity <= 0)
-            throw new InvalidOperationException("Số lượng phải lớn hơn 0.");
+            throw new BusinessRuleException("Số lượng phải lớn hơn 0.");
 
         var lookup = await _barcodeLookupService.FindAsync(barcode, ct);
         if (lookup == null)
-            throw new InvalidOperationException($"Không tìm thấy sản phẩm theo barcode: {barcode}");
+            throw new BusinessRuleException($"Không tìm thấy sản phẩm theo barcode: {barcode}");
 
         var variantEntity = await _stockDocumentRepository.GetVariantForStockDocumentAsync(lookup.ProductVariantId, ct);
         if (variantEntity == null)
-            throw new InvalidOperationException($"Không tìm thấy ProductVariant. ProductVariantId={lookup.ProductVariantId}");
+            throw new InvalidOperationException(
+                "Barcode lookup returned a missing product variant.");
 
         var factor = lookup.Factor <= 0 ? 1m : lookup.Factor;
         Tax? tax = null;
@@ -622,7 +625,7 @@ public class StockDocumentService : IStockDocumentService
             var taxId = request.TaxId ?? variantEntity.Product?.TaxId;
             if (taxId.HasValue)
                 tax = await _stockDocumentRepository.GetTaxAsync(taxId.Value, ct)
-                    ?? throw new InvalidOperationException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
+                    ?? throw new BusinessRuleException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
         }
         var unitCost = request.UnitCost > 1m ? request.UnitCost : 0m;
         var amounts = PurchasePricingPolicy.CalculateLine(request.Quantity, unitCost, document.HasVat, tax?.Rate ?? 0m);
@@ -702,17 +705,17 @@ public class StockDocumentService : IStockDocumentService
     {
         var line = await _stockDocumentRepository.GetLineByIdAsync(lineId, ct);
         if (line == null)
-            throw new InvalidOperationException("Dòng phiếu nhập không tồn tại.");
+            throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
         EnsureEditable(line.StockDocument.Status);
         EnsureDirectLineEditing(line.StockDocument);
 
         if (request.Quantity <= 0)
-            throw new InvalidOperationException("Số lượng phải lớn hơn 0.");
+            throw new BusinessRuleException("Số lượng phải lớn hơn 0.");
 
         var unitCost = request.UnitCost ?? line.UnitCost;
         if (unitCost < 0)
-            throw new InvalidOperationException("Đơn giá nhập không được âm.");
+            throw new BusinessRuleException("Đơn giá nhập không được âm.");
 
         var conversion = await _inventoryUnitResolver.ResolveAsync(
             line.ProductVariantId,
@@ -722,7 +725,7 @@ public class StockDocumentService : IStockDocumentService
         var factor = NormalizeFactor(conversion.Factor);
 
         var document = await _stockDocumentRepository.GetDetailAsync(line.StockDocumentId, ct)
-            ?? throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
         Tax? tax = null;
         if (document.HasVat)
         {
@@ -730,7 +733,7 @@ public class StockDocumentService : IStockDocumentService
             var taxId = request.TaxId ?? line.TaxId ?? variant?.Product?.TaxId;
             if (taxId.HasValue)
                 tax = await _stockDocumentRepository.GetTaxAsync(taxId.Value, ct)
-                    ?? throw new InvalidOperationException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
+                    ?? throw new BusinessRuleException("Thuế suất không tồn tại trong cửa hàng hiện tại.");
         }
         var conversionEntity = await _stockDocumentRepository.GetConversionAsync(line.ProductVariantId, conversion.UnitId, ct);
         var amounts = PurchasePricingPolicy.CalculateLine(request.Quantity, unitCost, document.HasVat, tax?.Rate ?? 0m);
@@ -767,14 +770,14 @@ public class StockDocumentService : IStockDocumentService
     {
         var line = await _stockDocumentRepository.GetLineByIdAsync(lineId, ct);
         if (line == null)
-            throw new InvalidOperationException("Dòng phiếu nhập không tồn tại.");
+            throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
         EnsureEditable(line.StockDocument.Status);
         EnsureDirectLineEditing(line.StockDocument);
 
         var document = await _stockDocumentRepository.GetDetailAsync(line.StockDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         await _stockDocumentRepository.RemoveLineAsync(line, ct);
 
@@ -789,9 +792,9 @@ public class StockDocumentService : IStockDocumentService
         CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct)
-            ?? throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
         if (document.Status is not (StockDocumentStatus.Draft or StockDocumentStatus.PendingApproval or StockDocumentStatus.Rejected))
-            throw new InvalidOperationException("Phiếu đã duyệt nên phân bổ vận chuyển đã bị khóa.");
+            throw new BusinessRuleException("Phiếu đã duyệt nên phân bổ vận chuyển đã bị khóa.");
         EnsureRowVersion(document.RowVersion, request.RowVersion);
 
         var lines = document.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.LineNo).ToList();
@@ -808,9 +811,9 @@ public class StockDocumentService : IStockDocumentService
         }
 
         var freightTotal = PurchasePricingPolicy.RoundMoney(request.FreightTotal);
-        if (freightTotal <= 0) throw new InvalidOperationException("Tổng phí vận chuyển phải lớn hơn 0.");
+        if (freightTotal <= 0) throw new BusinessRuleException("Tổng phí vận chuyển phải lớn hơn 0.");
         if (string.IsNullOrWhiteSpace(request.FreightPayeeName))
-            throw new InvalidOperationException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
+            throw new BusinessRuleException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
 
         IReadOnlyDictionary<int, decimal> allocations;
         if (request.ResetAutomaticAllocation)
@@ -822,10 +825,10 @@ public class StockDocumentService : IStockDocumentService
         else
         {
             if (request.Allocations.GroupBy(x => x.StockDocumentLineId).Any(x => x.Count() > 1))
-                throw new InvalidOperationException("Dòng phân bổ vận chuyển bị trùng.");
+                throw new BusinessRuleException("Dòng phân bổ vận chuyển bị trùng.");
             var ids = lines.Select(x => x.Id).ToHashSet();
             if (request.Allocations.Any(x => !ids.Contains(x.StockDocumentLineId) || x.Amount < 0))
-                throw new InvalidOperationException("Phân bổ vận chuyển chứa dòng hoặc số tiền không hợp lệ.");
+                throw new BusinessRuleException("Phân bổ vận chuyển chứa dòng hoặc số tiền không hợp lệ.");
             allocations = lines.ToDictionary(
                 x => x.Id,
                 x => PurchasePricingPolicy.RoundMoney(
@@ -850,17 +853,17 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         if (document.Status != StockDocumentStatus.Draft &&
             document.Status != StockDocumentStatus.Rejected)
         {
-            throw new InvalidOperationException("Chỉ phiếu nháp hoặc phiếu bị từ chối mới được gửi duyệt.");
+            throw new BusinessRuleException("Chỉ phiếu nháp hoặc phiếu bị từ chối mới được gửi duyệt.");
         }
         EnsureRowVersion(document.RowVersion, rowVersion);
 
         if (!document.Lines.Any())
-            throw new InvalidOperationException("Phiếu nhập kho chưa có dòng chi tiết.");
+            throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết.");
 
         ValidateReceiptSourceAndShortages(document);
         if (document.HasFreight)
@@ -890,7 +893,7 @@ public class StockDocumentService : IStockDocumentService
         CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct)
-            ?? throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         // Safe retry after a successful commit. Do not apply a newer browser
         // payload to a receipt that has already posted inventory/FIFO/payables.
@@ -899,41 +902,41 @@ public class StockDocumentService : IStockDocumentService
 
         EnsureRowVersion(document.RowVersion, request.RowVersion);
         if (document.Type != StockDocumentType.Receipt)
-            throw new InvalidOperationException("Chứng từ này không phải phiếu nhập kho.");
+            throw new BusinessRuleException("Chứng từ này không phải phiếu nhập kho.");
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được chốt giá và duyệt nhập kho.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được chốt giá và duyệt nhập kho.");
         if (request.ApprovalNote?.Length > 1000)
-            throw new InvalidOperationException("Ghi chú duyệt không được vượt quá 1.000 ký tự.");
+            throw new BusinessRuleException("Ghi chú duyệt không được vượt quá 1.000 ký tự.");
         if (request.MerchandisePayeeName?.Length > 250)
-            throw new InvalidOperationException("Tên người bán/đơn vị nhận tiền không được vượt quá 250 ký tự.");
+            throw new BusinessRuleException("Tên người bán/đơn vị nhận tiền không được vượt quá 250 ký tự.");
         if (request.FreightPayeeName?.Length > 250)
-            throw new InvalidOperationException("Tên người/đơn vị nhận phí vận chuyển không được vượt quá 250 ký tự.");
+            throw new BusinessRuleException("Tên người/đơn vị nhận phí vận chuyển không được vượt quá 250 ký tự.");
         if (request.FreightNote?.Length > 1000)
-            throw new InvalidOperationException("Ghi chú vận chuyển không được vượt quá 1.000 ký tự.");
+            throw new BusinessRuleException("Ghi chú vận chuyển không được vượt quá 1.000 ký tự.");
 
         var activeLines = document.Lines
             .Where(x => !x.IsDeleted)
             .OrderBy(x => x.LineNo)
             .ToList();
         if (activeLines.Count == 0)
-            throw new InvalidOperationException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
 
         var postedLines = request.Lines ?? new List<PurchaseReceiptFinancialLineInputDto>();
         if (postedLines.Any(x => x.StockDocumentLineId <= 0) ||
             postedLines.GroupBy(x => x.StockDocumentLineId).Any(x => x.Count() > 1))
-            throw new InvalidOperationException("Danh sách dòng chốt giá bị trùng hoặc không hợp lệ.");
+            throw new BusinessRuleException("Danh sách dòng chốt giá bị trùng hoặc không hợp lệ.");
 
         var activeLineIds = activeLines.Select(x => x.Id).ToHashSet();
         var postedLineIds = postedLines.Select(x => x.StockDocumentLineId).ToHashSet();
         if (!activeLineIds.SetEquals(postedLineIds))
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Danh sách dòng đã thay đổi hoặc không đầy đủ. Vui lòng tải lại phiếu trước khi duyệt.");
 
         Supplier? supplier = null;
         if (request.SupplierId.HasValue)
         {
             supplier = await _stockDocumentRepository.GetSupplierAsync(request.SupplierId.Value, ct)
-                ?? throw new InvalidOperationException("Nhà cung cấp không tồn tại hoặc không thuộc cửa hàng hiện tại.");
+                ?? throw new BusinessRuleException("Nhà cung cấp không tồn tại hoặc không thuộc cửa hàng hiện tại.");
         }
 
         var isPurchaseOrderReceipt =
@@ -941,14 +944,15 @@ public class StockDocumentService : IStockDocumentService
         if (isPurchaseOrderReceipt)
         {
             var order = document.PurchaseOrder
-                ?? throw new InvalidOperationException("Phiếu nhập bị mất liên kết đơn đặt hàng.");
+                ?? throw new InvalidOperationException(
+                    "Purchase-order receipt is missing its purchase-order relation.");
             if (!request.SupplierId.HasValue || request.SupplierId.Value != order.SupplierId)
-                throw new InvalidOperationException("Không thể đổi nhà cung cấp của phiếu nhập theo đơn đặt hàng.");
+                throw new BusinessRuleException("Không thể đổi nhà cung cấp của phiếu nhập theo đơn đặt hàng.");
             supplier ??= order.Supplier;
         }
         else if (!request.IsMerchandisePaid && !request.SupplierId.HasValue)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Phiếu nhập còn nợ tiền hàng bắt buộc phải chọn nhà cung cấp.");
         }
 
@@ -959,7 +963,7 @@ public class StockDocumentService : IStockDocumentService
         if (request.IsMerchandisePaid && !request.SupplierId.HasValue &&
             string.IsNullOrWhiteSpace(merchandisePayeeName))
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Phiếu đã trả tiền nhưng không chọn nhà cung cấp thì phải nhập tên người bán.");
         }
 
@@ -972,12 +976,12 @@ public class StockDocumentService : IStockDocumentService
         {
             var input = financialInputs[line.Id];
             if (input.UnitPriceBeforeVat <= 0)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} phải có đơn giá chưa VAT lớn hơn 0.");
             EnsureStoredMoney(input.UnitPriceBeforeVat, $"Đơn giá dòng {line.LineNo}");
 
             if (request.HasVat && !input.TaxId.HasValue)
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} phải chọn thuế suất đã cấu hình khi bật VAT (kể cả thuế suất 0%).");
 
             Tax? tax = null;
@@ -986,10 +990,10 @@ public class StockDocumentService : IStockDocumentService
                 if (!taxCache.TryGetValue(input.TaxId!.Value, out tax))
                 {
                     tax = await _stockDocumentRepository.GetTaxAsync(input.TaxId.Value, ct)
-                        ?? throw new InvalidOperationException(
+                        ?? throw new BusinessRuleException(
                             $"Thuế suất của dòng {line.LineNo} không tồn tại hoặc không thuộc cửa hàng hiện tại.");
                     if (tax.Rate < 0m || tax.Rate > 100m)
-                        throw new InvalidOperationException($"Thuế suất của dòng {line.LineNo} nằm ngoài khoảng 0-100%.");
+                        throw new BusinessRuleException($"Thuế suất của dòng {line.LineNo} nằm ngoài khoảng 0-100%.");
                     taxCache[tax.Id] = tax;
                 }
             }
@@ -1010,7 +1014,7 @@ public class StockDocumentService : IStockDocumentService
             }
             catch (OverflowException)
             {
-                throw new InvalidOperationException($"Giá hoặc thành tiền dòng {line.LineNo} vượt giới hạn cho phép.");
+                throw new BusinessRuleException($"Giá hoặc thành tiền dòng {line.LineNo} vượt giới hạn cho phép.");
             }
         }
 
@@ -1024,10 +1028,10 @@ public class StockDocumentService : IStockDocumentService
         {
             freightTotal = PurchasePricingPolicy.RoundMoney(request.FreightTotal);
             if (freightTotal <= 0)
-                throw new InvalidOperationException("Tổng phí vận chuyển phải lớn hơn 0.");
+                throw new BusinessRuleException("Tổng phí vận chuyển phải lớn hơn 0.");
             EnsureStoredMoney(freightTotal, "Tổng phí vận chuyển");
             if (string.IsNullOrWhiteSpace(request.FreightPayeeName))
-                throw new InvalidOperationException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
+                throw new BusinessRuleException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
 
             if (request.ResetAutomaticAllocation)
             {
@@ -1040,13 +1044,13 @@ public class StockDocumentService : IStockDocumentService
                 var postedAllocations = request.Allocations ?? new List<FreightAllocationInputDto>();
                 if (postedAllocations.Any(x => x.StockDocumentLineId <= 0 || x.Amount < 0) ||
                     postedAllocations.GroupBy(x => x.StockDocumentLineId).Any(x => x.Count() > 1))
-                    throw new InvalidOperationException("Phân bổ vận chuyển chứa dòng hoặc số tiền không hợp lệ.");
+                    throw new BusinessRuleException("Phân bổ vận chuyển chứa dòng hoặc số tiền không hợp lệ.");
                 foreach (var allocation in postedAllocations)
                     EnsureStoredMoney(allocation.Amount, $"Phí phân bổ dòng {allocation.StockDocumentLineId}");
 
                 var allocationIds = postedAllocations.Select(x => x.StockDocumentLineId).ToHashSet();
                 if (!activeLineIds.SetEquals(allocationIds))
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         "Bảng phân bổ vận chuyển không đầy đủ. Vui lòng tải lại phiếu.");
 
                 freightAllocations = postedAllocations.ToDictionary(
@@ -1099,7 +1103,7 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         await ApproveTrackedAsync(document, approvalNote, rowVersion, ct);
     }
@@ -1117,10 +1121,10 @@ public class StockDocumentService : IStockDocumentService
         EnsureRowVersion(document.RowVersion, rowVersion);
 
         if (document.Type != StockDocumentType.Receipt)
-            throw new InvalidOperationException("Chứng từ này không phải phiếu nhập kho.");
+            throw new BusinessRuleException("Chứng từ này không phải phiếu nhập kho.");
 
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được duyệt nhập kho.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được duyệt nhập kho.");
 
         var postingWarehouse = await _warehouseRepository.GetByIdAsync(document.WarehouseId, ct);
         StockReceiptLegalEntityPolicy.EnsureWarehouseSelectable(
@@ -1133,27 +1137,27 @@ public class StockDocumentService : IStockDocumentService
             .ToList();
 
         if (!activeLines.Any())
-            throw new InvalidOperationException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
+            throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
 
         ValidateReceiptSourceAndShortages(document);
         if (!document.IsMerchandisePaid && !document.SupplierId.HasValue)
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Phiếu nhập còn nợ tiền hàng bắt buộc phải chọn nhà cung cấp.");
         if (document.IsMerchandisePaid && !document.SupplierId.HasValue &&
             string.IsNullOrWhiteSpace(document.MerchandisePayeeName))
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Phiếu đã trả tiền nhưng không chọn nhà cung cấp thì phải nhập tên người bán.");
         if (document.HasFreight)
         {
             if (document.FreightTotal <= 0)
-                throw new InvalidOperationException("Tổng phí vận chuyển phải lớn hơn 0.");
+                throw new BusinessRuleException("Tổng phí vận chuyển phải lớn hơn 0.");
             if (string.IsNullOrWhiteSpace(document.FreightPayeeName))
-                throw new InvalidOperationException("Thiếu người hoặc đơn vị nhận tiền vận chuyển.");
+                throw new BusinessRuleException("Thiếu người hoặc đơn vị nhận tiền vận chuyển.");
             PurchasePricingPolicy.EnsureFreightBalanced(document.FreightTotal, activeLines.Select(x => x.FreightAllocation));
         }
         else if (activeLines.Any(x => x.FreightAllocation != 0m))
         {
-            throw new InvalidOperationException("Phiếu không bật phí vận chuyển nhưng vẫn còn tiền phân bổ.");
+            throw new BusinessRuleException("Phiếu không bật phí vận chuyển nhưng vẫn còn tiền phân bổ.");
         }
 
         foreach (var line in activeLines)
@@ -1161,30 +1165,30 @@ public class StockDocumentService : IStockDocumentService
             if (line.ProductVariantId <= 0)
             {
                 throw new InvalidOperationException(
-                    $"Dòng {line.LineNo} có ProductVariant không hợp lệ.");
+                    "Stock-document line has an invalid product-variant relation.");
             }
 
             if (line.Quantity <= 0)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} có số lượng nhập không hợp lệ.");
             }
 
             if (line.Factor <= 0)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} có hệ số quy đổi không hợp lệ.");
             }
 
             if (line.BaseQuantity <= 0)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} có số lượng quy đổi không hợp lệ.");
             }
 
             if (line.UnitCost <= 0)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} chưa có đơn giá nhập hợp lệ. " +
                     "Vui lòng sửa lại đơn giá nhập trước khi duyệt.");
             }
@@ -1192,7 +1196,7 @@ public class StockDocumentService : IStockDocumentService
             var expectedBaseQuantity = line.Quantity * line.Factor;
             if (Math.Abs(line.BaseQuantity - expectedBaseQuantity) > 0.0001m)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} đang lệch số lượng quy đổi. " +
                     $"Đúng phải là SL nhập × Factor = {expectedBaseQuantity:n3}. " +
                     "Vui lòng sửa lại dòng trước khi duyệt.");
@@ -1207,7 +1211,7 @@ public class StockDocumentService : IStockDocumentService
             if (Math.Abs(line.LineTotal - expectedLineTotalFromAfterVat) > 0.01m &&
                 Math.Abs(line.LineTotal - expectedLineTotalFromBeforeVat) > 0.01m)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Dòng {line.LineNo} đang lệch thành tiền. " +
                     $"Vui lòng tải lại phiếu để hệ thống tính lại giá và VAT. " +
                     "Vui lòng sửa lại dòng trước khi duyệt.");
@@ -1237,13 +1241,13 @@ public class StockDocumentService : IStockDocumentService
                 }
                 catch (OverflowException)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Giá vốn đơn vị gốc dòng {line.LineNo} vượt giới hạn cho phép.");
                 }
 
                 if (baseUnitCost <= 0 || baseUnitCost > MaximumStoredBaseUnitCost)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng {line.LineNo} chưa tính được giá vốn đơn vị gốc hợp lệ.");
                 }
 
@@ -1341,10 +1345,10 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
         EnsureRowVersion(document.RowVersion, rowVersion);
 
         document.Status = StockDocumentStatus.Rejected;
@@ -1362,54 +1366,55 @@ public class StockDocumentService : IStockDocumentService
             status != StockDocumentStatus.PendingApproval &&
             status != StockDocumentStatus.Rejected)
         {
-            throw new InvalidOperationException("Phiếu hiện tại không được phép chỉnh sửa.");
+            throw new BusinessRuleException("Phiếu hiện tại không được phép chỉnh sửa.");
         }
     }
 
     private static void EnsureRowVersion(byte[] current, string? posted)
     {
         if (string.IsNullOrWhiteSpace(posted))
-            throw new InvalidOperationException("Thiếu RowVersion. Vui lòng tải lại phiếu.");
+            throw new BusinessRuleException("Thiếu RowVersion. Vui lòng tải lại phiếu.");
         byte[] expected;
         try { expected = Convert.FromBase64String(posted); }
-        catch (FormatException) { throw new InvalidOperationException("RowVersion không hợp lệ."); }
+        catch (FormatException) { throw new BusinessRuleException("RowVersion không hợp lệ."); }
         if (!current.SequenceEqual(expected))
-            throw new InvalidOperationException("Phiếu đã được người khác cập nhật. Vui lòng tải lại trang.");
+            throw new BusinessRuleException("Phiếu đã được người khác cập nhật. Vui lòng tải lại trang.");
     }
 
     private static void EnsureDirectLineEditing(StockDocument document)
     {
         if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || document.PurchaseOrderId.HasValue)
-            throw new InvalidOperationException("Dòng phiếu nhập từ đơn đặt hàng chỉ được tạo qua chức năng Nhận hàng của đơn.");
+            throw new BusinessRuleException("Dòng phiếu nhập từ đơn đặt hàng chỉ được tạo qua chức năng Nhận hàng của đơn.");
     }
 
     private static void ValidateReceiptSourceAndShortages(StockDocument document)
     {
         if (document.ReceiptSource == PurchaseReceiptSource.Direct && string.IsNullOrWhiteSpace(document.DirectReceiptReason))
-            throw new InvalidOperationException("Phiếu nhập ngoài đơn bắt buộc phải có nguồn nhập.");
+            throw new BusinessRuleException("Phiếu nhập ngoài đơn bắt buộc phải có nguồn nhập.");
 
         if (document.ReceiptSource != PurchaseReceiptSource.PurchaseOrder)
             return;
 
         var order = document.PurchaseOrder
-            ?? throw new InvalidOperationException("Phiếu nhập bị mất liên kết đơn đặt hàng.");
+            ?? throw new InvalidOperationException(
+                "Purchase-order receipt is missing its purchase-order relation.");
         if (order.Status is not (PurchaseOrderStatus.Approved or PurchaseOrderStatus.SentToSupplier or PurchaseOrderStatus.PartiallyReceived))
-            throw new InvalidOperationException("Trạng thái đơn đặt hàng không còn cho phép nhận hàng.");
+            throw new BusinessRuleException("Trạng thái đơn đặt hàng không còn cho phép nhận hàng.");
         if (document.SupplierId != order.SupplierId || document.WarehouseId != order.ExpectedWarehouseId)
-            throw new InvalidOperationException("Nhà cung cấp hoặc kho nhận không khớp đơn đặt hàng.");
+            throw new BusinessRuleException("Nhà cung cấp hoặc kho nhận không khớp đơn đặt hàng.");
         if (document.Warehouse?.LegalEntityId != order.LegalEntityId)
-            throw new InvalidOperationException("HKD của kho nhận không khớp đơn đặt hàng.");
+            throw new BusinessRuleException("HKD của kho nhận không khớp đơn đặt hàng.");
 
         var orderLines = order.Lines.Where(x => !x.IsDeleted).ToDictionary(x => x.Id);
         foreach (var line in document.Lines.Where(x => !x.IsDeleted))
         {
             if (!line.PurchaseOrderLineId.HasValue || !orderLines.TryGetValue(line.PurchaseOrderLineId.Value, out var orderLine))
-                throw new InvalidOperationException($"Dòng {line.LineNo} không liên kết đúng dòng đơn đặt hàng.");
+                throw new BusinessRuleException($"Dòng {line.LineNo} không liên kết đúng dòng đơn đặt hàng.");
             if (line.ProductVariantId != orderLine.ProductVariantId ||
                 line.ProductUnitConversionId != orderLine.ProductUnitConversionId ||
                 line.UnitId != orderLine.UnitId ||
                 line.Factor != orderLine.ConversionFactor)
-                throw new InvalidOperationException($"Dòng {line.LineNo} không khớp snapshot sản phẩm/đơn vị của đơn đặt hàng.");
+                throw new BusinessRuleException($"Dòng {line.LineNo} không khớp snapshot sản phẩm/đơn vị của đơn đặt hàng.");
 
             PurchaseReceiptPolicy.ValidateLine(
                 orderLine.PendingQuantity,
@@ -1528,7 +1533,7 @@ public class StockDocumentService : IStockDocumentService
         }
         catch (OverflowException)
         {
-            throw new InvalidOperationException("Tổng tiền phiếu vượt giới hạn cho phép.");
+            throw new BusinessRuleException("Tổng tiền phiếu vượt giới hạn cho phép.");
         }
 
         document.TotalAmount = PurchasePricingPolicy.RoundMoney(totalAmount);
@@ -1552,7 +1557,7 @@ public class StockDocumentService : IStockDocumentService
     private static void EnsureStoredMoney(decimal value, string fieldName)
     {
         if (value < 0m || value > MaximumStoredMoney)
-            throw new InvalidOperationException($"{fieldName} vượt giới hạn lưu trữ cho phép.");
+            throw new BusinessRuleException($"{fieldName} vượt giới hạn lưu trữ cho phép.");
     }
 
     private static int TryParseSequence(string documentNo, string prefix)
@@ -1572,18 +1577,18 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetByIdAsync(request.StockDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Không tìm thấy phiếu nhập kho.");
+            throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
 
         EnsureEditable(document.Status);
 
         if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || document.PurchaseOrderId.HasValue)
-            throw new InvalidOperationException("Không thể đổi kho, nhà cung cấp hoặc HKD của phiếu nhập tạo từ đơn đặt hàng.");
+            throw new BusinessRuleException("Không thể đổi kho, nhà cung cấp hoặc HKD của phiếu nhập tạo từ đơn đặt hàng.");
 
         if (!request.WarehouseId.HasValue || request.WarehouseId.Value <= 0)
-            throw new InvalidOperationException("Vui lòng chọn kho.");
+            throw new BusinessRuleException("Vui lòng chọn kho.");
 
         if (!request.LegalEntityId.HasValue || request.LegalEntityId.Value <= 0)
-            throw new InvalidOperationException("Vui lòng chọn HKD nhập hàng.");
+            throw new BusinessRuleException("Vui lòng chọn HKD nhập hàng.");
 
         var warehouse = await _warehouseRepository.GetByIdAsync(request.WarehouseId.Value, ct);
         StockReceiptLegalEntityPolicy.EnsureWarehouseSelectable(
@@ -1594,7 +1599,7 @@ public class StockDocumentService : IStockDocumentService
         {
             var supplierExists = await _stockDocumentRepository.SupplierExistsAsync(request.SupplierId.Value, ct);
             if (!supplierExists)
-                throw new InvalidOperationException("Nhà cung cấp không tồn tại.");
+                throw new BusinessRuleException("Nhà cung cấp không tồn tại.");
         }
 
         document.WarehouseId = request.WarehouseId.Value;
@@ -1724,7 +1729,7 @@ public class StockDocumentService : IStockDocumentService
         if (!storeId.HasValue || storeId.Value <= 0)
         {
             throw new InvalidOperationException(
-                "Không xác định được cửa hàng hiện tại. Vui lòng đăng nhập lại hoặc kiểm tra tenant.");
+                "Current store context is unavailable.");
         }
 
         return storeId.Value;
@@ -1740,21 +1745,21 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được đề nghị sửa.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được đề nghị sửa.");
 
         if (document.HasRevisionRequest)
-            throw new InvalidOperationException("Phiếu này đã có yêu cầu sửa, vui lòng chờ quản lý xử lý.");
+            throw new BusinessRuleException("Phiếu này đã có yêu cầu sửa, vui lòng chờ quản lý xử lý.");
 
         note = (note ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(note))
-            throw new InvalidOperationException("Vui lòng nhập lý do đề nghị sửa.");
+            throw new BusinessRuleException("Vui lòng nhập lý do đề nghị sửa.");
 
         if (note.Length > 1000)
-            throw new InvalidOperationException("Lý do đề nghị sửa không được vượt quá 1000 ký tự.");
+            throw new BusinessRuleException("Lý do đề nghị sửa không được vượt quá 1000 ký tự.");
 
         document.HasRevisionRequest = true;
         document.RevisionRequestNote = note;
@@ -1772,13 +1777,13 @@ public class StockDocumentService : IStockDocumentService
     {
         var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới xử lý được yêu cầu sửa.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới xử lý được yêu cầu sửa.");
 
         if (!document.HasRevisionRequest)
-            throw new InvalidOperationException("Phiếu này chưa có yêu cầu sửa.");
+            throw new BusinessRuleException("Phiếu này chưa có yêu cầu sửa.");
 
         document.HasRevisionRequest = false;
         document.RevisionResolvedAtUtc = DateTime.UtcNow;

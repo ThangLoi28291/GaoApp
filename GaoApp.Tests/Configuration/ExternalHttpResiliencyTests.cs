@@ -282,6 +282,34 @@ public sealed class ExternalHttpResiliencyTests
     }
 
     [Fact]
+    public async Task Issue_log_failure_should_keep_provider_result_and_emit_safe_telemetry()
+    {
+        const string secret = "synthetic-log-secret";
+        var handler = JsonHandler(
+            """
+            {
+              "errorCode": null,
+              "result": {
+                "invoiceNo": "SYNTHETIC-INVOICE",
+                "transactionID": "SYNTHETIC-TRANSACTION"
+              }
+            }
+            """);
+        var logs = new RecordingLogRepository
+        {
+            AddException = new IOException(secret)
+        };
+        var logger = new RecordingLogger<ViettelInvoiceIssueClient>();
+        var result = await IssueSyntheticInvoiceAsync(
+            CreateIssueClient(handler, logs, logger));
+
+        Assert.True(result.IsSuccess);
+        var message = Assert.Single(logger.Messages);
+        Assert.Contains(nameof(IOException), message, StringComparison.Ordinal);
+        Assert.DoesNotContain(secret, message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Issue_result_success_data_failure_should_fail()
     {
         const string rawSentinel = "provider-secret";
@@ -3460,14 +3488,16 @@ public sealed class ExternalHttpResiliencyTests
 
     private static ViettelInvoiceIssueClient CreateIssueClient(
         RecordingHandler handler,
-        RecordingLogRepository logs)
+        RecordingLogRepository logs,
+        ILogger<ViettelInvoiceIssueClient>? logger = null)
     {
         return new ViettelInvoiceIssueClient(
             new HttpClient(handler)
             {
                 Timeout = TimeSpan.FromSeconds(2)
             },
-            logs);
+            logs,
+            logger);
     }
 
     private static VietQrTaxCodeLookupService CreateTaxLookupClient(
@@ -3557,12 +3587,17 @@ public sealed class ExternalHttpResiliencyTests
     private sealed class RecordingLogRepository : IInvoiceIntegrationLogRepository
     {
         public List<InvoiceIntegrationLog> Items { get; } = [];
+        public Exception? AddException { get; set; }
 
         public Task AddAsync(
             InvoiceIntegrationLog log,
             CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (AddException is not null)
+                return Task.FromException(AddException);
+
             Items.Add(log);
             return Task.CompletedTask;
         }

@@ -12,15 +12,18 @@ public class TerminalResolutionMiddleware : IMiddleware
     private readonly IPOSTerminalRepository _terminalRepository;
     private readonly ICurrentStore _currentStore;
     private readonly AppDbContext _db;
+    private readonly ILogger<TerminalResolutionMiddleware> _logger;
 
     public TerminalResolutionMiddleware(
         IPOSTerminalRepository terminalRepository,
         ICurrentStore currentStore,
-        AppDbContext db)
+        AppDbContext db,
+        ILogger<TerminalResolutionMiddleware> logger)
     {
         _terminalRepository = terminalRepository;
         _currentStore = currentStore;
         _db = db;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context, RequestDelegate next)
@@ -81,10 +84,19 @@ public class TerminalResolutionMiddleware : IMiddleware
                 }
             }
         }
-        catch
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             // Không chặn request nếu resolve terminal lỗi.
             // Login page vẫn render để người dùng có thể chọn/ghép lại POS.
+            _logger.LogWarning(
+                "Terminal resolution failed; continuing without terminal context. TraceId={TraceId}; Path={Path}; ExceptionType={ExceptionType}",
+                context.TraceIdentifier,
+                context.Request.Path,
+                ex.GetType().Name);
         }
 
         await next(context);

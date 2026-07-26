@@ -7,6 +7,8 @@ using GaoApp.Web.Areas.Admin.Models.Inventory;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -157,9 +159,9 @@ public class StockDocumentManagementController : Controller
             await _stockDocumentService.UpdateHeaderAsync(request, ct);
             return Json(new { success = true, message = "Cập nhật thông tin phiếu thành công." });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            return BadRequest(new { success = false, message = ex.Message });
+            return BadRequest(new { success = false, message = ex.SafeMessage });
         }
     }
 
@@ -172,7 +174,7 @@ public class StockDocumentManagementController : Controller
         try
         {
             var document = await _stockDocumentService.GetDetailAsync(id, ct)
-                ?? throw new InvalidOperationException("Phiếu nhập kho không tồn tại.");
+                ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
             var approvePolicy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
                 ? PermissionCodes.Purchase.Receipt.Approve
                 : PermissionCodes.Inventory.StockDocument.Approve;
@@ -183,9 +185,9 @@ public class StockDocumentManagementController : Controller
                 ? "Đã đặt lại phân bổ vận chuyển tự động."
                 : "Đã lưu phí và phân bổ vận chuyển.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
         return RedirectToAction(nameof(Edit), new { id });
     }

@@ -1,4 +1,5 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.Units;
+using GaoApp.Application.Common;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,16 @@ public sealed class UnitRepository : IUnitRepository
     public void Remove(Unit entity)
     => _db.Set<Unit>().Remove(entity);
 
-    public Task SaveChangesAsync(CancellationToken ct = default)
-        => _db.SaveChangesAsync(ct);
+    public async Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new ConcurrencyException(
+                "Dữ liệu đã được người khác thay đổi. Vui lòng tải lại và thử lại.");
+        }
+    }
 }

@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Inventory;
 
 /// <summary>
@@ -81,7 +83,7 @@ public class StockCountService : IStockCountService
     {
         var warehouseExists = await _stockCountRepository.WarehouseExistsAsync(request.WarehouseId, ct);
         if (!warehouseExists)
-            throw new InvalidOperationException("Kho không tồn tại.");
+            throw new BusinessRuleException("Kho không tồn tại.");
 
         var document = new StockCountDocument
         {
@@ -94,14 +96,7 @@ public class StockCountService : IStockCountService
 
         await _stockCountRepository.AddAsync(document, ct);
 
-        try
-        {
-            await _stockCountRepository.SaveChangesAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Không tạo được phiếu kiểm kê do trùng số phiếu. Vui lòng thử lại.", ex);
-        }
+        await _stockCountRepository.SaveChangesAsync(ct);
 
         return document.Id;
     }
@@ -196,16 +191,16 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetByIdAsync(request.StockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Không tìm thấy phiếu kiểm kê.");
+            throw new BusinessRuleException("Không tìm thấy phiếu kiểm kê.");
 
         EnsureEditable(document.Status);
 
         if (!request.WarehouseId.HasValue || request.WarehouseId.Value <= 0)
-            throw new InvalidOperationException("Vui lòng chọn kho.");
+            throw new BusinessRuleException("Vui lòng chọn kho.");
 
         var warehouseExists = await _stockCountRepository.WarehouseExistsAsync(request.WarehouseId.Value, ct);
         if (!warehouseExists)
-            throw new InvalidOperationException("Kho không tồn tại.");
+            throw new BusinessRuleException("Kho không tồn tại.");
 
         document.WarehouseId = request.WarehouseId.Value;
         document.DocumentDate = request.DocumentDate ?? document.DocumentDate;
@@ -218,13 +213,13 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
         EnsureEditable(document.Status);
 
         var variant = await _stockCountRepository.GetVariantForStockCountAsync(request.ProductVariantId, ct);
         if (variant == null)
-            throw new InvalidOperationException("Sản phẩm không tồn tại.");
+            throw new BusinessRuleException("Sản phẩm không tồn tại.");
 
         var unitInfo = await _inventoryUnitResolver.ResolveAsync(
             request.ProductVariantId,
@@ -319,7 +314,7 @@ public class StockCountService : IStockCountService
     {
         var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
         if (line == null)
-            throw new InvalidOperationException("Dòng kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
 
         EnsureEditable(line.StockCountDocument.Status);
 
@@ -354,7 +349,7 @@ public class StockCountService : IStockCountService
     {
         var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
         if (line == null)
-            throw new InvalidOperationException("Dòng kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
 
         EnsureEditable(line.StockCountDocument.Status);
 
@@ -377,7 +372,7 @@ public class StockCountService : IStockCountService
         if (status != StockCountDocumentStatus.Draft &&
             status != StockCountDocumentStatus.Rejected)
         {
-            throw new InvalidOperationException("Chỉ phiếu kiểm kê ở trạng thái Draft hoặc Rejected mới được chỉnh sửa.");
+            throw new BusinessRuleException("Chỉ phiếu kiểm kê ở trạng thái Draft hoặc Rejected mới được chỉnh sửa.");
         }
     }
 
@@ -408,13 +403,13 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
         if (document.Status != StockCountDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu kiểm kê đang chờ duyệt mới được xác nhận.");
+            throw new BusinessRuleException("Chỉ phiếu kiểm kê đang chờ duyệt mới được xác nhận.");
 
         if (!document.Lines.Any())
-            throw new InvalidOperationException("Phiếu kiểm kê chưa có dòng chi tiết.");
+            throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
 
         await _stockCountRepository.BeginTransactionAsync(ct);
 
@@ -480,7 +475,7 @@ public class StockCountService : IStockCountService
 
                         if (resolvedCost <= 0)
                         {
-                            throw new InvalidOperationException(
+                            throw new BusinessRuleException(
                                 $"Không xác định được giá vốn cho dòng kiểm kê #{line.LineNo} (variant {line.ProductVariantId}).");
                         }
 
@@ -542,16 +537,16 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
         if (document.Status != StockCountDocumentStatus.Draft &&
             document.Status != StockCountDocumentStatus.Rejected)
         {
-            throw new InvalidOperationException("Chỉ phiếu Draft hoặc Rejected mới được gửi duyệt.");
+            throw new BusinessRuleException("Chỉ phiếu Draft hoặc Rejected mới được gửi duyệt.");
         }
 
         if (!document.Lines.Any())
-            throw new InvalidOperationException("Phiếu kiểm kê chưa có dòng chi tiết.");
+            throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
 
         document.Status = StockCountDocumentStatus.PendingApproval;
         await _stockCountRepository.SaveChangesAsync(ct);
@@ -561,10 +556,10 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetByIdAsync(stockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
         if (document.Status != StockCountDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
 
         document.Status = StockCountDocumentStatus.Rejected;
         await _stockCountRepository.SaveChangesAsync(ct);
@@ -574,7 +569,7 @@ public class StockCountService : IStockCountService
     {
         var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
         if (document == null)
-            throw new InvalidOperationException("Phiếu kiểm kê không tồn tại.");
+            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
         EnsureEditable(document.Status);
 

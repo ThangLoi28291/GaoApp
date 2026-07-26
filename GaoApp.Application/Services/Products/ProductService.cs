@@ -12,6 +12,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Products;
 
 public sealed class ProductService : IProductService
@@ -70,9 +72,8 @@ public sealed class ProductService : IProductService
                 return candidate;
         }
 
-        throw new InvalidOperationException(
-            $"Không thể tự sinh barcode nội bộ cho variant {variantId} trong store {storeId}. " +
-            "Tất cả prefix từ 20 đến 29 đều đã bị chiếm.");
+        throw new BusinessRuleException(
+            "Không thể cấp barcode nội bộ cho sản phẩm. Vui lòng thử lại hoặc liên hệ quản lý.");
     }
 
     public async Task<Result<int>> CreateAsync(
@@ -224,19 +225,12 @@ public sealed class ProductService : IProductService
 
             return Result<int>.Success(entity.Id);
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
             return Result<int>.Failure(
                 Error.Validation(
-                    "Product",
-                    ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result<int>.Failure(
-                Error.Failure(
-                    $"Tạo sản phẩm thất bại: " +
-                    $"{ex.InnerException?.Message ?? ex.Message}"));
+                    "Product.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -378,19 +372,12 @@ public sealed class ProductService : IProductService
 
             return Result.Success();
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
             return Result.Failure(
                 Error.Validation(
-                    "Product",
-                    ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(
-                Error.Failure(
-                    $"Cập nhật sản phẩm thất bại: " +
-                    $"{ex.InnerException?.Message ?? ex.Message}"));
+                    "Product.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -411,13 +398,12 @@ public sealed class ProductService : IProductService
                 ? Result.Success()
                 : Result.Failure(Error.NotFound("Xóa sản phẩm thất bại."));
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
-            return Result.Failure(Error.Validation("Product", ex.Message));
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure(Error.Failure(ex.InnerException?.Message ?? ex.Message));
+            return Result.Failure(
+                Error.Validation(
+                    "Product.BusinessRule",
+                    ex.SafeMessage));
         }
     }
 
@@ -452,11 +438,14 @@ public sealed class ProductService : IProductService
         try
         {
             return JsonSerializer.Deserialize<List<ProductImageStateDto>>(json)
-                   ?? new List<ProductImageStateDto>();
+                   ?? throw new BusinessRuleException(
+                       "Dữ liệu trạng thái ảnh không hợp lệ.");
         }
-        catch
+        catch (JsonException ex)
         {
-            return new List<ProductImageStateDto>();
+            throw new BusinessRuleException(
+                "Dữ liệu trạng thái ảnh không hợp lệ.",
+                ex);
         }
     }
 

@@ -5,6 +5,8 @@ using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -65,11 +67,11 @@ public class BarcodeNormalizationController : Controller
                 message = "Đã duyệt barcode và thêm vào hệ thống."
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -94,11 +96,11 @@ public class BarcodeNormalizationController : Controller
                 message = "Đã từ chối yêu cầu barcode."
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -123,11 +125,11 @@ public class BarcodeNormalizationController : Controller
                 message = "Đã xác nhận đơn vị này không có barcode nhà sản xuất."
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -141,7 +143,8 @@ public class BarcodeNormalizationController : Controller
         if (int.TryParse(value, out var storeId) && storeId > 0)
             return storeId;
 
-        throw new InvalidOperationException("Không xác định được StoreId.");
+        throw new InvalidOperationException(
+            "Current store claim is unavailable.");
     }
 
     private int GetCurrentUserId()
@@ -154,6 +157,7 @@ public class BarcodeNormalizationController : Controller
         if (int.TryParse(value, out var userId) && userId > 0)
             return userId;
 
-        throw new InvalidOperationException("Không xác định được UserId.");
+        throw new InvalidOperationException(
+            "Current user claim is unavailable.");
     }
 }

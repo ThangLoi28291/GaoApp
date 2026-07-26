@@ -5,10 +5,14 @@ namespace GaoApp.Web.Hubs;
 public sealed class PosRealtimeNotifier : IPosRealtimeNotifier
 {
     private readonly IHubContext<PosHub> _hubContext;
+    private readonly ILogger<PosRealtimeNotifier> _logger;
 
-    public PosRealtimeNotifier(IHubContext<PosHub> hubContext)
+    public PosRealtimeNotifier(
+        IHubContext<PosHub> hubContext,
+        ILogger<PosRealtimeNotifier> logger)
     {
         _hubContext = hubContext;
+        _logger = logger;
     }
 
     public async Task NotifyStoreAsync(
@@ -31,9 +35,12 @@ public sealed class PosRealtimeNotifier : IPosRealtimeNotifier
             storeId, terminalId, eventType, orderId, relatedOrderId,
             cartChanged, heldChanged, summaryChanged, paymentsChanged, customerChanged, message);
 
-        await _hubContext.Clients
-            .Group($"store:{storeId}")
-            .SendAsync("pos:event", payload, ct);
+        await SendBestEffortAsync(
+            $"store:{storeId}",
+            payload,
+            storeId,
+            eventType,
+            ct);
     }
 
     public async Task NotifyTerminalAsync(
@@ -58,9 +65,40 @@ public sealed class PosRealtimeNotifier : IPosRealtimeNotifier
             storeId, terminalId, eventType, orderId, relatedOrderId,
             cartChanged, heldChanged, summaryChanged, paymentsChanged, customerChanged, message);
 
-        await _hubContext.Clients
-            .Group($"store:{storeId}:terminal:{terminalId}")
-            .SendAsync("pos:event", payload, ct);
+        await SendBestEffortAsync(
+            $"store:{storeId}:terminal:{terminalId}",
+            payload,
+            storeId,
+            eventType,
+            ct);
+    }
+
+    private async Task SendBestEffortAsync(
+        string groupName,
+        PosRealtimeEvent payload,
+        int storeId,
+        string eventType,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group(groupName)
+                .SendAsync("pos:event", payload, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Realtime notification is secondary to the committed POS operation.
+            _logger.LogWarning(
+                "POS realtime notification failed; primary operation remains successful. StoreId={StoreId}; EventType={EventType}; ExceptionType={ExceptionType}",
+                storeId,
+                eventType,
+                ex.GetType().Name);
+        }
     }
 
     private static PosRealtimeEvent BuildPayload(

@@ -8,6 +8,8 @@ using GaoApp.Domain.Enums;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -15,13 +17,16 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
 {
     private readonly HttpClient _httpClient;
     private readonly IInvoiceIntegrationLogRepository _logRepository;
+    private readonly ILogger<ViettelInvoiceLookupClient> _logger;
 
     public ViettelInvoiceLookupClient(
         HttpClient httpClient,
-        IInvoiceIntegrationLogRepository logRepository)
+        IInvoiceIntegrationLogRepository logRepository,
+        ILogger<ViettelInvoiceLookupClient>? logger = null)
     {
         _httpClient = httpClient;
         _logRepository = logRepository;
+        _logger = logger ?? NullLogger<ViettelInvoiceLookupClient>.Instance;
     }
 
     public async Task<Result<ViettelInvoiceLookupResultDto>> SearchByTransactionUuidAsync(
@@ -581,9 +586,14 @@ public class ViettelInvoiceLookupClient : IViettelInvoiceLookupClient
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
             // Không để lỗi ghi log làm hỏng tra cứu.
+            _logger.LogWarning(
+                "Invoice integration-log persistence failed; provider result is preserved. Operation={Operation}; InvoiceHeadId={InvoiceHeadId}; ExceptionType={ExceptionType}",
+                "LookupInvoice",
+                invoiceHeadId,
+                ex.GetType().Name);
         }
     }
 

@@ -73,11 +73,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "GaoApp.Migrator terminated unexpectedly");
-    // The exception has already been recorded with its full stack trace.
-    // Do not rethrow from the console entry point: on Windows that turns a
-    // configuration error into the opaque 0xe0434352 application-error dialog.
-    // A non-zero exit code still lets scripts/deployments detect the failure.
-    Environment.ExitCode = 1;
+    throw;
 }
 finally
 {

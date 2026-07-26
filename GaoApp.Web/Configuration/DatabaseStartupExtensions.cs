@@ -3,7 +3,6 @@ using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Data.Seed;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Serilog;
 
 namespace GaoApp.Web.Configuration;
 
@@ -24,12 +23,10 @@ public static class DatabaseStartupExtensions
         using var scope = app.Services.CreateScope();
         var services = scope.ServiceProvider;
 
-        try
-        {
-            var db = services.GetRequiredService<AppDbContext>();
-            var seedOptions = services
-                .GetRequiredService<IOptions<SeedDataOptions>>()
-                .Value;
+        var db = services.GetRequiredService<AppDbContext>();
+        var seedOptions = services
+            .GetRequiredService<IOptions<SeedDataOptions>>()
+            .Value;
 
             // ============================================
             // MIGRATION
@@ -65,11 +62,5 @@ public static class DatabaseStartupExtensions
                     await SecuritySeedData.SeedUserInStoresAsync(db, storeId);
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Log.Fatal(ex, "Database migration/seed failed in GaoApp.Web");
-            throw;
-        }
     }
 }

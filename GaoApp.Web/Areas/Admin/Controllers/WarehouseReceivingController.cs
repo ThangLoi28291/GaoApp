@@ -8,6 +8,8 @@ using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -202,9 +204,9 @@ public class WarehouseReceivingController : Controller
                 }
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return BadRequest(new { message = ex.SafeMessage });
         }
     }
     [HttpGet("{id:int}/lines")]

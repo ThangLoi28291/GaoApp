@@ -3,6 +3,8 @@ using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -12,16 +14,13 @@ public class ProductUnitConversionController : Controller
 {
     private readonly IProductUnitConversionService _productUnitConversionService;
     private readonly IBarcodeLookupService _barcodeLookupService;
-    private readonly ILogger<ProductUnitConversionController> _logger;
 
     public ProductUnitConversionController(
         IProductUnitConversionService productUnitConversionService,
-        IBarcodeLookupService barcodeLookupService,
-        ILogger<ProductUnitConversionController> logger)
+        IBarcodeLookupService barcodeLookupService)
     {
         _productUnitConversionService = productUnitConversionService;
         _barcodeLookupService = barcodeLookupService;
-        _logger = logger;
     }
 
     [HttpGet]
@@ -36,27 +35,14 @@ public class ProductUnitConversionController : Controller
             });
         }
 
-        try
-        {
-            var data = await _productUnitConversionService.GetByVariantIdAsync(productVariantId, ct);
+        var data = await _productUnitConversionService.GetByVariantIdAsync(productVariantId, ct);
 
-            return Json(new
-            {
-                ok = true,
-                message = "Lấy dữ liệu thành công.",
-                data
-            });
-        }
-        catch (Exception ex)
+        return Json(new
         {
-            _logger.LogError(ex, "Lỗi khi lấy ProductUnitConversion theo ProductVariantId = {ProductVariantId}", productVariantId);
-
-            return Json(new
-            {
-                ok = false,
-                message = ex.Message
-            });
-        }
+            ok = true,
+            message = "Lấy dữ liệu thành công.",
+            data
+        });
     }
 
     [HttpPost]
@@ -88,14 +74,12 @@ public class ProductUnitConversionController : Controller
                 id
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            _logger.LogError(ex, "Lỗi khi lưu ProductUnitConversion cho ProductVariantId = {ProductVariantId}", dto.ProductVariantId);
-
             return Json(new
             {
                 ok = false,
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -115,20 +99,12 @@ public class ProductUnitConversionController : Controller
                 message = "Lưu barcode thành công."
             });
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
             return Json(new
             {
                 ok = false,
-                message = ex.Message
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new
-            {
-                ok = false,
-                message = ex.InnerException?.Message ?? ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -148,27 +124,14 @@ public class ProductUnitConversionController : Controller
             });
         }
 
-        try
-        {
-            var data = await _productUnitConversionService.GetBarcodeHistoryByConversionIdAsync(productUnitConversionId, take, ct);
+        var data = await _productUnitConversionService.GetBarcodeHistoryByConversionIdAsync(productUnitConversionId, take, ct);
 
-            return Json(new
-            {
-                ok = true,
-                message = "Lấy lịch sử barcode thành công.",
-                data
-            });
-        }
-        catch (Exception ex)
+        return Json(new
         {
-            _logger.LogError(ex, "Lỗi khi lấy lịch sử barcode cho ProductUnitConversionId = {ProductUnitConversionId}", productUnitConversionId);
-
-            return Json(new
-            {
-                ok = false,
-                message = ex.Message
-            });
-        }
+            ok = true,
+            message = "Lấy lịch sử barcode thành công.",
+            data
+        });
     }
 
     [HttpPost]
@@ -189,35 +152,22 @@ public class ProductUnitConversionController : Controller
             });
         }
 
-        try
+        var result = await _barcodeLookupService.FindAsync(dto.Barcode, ct);
+
+        if (result == null)
         {
-            var result = await _barcodeLookupService.FindAsync(dto.Barcode, ct);
-
-            if (result == null)
-            {
-                return Json(new
-                {
-                    ok = false,
-                    message = "Không tìm thấy barcode."
-                });
-            }
-
-            return Json(new
-            {
-                ok = true,
-                message = "Tra barcode thành công.",
-                data = result
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi khi lookup barcode = {Barcode}", dto.Barcode);
-
             return Json(new
             {
                 ok = false,
-                message = ex.Message
+                message = "Không tìm thấy barcode."
             });
         }
+
+        return Json(new
+        {
+            ok = true,
+            message = "Tra barcode thành công.",
+            data = result
+        });
     }
 }

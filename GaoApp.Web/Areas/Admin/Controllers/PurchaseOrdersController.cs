@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -227,9 +229,9 @@ public sealed class PurchaseOrdersController : Controller
             TempData["Success"] = "Đã lưu đơn đặt hàng.";
             return RedirectToAction(nameof(Details), new { id });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(string.Empty, ex.SafeMessage);
             return View("Edit", await BuildEditViewModelAsync(request, ct));
         }
     }
@@ -256,9 +258,9 @@ public sealed class PurchaseOrdersController : Controller
             TempData["Success"] = "Đã lưu điều khoản đặt hàng; sản phẩm và số lượng duyệt được giữ nguyên.";
             return RedirectToAction(nameof(Details), new { id });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(string.Empty, ex.SafeMessage);
             return View("CommercialEdit", await BuildCommercialEditViewModelAsync(id, request, ct));
         }
     }
@@ -329,9 +331,9 @@ public sealed class PurchaseOrdersController : Controller
             await _procurementCatalogService.ResolvePurchaseOrderLineAsync(id, lineId, request, ct);
             TempData["Success"] = "Đã liên kết hàng mô tả với sản phẩm trong danh mục.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
         return RedirectToAction(nameof(Details), new { id });
     }
@@ -357,9 +359,9 @@ public sealed class PurchaseOrdersController : Controller
             TempData["Success"] =
                 $"Đã tạo sản phẩm chờ hoàn thiện '{created.ProductName}' và liên kết với dòng đặt hàng.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
         return RedirectToAction(nameof(Details), new { id });
     }
@@ -417,9 +419,9 @@ public sealed class PurchaseOrdersController : Controller
             TempData["Success"] = "Đã tạo phiếu nhập từ đơn đặt hàng.";
             return RedirectToAction("Edit", "StockDocumentManagement", new { area = "Admin", id = receiptId });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
             return RedirectToAction(nameof(Details), new { id });
         }
     }
@@ -427,7 +429,7 @@ public sealed class PurchaseOrdersController : Controller
     private async Task<IActionResult> RunWorkflow(Func<Task> action, int id)
     {
         try { await action(); TempData["Success"] = "Đã cập nhật trạng thái đơn đặt hàng."; }
-        catch (Exception ex) { TempData["Error"] = ex.Message; }
+        catch (BusinessRuleException ex) { TempData["Error"] = ex.SafeMessage; }
         return RedirectToAction(nameof(Details), new { id });
     }
 
@@ -475,7 +477,7 @@ public sealed class PurchaseOrdersController : Controller
         CancellationToken ct)
     {
         var detail = await _service.GetDetailAsync(id, includeCost: false, ct)
-            ?? throw new InvalidOperationException("Đơn đặt hàng không tồn tại.");
+            ?? throw new BusinessRuleException("Đơn đặt hàng không tồn tại.");
         return new PurchaseOrderCommercialEditViewModel
         {
             Order = detail,

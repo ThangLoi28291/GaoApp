@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Inventory;
 
 /// <summary>
@@ -56,16 +58,16 @@ public class InventoryMovementService : IInventoryMovementService
             throw new ArgumentNullException(nameof(request));
 
         if (request.WarehouseId <= 0)
-            throw new InvalidOperationException("WarehouseId không hợp lệ.");
+            throw new BusinessRuleException("WarehouseId không hợp lệ.");
 
         if (request.ProductVariantId <= 0)
-            throw new InvalidOperationException("ProductVariantId không hợp lệ.");
+            throw new BusinessRuleException("ProductVariantId không hợp lệ.");
 
         if (request.QuantityChange == 0)
-            throw new InvalidOperationException("QuantityChange phải khác 0.");
+            throw new BusinessRuleException("QuantityChange phải khác 0.");
 
         var warehouse = await _warehouseRepository.GetByIdAsync(request.WarehouseId, ct)
-            ?? throw new InvalidOperationException("Kho không tồn tại.");
+            ?? throw new BusinessRuleException("Kho không tồn tại.");
 
         if (request.SkipIfExists)
         {
@@ -115,7 +117,7 @@ public class InventoryMovementService : IInventoryMovementService
             && !warehouse.AllowNegativeInventory
             && afterQtyByTransaction < 0)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 $"Kho '{warehouse.Name}' không cho âm tồn. " +
                 $"BeforeQty={beforeQty}, Change={request.QuantityChange}, AfterQty={afterQtyByTransaction}.");
         }
@@ -319,7 +321,8 @@ public class InventoryMovementService : IInventoryMovementService
                 beforeQty,
                 beforeValue,
                 beforeAverageCost,
-                occurredAtUtc);
+                occurredAtUtc,
+                ct);
 
             if (valuationEntries.Count == 0)
                 throw new InvalidOperationException("Movement không sinh được InventoryValuationEntry.");
@@ -477,7 +480,8 @@ public class InventoryMovementService : IInventoryMovementService
         decimal beforeQty,
         decimal beforeValue,
         decimal beforeAverageCost,
-        DateTime occurredAtUtc)
+        DateTime occurredAtUtc,
+        CancellationToken ct)
     {
         var entries = new List<InventoryValuationEntry>();
 
@@ -509,7 +513,7 @@ public class InventoryMovementService : IInventoryMovementService
         {
             // Hàm này đang sync nên tạm dùng GetAwaiter/GetResult như hiện tại của bạn.
             var openLayers = _costLayerRepository
-                .GetOpenLayersForUpdateAsync(request.WarehouseId, request.ProductVariantId, CancellationToken.None)
+                .GetOpenLayersForUpdateAsync(request.WarehouseId, request.ProductVariantId, ct)
                 .GetAwaiter()
                 .GetResult();
 
@@ -682,7 +686,7 @@ public class InventoryMovementService : IInventoryMovementService
         DateTime occurredAtUtc)
     {
         if (!request.UnitCost.HasValue || request.UnitCost.Value <= 0)
-            throw new InvalidOperationException("Movement nhập phải có UnitCost hợp lệ.");
+            throw new BusinessRuleException("Movement nhập phải có UnitCost hợp lệ.");
 
         var qty = RoundQty(request.QuantityChange);
         var unitCost = RoundCost(request.UnitCost.Value);
@@ -775,7 +779,7 @@ public class InventoryMovementService : IInventoryMovementService
 
         if (provisionalUnitCost <= 0)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 "Không xác định được provisional cost hợp lệ cho phần xuất âm kho. " +
                 "Sản phẩm có thể chưa từng nhập kho và chưa có CostPrice nền.");
         }

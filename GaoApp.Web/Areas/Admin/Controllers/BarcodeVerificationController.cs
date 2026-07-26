@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -64,11 +66,11 @@ public class BarcodeVerificationController : ControllerBase
                 count
             });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
-                message = ex.Message
+                message = ex.SafeMessage
             });
         }
     }
@@ -82,7 +84,8 @@ public class BarcodeVerificationController : ControllerBase
         if (int.TryParse(value, out var storeId) && storeId > 0)
             return storeId;
 
-        throw new InvalidOperationException("Không xác định được StoreId.");
+        throw new InvalidOperationException(
+            "Current store claim is unavailable.");
     }
 
     private int GetCurrentUserId()
@@ -95,6 +98,7 @@ public class BarcodeVerificationController : ControllerBase
         if (int.TryParse(value, out var userId) && userId > 0)
             return userId;
 
-        throw new InvalidOperationException("Không xác định được UserId.");
+        throw new InvalidOperationException(
+            "Current user claim is unavailable.");
     }
 }

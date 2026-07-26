@@ -203,6 +203,128 @@ public sealed class ProductServiceNullSafetyTests
         Assert.Equal(0, imageService.SetPrimaryCalls);
     }
 
+    [Fact]
+    public async Task CreateAsync_should_propagate_unexpected_repository_exception()
+    {
+        var expected = new IOException("synthetic infrastructure failure");
+        var productRepo = new FakeProductRepository
+        {
+            SaveChangesException = expected
+        };
+        var service = CreateService(
+            productRepo,
+            new FakeProductImageService(),
+            new FakeProductVariantRepository());
+
+        var actual = await Assert.ThrowsAsync<IOException>(
+            () => service.CreateAsync(
+                storeId: 1,
+                new ProductCreateDto
+                {
+                    Name = "Sản phẩm",
+                    Alias = "san-pham",
+                    CategoryId = 1,
+                    SupplierId = 2,
+                    BaseUnitId = 3,
+                    BasePrice = 10_000m
+                },
+                userId: 99));
+
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
+    public async Task CreateAsync_should_propagate_technical_invalid_operation()
+    {
+        const string technicalDetail =
+            "Server=private-sql;Password=synthetic-secret";
+        var expected = new InvalidOperationException(technicalDetail);
+        var productRepo = new FakeProductRepository
+        {
+            SaveChangesException = expected
+        };
+        var service = CreateService(
+            productRepo,
+            new FakeProductImageService(),
+            new FakeProductVariantRepository());
+
+        var actual = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CreateAsync(
+                storeId: 1,
+                new ProductCreateDto
+                {
+                    Name = "Sản phẩm",
+                    Alias = "san-pham",
+                    CategoryId = 1,
+                    SupplierId = 2,
+                    BaseUnitId = 3,
+                    BasePrice = 10_000m
+                },
+                userId: 99));
+
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
+    public async Task CreateAsync_should_propagate_caller_cancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var productRepo = new FakeProductRepository
+        {
+            SaveChangesException = new OperationCanceledException(cts.Token)
+        };
+        var service = CreateService(
+            productRepo,
+            new FakeProductImageService(),
+            new FakeProductVariantRepository());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.CreateAsync(
+                storeId: 1,
+                new ProductCreateDto
+                {
+                    Name = "Sản phẩm",
+                    Alias = "san-pham",
+                    CategoryId = 1,
+                    SupplierId = 2,
+                    BaseUnitId = 3,
+                    BasePrice = 10_000m
+                },
+                userId: 99,
+                ct: cts.Token));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_should_reject_malformed_image_state_without_empty_success()
+    {
+        var productRepo = new FakeProductRepository
+        {
+            DetailResult = NewExistingProduct()
+        };
+        var imageService = new FakeProductImageService();
+        var service = CreateService(
+            productRepo,
+            imageService,
+            new FakeProductVariantRepository());
+        var request = NewUpdateRequest("Tên sản phẩm", "ten-san-pham");
+        request.ImagesStateJson = "{malformed-json";
+
+        var result = await service.UpdateAsync(
+            storeId: 1,
+            request,
+            userId: 99);
+
+        Assert.True(result.IsFailure);
+        Assert.Contains(
+            "trạng thái ảnh không hợp lệ",
+            result.Error.Message,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Product.BusinessRule", result.Error.Code);
+        Assert.Equal(0, imageService.SyncEditCalls);
+        Assert.Equal(0, productRepo.SaveChangesCalls);
+    }
+
     private static ProductService CreateService(
         FakeProductRepository productRepo,
         FakeProductImageService imageService,
@@ -260,6 +382,8 @@ public sealed class ProductServiceNullSafetyTests
         public int SaveChangesCalls { get; private set; }
 
         public bool AliasExists { get; set; }
+
+        public Exception? SaveChangesException { get; set; }
 
         public Task<PagedResult<ProductListItemDto>> GetPagedAsync(
             int storeId,
@@ -320,6 +444,10 @@ public sealed class ProductServiceNullSafetyTests
             CancellationToken ct = default)
         {
             SaveChangesCalls++;
+
+            if (SaveChangesException is not null)
+                return Task.FromException<int>(SaveChangesException);
+
             return Task.FromResult(SaveChangesCalls);
         }
 

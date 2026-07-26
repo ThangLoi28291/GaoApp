@@ -4,6 +4,8 @@ using GaoApp.Application.Interfaces.Repositories.Taxes;
 using GaoApp.Application.Interfaces.Services.Taxes;
 using GaoApp.Domain.Entities;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Taxes;
 
 public sealed class TaxService : ITaxService
@@ -56,20 +58,20 @@ public sealed class TaxService : ITaxService
     {
         var name = (dto.Name ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("Vui lòng nhập tên thuế");
+            throw new BusinessRuleException("Vui lòng nhập tên thuế");
 
         if (dto.Rate < 0 || dto.Rate > 100)
-            throw new InvalidOperationException("Thuế suất phải nằm trong khoảng 0–100%.");
+            throw new BusinessRuleException("Thuế suất phải nằm trong khoảng 0–100%.");
 
         var code = (dto.Code ?? string.Empty).Trim().ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(code))
             code = await GenerateTaxCodeAsync(storeId, ct);
 
         if (await _repo.ExistsCodeAsync(storeId, code, null, ct))
-            throw new InvalidOperationException("Mã thuế đã tồn tại.");
+            throw new BusinessRuleException("Mã thuế đã tồn tại.");
 
         if (await _repo.ExistsNameAsync(storeId, name, null, ct))
-            throw new InvalidOperationException("Tên thuế đã tồn tại.");
+            throw new BusinessRuleException("Tên thuế đã tồn tại.");
 
         var e = new Tax
         {
@@ -95,19 +97,19 @@ public sealed class TaxService : ITaxService
         var name = (dto.Name ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(code))
-            throw new InvalidOperationException("Vui lòng nhập mã thuế");
+            throw new BusinessRuleException("Vui lòng nhập mã thuế");
 
         if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("Vui lòng nhập tên thuế");
+            throw new BusinessRuleException("Vui lòng nhập tên thuế");
 
         if (dto.Rate < 0 || dto.Rate > 100)
-            throw new InvalidOperationException("Thuế suất phải nằm trong khoảng 0–100%.");
+            throw new BusinessRuleException("Thuế suất phải nằm trong khoảng 0–100%.");
 
         if (await _repo.ExistsCodeAsync(storeId, code, dto.Id, ct))
-            throw new InvalidOperationException("Mã thuế đã tồn tại.");
+            throw new BusinessRuleException("Mã thuế đã tồn tại.");
 
         if (await _repo.ExistsNameAsync(storeId, name, dto.Id, ct))
-            throw new InvalidOperationException("Tên thuế đã tồn tại.");
+            throw new BusinessRuleException("Tên thuế đã tồn tại.");
 
         if (dto.RowVersion is { Length: > 0 })
             e.RowVersion = dto.RowVersion;
@@ -122,12 +124,10 @@ public sealed class TaxService : ITaxService
             await _repo.SaveChangesAsync(ct);
             return true;
         }
-        catch (Exception ex)
+        catch (ConcurrencyException)
         {
-            if (ex.GetType().Name == "DbUpdateConcurrencyException")
-                throw new InvalidOperationException("Dữ liệu đã bị thay đổi bởi người khác. Vui lòng tải lại trang.");
-
-            throw;
+            throw new ConcurrencyException(
+                "Dữ liệu đã được người khác thay đổi. Vui lòng tải lại và thử lại.");
         }
     }
 

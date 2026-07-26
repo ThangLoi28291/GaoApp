@@ -1,6 +1,8 @@
 ﻿using GaoApp.Application.Interfaces.Services.Invoices;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -8,13 +10,16 @@ public class InvoiceFileStorage : IInvoiceFileStorage
 {
     private readonly IHostEnvironment _environment;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<InvoiceFileStorage> _logger;
 
     public InvoiceFileStorage(
         IHostEnvironment environment,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<InvoiceFileStorage>? logger = null)
     {
         _environment = environment;
         _configuration = configuration;
+        _logger = logger ?? NullLogger<InvoiceFileStorage>.Instance;
     }
 
     public async Task<string> SaveAsync(
@@ -52,8 +57,18 @@ public class InvoiceFileStorage : IInvoiceFileStorage
         }
         finally
         {
-            if (File.Exists(temporaryPath))
-                File.Delete(temporaryPath);
+            try
+            {
+                if (File.Exists(temporaryPath))
+                    DeleteTemporaryFile(temporaryPath);
+            }
+            catch (Exception cleanupEx)
+            {
+                // Cleanup is secondary and must not replace the write/cancel failure.
+                _logger.LogWarning(
+                    "Invoice temporary-file cleanup failed. ExceptionType={ExceptionType}",
+                    cleanupEx.GetType().Name);
+            }
         }
 
         // Lưu path tương đối để dùng web.
@@ -65,6 +80,9 @@ public class InvoiceFileStorage : IInvoiceFileStorage
         byte[] bytes,
         CancellationToken ct) =>
         File.WriteAllBytesAsync(temporaryPath, bytes, ct);
+
+    protected virtual void DeleteTemporaryFile(string temporaryPath) =>
+        File.Delete(temporaryPath);
 
     public async Task<(byte[] Bytes, string ContentType, string FileName)?> ReadAsync(
         string storedPath,

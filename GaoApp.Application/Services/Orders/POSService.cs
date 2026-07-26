@@ -26,6 +26,8 @@ using GaoApp.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Application.Services.Orders;
 
 public sealed class POSService : IPOSService
@@ -186,12 +188,16 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                     generateResult.Error?.Message);
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(
-                ex,
-                "Lỗi hậu xử lý Invoice sau POS finalize. POS vẫn đã hoàn tất. OrderId={OrderId}",
-                orderId);
+                "Lỗi hậu xử lý Invoice sau POS finalize. POS vẫn đã hoàn tất. OrderId={OrderId}; ExceptionType={ExceptionType}",
+                orderId,
+                ex.GetType().Name);
         }
     }
     private async Task<POSShift> RequireCurrentOpenShiftAsync(CancellationToken ct)
@@ -354,10 +360,18 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             await _auditLogs.AddAsync(log, ct);
             await _auditLogs.SaveChangesAsync(ct);
         }
-        catch
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             // Không throw lại để tránh lỗi ghi log làm fail nghiệp vụ chính.
-            // Sau này có thể bơm ILogger để ghi technical log.
+            _logger.LogWarning(
+                "Không thể ghi POS audit phụ; nghiệp vụ chính tiếp tục. Action={Action}; OrderId={OrderId}; ExceptionType={ExceptionType}",
+                action,
+                orderId,
+                ex.GetType().Name);
         }
     }
     /// <summary>
@@ -672,7 +686,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     string priceTier = CustomerPriceTiers.Retail)
     {
         var product = variant.Product
-            ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+            ?? throw new InvalidOperationException(
+                "Product variant is missing its product relation.");
 
         var baseUnitId = product.BaseUnitId;
         var baseUnitName = product.BaseUnit?.Name;
@@ -884,17 +899,19 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     {
         var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
         if (shift == null)
-            throw new InvalidOperationException("Không tìm thấy ca POS của đơn hàng.");
+            throw new InvalidOperationException(
+                "POS order is missing its shift relation.");
 
         if (shift.WarehouseId <= 0)
-            throw new InvalidOperationException("Ca POS chưa cấu hình kho xuất bán.");
+            throw new BusinessRuleException("Ca POS chưa cấu hình kho xuất bán.");
 
         var warehouse = await _warehouses.GetByIdAsync(shift.WarehouseId, ct);
         if (warehouse == null)
-            throw new InvalidOperationException("Không tìm thấy kho của ca POS.");
+            throw new InvalidOperationException(
+                "POS shift is missing its warehouse relation.");
 
         if (!warehouse.IsActive)
-            throw new InvalidOperationException("Kho của ca POS đã ngưng hoạt động.");
+            throw new BusinessRuleException("Kho của ca POS đã ngưng hoạt động.");
 
         return warehouse;
     }
@@ -917,7 +934,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             if (variant == null)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Không tìm thấy ProductVariant #{line.VariantId} hoặc variant đã bị inactive/deleted.");
             }
 
@@ -1383,7 +1400,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             if (sourceEntries.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"Không tìm thấy valuation gốc của OrderLine #{line.Id} để void.");
+                    "Completed order line is missing source valuation entries.");
             }
 
             // Chỉ lấy outbound sale gốc
@@ -1395,7 +1412,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             if (outboundEntries.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"OrderLine #{line.Id} không có outbound valuation để void.");
+                    "Completed order line is missing outbound valuation entries.");
             }
 
             // GHI CHÚ:
@@ -1410,7 +1427,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 if (entry.UnitCost <= 0)
                 {
                     throw new InvalidOperationException(
-                        $"Valuation entry #{entry.Id} không có UnitCost hợp lệ để void.");
+                        "Outbound valuation entry has an invalid unit cost.");
                 }
 
                 var movementRequest = _inventoryMovementFactory.CreateSaleVoid(
@@ -1449,7 +1466,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             if (line.UnitCostSnapshot is not decimal unitCost || unitCost <= 0)
             {
                 throw new InvalidOperationException(
-                    $"OrderLine #{line.Id} chưa có UnitCostSnapshot hợp lệ để refund.");
+                    "Completed order line has an invalid unit-cost snapshot.");
             }
 
             var movementRequest = _inventoryMovementFactory.CreateSaleRefund(
@@ -1477,30 +1494,30 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         reason = (reason ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(reason))
-            throw new InvalidOperationException("Lý do trả hàng / hoàn tiền không được để trống.");
+            throw new BusinessRuleException("Lý do trả hàng / hoàn tiền không được để trống.");
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
         try
         {
             var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+                ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
 
             if (order.Status != OrderStatus.Completed)
-                throw new InvalidOperationException("Chỉ được refund toàn phần cho đơn đã hoàn tất.");
+                throw new BusinessRuleException("Chỉ được refund toàn phần cho đơn đã hoàn tất.");
 
             var alreadyRefunded = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
 
             if (alreadyRefunded > 0)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     "Đơn này đã có phát sinh hoàn tiền trước đó. Vui lòng dùng chức năng Trả hàng / hoàn tiền để xử lý phần còn lại.");
             }
 
             var refundAmount = order.PaidTotal;
 
             if (refundAmount <= 0)
-                throw new InvalidOperationException("Đơn hàng chưa có số tiền thanh toán để hoàn.");
+                throw new BusinessRuleException("Đơn hàng chưa có số tiền thanh toán để hoàn.");
 
             var oldStatus = order.Status.ToString();
             var oldPaymentStatus = order.PaymentStatus.ToString();
@@ -1672,7 +1689,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             throw new ArgumentNullException(nameof(variant));
 
         var product = variant.Product
-            ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+            ?? throw new InvalidOperationException(
+                "Product variant is missing its product relation.");
 
         var baseUnitId = product.BaseUnitId;
         var baseUnitName = product.BaseUnit?.Name;
@@ -1687,7 +1705,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
         var chosen = activeConversions.FirstOrDefault(c => c.Id == productUnitConversionId.Value);
         if (chosen == null)
-            throw new InvalidOperationException("Không tìm thấy đơn vị quy đổi hợp lệ cho sản phẩm.");
+            throw new BusinessRuleException("Không tìm thấy đơn vị quy đổi hợp lệ cho sản phẩm.");
 
         return new PosSellingUnitInfo
         {
@@ -1717,12 +1735,13 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         var priceTier = ResolveOrderPriceTier(order);
 
         var variant = await _variants.GetActiveWithProductAsync(variantId, ct)
-                     ?? throw new InvalidOperationException("Variant không tồn tại hoặc đang bị khóa.");
+                     ?? throw new BusinessRuleException("Variant không tồn tại hoặc đang bị khóa.");
 
         var product = variant.Product
-                      ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+                      ?? throw new InvalidOperationException(
+                          "Product variant is missing its product relation.");
         if (!product.IsActive || !product.IsSellable)
-            throw new InvalidOperationException("Sản phẩm chưa được phép bán tại POS.");
+            throw new BusinessRuleException("Sản phẩm chưa được phép bán tại POS.");
 
         // NEW:
         // nếu có productUnitConversionId => add đúng đơn vị con
@@ -1805,7 +1824,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     {
         barcode = (barcode ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(barcode))
-            throw new InvalidOperationException("Barcode rỗng.");
+            throw new BusinessRuleException("Barcode rỗng.");
 
         if (qty <= 0)
             qty = 1;
@@ -1825,7 +1844,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 if (variant != null)
                 {
                     var product = variant.Product
-                                  ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+                                  ?? throw new InvalidOperationException(
+                                      "Product variant is missing its product relation.");
                     var priceTier = ResolveOrderPriceTier(order);
                     var sellingInfo = ResolvePreferredSellingUnit(variant, priceTier);
 
@@ -1861,7 +1881,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         }
 
         if (lookup == null)
-            throw new InvalidOperationException("Không tìm thấy sản phẩm theo barcode.");
+            throw new BusinessRuleException("Không tìm thấy sản phẩm theo barcode.");
         lookup = await ApplyPriceTierToBarcodeLookupAsync(order, lookup, ct);
 
         AddOrMergeLineFromBarcode(order, lookup, qty);
@@ -1877,7 +1897,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         if (qty <= 0) qty = 1;
 
         var line = await _orders.GetDraftLineAsync(lineId, ct)
-                   ?? throw new InvalidOperationException("Line không tồn tại hoặc đơn không còn Draft.");
+                   ?? throw new BusinessRuleException("Line không tồn tại hoặc đơn không còn Draft.");
 
         var order = await RequireDraftAsync(line.OrderId, ct);
 
@@ -1896,7 +1916,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     public async Task<OrderDraftDto> RemoveLineAsync(int lineId, CancellationToken ct = default)
     {
         var line = await _orders.GetDraftLineAsync(lineId, ct)
-                   ?? throw new InvalidOperationException("Line không tồn tại hoặc đơn không còn Draft.");
+                   ?? throw new BusinessRuleException("Line không tồn tại hoặc đơn không còn Draft.");
 
         line.IsDeleted = true;
 
@@ -1908,23 +1928,23 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     public async Task<OrderDraftDto> AddPaymentAsync(int orderId, UpsertPaymentRequest dto, CancellationToken ct = default)
     {
         if (dto.Amount <= 0)
-            throw new InvalidOperationException("Số tiền thanh toán phải > 0.");
+            throw new BusinessRuleException("Số tiền thanh toán phải > 0.");
 
         var order = await RequireDraftAsync(orderId, ct);
 
         if (!order.Lines.Any(x => !x.IsDeleted))
-            throw new InvalidOperationException("Không thể thanh toán: giỏ hiện tại chưa có sản phẩm.");
+            throw new BusinessRuleException("Không thể thanh toán: giỏ hiện tại chưa có sản phẩm.");
 
         Recalc(order);
 
         if (order.GrandTotal <= 0)
-            throw new InvalidOperationException("Không thể thanh toán: tổng tiền đơn hàng không hợp lệ.");
+            throw new BusinessRuleException("Không thể thanh toán: tổng tiền đơn hàng không hợp lệ.");
 
         var currentPaid = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount);
         var willPaid = currentPaid + dto.Amount;
 
         if (dto.Method != PaymentMethod.Cash && willPaid > order.GrandTotal)
-            throw new InvalidOperationException("Phương thức này không cho phép thanh toán dư (overpay).");
+            throw new BusinessRuleException("Phương thức này không cho phép thanh toán dư (overpay).");
 
         order.Payments.Add(new OrderPayment
         {
@@ -1945,7 +1965,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     public async Task<OrderDraftDto> RemovePaymentAsync(int paymentId, CancellationToken ct = default)
     {
         var payment = await _payments.GetDraftPaymentAsync(paymentId, ct)
-            ?? throw new InvalidOperationException("Payment không tồn tại hoặc đơn không còn Draft.");
+            ?? throw new BusinessRuleException("Payment không tồn tại hoặc đơn không còn Draft.");
 
         payment.IsDeleted = true;
 
@@ -1979,23 +1999,24 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             Recalc(order);
 
             if (!order.Lines.Any(l => !l.IsDeleted))
-                throw new InvalidOperationException("Không thể chốt đơn: đơn chưa có sản phẩm.");
+                throw new BusinessRuleException("Không thể chốt đơn: đơn chưa có sản phẩm.");
 
             if (order.GrandTotal <= 0)
-                throw new InvalidOperationException("Không thể chốt đơn: tổng tiền không hợp lệ.");
+                throw new BusinessRuleException("Không thể chốt đơn: tổng tiền không hợp lệ.");
 
             if (order.BalanceDue > 0)
-                throw new InvalidOperationException("Không thể chốt đơn: chưa thanh toán đủ.");
+                throw new BusinessRuleException("Không thể chốt đơn: chưa thanh toán đủ.");
 
             var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
             if (shift == null)
-                throw new InvalidOperationException("Không tìm thấy ca POS của đơn hàng.");
+                throw new InvalidOperationException(
+                    "POS order is missing its shift relation.");
 
             if (shift.Status != POSShiftStatus.Open)
-                throw new InvalidOperationException("Không thể chốt đơn: ca POS của đơn đã đóng.");
+                throw new BusinessRuleException("Không thể chốt đơn: ca POS của đơn đã đóng.");
 
             if (shift.WarehouseId <= 0)
-                throw new InvalidOperationException("Ca POS chưa cấu hình kho xuất bán.");
+                throw new BusinessRuleException("Ca POS chưa cấu hình kho xuất bán.");
 
             // Nếu đơn trước đó từng OnHold và còn reservation active,
             // phải consume reservation trước khi ghi xuất kho thực tế.
@@ -2079,28 +2100,42 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             return await MapAsync(order, ct);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             await tx.RollbackAsync(ct);
 
-            // Ghi log thất bại cho audit log chung nếu đã load được order
-            try
+            // Ghi log thất bại là best-effort và không được che exception chính.
+            if (!ct.IsCancellationRequested)
             {
-                await _auditLogService.WriteAsync(new WriteAuditLogRequest
+                try
                 {
-                    Module = AuditModuleType.Orders,
-                    ActionType = AuditActionType.FinalizeOrder,
-                    EntityName = nameof(Order),
-                    EntityId = orderId.ToString(),
-                    EntityDisplay = $"Đơn hàng #{orderId}",
-                    Summary = $"Finalize order thất bại cho order #{orderId}",
-                    IsSuccess = false,
-                    ErrorMessage = ex.Message
-                }, ct);
-            }
-            catch
-            {
-                // Không throw lại để tránh ghi log lỗi làm mất exception chính.
+                    await _auditLogService.WriteAsync(new WriteAuditLogRequest
+                    {
+                        Module = AuditModuleType.Orders,
+                        ActionType = AuditActionType.FinalizeOrder,
+                        EntityName = nameof(Order),
+                        EntityId = orderId.ToString(),
+                        EntityDisplay = $"Đơn hàng #{orderId}",
+                        Summary = $"Finalize order thất bại cho order #{orderId}",
+                        IsSuccess = false,
+                        ErrorMessage = "Finalize order thất bại."
+                    }, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    _logger.LogDebug(
+                        "Bỏ qua failure audit do request bị hủy. Operation={Operation}; OrderId={OrderId}",
+                        "FinalizeOrder",
+                        orderId);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(
+                        "Không thể ghi failure audit; exception chính vẫn được propagate. Operation={Operation}; OrderId={OrderId}; ExceptionType={ExceptionType}",
+                        "FinalizeOrder",
+                        orderId,
+                        auditEx.GetType().Name);
+                }
             }
 
             throw;
@@ -2118,10 +2153,10 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         try
         {
             var order = await _orders.GetByIdAsync(orderId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+                ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
 
             if (order.Status != OrderStatus.Draft && order.Status != OrderStatus.OnHold)
-                throw new InvalidOperationException("Chỉ được hủy đơn Draft hoặc đơn đang giữ.");
+                throw new BusinessRuleException("Chỉ được hủy đơn Draft hoặc đơn đang giữ.");
 
             var openShift = await RequireCurrentOpenShiftAsync(ct);
             EnsureShiftOwnership(openShift);
@@ -2200,7 +2235,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     public async Task<OrderReceiptDto> GetReceiptAsync(int orderId, CancellationToken ct = default)
     {
         var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+            ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
 
         var refundableRemaining = order.PaidTotal - refundedTotal;
@@ -2208,7 +2243,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             refundableRemaining = 0;
         var orderLines = order.Lines
             ?? throw new InvalidOperationException(
-                $"Đơn hàng #{order.Id} chưa tải chi tiết dòng hàng.");
+                "Order receipt was loaded without its line collection.");
         return new OrderReceiptDto
         {
             OrderId = order.Id,
@@ -3509,7 +3544,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
      CancellationToken ct = default)
     {
         var customer = await _customers.GetActiveByIdAsync(customerId, ct)
-            ?? throw new InvalidOperationException("Khách hàng không tồn tại hoặc đã bị khóa.");
+            ?? throw new BusinessRuleException("Khách hàng không tồn tại hoặc đã bị khóa.");
 
         var order = await RequireCurrentDraftAsync(ct);
 
@@ -3600,13 +3635,13 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         var note = (dto.Note ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(name))
-            throw new InvalidOperationException("Tên khách hàng không được để trống.");
+            throw new BusinessRuleException("Tên khách hàng không được để trống.");
 
         if (!string.IsNullOrWhiteSpace(phone))
         {
             var existed = await _customers.GetByPhoneAsync(phone, ct);
             if (existed != null)
-                throw new InvalidOperationException("Số điện thoại đã tồn tại trong hệ thống khách hàng.");
+                throw new BusinessRuleException("Số điện thoại đã tồn tại trong hệ thống khách hàng.");
         }
 
         var customer = new Customer
@@ -3668,12 +3703,12 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         var order = await RequireCurrentDraftAsync(ct);
 
         if (discountAmount < 0)
-            throw new InvalidOperationException("Giảm giá không được nhỏ hơn 0.");
+            throw new BusinessRuleException("Giảm giá không được nhỏ hơn 0.");
 
         Recalc(order);
 
         if (discountAmount > order.Subtotal)
-            throw new InvalidOperationException("Giảm giá không được lớn hơn tạm tính.");
+            throw new BusinessRuleException("Giảm giá không được lớn hơn tạm tính.");
 
         order.OrderDiscount = discountAmount;
 
@@ -3683,14 +3718,14 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     public async Task<OrderDraftDto> UpdateLineDiscountAsync(int lineId, decimal discountAmount, CancellationToken ct = default)
     {
         if (discountAmount < 0)
-            throw new InvalidOperationException("Giảm giá dòng không được nhỏ hơn 0.");
+            throw new BusinessRuleException("Giảm giá dòng không được nhỏ hơn 0.");
 
         var line = await _orders.GetDraftLineAsync(lineId, ct)
-            ?? throw new InvalidOperationException("Dòng hàng không tồn tại hoặc đơn không còn Draft.");
+            ?? throw new BusinessRuleException("Dòng hàng không tồn tại hoặc đơn không còn Draft.");
 
         var lineSubtotal = line.Quantity * line.UnitPrice;
         if (discountAmount > lineSubtotal)
-            throw new InvalidOperationException("Giảm giá dòng không được lớn hơn thành tiền trước giảm.");
+            throw new BusinessRuleException("Giảm giá dòng không được lớn hơn thành tiền trước giảm.");
 
         line.LineDiscount = discountAmount;
 
@@ -3707,34 +3742,35 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         reason = (reason ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(reason))
-            throw new InvalidOperationException("Lý do hủy đơn không được để trống.");
+            throw new BusinessRuleException("Lý do hủy đơn không được để trống.");
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
         try
         {
             var order = await _orders.GetCompletedOrderForVoidAsync(orderId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy đơn hàng.");
+                ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
 
             // Lưu trạng thái cũ để ghi audit old/new values
             var oldStatus = order.Status.ToString();
             var oldPaymentStatus = order.PaymentStatus.ToString();
 
             if (order.Status != OrderStatus.Completed)
-                throw new InvalidOperationException("Chỉ được hủy đơn đã hoàn tất.");
+                throw new BusinessRuleException("Chỉ được hủy đơn đã hoàn tất.");
 
             if (!CanVoidCompletedOrder(order))
-                throw new InvalidOperationException("Đơn đã quá thời gian cho phép hủy sau khi chốt. Vui lòng thực hiện trả hàng / hoàn tiền.");
+                throw new BusinessRuleException("Đơn đã quá thời gian cho phép hủy sau khi chốt. Vui lòng thực hiện trả hàng / hoàn tiền.");
 
             if (await _salesReturns.HasCompletedReturnByOrderAsync(order.Id, ct))
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     "Đơn đã có phiếu trả hàng/hoàn tiền. Không thể void toàn bộ; vui lòng tiếp tục xử lý phần còn lại bằng chức năng Trả hàng / hoàn tiền.");
             }
 
             var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
             if (shift == null)
-                throw new InvalidOperationException("Không tìm thấy ca POS của đơn hàng.");
+                throw new InvalidOperationException(
+                    "Completed POS order is missing its shift relation.");
 
             // =====================================================
             // QUAN TRỌNG:
@@ -3792,27 +3828,41 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             return await GetReceiptAsync(order.Id, ct);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             await tx.RollbackAsync(ct);
 
-            try
+            if (!ct.IsCancellationRequested)
             {
-                await _auditLogService.WriteAsync(new WriteAuditLogRequest
+                try
                 {
-                    Module = AuditModuleType.Orders,
-                    ActionType = AuditActionType.CancelOrder,
-                    EntityName = nameof(Order),
-                    EntityId = orderId.ToString(),
-                    EntityDisplay = $"Đơn hàng #{orderId}",
-                    Summary = $"Void order thất bại cho order #{orderId}",
-                    IsSuccess = false,
-                    ErrorMessage = ex.Message
-                }, ct);
-            }
-            catch
-            {
-                // Không throw lại để tránh che mất lỗi chính.
+                    await _auditLogService.WriteAsync(new WriteAuditLogRequest
+                    {
+                        Module = AuditModuleType.Orders,
+                        ActionType = AuditActionType.CancelOrder,
+                        EntityName = nameof(Order),
+                        EntityId = orderId.ToString(),
+                        EntityDisplay = $"Đơn hàng #{orderId}",
+                        Summary = $"Void order thất bại cho order #{orderId}",
+                        IsSuccess = false,
+                        ErrorMessage = "Void order thất bại."
+                    }, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    _logger.LogDebug(
+                        "Bỏ qua failure audit do request bị hủy. Operation={Operation}; OrderId={OrderId}",
+                        "VoidOrder",
+                        orderId);
+                }
+                catch (Exception auditEx)
+                {
+                    _logger.LogWarning(
+                        "Không thể ghi failure audit; exception chính vẫn được propagate. Operation={Operation}; OrderId={OrderId}; ExceptionType={ExceptionType}",
+                        "VoidOrder",
+                        orderId,
+                        auditEx.GetType().Name);
+                }
             }
 
             throw;
@@ -4094,15 +4144,15 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             .ToList();
 
         if (!voucherIds.Any())
-            throw new InvalidOperationException("Vui lòng chọn voucher.");
+            throw new BusinessRuleException("Vui lòng chọn voucher.");
 
         var order = await RequireCurrentDraftAsync(ct);
 
         if (!order.CustomerId.HasValue)
-            throw new InvalidOperationException("Vui lòng chọn khách hàng trước khi dùng voucher.");
+            throw new BusinessRuleException("Vui lòng chọn khách hàng trước khi dùng voucher.");
 
         if (!order.Lines.Any(x => !x.IsDeleted))
-            throw new InvalidOperationException("Giỏ hàng chưa có sản phẩm.");
+            throw new BusinessRuleException("Giỏ hàng chưa có sản phẩm.");
 
         var availableVouchers = await _rewardVoucherRepository.GetByCustomerAsync(
             order.CustomerId.Value,
@@ -4114,7 +4164,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             .ToList();
 
         if (vouchers.Count != voucherIds.Count)
-            throw new InvalidOperationException("Có voucher không hợp lệ hoặc không còn khả dụng.");
+            throw new BusinessRuleException("Có voucher không hợp lệ hoặc không còn khả dụng.");
 
         var rewardVouchers = vouchers.Select(voucher => new OrderRewardVoucher
         {
@@ -4138,7 +4188,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         await _orders.SaveChangesAsync(ct);
 
         var freshOrder = await _orders.GetDraftAsync(order.Id, ct)
-            ?? throw new InvalidOperationException("Không tải lại được giỏ hàng.");
+            ?? throw new InvalidOperationException(
+                "POS cart could not be reloaded after voucher application.");
 
         Recalc(freshOrder);
 
@@ -4160,12 +4211,12 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             if (applied.Voucher == null)
             {
                 throw new InvalidOperationException(
-                    $"Voucher #{applied.VoucherId} chưa được load khi chốt đơn. Kiểm tra Include RewardVouchers.ThenInclude(Voucher).");
+                    "Applied voucher was not loaded for order finalization.");
             }
 
             if (applied.Voucher.Status != CustomerRewardVoucherStatus.Available)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     $"Voucher {applied.Voucher.VoucherCode} không còn khả dụng.");
             }
 
@@ -4190,7 +4241,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         await _orders.SaveChangesAsync(ct);
 
         var freshOrder = await _orders.GetDraftAsync(order.Id, ct)
-            ?? throw new InvalidOperationException("Không tải lại được giỏ hàng.");
+            ?? throw new InvalidOperationException(
+                "POS cart could not be reloaded after voucher removal.");
 
         Recalc(freshOrder);
 
@@ -4232,7 +4284,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         string priceTier)
     {
         var product = variant.Product
-            ?? throw new InvalidOperationException("Variant thiếu Product navigation.");
+            ?? throw new InvalidOperationException(
+                "Product variant is missing its product relation.");
 
         var isWholesale = string.Equals(
             priceTier,
@@ -4268,7 +4321,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         if (variant == null)
             return lookup;
         if (variant.Product == null || !variant.Product.IsActive || !variant.Product.IsSellable)
-            throw new InvalidOperationException("Sản phẩm chưa được phép bán tại POS.");
+            throw new BusinessRuleException("Sản phẩm chưa được phép bán tại POS.");
 
         // Ưu tiên đúng đơn vị quy đổi mà barcode lookup trả về.
         var conversion = variant.UnitConversions?

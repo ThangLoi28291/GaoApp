@@ -9,6 +9,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
@@ -16,13 +18,16 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
 {
     private readonly HttpClient _httpClient;
     private readonly IInvoiceIntegrationLogRepository _logRepository;
+    private readonly ILogger<ViettelOfficialFileClient> _logger;
 
     public ViettelOfficialFileClient(
         HttpClient httpClient,
-        IInvoiceIntegrationLogRepository logRepository)
+        IInvoiceIntegrationLogRepository logRepository,
+        ILogger<ViettelOfficialFileClient>? logger = null)
     {
         _httpClient = httpClient;
         _logRepository = logRepository;
+        _logger = logger ?? NullLogger<ViettelOfficialFileClient>.Instance;
     }
 
     public async Task<Result<ViettelOfficialFileResultDto>> DownloadOfficialFileAsync(
@@ -467,9 +472,14 @@ public class ViettelOfficialFileClient : IViettelOfficialFileClient
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
             // Không để lỗi ghi log làm hỏng tải file.
+            _logger.LogWarning(
+                "Invoice integration-log persistence failed; provider result is preserved. Operation={Operation}; InvoiceHeadId={InvoiceHeadId}; ExceptionType={ExceptionType}",
+                "DownloadOfficialFile",
+                invoiceHeadId,
+                ex.GetType().Name);
         }
     }
 

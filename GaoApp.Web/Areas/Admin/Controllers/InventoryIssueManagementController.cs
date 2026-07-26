@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -217,9 +219,9 @@ public class InventoryIssueManagementController : Controller
             await _issueService.ApproveAsync(model.IssueId, userId.Value, model.Note, ct);
             TempData["Success"] = "Đã duyệt case thành công.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Detail), new { id = model.IssueId });
@@ -238,9 +240,9 @@ public class InventoryIssueManagementController : Controller
             await _issueService.RejectAsync(model.IssueId, userId.Value, model.Note ?? string.Empty, ct);
             TempData["Success"] = "Đã từ chối case.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Detail), new { id = model.IssueId });
@@ -265,9 +267,9 @@ public class InventoryIssueManagementController : Controller
 
             TempData["Success"] = "Đã mở lại case.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Detail), new { id = request.IssueId });
@@ -292,9 +294,9 @@ public class InventoryIssueManagementController : Controller
 
             TempData["Success"] = "Đã escalate case.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Detail), new { id = request.IssueId });
@@ -318,9 +320,9 @@ public class InventoryIssueManagementController : Controller
             await _issueService.RefreshIssueAsync(id, ct);
             TempData["Success"] = $"Đã làm mới case #{id}.";
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Detail), new { id });
@@ -338,9 +340,9 @@ public class InventoryIssueManagementController : Controller
                 $"Đã làm mới {result.RefreshedCount}/{result.TotalRequested} case đang mở." +
                 (result.FailedCount > 0 ? $" Có {result.FailedCount} case lỗi." : string.Empty);
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Index));

@@ -29,17 +29,20 @@ public class AccountController : Controller
     private readonly IAuditLogService _auditLogService;
     private readonly IPOSTerminalRepository _terminalRepository;
     private readonly ICurrentStore _currentStore;
+    private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         IAuthService authService,
         IAuditLogService auditLogService,
         IPOSTerminalRepository terminalRepository,
-        ICurrentStore currentStore)
+        ICurrentStore currentStore,
+        ILogger<AccountController> logger)
     {
         _authService = authService;
         _auditLogService = auditLogService;
         _terminalRepository = terminalRepository;
         _currentStore = currentStore;
+        _logger = logger;
     }
 
     [HttpGet("login")]
@@ -62,107 +65,107 @@ public class AccountController : Controller
             return View("~/Areas/Admin/Views/Account/Login.cshtml", vm);
         }
 
-        try
+        var cookieDeviceKey = Request.Cookies[PosDeviceKeyCookieName];
+
+        var loginResult = await _authService.LoginAsync(new LoginRequest
         {
-            var cookieDeviceKey = Request.Cookies[PosDeviceKeyCookieName];
+            UserName = vm.UserName,
+            Password = vm.Password,
+            ReturnUrl = vm.ReturnUrl,
+            DeviceKey = cookieDeviceKey,
+            SelectedTerminalId = vm.SelectedTerminalId,
+            DeviceName = vm.DeviceName,
+            UserAgent = Request.Headers.UserAgent.ToString()
+        }, ct);
 
-            var result = await _authService.LoginAsync(new LoginRequest
-            {
-                UserName = vm.UserName,
-                Password = vm.Password,
-                ReturnUrl = vm.ReturnUrl,
-
-                DeviceKey = cookieDeviceKey,
-                SelectedTerminalId = vm.SelectedTerminalId,
-                DeviceName = vm.DeviceName,
-
-                // Nếu LoginRequest chưa có UserAgent thì bỏ dòng này.
-                UserAgent = Request.Headers.UserAgent.ToString()
-            }, ct);
-
-            if (!string.IsNullOrWhiteSpace(result.DeviceKey))
-            {
-                Response.Cookies.Append(
-                    PosDeviceKeyCookieName,
-                    result.DeviceKey,
-                    new CookieOptions
-                    {
-                        HttpOnly = true,
-                        Secure = Request.IsHttps,
-                        SameSite = SameSiteMode.Lax,
-                        Expires = DateTimeOffset.UtcNow.AddYears(5)
-                    });
-            }
-
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, result.UserId.ToString()),
-                new Claim(ClaimTypes.Name, result.UserName),
-
-                new Claim("user_name", result.UserName),
-                new Claim("full_name", result.FullName ?? string.Empty),
-
-                new Claim("store_id", result.StoreId.ToString()),
-                new Claim("terminal_id", result.TerminalId.ToString()),
-                new Claim("terminal_name", result.TerminalName ?? string.Empty),
-                new Claim("terminal_code", result.TerminalCode ?? string.Empty),
-
-                new Claim("role_id", result.RoleId.ToString()),
-                new Claim("role_code", result.RoleCode ?? string.Empty),
-                new Claim(ClaimTypes.Role, result.RoleCode ?? string.Empty)
-            };
-
-            var identity = new ClaimsIdentity(
-                claims,
-                CookieAuthenticationDefaults.AuthenticationScheme);
-
-            await HttpContext.SignInAsync(
-                CookieAuthenticationDefaults.AuthenticationScheme,
-                new ClaimsPrincipal(identity));
-
-            await _auditLogService.WriteAsync(new WriteAuditLogRequest
-            {
-                StoreId = result.StoreId,
-                Module = AuditModuleType.Authentication,
-                ActionType = AuditActionType.Login,
-                Summary = $"Đăng nhập: {result.UserName} - Terminal: {result.TerminalCode} - IP: {result.ClientIp}",
-                IsSuccess = true
-            });
-
-            if (!string.IsNullOrWhiteSpace(vm.ReturnUrl) && Url.IsLocalUrl(vm.ReturnUrl))
-                return LocalRedirect(vm.ReturnUrl);
-
-            return Redirect("/admin");
-        }
-        catch (Exception ex)
+        if (loginResult.IsFailure)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(
+                string.Empty,
+                loginResult.Error.Message);
 
-            await _auditLogService.WriteAsync(new WriteAuditLogRequest
+            await TryWriteAuditAsync(new WriteAuditLogRequest
             {
                 Module = AuditModuleType.Authentication,
                 ActionType = AuditActionType.Login,
-                Summary = $"Đăng nhập thất bại: {vm.UserName}",
+                Summary = "Đăng nhập thất bại.",
                 IsSuccess = false
-            });
+            }, "LoginFailure", ct);
 
             await RebuildLoginVmAsync(vm, ct);
             return View("~/Areas/Admin/Views/Account/Login.cshtml", vm);
         }
+
+        var result = loginResult.Value;
+
+        if (!string.IsNullOrWhiteSpace(result.DeviceKey))
+        {
+            Response.Cookies.Append(
+                PosDeviceKeyCookieName,
+                result.DeviceKey,
+                new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = Request.IsHttps,
+                    SameSite = SameSiteMode.Lax,
+                    Expires = DateTimeOffset.UtcNow.AddYears(5)
+                });
+        }
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, result.UserId.ToString()),
+            new(ClaimTypes.Name, result.UserName),
+            new("user_name", result.UserName),
+            new("full_name", result.FullName ?? string.Empty),
+            new("store_id", result.StoreId.ToString()),
+            new("terminal_id", result.TerminalId.ToString()),
+            new("terminal_name", result.TerminalName ?? string.Empty),
+            new("terminal_code", result.TerminalCode ?? string.Empty),
+            new("role_id", result.RoleId.ToString()),
+            new("role_code", result.RoleCode ?? string.Empty),
+            new(ClaimTypes.Role, result.RoleCode ?? string.Empty)
+        };
+
+        var identity = new ClaimsIdentity(
+            claims,
+            CookieAuthenticationDefaults.AuthenticationScheme);
+
+        // Technical authentication-handler failures must reach the global owner.
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity));
+
+        await TryWriteAuditAsync(new WriteAuditLogRequest
+        {
+            StoreId = result.StoreId,
+            Module = AuditModuleType.Authentication,
+            ActionType = AuditActionType.Login,
+            Summary = "Đăng nhập thành công.",
+            IsSuccess = true
+        }, "LoginSuccess", ct);
+
+        if (!string.IsNullOrWhiteSpace(vm.ReturnUrl) &&
+            Url.IsLocalUrl(vm.ReturnUrl))
+        {
+            return LocalRedirect(vm.ReturnUrl);
+        }
+
+        return Redirect("/admin");
     }
 
     [HttpPost("logout")]
     [Authorize]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(CancellationToken ct)
     {
-        await _auditLogService.WriteAsync(new WriteAuditLogRequest
+        await TryWriteAuditAsync(new WriteAuditLogRequest
         {
             Module = AuditModuleType.Authentication,
             ActionType = AuditActionType.Logout,
             Summary = "Đăng xuất",
             IsSuccess = true
-        });
+        }, "Logout", ct);
 
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return Redirect("/admin/account/login");
@@ -216,6 +219,29 @@ public class AccountController : Controller
         {
             ViewBag.CurrentTerminalName = "Thiết bị chưa ghép POS";
             ViewBag.CurrentTerminalCode = "";
+        }
+    }
+
+    private async Task TryWriteAuditAsync(
+        WriteAuditLogRequest request,
+        string operation,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _auditLogService.WriteAsync(request, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Authentication audit failed; primary authentication behavior is preserved. Operation={Operation}; TraceId={TraceId}; ExceptionType={ExceptionType}",
+                operation,
+                HttpContext.TraceIdentifier,
+                ex.GetType().Name);
         }
     }
     

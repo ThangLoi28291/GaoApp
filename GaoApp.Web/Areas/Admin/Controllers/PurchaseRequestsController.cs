@@ -9,6 +9,8 @@ using GaoApp.Web.Areas.Admin.Models.Purchases;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+using GaoApp.Application.Common.Exceptions;
+
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
@@ -171,9 +173,9 @@ public sealed class PurchaseRequestsController : Controller
             var request = BuildDefaultConversionRequest(preparation);
             return View(BuildPrepareViewModel(preparation, request, null));
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
             return RedirectToAction(nameof(Details), new { id });
         }
     }
@@ -202,9 +204,9 @@ public sealed class PurchaseRequestsController : Controller
             TempData["Success"] = "Đã tạo một đơn đặt hàng nháp từ yêu cầu mua.";
             return RedirectToAction(nameof(Details), new { id });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(string.Empty, ex.SafeMessage);
             return await RenderPrepareAsync(id, request, supplierLabel, ct);
         }
     }
@@ -250,9 +252,9 @@ public sealed class PurchaseRequestsController : Controller
                 : "Đã lưu yêu cầu mua hàng. Bạn có thể tiếp tục chỉnh sửa trước khi gửi duyệt.";
             return RedirectToAction(nameof(Details), new { id });
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            ModelState.AddModelError(string.Empty, ex.Message);
+            ModelState.AddModelError(string.Empty, ex.SafeMessage);
             return View("Edit", await BuildEditViewModelAsync(request, null, ct));
         }
     }
@@ -373,9 +375,9 @@ public sealed class PurchaseRequestsController : Controller
             var preparation = await _service.GetPreparationAsync(id, includeCost: false, ct);
             return View("Prepare", BuildPrepareViewModel(preparation, request, supplierLabel));
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
             return RedirectToAction(nameof(Details), new { id });
         }
     }
@@ -485,9 +487,9 @@ public sealed class PurchaseRequestsController : Controller
             await action();
             TempData["Success"] = successMessage;
         }
-        catch (Exception ex)
+        catch (BusinessRuleException ex)
         {
-            TempData["Error"] = ex.Message;
+            TempData["Error"] = ex.SafeMessage;
         }
 
         return RedirectToAction(nameof(Details), new { id });

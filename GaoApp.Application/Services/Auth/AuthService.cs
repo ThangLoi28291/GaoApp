@@ -1,5 +1,7 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Errors;
+using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Auth;
 using GaoApp.Application.Interfaces.Repositories.Auth;
 using GaoApp.Application.Interfaces.Repositories.POSTerminals;
@@ -29,29 +31,39 @@ public class AuthService : IAuthService
         _passwordHasher = passwordHasher;
     }
 
-    public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    public async Task<Result<LoginResponse>> LoginAsync(
+        LoginRequest request,
+        CancellationToken ct = default)
     {
         var storeId = _currentStore.StoreId;
         var clientIp = _clientNetworkInfo.GetClientIp();
 
         // 1. Kiểm tra tài khoản trước
-        var user = await _users.GetByUserNameAsync(request.UserName.Trim(), ct)
-            ?? throw new InvalidOperationException("Tài khoản hoặc mật khẩu không đúng.");
+        if (string.IsNullOrWhiteSpace(request.UserName) ||
+            string.IsNullOrWhiteSpace(request.Password))
+        {
+            return Result<LoginResponse>.Failure(AuthErrors.InvalidCredentials);
+        }
+
+        var user = await _users.GetByUserNameAsync(request.UserName.Trim(), ct);
+        if (user == null)
+            return Result<LoginResponse>.Failure(AuthErrors.InvalidCredentials);
 
         if (!user.IsActive)
-            throw new InvalidOperationException("Tài khoản đã bị khóa.");
+            return Result<LoginResponse>.Failure(AuthErrors.AccountInactive);
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
-            throw new InvalidOperationException("Tài khoản hoặc mật khẩu không đúng.");
+            return Result<LoginResponse>.Failure(AuthErrors.InvalidCredentials);
 
         var userInStore = await _users.GetUserInStoreAsync(user.Id, storeId, ct);
         if (userInStore == null)
-            throw new InvalidOperationException("Tài khoản không có quyền truy cập cửa hàng hiện tại.");
+            return Result<LoginResponse>.Failure(AuthErrors.StoreAccessDenied);
 
         if (!userInStore.IsActive)
-            throw new InvalidOperationException("Tài khoản đã bị khóa tại cửa hàng hiện tại.");
+            return Result<LoginResponse>.Failure(AuthErrors.AccountInactive);
+
         if (userInStore.Role == null || userInStore.Role.IsDeleted)
-            throw new InvalidOperationException("Vai trò của tài khoản không còn hợp lệ.");
+            return Result<LoginResponse>.Failure(AuthErrors.RoleUnavailable);
         // 2. Resolve terminal bằng DeviceKey
         var deviceKey = request.DeviceKey;
         var devicePaired = false;
@@ -68,8 +80,8 @@ public class AuthService : IAuthService
         {
             if (!request.SelectedTerminalId.HasValue || request.SelectedTerminalId.Value <= 0)
             {
-                throw new InvalidOperationException(
-                    "Thiết bị này chưa được ghép POS. Vui lòng chọn máy POS để tiếp tục.");
+                return Result<LoginResponse>.Failure(
+                    AuthErrors.TerminalSelectionRequired);
             }
 
             deviceKey = Guid.NewGuid().ToString("N");
@@ -86,30 +98,31 @@ public class AuthService : IAuthService
             terminal = await _terminals.GetByDeviceKeyAsync(storeId, deviceKey, ct);
 
             if (terminal == null)
-                throw new InvalidOperationException("Ghép thiết bị POS không thành công. Vui lòng thử lại.");
+                return Result<LoginResponse>.Failure(AuthErrors.DevicePairingFailed);
 
             devicePaired = true;
         }
 
-        return new LoginResponse
-        {
-            UserId = user.Id,
-            UserName = user.UserName,
-            FullName = user.FullName,
+        return Result<LoginResponse>.Success(
+            new LoginResponse
+            {
+                UserId = user.Id,
+                UserName = user.UserName,
+                FullName = user.FullName,
 
-            RoleId = userInStore.RoleId,
-            RoleCode = userInStore.Role?.Code ?? string.Empty,
-            RoleName = userInStore.Role?.Name ?? string.Empty,
+                RoleId = userInStore.RoleId,
+                RoleCode = userInStore.Role.Code,
+                RoleName = userInStore.Role.Name,
 
-            StoreId = storeId,
+                StoreId = storeId,
 
-            TerminalId = terminal.Id,
-            TerminalCode = terminal.Code,
-            TerminalName = terminal.Name,
+                TerminalId = terminal.Id,
+                TerminalCode = terminal.Code,
+                TerminalName = terminal.Name,
 
-            ClientIp = clientIp,
-            DeviceKey = deviceKey,
-            DevicePaired = devicePaired
-        };
+                ClientIp = clientIp,
+                DeviceKey = deviceKey,
+                DevicePaired = devicePaired
+            });
     }
 }

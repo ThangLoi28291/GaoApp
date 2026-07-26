@@ -3,6 +3,9 @@ using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using Microsoft.Extensions.Logging;
+
+using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Orders;
 
@@ -22,13 +25,16 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 {
     private readonly IOrderInventoryIssueRepository _issueRepository;
     private readonly IOrderRepository _orderRepository;
+    private readonly ILogger<OrderInventoryIssueService> _logger;
 
     public OrderInventoryIssueService(
         IOrderInventoryIssueRepository issueRepository,
-        IOrderRepository orderRepository)
+        IOrderRepository orderRepository,
+        ILogger<OrderInventoryIssueService> logger)
     {
         _issueRepository = issueRepository;
         _orderRepository = orderRepository;
+        _logger = logger;
     }
 
     public Task<OrderInventoryIssue?> GetDetailAsync(int issueId, CancellationToken ct = default)
@@ -170,13 +176,13 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
             return;
 
         if (issue.Status != InventoryResolutionStatus.ReadyForApproval)
-            throw new InvalidOperationException("Chỉ được approve case đang ở trạng thái ReadyForApproval.");
+            throw new BusinessRuleException("Chỉ được approve case đang ở trạng thái ReadyForApproval.");
 
         var check = await ValidateBeforeApproveAsync(issueId, ct);
         ApplyResolutionResultToEntity(issue, check, now);
 
         if (!check.CanApprove)
-            throw new InvalidOperationException(check.ToUserMessage());
+            throw new BusinessRuleException(check.ToUserMessage());
 
         issue.Status = InventoryResolutionStatus.Approved;
         issue.ApprovedAtUtc = now;
@@ -218,7 +224,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         var issue = await RequireIssueDetailAsync(issueId, ct);
 
         if (issue.Status == InventoryResolutionStatus.Approved)
-            throw new InvalidOperationException("Case đã approved, không thể reject.");
+            throw new BusinessRuleException("Case đã approved, không thể reject.");
 
         issue.Status = InventoryResolutionStatus.Rejected;
         issue.RejectedAtUtc = now;
@@ -482,7 +488,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         CancellationToken ct = default)
     {
         var issue = await _issueRepository.GetDetailByIdAsync(issueId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy hồ sơ pending inventory issue.");
+            ?? throw new BusinessRuleException("Không tìm thấy hồ sơ pending inventory issue.");
 
         issue.Lines = issue.Lines
             .Where(x => !x.IsDeleted)
@@ -505,7 +511,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         var line = issue.Lines.FirstOrDefault(x => x.Id == issueLineId && !x.IsDeleted);
 
         if (line is null)
-            throw new InvalidOperationException("Dòng issue không tồn tại hoặc đã bị thay thế.");
+            throw new BusinessRuleException("Dòng issue không tồn tại hoặc đã bị thay thế.");
 
         return line;
     }
@@ -780,7 +786,8 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
     {
         var order = await _orderRepository.GetByIdAsync(issue.OrderId, ct);
         if (order == null)
-            throw new InvalidOperationException($"Không tìm thấy Order #{issue.OrderId}.");
+            throw new InvalidOperationException(
+                "Inventory issue is missing its owning order.");
 
         order.HasInventoryIssue = issue.Status != InventoryResolutionStatus.None;
         order.InventoryResolutionStatus = issue.Status;
@@ -1195,13 +1202,22 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 
                 result.RefreshedCount++;
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
+                _logger.LogWarning(
+                    "Inventory issue batch refresh failed for one item; batch will continue. IssueId={IssueId}; ExceptionType={ExceptionType}",
+                    issue.Id,
+                    ex.GetType().Name);
+
                 result.Items.Add(new InventoryIssueBatchRefreshItemDto
                 {
                     IssueId = issue.Id,
                     IsSuccess = false,
-                    ErrorMessage = ex.Message
+                    ErrorMessage = "Không thể làm mới case do lỗi hệ thống."
                 });
 
                 result.FailedCount++;
