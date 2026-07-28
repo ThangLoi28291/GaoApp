@@ -22,4 +22,12 @@ public class SeedDataOptions
     /// Có seed admin mặc định hay không.
     /// </summary>
     public bool EnableDefaultAdminSeed { get; set; }
+
+    /// <summary>
+    /// Rule cấu hình duy nhất của Demo Seed. Mật khẩu chỉ bắt buộc khi chủ động
+    /// bật seed demo; giá trị mật khẩu không được đưa vào thông báo lỗi.
+    /// </summary>
+    public bool HasValidConfiguration()
+        => !EnableDemoSeed
+            || !string.IsNullOrWhiteSpace(DemoUserPassword);
 }

@@ -22,6 +22,15 @@ startup-error.txt
 publish/
 publish-web/
 publish-migrator/
+/publish-phase8/
+
+# Generated archives, review patches, and runtime uploads
+/Datacode.zip
+/GaoApp.Infrastructure/Migrations.zip
+/R1*.zip
+/*.patch
+/*.diff
+/GaoApp.Web/wwwroot/uploads/
 
 # OS
 Thumbs.db

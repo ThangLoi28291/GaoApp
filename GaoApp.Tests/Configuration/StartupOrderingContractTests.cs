@@ -87,21 +87,127 @@ public sealed class StartupOrderingContractTests
     public void Migrator_ValidatesSeedOptionsBeforeDatabaseMigration()
     {
         var source = ReadRepositoryFile(
-            "GaoApp.Migrator",
-            "MigrationRunner.cs");
+            "GaoApp.Infrastructure",
+            "Data",
+            "Migrations",
+            "MigrationExecutionPipeline.cs");
 
         var validationIndex = source.IndexOf(
-            "ValidateSeedOptions();",
+            "_configurationValidator.Validate(",
+            StringComparison.Ordinal);
+        var preflightIndex = source.IndexOf(
+            "_databasePreflight.InspectAsync(ct)",
             StringComparison.Ordinal);
         var migrationIndex = source.IndexOf(
-            "MigrateAsync(ct)",
+            "_migrationExecutor.MigrateAsync(ct)",
             StringComparison.Ordinal);
 
         Assert.True(validationIndex >= 0, "Seed option validation was not found.");
+        Assert.True(preflightIndex >= 0, "Database preflight was not found.");
         Assert.True(migrationIndex >= 0, "Database migration call was not found.");
         Assert.True(
-            validationIndex < migrationIndex,
-            "Seed options must be validated before database migration.");
+            validationIndex < preflightIndex
+            && preflightIndex < migrationIndex,
+            "Configuration validation and database preflight must run before database migration.");
+    }
+
+    [Fact]
+    public void DatabasePreflight_UsesCompleteInventoryAndStructuralManifest()
+    {
+        var preflight = ReadRepositoryFile(
+            "GaoApp.Infrastructure",
+            "Data",
+            "Migrations",
+            "SqlServerDatabaseBaselinePreflight.cs");
+        var inventory = ReadRepositoryFile(
+            "GaoApp.Infrastructure",
+            "Data",
+            "Migrations",
+            "SqlServerDatabaseObjectInventoryReader.cs");
+
+        Assert.Contains(
+            "_inventoryReader.ReadAsync(ct)",
+            preflight,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DatabaseSchemaComparer.Compare(",
+            preflight,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "GetExpected" + "Tables",
+            preflight,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CurrentApplication" + "Tables",
+            preflight,
+            StringComparison.Ordinal);
+        Assert.Contains("[sys].[tables]", inventory);
+        Assert.Contains("[sys].[views]", inventory);
+        Assert.Contains("[sys].[procedures]", inventory);
+        Assert.Contains("[sys].[sequences]", inventory);
+        Assert.Contains("[sys].[synonyms]", inventory);
+        Assert.Contains("[sys].[schemas]", inventory);
+        Assert.Contains("[sys].[types]", inventory);
+    }
+
+    [Fact]
+    public void Migrator_InspectsBootstrapBeforeAtomicProvisioningDml()
+    {
+        var source = ReadRepositoryFile(
+            "GaoApp.Infrastructure",
+            "Data",
+            "Migrations",
+            "MigrationExecutionPipeline.cs");
+
+        var migrateIndex = source.IndexOf(
+            "_migrationExecutor.MigrateAsync(ct)",
+            StringComparison.Ordinal);
+        var initialInspectionIndex = source.IndexOf(
+            "_productionBootstrapper.InspectAsync(ct)",
+            StringComparison.Ordinal);
+        var transactionIndex = source.IndexOf(
+            "_transactionRunner.ExecuteAsync(",
+            StringComparison.Ordinal);
+        var lockedInspectionIndex = source.IndexOf(
+            "_productionBootstrapper.InspectAsync(",
+            initialInspectionIndex + 1,
+            StringComparison.Ordinal);
+        var mandatoryIndex = source.IndexOf(
+            "_mandatorySecuritySeeder.SeedAsync(",
+            lockedInspectionIndex,
+            StringComparison.Ordinal);
+        var applyIndex = source.IndexOf(
+            "_productionBootstrapper.ApplyAsync(",
+            mandatoryIndex,
+            StringComparison.Ordinal);
+
+        Assert.True(
+            migrateIndex >= 0
+            && migrateIndex < initialInspectionIndex
+            && initialInspectionIndex < transactionIndex
+            && transactionIndex < lockedInspectionIndex
+            && lockedInspectionIndex < mandatoryIndex
+            && mandatoryIndex < applyIndex,
+            "Required order: migrate, read-only bootstrap inspection, transaction, locked inspection, mandatory seed, bootstrap apply.");
+    }
+
+    [Fact]
+    public void ProductionBootstrapper_DoesNotOwnAnIndependentTransaction()
+    {
+        var source = ReadRepositoryFile(
+            "GaoApp.Infrastructure",
+            "Data",
+            "Seed",
+            "ProductionBootstrapper.cs");
+
+        Assert.DoesNotContain(
+            "BeginTransaction",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Database.CurrentTransaction is null",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]

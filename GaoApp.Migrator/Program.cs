@@ -1,6 +1,8 @@
 ﻿using GaoApp.Application;
 using GaoApp.Application.Common.Options;
 using GaoApp.Infrastructure;
+using GaoApp.Infrastructure.Data.Migrations;
+using GaoApp.Infrastructure.Data.Seed;
 using GaoApp.Migrator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,9 +54,43 @@ try
     builder.Services.AddSingleton<IWebHostEnvironment>(sp =>
         new MigratorWebHostEnvironment(
             sp.GetRequiredService<IHostEnvironment>()));
-    builder.Services.Configure<SeedDataOptions>(
-        builder.Configuration.GetSection(SeedDataOptions.SectionName));
+    builder.Services
+        .AddOptions<SeedDataOptions>()
+        .Bind(builder.Configuration.GetSection(
+            SeedDataOptions.SectionName))
+        .Validate(
+            options => options.HasValidConfiguration(),
+            "SeedData configuration is invalid. SeedData:DemoUserPassword is required when SeedData:EnableDemoSeed is true.");
+    builder.Services
+        .AddOptions<ProductionBootstrapOptions>()
+        .Bind(builder.Configuration.GetSection(
+            ProductionBootstrapOptions.SectionName))
+        .Validate(
+            options => options.HasValidConfiguration(),
+            "ProductionBootstrap configuration is invalid. Check required keys, field lengths, code formats, and password strength.");
 
+    builder.Services.AddSingleton<MigratorConfigurationValidator>();
+    builder.Services.AddScoped<IDatabaseMigrationCatalog,
+        EfCoreDatabaseMigrationCatalog>();
+    builder.Services.AddScoped<IDatabaseSchemaManifestCatalog,
+        EfCoreDatabaseSchemaManifestCatalog>();
+    builder.Services.AddScoped<ISqlServerDatabaseObjectInventoryReader,
+        SqlServerDatabaseObjectInventoryReader>();
+    builder.Services.AddScoped<ISqlServerSchemaSnapshotReader,
+        SqlServerSchemaSnapshotReader>();
+    builder.Services.AddScoped<IDatabaseBaselinePreflight,
+        SqlServerDatabaseBaselinePreflight>();
+    builder.Services.AddScoped<IDatabaseMigrationExecutor,
+        EfCoreDatabaseMigrationExecutor>();
+    builder.Services.AddScoped<IMandatorySecuritySeeder,
+        MandatorySecuritySeeder>();
+    builder.Services.AddScoped<IDemoDataSeeder, DemoDataSeeder>();
+    builder.Services.AddScoped<IProvisioningTransactionRunner,
+        EfCoreProvisioningTransactionRunner>();
+    builder.Services.AddScoped<ProductionBootstrapper>();
+    builder.Services.AddScoped<IProductionBootstrapper>(services =>
+        services.GetRequiredService<ProductionBootstrapper>());
+    builder.Services.AddScoped<MigrationExecutionPipeline>();
     builder.Services.AddScoped<MigrationRunner>();
 
     var host = builder.Build();

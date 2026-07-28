@@ -82,9 +82,10 @@ public class InvoiceProviderSettingConfiguration : IEntityTypeConfiguration<Invo
         b.Property(x => x.Note)
             .HasMaxLength(500);
         b.Property(x => x.AuthMode)
-    .HasConversion<byte>()
-    .IsRequired()
-    .HasDefaultValue(InvoiceProviderAuthMode.BasicAuth);
+            .HasConversion<byte>()
+            .IsRequired()
+            .HasDefaultValue(InvoiceProviderAuthMode.BasicAuth)
+            .HasSentinel((InvoiceProviderAuthMode)0);
 
         // Một store có thể có nhiều cấu hình:
         // - nhiều MST

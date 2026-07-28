@@ -44,7 +44,9 @@ public sealed class PurchaseOrderLineConfiguration : IEntityTypeConfiguration<Pu
     {
         b.HasKey(x => x.Id);
         b.Property(x => x.ProductNameSnapshot).HasMaxLength(250).IsRequired();
-        b.Property(x => x.ItemKind).HasDefaultValue(GaoApp.Domain.Enums.PurchaseItemKind.Catalog);
+        b.Property(x => x.ItemKind)
+            .HasDefaultValue(GaoApp.Domain.Enums.PurchaseItemKind.Catalog)
+            .HasSentinel((GaoApp.Domain.Enums.PurchaseItemKind)0);
         b.Property(x => x.SkuSnapshot).HasMaxLength(100);
         b.Property(x => x.UnitNameSnapshot).HasMaxLength(100).IsRequired();
         b.Property(x => x.TaxNameSnapshot).HasMaxLength(100);
