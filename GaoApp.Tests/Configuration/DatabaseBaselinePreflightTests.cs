@@ -358,6 +358,517 @@ public sealed class DatabaseBaselinePreflightTests
             .And.NotContain("Password=");
     }
 
+    [Fact]
+    public async Task CreateDatabaseAsync_should_create_database_and_verify_DB_ID()
+    {
+        var database = new PreflightAcceptanceDatabase();
+
+        try
+        {
+            await database.CreateDatabaseAsync();
+
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+            (await ReadDatabaseStateIndependentlyAsync(database))
+                .Should().Be("ONLINE");
+            (await ProbeTargetDatabaseIndependentlyAsync(database))
+                .Should().Be(1);
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDatabaseAsync_when_command_reports_timeout_but_database_exists_should_succeed()
+    {
+        var database = new PreflightAcceptanceDatabase();
+        var seamCallCount = 0;
+        SqlException? callbackTimeout = null;
+        database.CreateDatabaseCommandAsyncOverride =
+            async (connection, databaseName) =>
+            {
+                seamCallCount++;
+                await CreateDatabaseIndependentlyAsync(
+                    database,
+                    databaseName);
+                (await DatabaseExistsIndependentlyAsync(database))
+                    .Should().BeTrue();
+                (await ReadDatabaseStateIndependentlyAsync(database))
+                    .Should().Be("ONLINE");
+                (await ProbeTargetDatabaseIndependentlyAsync(database))
+                    .Should().Be(1);
+
+                try
+                {
+                    await ExecuteDeterministicCommandTimeoutAsync(
+                        connection);
+                }
+                catch (SqlException timeoutException)
+                    when (timeoutException.Number == -2)
+                {
+                    callbackTimeout = timeoutException;
+                    throw;
+                }
+            };
+
+        try
+        {
+            await database.CreateDatabaseAsync();
+
+            seamCallCount.Should().Be(1);
+            callbackTimeout.Should().NotBeNull();
+            callbackTimeout!.Number.Should().Be(-2);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+            (await ReadDatabaseStateIndependentlyAsync(database))
+                .Should().Be("ONLINE");
+            (await ProbeTargetDatabaseIndependentlyAsync(database))
+                .Should().Be(1);
+
+            await database.DisposeAsync();
+
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDatabaseAsync_when_command_times_out_and_database_does_not_exist_should_rethrow_original_exception()
+    {
+        var database = new PreflightAcceptanceDatabase();
+        var seamCallCount = 0;
+        SqlException? callbackTimeout = null;
+        database.CreateDatabaseCommandAsyncOverride =
+            async (connection, _) =>
+            {
+                seamCallCount++;
+
+                try
+                {
+                    await ExecuteDeterministicCommandTimeoutAsync(
+                        connection);
+                }
+                catch (SqlException timeoutException)
+                    when (timeoutException.Number == -2)
+                {
+                    callbackTimeout = timeoutException;
+                    throw;
+                }
+            };
+
+        try
+        {
+            var action = () => database.CreateDatabaseAsync();
+
+            var exception = await action.Should()
+                .ThrowAsync<SqlException>();
+
+            seamCallCount.Should().Be(1);
+            callbackTimeout.Should().NotBeNull();
+            exception.Which.Should().BeSameAs(callbackTimeout);
+            exception.Which.Number.Should().Be(-2);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+
+            await database.DisposeAsync();
+
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDatabaseAsync_when_normal_create_readiness_is_false_should_fail()
+    {
+        var database = new PreflightAcceptanceDatabase();
+        var readinessCallCount = 0;
+        database.DatabaseReadinessAsyncOverride = () =>
+        {
+            readinessCallCount++;
+            return Task.FromResult(false);
+        };
+
+        try
+        {
+            var action = () => database.CreateDatabaseAsync();
+
+            await action.Should()
+                .ThrowAsync<InvalidOperationException>();
+
+            readinessCallCount.Should().Be(1);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task CreateDatabaseAsync_when_timeout_database_exists_but_readiness_is_false_should_rethrow_original_exception()
+    {
+        var database = new PreflightAcceptanceDatabase();
+        var seamCallCount = 0;
+        var readinessCallCount = 0;
+        SqlException? callbackTimeout = null;
+        database.CreateDatabaseCommandAsyncOverride =
+            async (connection, databaseName) =>
+            {
+                seamCallCount++;
+                await CreateDatabaseIndependentlyAsync(
+                    database,
+                    databaseName);
+                (await DatabaseExistsIndependentlyAsync(database))
+                    .Should().BeTrue();
+
+                try
+                {
+                    await ExecuteDeterministicCommandTimeoutAsync(
+                        connection);
+                }
+                catch (SqlException timeoutException)
+                    when (timeoutException.Number == -2)
+                {
+                    callbackTimeout = timeoutException;
+                    throw;
+                }
+            };
+        database.DatabaseReadinessAsyncOverride = () =>
+        {
+            readinessCallCount++;
+            return Task.FromResult(false);
+        };
+
+        try
+        {
+            var action = () => database.CreateDatabaseAsync();
+
+            var exception = await action.Should()
+                .ThrowAsync<SqlException>();
+
+            seamCallCount.Should().Be(1);
+            callbackTimeout.Should().NotBeNull();
+            exception.Which.Should().BeSameAs(callbackTimeout);
+            exception.Which.Number.Should().Be(-2);
+            readinessCallCount.Should().Be(1);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+
+            await database.DisposeAsync();
+
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_when_database_already_absent_should_succeed()
+    {
+        var database = new PreflightAcceptanceDatabase();
+
+        try
+        {
+            await database.CreateDatabaseAsync();
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+            await DropDatabaseIndependentlyAsync(database);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+
+            var action = () => database.DisposeAsync().AsTask();
+
+            await action.Should().NotThrowAsync();
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_should_be_idempotent()
+    {
+        var database = new PreflightAcceptanceDatabase();
+
+        try
+        {
+            await database.CreateDatabaseAsync();
+            (await database.ReadScalarAsync<int>("SELECT 1;"))
+                .Should().Be(1);
+
+            var firstDispose = () => database.DisposeAsync().AsTask();
+            var secondDispose = () => database.DisposeAsync().AsTask();
+
+            await firstDispose.Should().NotThrowAsync();
+            await secondDispose.Should().NotThrowAsync();
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_when_database_disappears_after_precheck_should_succeed()
+    {
+        var database = new PreflightAcceptanceDatabase();
+        var seamCallCount = 0;
+
+        try
+        {
+            await database.CreateDatabaseAsync();
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeTrue();
+            database.BeforeCleanupCommandAsync = async () =>
+            {
+                seamCallCount++;
+                await DropDatabaseIndependentlyAsync(database);
+                (await DatabaseExistsIndependentlyAsync(database))
+                    .Should().BeFalse();
+            };
+
+            var firstDispose = () => database.DisposeAsync().AsTask();
+
+            await firstDispose.Should().NotThrowAsync();
+            seamCallCount.Should().Be(1);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+
+            var secondDispose = () => database.DisposeAsync().AsTask();
+
+            await secondDispose.Should().NotThrowAsync();
+            seamCallCount.Should().Be(1);
+            (await DatabaseExistsIndependentlyAsync(database))
+                .Should().BeFalse();
+        }
+        finally
+        {
+            await DropDatabaseIndependentlyAsync(database);
+        }
+    }
+
+    [Fact]
+    public void Database_name_guard_should_reject_name_outside_acceptance_prefix()
+    {
+        var action = () =>
+            PreflightAcceptanceDatabase.GuardDatabaseName(
+                "GaoApp_Production");
+
+        action.Should()
+            .Throw<InvalidOperationException>()
+            .WithMessage(
+                "Refusing to operate on a database outside the acceptance prefix.");
+    }
+
+    private static async Task CreateDatabaseIndependentlyAsync(
+        PreflightAcceptanceDatabase database,
+        string databaseName)
+    {
+        PreflightAcceptanceDatabase.GuardDatabaseName(databaseName);
+        await using var connection = new SqlConnection(
+            CreateIndependentMasterConnectionString(database));
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"CREATE DATABASE [{databaseName}];";
+        command.CommandTimeout =
+            PreflightAcceptanceDatabase
+                .CreateDatabaseCommandTimeoutSeconds;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<string?> ReadDatabaseStateIndependentlyAsync(
+        PreflightAcceptanceDatabase database)
+    {
+        var databaseName = new SqlConnectionStringBuilder(
+            database.ConnectionString).InitialCatalog;
+        PreflightAcceptanceDatabase.GuardDatabaseName(databaseName);
+        await using var connection = new SqlConnection(
+            CreateIndependentMasterConnectionString(database));
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT state_desc
+            FROM sys.databases
+            WHERE name = @databaseName;
+            """;
+        command.CommandTimeout =
+            PreflightAcceptanceDatabase
+                .CreateDatabaseCommandTimeoutSeconds;
+        command.Parameters.Add(
+            new SqlParameter(
+                "@databaseName",
+                SqlDbType.NVarChar,
+                128)
+            {
+                Value = databaseName
+            });
+        return await command.ExecuteScalarAsync() as string;
+    }
+
+    private static async Task<int> ProbeTargetDatabaseIndependentlyAsync(
+        PreflightAcceptanceDatabase database)
+    {
+        var builder = new SqlConnectionStringBuilder(
+            database.ConnectionString)
+        {
+            Pooling = false
+        };
+        PreflightAcceptanceDatabase.GuardDatabaseName(
+            builder.InitialCatalog);
+        await using var connection = new SqlConnection(
+            builder.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1;";
+        command.CommandTimeout =
+            PreflightAcceptanceDatabase
+                .CreateDatabaseCommandTimeoutSeconds;
+        return Convert.ToInt32(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task ExecuteDeterministicCommandTimeoutAsync(
+        SqlConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "WAITFOR DELAY '00:00:02';";
+        command.CommandTimeout = 1;
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> DatabaseExistsIndependentlyAsync(
+        PreflightAcceptanceDatabase database)
+    {
+        var databaseName = new SqlConnectionStringBuilder(
+            database.ConnectionString).InitialCatalog;
+        PreflightAcceptanceDatabase.GuardDatabaseName(databaseName);
+        await using var connection = new SqlConnection(
+            CreateIndependentMasterConnectionString(database));
+        await connection.OpenAsync();
+        return await DatabaseExistsIndependentlyAsync(
+            connection,
+            databaseName);
+    }
+
+    private static async Task<bool> DatabaseExistsIndependentlyAsync(
+        SqlConnection connection,
+        string databaseName)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DB_ID(@databaseName);";
+        command.Parameters.Add(
+            new SqlParameter(
+                "@databaseName",
+                SqlDbType.NVarChar,
+                128)
+            {
+                Value = databaseName
+            });
+        var result = await command.ExecuteScalarAsync();
+        return result is not null and not DBNull;
+    }
+
+    private static async Task DropDatabaseIndependentlyAsync(
+        PreflightAcceptanceDatabase database)
+    {
+        var databaseName = new SqlConnectionStringBuilder(
+            database.ConnectionString).InitialCatalog;
+        PreflightAcceptanceDatabase.GuardDatabaseName(databaseName);
+        await using var connection = new SqlConnection(
+            CreateIndependentMasterConnectionString(database));
+        await connection.OpenAsync();
+
+        if (!await DatabaseExistsIndependentlyAsync(
+                connection,
+                databaseName))
+        {
+            return;
+        }
+
+        try
+        {
+            await using (var alterCommand = connection.CreateCommand())
+            {
+                alterCommand.CommandText = $"""
+                    ALTER DATABASE [{databaseName}]
+                        SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                    """;
+                await alterCommand.ExecuteNonQueryAsync();
+            }
+
+            await using var dropCommand = connection.CreateCommand();
+            dropCommand.CommandText = $"DROP DATABASE [{databaseName}];";
+            await dropCommand.ExecuteNonQueryAsync();
+        }
+        catch (SqlException cleanupException)
+        {
+            bool databaseExists;
+
+            try
+            {
+                databaseExists =
+                    await DatabaseExistsIndependentlyAsync(database);
+            }
+            catch (Exception verificationException)
+            {
+                throw new AggregateException(
+                    "Independent database cleanup failed and the cleanup postcondition could not be verified.",
+                    cleanupException,
+                    verificationException);
+            }
+
+            if (!databaseExists)
+            {
+                return;
+            }
+
+            throw;
+        }
+
+        if (await DatabaseExistsIndependentlyAsync(
+                connection,
+                databaseName))
+        {
+            throw new InvalidOperationException(
+                "Independent cleanup completed but the acceptance database still exists.");
+        }
+    }
+
+    private static string CreateIndependentMasterConnectionString(
+        PreflightAcceptanceDatabase database)
+    {
+        var builder = new SqlConnectionStringBuilder(
+            database.ConnectionString)
+        {
+            InitialCatalog = "master",
+            MultipleActiveResultSets = false,
+            Pooling = false
+        };
+        return builder.ConnectionString;
+    }
+
     private static SqlServerDatabaseBaselinePreflight CreatePreflight(
         AppDbContext db)
         => new(
@@ -495,6 +1006,8 @@ public sealed class R1FinalDatabasePreflightCollection;
 
 internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 {
+    internal const int CreateDatabaseCommandTimeoutSeconds = 60;
+
     private const string Prefix = "GaoApp_R1Final_Preflight_";
     private const string TestDataSourceEnvironmentVariable =
         "GAOAPP_R1_FINAL_TEST_SQL_SERVER";
@@ -506,6 +1019,12 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
         $"{Prefix}{Guid.NewGuid():N}".ToUpperInvariant();
     private bool _disposed;
 
+    internal Func<Task>? BeforeCleanupCommandAsync { get; set; }
+    internal Func<SqlConnection, string, Task>?
+        CreateDatabaseCommandAsyncOverride { get; set; }
+    internal Func<Task<bool>>?
+        DatabaseReadinessAsyncOverride { get; set; }
+
     public string ConnectionString
         => new SqlConnectionStringBuilder
         {
@@ -515,7 +1034,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
             Encrypt = false,
             TrustServerCertificate = true,
             ConnectTimeout = 15,
-            MultipleActiveResultSets = true
+            MultipleActiveResultSets = true,
+            Pooling = false
         }.ConnectionString;
 
     public AppDbContext CreateContext(
@@ -540,13 +1060,126 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
     public async Task CreateDatabaseAsync()
     {
-        GuardDatabaseName();
+        GuardDatabaseName(_databaseName);
         await using var connection = new SqlConnection(
             CreateMasterConnectionString());
         await connection.OpenAsync();
+
+        try
+        {
+            await ExecuteCreateDatabaseCommandAsync(connection);
+        }
+        catch (SqlException timeoutException)
+            when (timeoutException.Number == -2)
+        {
+            try
+            {
+                if (await EvaluateDatabaseReadinessAsync())
+                {
+                    return;
+                }
+            }
+            catch (Exception verificationException)
+            {
+                throw new AggregateException(
+                    "CREATE DATABASE timed out and readiness verification also failed.",
+                    timeoutException,
+                    verificationException);
+            }
+
+            throw;
+        }
+
+        bool databaseIsReady;
+
+        try
+        {
+            databaseIsReady =
+                await EvaluateDatabaseReadinessAsync();
+        }
+        catch (Exception verificationException)
+        {
+            throw new InvalidOperationException(
+                "CREATE DATABASE completed but readiness verification failed.",
+                verificationException);
+        }
+
+        if (!databaseIsReady)
+        {
+            throw new InvalidOperationException(
+                "CREATE DATABASE completed but the acceptance database is not ONLINE and usable.");
+        }
+    }
+
+    private async Task ExecuteCreateDatabaseCommandAsync(
+        SqlConnection connection)
+    {
+        if (CreateDatabaseCommandAsyncOverride is not null)
+        {
+            await CreateDatabaseCommandAsyncOverride(
+                connection,
+                _databaseName);
+            return;
+        }
+
         await using var command = connection.CreateCommand();
         command.CommandText = $"CREATE DATABASE [{_databaseName}];";
+        command.CommandTimeout =
+            CreateDatabaseCommandTimeoutSeconds;
         await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task<bool> DatabaseIsReadyUsingNewConnectionsAsync()
+    {
+        GuardDatabaseName(_databaseName);
+        await using var masterConnection = new SqlConnection(
+            CreateMasterConnectionString());
+        await masterConnection.OpenAsync();
+        await using var stateCommand =
+            masterConnection.CreateCommand();
+        stateCommand.CommandText = """
+            SELECT state_desc
+            FROM sys.databases
+            WHERE name = @databaseName;
+            """;
+        stateCommand.CommandTimeout =
+            CreateDatabaseCommandTimeoutSeconds;
+        stateCommand.Parameters.Add(
+            new SqlParameter(
+                "@databaseName",
+                SqlDbType.NVarChar,
+                128)
+            {
+                Value = _databaseName
+            });
+        var state = await stateCommand.ExecuteScalarAsync() as string;
+
+        if (!string.Equals(
+                state,
+                "ONLINE",
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        await using var targetConnection =
+            new SqlConnection(ConnectionString);
+        await targetConnection.OpenAsync();
+        await using var probeCommand =
+            targetConnection.CreateCommand();
+        probeCommand.CommandText = "SELECT 1;";
+        probeCommand.CommandTimeout =
+            CreateDatabaseCommandTimeoutSeconds;
+        var probeResult = await probeCommand.ExecuteScalarAsync();
+        return Convert.ToInt32(probeResult) == 1;
+    }
+
+    private Task<bool> EvaluateDatabaseReadinessAsync()
+    {
+        var readinessOverride = DatabaseReadinessAsyncOverride;
+        return readinessOverride is null
+            ? DatabaseIsReadyUsingNewConnectionsAsync()
+            : readinessOverride();
     }
 
     public async Task ExecuteAsync(
@@ -757,37 +1390,114 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
             return;
         }
 
-        _disposed = true;
-        GuardDatabaseName();
+        GuardDatabaseName(_databaseName);
 
         await using var connection = new SqlConnection(
             CreateMasterConnectionString());
         await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"""
-            IF DB_ID(@databaseName) IS NOT NULL
-            BEGIN
+
+        if (!await DatabaseExistsAsync(connection))
+        {
+            _disposed = true;
+            return;
+        }
+
+        if (BeforeCleanupCommandAsync is not null)
+        {
+            await BeforeCleanupCommandAsync();
+        }
+
+        try
+        {
+            await ExecuteMasterCommandAsync(
+                connection,
+                $"""
                 ALTER DATABASE [{_databaseName}]
                     SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-                DROP DATABASE [{_databaseName}];
-            END;
-            """;
-        command.Parameters.AddWithValue(
-            "@databaseName",
-            _databaseName);
-        await command.ExecuteNonQueryAsync();
+                """);
+            await ExecuteMasterCommandAsync(
+                connection,
+                $"DROP DATABASE [{_databaseName}];");
+        }
+        catch (SqlException cleanupException)
+        {
+            bool databaseExists;
+
+            try
+            {
+                databaseExists =
+                    await DatabaseExistsUsingNewConnectionAsync();
+            }
+            catch (Exception verificationException)
+            {
+                throw new AggregateException(
+                    "Database cleanup failed and the cleanup postcondition could not be verified.",
+                    cleanupException,
+                    verificationException);
+            }
+
+            if (!databaseExists)
+            {
+                _disposed = true;
+                return;
+            }
+
+            throw;
+        }
+
+        if (await DatabaseExistsAsync(connection))
+        {
+            throw new InvalidOperationException(
+                "Database cleanup completed but the acceptance database still exists.");
+        }
+
+        _disposed = true;
     }
 
-    private void GuardDatabaseName()
+    internal static void GuardDatabaseName(string databaseName)
     {
-        if (!SafeNamePattern.IsMatch(_databaseName)
-            || !_databaseName.StartsWith(
+        if (!SafeNamePattern.IsMatch(databaseName)
+            || !databaseName.StartsWith(
                 Prefix,
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
                 "Refusing to operate on a database outside the acceptance prefix.");
         }
+    }
+
+    private async Task<bool> DatabaseExistsUsingNewConnectionAsync()
+    {
+        await using var connection = new SqlConnection(
+            CreateMasterConnectionString());
+        await connection.OpenAsync();
+        return await DatabaseExistsAsync(connection);
+    }
+
+    private async Task<bool> DatabaseExistsAsync(
+        SqlConnection connection)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DB_ID(@databaseName);";
+        command.Parameters.Add(
+            new SqlParameter(
+                "@databaseName",
+                SqlDbType.NVarChar,
+                128)
+            {
+                Value = _databaseName
+            });
+        var result = await command.ExecuteScalarAsync();
+        return result is not null and not DBNull;
+    }
+
+    private static async Task ExecuteMasterCommandAsync(
+        SqlConnection connection,
+        string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
     }
 
     private static string CreateMasterConnectionString()
@@ -798,7 +1508,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
             IntegratedSecurity = true,
             Encrypt = false,
             TrustServerCertificate = true,
-            ConnectTimeout = 15
+            ConnectTimeout = 15,
+            Pooling = false
         }.ConnectionString;
 
     private static string GetTestDataSource()
