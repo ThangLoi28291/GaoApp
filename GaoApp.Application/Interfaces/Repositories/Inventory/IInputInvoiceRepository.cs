@@ -49,6 +49,9 @@ public interface IInputInvoiceRepository
         CancellationToken ct = default);
 
     Task<InputInvoiceDetail?> GetInputInvoiceDetailAsync(
+        int storeId,
+        int stockDocumentId,
+        int stockDocumentLineId,
         int inputInvoiceDetailId,
         CancellationToken ct = default);
 

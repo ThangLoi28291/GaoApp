@@ -165,11 +165,46 @@ public sealed class InputInvoiceRepository : IInputInvoiceRepository
     }
 
     public Task<InputInvoiceDetail?> GetInputInvoiceDetailAsync(
+        int storeId,
+        int stockDocumentId,
+        int stockDocumentLineId,
         int inputInvoiceDetailId,
         CancellationToken ct = default)
     {
-        return _db.InputInvoiceDetails
-            .FirstOrDefaultAsync(x => x.Id == inputInvoiceDetailId, ct);
+        return (
+            from detail in _db.InputInvoiceDetails
+            join head in _db.InputInvoiceHeads
+                on detail.InputInvoiceHeadId equals head.Id
+            join invoiceMap in _db.StockDocumentInputInvoiceMaps
+                on head.Id equals invoiceMap.InputInvoiceHeadId
+            join receipt in _db.StockDocuments
+                on invoiceMap.StockDocumentId equals receipt.Id
+            join receiptLine in _db.StockDocumentLines
+                on receipt.Id equals receiptLine.StockDocumentId
+            join receiptWarehouse in _db.Warehouses
+                on receipt.WarehouseId equals receiptWarehouse.Id
+            where detail.Id == inputInvoiceDetailId
+                  && head.StoreId == storeId
+                  && invoiceMap.StoreId == storeId
+                  && invoiceMap.StockDocumentId == stockDocumentId
+                  && receipt.Id == stockDocumentId
+                  && receipt.StoreId == storeId
+                  && receipt.Type == StockDocumentType.Receipt
+                  && receiptLine.Id == stockDocumentLineId
+                  && receiptWarehouse.StoreId == storeId
+                  && receiptWarehouse.LegalEntityId > 0
+                  && !_db.StockDocumentInputInvoiceMaps.Any(otherMap =>
+                      otherMap.StoreId == storeId
+                      && otherMap.InputInvoiceHeadId == head.Id
+                      && _db.StockDocuments.Any(otherReceipt =>
+                          otherReceipt.Id == otherMap.StockDocumentId
+                          && otherReceipt.StoreId == storeId
+                          && _db.Warehouses.Any(otherWarehouse =>
+                              otherWarehouse.Id == otherReceipt.WarehouseId
+                              && otherWarehouse.StoreId == storeId
+                              && otherWarehouse.LegalEntityId != receiptWarehouse.LegalEntityId)))
+            select detail)
+            .FirstOrDefaultAsync(ct);
     }
 
     public Task<StockDocumentLine?> GetStockDocumentLineAsync(
