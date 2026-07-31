@@ -8,7 +8,7 @@ Tài liệu này quy định cách khảo sát, triển khai, review và tích h
 
 ### Coordinator
 
-- Khóa mục tiêu, nghiệp vụ, task level, base branch, expected parent, allowed/locked files và test plan.
+- Khóa Task Contract, gồm mục tiêu, nghiệp vụ, task level, base branch, base commit, expected parent, mandatory read files, allowed/locked files và test plan.
 - Giải quyết câu hỏi làm thay đổi phạm vi hoặc quyết định nghiệp vụ.
 - Cho phép commit bằng câu lệnh rõ ràng `COMMIT ALLOWED`.
 - Khóa dependency, thứ tự integration, integration branch và các điều kiện `TASK PASS`.
@@ -19,7 +19,7 @@ Tài liệu này quy định cách khảo sát, triển khai, review và tích h
 
 ### Implementation Agent
 
-- Chạy pre-flight, giữ đúng branch/expected parent và chỉ sửa allowed files.
+- Chạy pre-flight, giữ đúng branch/base commit/expected parent và chỉ sửa allowed files.
 - Đọc source/call sites/tests cần thiết trước khi sửa.
 - Thực hiện thay đổi nhỏ nhất đáp ứng contract.
 - Chạy validation được contract cho phép, cung cấp evidence và rollback.
@@ -29,12 +29,13 @@ Tài liệu này quy định cách khảo sát, triển khai, review và tích h
 
 ### Independent Reviewer
 
-- Review đúng một immutable reviewed commit SHA; ghi base branch, expected parent, reviewed SHA, parent của reviewed SHA và diff `expected-parent..reviewed-sha`.
+- Review đúng một immutable reviewed commit SHA; ghi base branch, base commit, expected parent, reviewed SHA, parent của reviewed SHA và diff `expected-parent..reviewed-sha`.
 - Xác minh reviewed commit là child đúng của expected parent, trừ khi Task Contract khóa một ancestry khác.
 - Tự đọc diff, source và call sites liên quan; không dựa riêng vào Implementation Handoff.
 - Kiểm tra correctness, security, tenant/data isolation, concurrency, migrations và regression tests theo level.
 - Phân biệt defect do task tạo với finding đã tồn tại hoặc ngoài scope.
-- Không sửa file, tạo patch, commit, push hoặc merge trong review; `Reviewer-created changes` luôn là `None`.
+- Chỉ cung cấp verdict, finding và evidence; không thực hiện implementation hoặc remediation.
+- Không sửa file, tạo remediation patch, commit, push hoặc merge trong review; `Reviewer-created changes` luôn là `None`.
 - Chỉ kết luận `INDEPENDENT REVIEW PASS` hoặc `INDEPENDENT REVIEW FAIL`; verdict chỉ áp dụng cho `Reviewed commit SHA`.
 - Không được kết luận task tổng thể là `TASK PASS` và không được bỏ qua required GitHub CI.
 - Commit mới hoặc thay đổi reviewed SHA làm review cũ mất hiệu lực.
@@ -115,6 +116,42 @@ Coordinator và người thực hiện đang khóa nghiệp vụ, scope, depende
 
 Task Contract đầy đủ, không còn ambiguity làm thay đổi kết quả, branch/base khả dụng.
 
+#### Task Contract bất biến tại READY
+
+Khi Task Contract đạt `READY`, toàn bộ contract trở thành bất biến. Implementation Agent và Independent Reviewer không được tự thay đổi, diễn giải mở rộng hoặc bỏ qua bất kỳ trường nào. Nội dung bất biến gồm tối thiểu:
+
+- Task ID;
+- level;
+- mục tiêu;
+- nghiệp vụ khóa;
+- ngoài phạm vi;
+- branch;
+- base branch;
+- base commit;
+- expected parent;
+- mandatory read files;
+- search targets/call sites;
+- allowed modified files;
+- locked files;
+- concurrent conflicts;
+- risks;
+- implementation plan;
+- test plan;
+- evidence;
+- commit message;
+- rollback;
+- PASS criteria;
+- handoff format.
+
+Nếu cần thay đổi bất kỳ trường nào sau `READY`:
+
+1. Implementation Agent phải dừng.
+2. Coordinator đưa task về `CLARIFYING`.
+3. Coordinator ban hành một Task Contract revision rõ ràng.
+4. Chỉ sau khi revision được đánh dấu `READY` thì Implementation Agent hoặc Independent Reviewer mới được tiếp tục.
+
+Implementation Agent không được tự thêm file vào allowlist hoặc tự đổi test plan.
+
 ### IMPLEMENTING
 
 Agent thực hiện đúng task. Nếu gặp thay đổi ngoài scope, conflict hoặc expected-parent mismatch thì dừng và báo.
@@ -129,7 +166,22 @@ Coordinator cho phép commit rõ ràng. Commit phải chứa đúng allowed diff
 
 ### INDEPENDENT REVIEW
 
-Reviewer độc lập khóa reviewed commit SHA, xác minh parent/diff từ expected parent, rồi tự đọc diff/source/call sites. Review không tạo thay đổi. Kết quả chỉ là `INDEPENDENT REVIEW PASS` hoặc `INDEPENDENT REVIEW FAIL` cho commit đó; đây là review verdict của một commit, chưa phải `TASK PASS`. Review fail đưa task quay lại `CLARIFYING` hoặc `IMPLEMENTING` tùy nguyên nhân; không che finding bằng sửa ngoài scope. Bất kỳ commit mới hoặc thay đổi reviewed SHA nào đều yêu cầu review mới.
+Reviewer độc lập khóa reviewed commit SHA, xác minh parent/diff từ expected parent, rồi tự đọc diff/source/call sites. Review không tạo thay đổi. Kết quả chỉ là `INDEPENDENT REVIEW PASS` hoặc `INDEPENDENT REVIEW FAIL` cho commit đó; đây là review verdict của một commit, chưa phải `TASK PASS`. Không che finding bằng sửa ngoài scope. Bất kỳ commit mới hoặc thay đổi reviewed SHA nào đều yêu cầu review mới.
+
+Khi `INDEPENDENT REVIEW FAIL`:
+
+1. Independent Reviewer trả báo cáo FAIL kèm finding và evidence.
+2. Coordinator xác minh từng finding.
+3. Finding không hợp lệ được Coordinator bác bỏ kèm lý do.
+4. Finding hợp lệ được Coordinator chuyển bằng remediation prompt về đúng Implementation chat của task.
+5. Không chuyển remediation sang Reviewer chat.
+6. Implementation Agent chỉ sửa file được Coordinator cho phép trong remediation contract.
+7. Implementation Agent tạo commit mới sau `COMMIT ALLOWED`; không amend commit đã review.
+8. Commit mới phải được Independent Reviewer review lại.
+9. Required GitHub CI phải chạy lại trên đúng SHA mới.
+10. Review và CI của SHA cũ không được dùng để kết luận SHA mới.
+
+Nếu finding chỉ thuộc tài liệu thì remediation chỉ được sửa tài liệu; không mở rộng sang source code.
 
 ### CI VERIFIED
 
@@ -152,11 +204,15 @@ Implementation Agent và Independent Reviewer không được tuyên bố `TASK 
 - `CI VERIFIED`: required CI đạt trên cùng `Reviewed commit SHA`; trạng thái này không thay thế review verdict.
 - `TASK PASS`: trạng thái cuối chỉ do Coordinator kết luận sau khi hai điều kiện trên cùng đạt trên một immutable SHA và không có commit mới.
 
-## 5. Branch, expected parent and Git rules
+## 5. Branch, base commit, expected parent and Git rules
 
-- Task Contract phải ghi source, base branch, expected parent SHA đầy đủ và working branch.
-- Expected parent là bất biến trong thời gian task. Nếu HEAD khởi đầu khác expected parent, dừng trước khi sửa.
-- Không tự pull/fetch/reset/rebase/merge để “sửa” mismatch.
+- Task Contract phải ghi source, base branch, base commit, expected parent SHA đầy đủ và working branch.
+- Base commit là SHA nền gốc mà task hoặc release được tạo từ đó. Base commit phải là SHA đầy đủ, không dùng tên branch thay thế và không tự thay đổi trong quá trình task hoặc remediation.
+- Expected parent là commit phải trở thành parent trực tiếp của commit Implementation tiếp theo.
+- Với implementation commit đầu tiên, expected parent thường bằng base commit.
+- Với remediation commit, expected parent có thể là commit đã review FAIL gần nhất; base commit vẫn giữ nguyên để truy vết nền ban đầu.
+- Expected parent là bất biến trong một Task Contract revision đã `READY`. Nếu HEAD khởi đầu khác expected parent, Implementation Agent phải dừng và báo Coordinator trước khi sửa.
+- Không tự pull/fetch/reset/rebase/amend/merge để “sửa” hoặc ép lịch sử khớp expected parent.
 - Không đổi branch ngoài thao tác được contract cho phép.
 - Pre-flight tối thiểu:
 
@@ -174,6 +230,20 @@ git status --branch --short
 - Push/PR chỉ thực hiện nếu user/Coordinator giao rõ; quyền push/PR không bao gồm merge.
 - Review phải dùng commit SHA bất biến và kiểm tra `git rev-parse <reviewed-sha>^` bằng expected parent, trừ ancestry khác đã được khóa trong contract.
 
+Ví dụ lịch sử:
+
+```text
+Task đầu:
+Base commit: A
+Expected parent: A
+Implementation commit: B, parent của B là A
+
+Remediation:
+Base commit: A
+Expected parent: B
+Fix commit: C, parent của C là B
+```
+
 ## 6. Allowed files and locked files
 
 - `Allowed modified files` là allowlist tuyệt đối.
@@ -182,8 +252,8 @@ git status --branch --short
 - Nếu cần sửa file ngoài allowlist để hoàn thành đúng nghiệp vụ:
   1. dừng;
   2. nêu file, lý do và tác động;
-  3. yêu cầu Coordinator sửa contract;
-  4. chỉ tiếp tục sau khi scope được khóa lại.
+  3. yêu cầu Coordinator đưa task về `CLARIFYING` và ban hành Task Contract revision;
+  4. chỉ tiếp tục sau khi revision được đánh dấu `READY`.
 - File phát sinh bất ngờ:
   1. không xóa/restore;
   2. xác định tracked/untracked, timestamp nếu hữu ích và diff;
@@ -208,11 +278,21 @@ $unexpected = $changed | Where-Object { $_ -notin $allowed }
 ## 7. Read-only discovery and source evidence
 
 - Dùng `rg`, `rg --files`, `Get-Content`, `git log`, `git blame`, `git diff` hoặc công cụ read-only tương đương.
+- Implementation Agent được search read-only toàn repository nhưng không phải đọc toàn bộ repository.
 - Không đọc tuần tự toàn repository. Bắt đầu từ entity/interface/controller/service rồi theo call chain và call sites.
 - Không kết luận tính năng tồn tại chỉ từ tên file.
 - Evidence hợp lệ cần chỉ rõ file và symbol/method; với behavior quan trọng phải đọc caller và callee.
 - Migration/model snapshot chỉ chứng minh schema; không chứng minh workflow đang được gọi.
 - Test source chỉ chứng minh contract test tồn tại; không nói test đã chạy nếu chưa chạy.
+
+### Mandatory read files
+
+- `MANDATORY READ FILES` là danh sách source hoặc tài liệu Coordinator bắt buộc Implementation Agent đọc trước khi sửa.
+- Danh sách này không yêu cầu đọc toàn bộ repository; search targets/call sites có thể dẫn tới các file bổ sung cần đọc read-only.
+- Chỉ `ALLOWED MODIFIED FILES` được sửa; quyền đọc hoặc search không cấp quyền thay đổi file.
+- Nếu mandatory file không tồn tại, sai đường dẫn hoặc không đủ để triển khai đúng contract, Implementation Agent phải dừng và báo Coordinator.
+- Implementation Handoff phải liệt kê các file thực sự đã đọc.
+- Không được tuyên bố đã đọc một file nếu chưa mở nội dung file đó.
 
 ## 8. Clarifications and business decisions
 
@@ -343,35 +423,47 @@ Hai task không nên đồng thời sửa cùng high-conflict file. Nếu bắt 
 ### 15.1 Task Contract
 
 ```text
+TASK ID:
 TASK:
 ROLE:
 LEVEL:
 STATUS:
 SOURCE:
 
+MỤC TIÊU:
 OBJECTIVE:
 IN SCOPE:
+NGHIỆP VỤ KHÓA:
 OUT OF SCOPE:
+NGOÀI PHẠM VI:
 
+BRANCH:
 BASE BRANCH:
+BASE COMMIT:
 EXPECTED PARENT:
 WORKING BRANCH:
 BRANCH LOCK:
 
+MANDATORY READ FILES:
+SEARCH TARGETS/CALL SITES:
 ALLOWED MODIFIED FILES:
 LOCKED FILES:
 DEPENDENCIES:
 CONCURRENT CONFLICTS:
+RISKS:
 
 BUSINESS RULES:
+IMPLEMENTATION PLAN:
 IMPLEMENTATION NOTES:
 
 PRE-FLIGHT:
 TEST PLAN:
+EVIDENCE:
 EVIDENCE REQUIRED:
 
 COMMIT MESSAGE:
 ROLLBACK:
+PASS CRITERIA:
 HANDOFF FORMAT:
 ```
 
@@ -386,7 +478,7 @@ HANDOFF FORMAT:
    Không dùng INDEPENDENT REVIEW PASS hoặc TASK PASS trong Implementation Handoff.
 
 2. Contract
-   Level, objective, expected parent, allowed files
+   Level, objective, base commit, expected parent, mandatory read files, allowed files
 
 3. Git Baseline
    Start/end branch, HEAD, status, task-created changes
@@ -430,6 +522,7 @@ HANDOFF FORMAT:
 
 2. Reviewed Baseline
    Base branch:
+   Base commit:
    Expected parent:
    Reviewed commit SHA:
    Reviewed commit parent:
