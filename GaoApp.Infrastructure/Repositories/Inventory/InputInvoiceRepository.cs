@@ -153,6 +153,7 @@ public sealed class InputInvoiceRepository : IInputInvoiceRepository
 
     public Task<StockDocumentLineInputInvoiceMap?> GetLineMapAsync(
         int storeId,
+        int stockDocumentId,
         int stockDocumentLineId,
         CancellationToken ct = default)
     {
@@ -160,6 +161,7 @@ public sealed class InputInvoiceRepository : IInputInvoiceRepository
             .Include(x => x.StockDocumentLine)
             .FirstOrDefaultAsync(x =>
                 x.StoreId == storeId &&
+                x.StockDocumentId == stockDocumentId &&
                 x.StockDocumentLineId == stockDocumentLineId,
                 ct);
     }

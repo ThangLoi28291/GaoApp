@@ -210,21 +210,15 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         var map = await _repository.GetLineMapAsync(
             storeId,
+            stockDocumentId,
             request.StockDocumentLineId,
             ct);
 
-        if (map == null)
-        {
-            map = new StockDocumentLineInputInvoiceMap
-            {
-                StoreId = storeId,
-                StockDocumentId = stockDocumentId,
-                StockDocumentLineId = request.StockDocumentLineId
-            };
-
-            // Nếu repository chưa có Add riêng thì có thể thêm method AddLineMapAsync.
-            throw new BusinessRuleException("Map dòng chưa được khởi tạo. Hãy reload phiếu hoặc gọi AddMissingLineMapsAsync trước.");
-        }
+        if (map == null ||
+            map.StoreId != storeId ||
+            map.StockDocumentId != stockDocumentId ||
+            map.StockDocumentLineId != request.StockDocumentLineId)
+            throw new BusinessRuleException("Map dòng không hợp lệ hoặc không thuộc phiếu hiện tại.");
 
         if (!request.UseInputInvoice)
         {

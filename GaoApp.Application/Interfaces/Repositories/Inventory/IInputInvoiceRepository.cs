@@ -45,6 +45,7 @@ public interface IInputInvoiceRepository
 
     Task<StockDocumentLineInputInvoiceMap?> GetLineMapAsync(
         int storeId,
+        int stockDocumentId,
         int stockDocumentLineId,
         CancellationToken ct = default);
 
