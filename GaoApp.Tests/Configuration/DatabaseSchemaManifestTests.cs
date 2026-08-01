@@ -13,6 +13,12 @@ namespace GaoApp.Tests.Configuration;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class DatabaseSchemaManifestTests
 {
+    private const string BaselineMigrationId =
+        "20260726073029_InitialProductionBaseline";
+
+    private const string InventoryPostingMigrationId =
+        "20260801110856_AddInventoryPostingIdempotency";
+
     [Fact]
     public Task Current_history_missing_required_column_should_be_rejected()
         => AssertCorruptionRejectedAsync(
@@ -32,6 +38,51 @@ public sealed class DatabaseSchemaManifestTests
 
             ALTER TABLE [dbo].[InventoryTransactions]
                 DROP COLUMN [IdempotencyKey];
+            """);
+
+    [Fact]
+    public Task Current_history_wrong_inventory_idempotency_column_type_should_be_rejected()
+        => AssertOnlyColumnCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            ALTER TABLE [dbo].[InventoryTransactions]
+                ALTER COLUMN [IdempotencyKey] varbinary(31) NULL;
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId], [IdempotencyKey])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_non_nullable_inventory_idempotency_column_should_be_rejected()
+        => AssertOnlyColumnCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            ALTER TABLE [dbo].[InventoryTransactions]
+                ALTER COLUMN [IdempotencyKey] varbinary(32) NOT NULL;
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId], [IdempotencyKey])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_inventory_idempotency_column_with_default_should_be_rejected()
+        => AssertOnlyColumnCorruptionRejectedAsync("""
+            ALTER TABLE [dbo].[InventoryTransactions]
+            ADD CONSTRAINT
+                [DF_Acceptance_InventoryTransactions_IdempotencyKey]
+            DEFAULT (0x00) FOR [IdempotencyKey];
             """);
 
     [Fact]
@@ -94,7 +145,7 @@ public sealed class DatabaseSchemaManifestTests
 
     [Fact]
     public Task Current_history_wrong_inventory_idempotency_index_filter_should_be_rejected()
-        => AssertCorruptionRejectedAsync("""
+        => AssertOnlyIndexCorruptionRejectedAsync("""
             DROP INDEX
                 [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
             ON [dbo].[InventoryTransactions];
@@ -105,6 +156,79 @@ public sealed class DatabaseSchemaManifestTests
                 ([StoreId], [IdempotencyKey])
             WHERE [IdempotencyKey] IS NOT NULL
               AND [IsDeleted] = 1;
+            """);
+
+    [Fact]
+    public Task Current_history_inventory_idempotency_index_with_reversed_key_columns_should_be_rejected()
+        => AssertOnlyIndexCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([IdempotencyKey], [StoreId])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_inventory_idempotency_index_missing_store_id_should_be_rejected()
+        => AssertOnlyIndexCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([IdempotencyKey])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_inventory_idempotency_index_missing_idempotency_key_should_be_rejected()
+        => AssertOnlyIndexCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_non_unique_inventory_idempotency_index_should_be_rejected()
+        => AssertOnlyIndexCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId], [IdempotencyKey])
+            WHERE [IdempotencyKey] IS NOT NULL
+              AND [IsDeleted] = 0;
+            """);
+
+    [Fact]
+    public Task Current_history_inventory_idempotency_index_without_filter_should_be_rejected()
+        => AssertOnlyIndexCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId], [IdempotencyKey]);
             """);
 
     [Fact]
@@ -202,6 +326,64 @@ public sealed class DatabaseSchemaManifestTests
     }
 
     [Fact]
+    public async Task Actual_baseline_prefix_manifest_should_exclude_inventory_idempotency_metadata()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        var sourceIds = db.Database.GetMigrations().ToList();
+        sourceIds.Should().Equal(
+            BaselineMigrationId,
+            InventoryPostingMigrationId);
+        var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
+
+        catalog.TryGetManifestForAppliedMigrationPrefix(
+                [BaselineMigrationId],
+                out var baselineManifest)
+            .Should().BeTrue();
+
+        baselineManifest.AppliedMigrationIds.Should()
+            .Equal(BaselineMigrationId);
+        var baselineTransactions = baselineManifest.Tables
+            .Should().ContainSingle(
+                table => table.Identity.Name
+                    == "inventorytransactions")
+            .Which;
+        baselineTransactions.Columns.Should().NotContain(
+            column => column.Name == "idempotencykey");
+        baselineTransactions.Indexes.Should().NotContain(
+            index => index.Name
+                == "ux_inventorytransactions_storeid_idempotencykey_active");
+
+        catalog.TryGetManifestForAppliedMigrationPrefix(
+                sourceIds,
+                out var currentManifest)
+            .Should().BeTrue();
+
+        currentManifest.AppliedMigrationIds.Should().Equal(sourceIds);
+        var currentTransactions = currentManifest.Tables
+            .Should().ContainSingle(
+                table => table.Identity.Name
+                    == "inventorytransactions")
+            .Which;
+        currentTransactions.Columns.Should().ContainSingle(
+            column => column.Name == "idempotencykey"
+                && column.StoreType == "varbinary(32)"
+                && column.IsNullable
+                && !column.HasDefault);
+        var currentIndex = currentTransactions.Indexes
+            .Should().ContainSingle(
+                index => index.Name
+                    == "ux_inventorytransactions_storeid_idempotencykey_active"
+                    && index.IsUnique)
+            .Which;
+        currentIndex.KeyColumns
+            .Select(column => column.Name)
+            .Should().Equal("storeid", "idempotencykey");
+        currentIndex.Filter.Should()
+            .Be("idempotencykeyisnotnullandisdeleted=0");
+    }
+
+    [Fact]
     public async Task Valid_migration_prefix_without_manifest_should_be_rejected()
     {
         await using var database = new PreflightAcceptanceDatabase();
@@ -227,7 +409,8 @@ public sealed class DatabaseSchemaManifestTests
     }
 
     private static async Task AssertCorruptionRejectedAsync(
-        string corruptionSql)
+        string corruptionSql,
+        Action<DatabaseSchemaMismatchCounts>? assertMismatches = null)
     {
         await using var database = new PreflightAcceptanceDatabase();
         await using var db = database.CreateContext();
@@ -262,6 +445,9 @@ public sealed class DatabaseSchemaManifestTests
             "StructuralSchemaMismatch");
         exception.Which.Result.SchemaMismatchCategoryCount
             .Should().BeGreaterThan(0);
+        exception.Which.Result.SchemaMismatches.Should().NotBeNull();
+        assertMismatches?.Invoke(
+            exception.Which.Result.SchemaMismatches!);
         migration.Count.Should().Be(0);
         mandatory.Count.Should().Be(0);
         demo.Count.Should().Be(0);
@@ -271,6 +457,36 @@ public sealed class DatabaseSchemaManifestTests
             .Should().Equal(historyBefore);
         (await ReadFingerprintAsync(db)).Should().Be(corruptFingerprint);
     }
+
+    private static Task AssertOnlyColumnCorruptionRejectedAsync(
+        string corruptionSql)
+        => AssertCorruptionRejectedAsync(
+            corruptionSql,
+            mismatches =>
+            {
+                mismatches.Columns.Should().BeGreaterThan(0);
+                mismatches.Tables.Should().Be(0);
+                mismatches.PrimaryKeys.Should().Be(0);
+                mismatches.ForeignKeys.Should().Be(0);
+                mismatches.Indexes.Should().Be(0);
+                mismatches.CheckConstraints.Should().Be(0);
+                mismatches.Sequences.Should().Be(0);
+            });
+
+    private static Task AssertOnlyIndexCorruptionRejectedAsync(
+        string corruptionSql)
+        => AssertCorruptionRejectedAsync(
+            corruptionSql,
+            mismatches =>
+            {
+                mismatches.Indexes.Should().BeGreaterThan(0);
+                mismatches.Tables.Should().Be(0);
+                mismatches.Columns.Should().Be(0);
+                mismatches.PrimaryKeys.Should().Be(0);
+                mismatches.ForeignKeys.Should().Be(0);
+                mismatches.CheckConstraints.Should().Be(0);
+                mismatches.Sequences.Should().Be(0);
+            });
 
     private static async Task<string> ReadFingerprintAsync(
         AppDbContext db)

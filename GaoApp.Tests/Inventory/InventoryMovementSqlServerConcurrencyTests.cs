@@ -14,6 +14,11 @@ namespace GaoApp.Tests.Inventory;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class InventoryMovementSqlServerConcurrencyTests
 {
+    private const int ConcurrentWaitTimeoutSeconds = 30;
+
+    private static readonly TimeSpan ConcurrentWaitTimeout =
+        TimeSpan.FromSeconds(ConcurrentWaitTimeoutSeconds);
+
     [Fact]
     public async Task Concurrent_same_idempotent_movement_creates_exactly_one_posting()
     {
@@ -21,20 +26,28 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
         await database.MigrateAsync();
         var seed = await database.SeedInventoryCatalogAsync();
         var barrier = new AsyncStartBarrier(2);
+        using var timeoutCts =
+            new CancellationTokenSource(ConcurrentWaitTimeout);
 
         var first = RunMovementAsync(
             database,
             seed,
             CreateInboundRequest(seed, "R2-SAME", 2m, 10m),
-            barrier);
+            barrier,
+            ct: timeoutCts.Token);
         var second = RunMovementAsync(
             database,
             seed,
             CreateInboundRequest(seed, "R2-SAME", 2m, 10m),
-            barrier);
+            barrier,
+            ct: timeoutCts.Token);
 
-        var results = await Task.WhenAll(first, second);
+        var results = await WaitForConcurrentPostingsAsync(
+            first,
+            second,
+            timeoutCts.Token);
 
+        barrier.ArrivedCount.Should().Be(2);
         results.Count(x => x.IsCreated).Should().Be(1);
         results.Count(x => x.IsSkipped).Should().Be(1);
         await AssertPostingCountsAsync(
@@ -62,20 +75,28 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
         await database.MigrateAsync();
         var seed = await database.SeedInventoryCatalogAsync();
         var barrier = new AsyncStartBarrier(2);
+        using var timeoutCts =
+            new CancellationTokenSource(ConcurrentWaitTimeout);
 
         var first = RunMovementAsync(
             database,
             seed,
             CreateInboundRequest(seed, "R2-DISTINCT-A", 2m, 10m),
-            barrier);
+            barrier,
+            ct: timeoutCts.Token);
         var second = RunMovementAsync(
             database,
             seed,
             CreateInboundRequest(seed, "R2-DISTINCT-B", 3m, 20m),
-            barrier);
+            barrier,
+            ct: timeoutCts.Token);
 
-        var results = await Task.WhenAll(first, second);
+        var results = await WaitForConcurrentPostingsAsync(
+            first,
+            second,
+            timeoutCts.Token);
 
+        barrier.ArrivedCount.Should().Be(2);
         results.Should().OnlyContain(x => x.IsCreated);
         await AssertPostingCountsAsync(
             database,
@@ -209,17 +230,47 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
             InventoryPostingSeed seed,
             CreateInventoryMovementRequest request,
             AsyncStartBarrier? barrier = null,
-            IInterceptor? interceptor = null)
+            IInterceptor? interceptor = null,
+            CancellationToken ct = default)
     {
         await using var db = database.CreateTenantContext(
             seed.StoreId,
             interceptor);
         if (barrier is not null)
         {
-            await barrier.SignalAndWaitAsync();
+            await barrier.SignalAndWaitAsync(ct);
         }
 
-        return await CreateService(db).CreateAsync(request);
+        return await CreateService(db).CreateAsync(request, ct);
+    }
+
+    private static async Task<InventoryMovementResultDto[]>
+        WaitForConcurrentPostingsAsync(
+            Task<InventoryMovementResultDto> first,
+            Task<InventoryMovementResultDto> second,
+            CancellationToken timeoutToken)
+    {
+        var concurrentPostings = Task.WhenAll(first, second);
+
+        try
+        {
+            return await concurrentPostings.WaitAsync(
+                ConcurrentWaitTimeout);
+        }
+        catch (OperationCanceledException exception)
+            when (timeoutToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Concurrent inventory postings did not complete within {ConcurrentWaitTimeoutSeconds} seconds.",
+                exception);
+        }
+        catch (TimeoutException exception)
+            when (!concurrentPostings.IsCompleted)
+        {
+            throw new TimeoutException(
+                $"Concurrent inventory postings did not complete within {ConcurrentWaitTimeoutSeconds} seconds.",
+                exception);
+        }
     }
 
     private static InventoryMovementService CreateService(
@@ -284,20 +335,48 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _arrived;
 
+        public int ArrivedCount => Volatile.Read(ref _arrived);
+
         public AsyncStartBarrier(int participants)
         {
+            if (participants <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(participants));
+            }
+
             _participants = participants;
         }
 
-        public Task SignalAndWaitAsync()
+        public async Task SignalAndWaitAsync(
+            CancellationToken ct)
         {
-            if (Interlocked.Increment(ref _arrived)
-                == _participants)
+            ct.ThrowIfCancellationRequested();
+            var arrived = Interlocked.Increment(ref _arrived);
+            if (arrived > _participants)
+            {
+                var exception = new InvalidOperationException(
+                    "AsyncStartBarrier received more participants than configured.");
+                _release.TrySetException(exception);
+                throw exception;
+            }
+
+            if (arrived == _participants)
             {
                 _release.TrySetResult();
             }
 
-            return _release.Task;
+            try
+            {
+                await _release.Task.WaitAsync(ct);
+            }
+            catch (OperationCanceledException exception)
+                when (ct.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"AsyncStartBarrier did not receive all {_participants} participants within {ConcurrentWaitTimeoutSeconds} seconds. Arrived={ArrivedCount}.",
+                    exception);
+            }
         }
     }
 

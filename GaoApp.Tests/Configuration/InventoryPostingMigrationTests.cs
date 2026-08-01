@@ -93,6 +93,7 @@ public sealed class InventoryPostingMigrationTests
                  [ReferenceType],
                  [ReferenceId],
                  [ReferenceLineId],
+                 [ReferenceSubKey],
                  [QuantityChange],
                  [BeforeQty],
                  [AfterQty],
@@ -103,9 +104,16 @@ public sealed class InventoryPostingMigrationTests
                  [RunningAverageUnitCostAfter],
                  [CostSourceType],
                  [IsProvisionalCost],
+                 [CostFinalizedAtUtc],
                  [OccurredAtUtc],
+                 [Note],
                  [CreatedAtUtc],
+                 [CreatedBy],
+                 [UpdatedAtUtc],
+                 [UpdatedBy],
                  [IsDeleted],
+                 [DeletedAtUtc],
+                 [DeletedBy],
                  [StoreId]
              )
              VALUES
@@ -116,6 +124,7 @@ public sealed class InventoryPostingMigrationTests
                  1,
                  N'R2-LEGACY',
                  1,
+                 N'LEGACY-LINE-1',
                  2,
                  0,
                  2,
@@ -126,12 +135,25 @@ public sealed class InventoryPostingMigrationTests
                  10,
                  1,
                  0,
-                 SYSUTCDATETIME(),
-                 SYSUTCDATETIME(),
+                 CONVERT(datetime2, N'2026-07-30T09:11:12.1234567', 126),
+                 CONVERT(datetime2, N'2026-07-30T09:10:11.1234567', 126),
+                 N'Legacy movement before durable key migration',
+                 CONVERT(datetime2, N'2026-07-29T08:09:10.1234567', 126),
+                 41,
+                 CONVERT(datetime2, N'2026-07-31T10:11:12.1234567', 126),
+                 42,
                  0,
+                 NULL,
+                 NULL,
                  {seed.StoreId}
              );
              """);
+
+        var beforeRowCount = await ReadLegacyRowCountAsync(database);
+        beforeRowCount.Should().Be(1);
+        var beforeSignature = await ReadLegacySignatureAsync(database);
+        var beforeDependents =
+            await ReadHistoricalDependentCountsAsync(database);
 
         await database.MigrateAsync();
 
@@ -140,6 +162,12 @@ public sealed class InventoryPostingMigrationTests
             .Should().Equal(
                 BaselineMigrationId,
                 InventoryPostingMigrationId);
+        var afterRowCount = await ReadLegacyRowCountAsync(database);
+        afterRowCount.Should().Be(beforeRowCount);
+        var afterSignature = await ReadLegacySignatureAsync(database);
+        afterSignature.Should().BeEquivalentTo(beforeSignature);
+        afterSignature.RowVersion.Should()
+            .Equal(beforeSignature.RowVersion);
         (await database.ExecuteScalarAsync<int>(
             """
             SELECT COUNT(*)
@@ -147,6 +175,9 @@ public sealed class InventoryPostingMigrationTests
             WHERE [ReferenceId] = N'R2-LEGACY'
               AND [IdempotencyKey] IS NULL;
             """)).Should().Be(1);
+        var afterDependents =
+            await ReadHistoricalDependentCountsAsync(database);
+        afterDependents.Should().BeEquivalentTo(beforeDependents);
 
         await database.ExecuteAsync(
             CreateDuplicateKeyInsertSql("R2-KEYED-ONE"));
@@ -158,6 +189,139 @@ public sealed class InventoryPostingMigrationTests
         duplicateException.Which.Number
             .Should().BeOneOf(2601, 2627);
     }
+
+    private static Task<int> ReadLegacyRowCountAsync(
+        InventoryPostingLocalDb database)
+        => database.ExecuteScalarAsync<int>(
+            """
+            SELECT COUNT(*)
+            FROM [dbo].[InventoryTransactions]
+            WHERE [ReferenceId] = N'R2-LEGACY';
+            """);
+
+    private static async Task<LegacyTransactionSignature>
+        ReadLegacySignatureAsync(InventoryPostingLocalDb database)
+    {
+        await using var connection =
+            new SqlConnection(database.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandTimeout = 30;
+        command.CommandText =
+            """
+            SELECT
+                [Id],
+                [StoreId],
+                [WarehouseId],
+                [ProductVariantId],
+                [TransactionType],
+                [ReferenceType],
+                [ReferenceId],
+                [ReferenceLineId],
+                [ReferenceSubKey],
+                [QuantityChange],
+                [BeforeQty],
+                [AfterQty],
+                [UnitCostSnapshot],
+                [TotalCost],
+                [BeforeInventoryValue],
+                [AfterInventoryValue],
+                [RunningAverageUnitCostAfter],
+                [CostSourceType],
+                [IsProvisionalCost],
+                [CostFinalizedAtUtc],
+                [OccurredAtUtc],
+                [Note],
+                [CreatedAtUtc],
+                [CreatedBy],
+                [UpdatedAtUtc],
+                [UpdatedBy],
+                [IsDeleted],
+                [DeletedAtUtc],
+                [DeletedBy],
+                [RowVersion]
+            FROM [dbo].[InventoryTransactions]
+            WHERE [ReferenceId] = N'R2-LEGACY';
+            """;
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(
+                "The legacy inventory transaction was not found.");
+        }
+
+        var signature = new LegacyTransactionSignature(
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2),
+            reader.GetInt32(3),
+            reader.GetInt32(4),
+            reader.GetInt32(5),
+            reader.GetString(6),
+            ReadNullableInt32(reader, 7),
+            ReadNullableString(reader, 8),
+            reader.GetDecimal(9),
+            reader.GetDecimal(10),
+            reader.GetDecimal(11),
+            reader.GetDecimal(12),
+            reader.GetDecimal(13),
+            reader.GetDecimal(14),
+            reader.GetDecimal(15),
+            reader.GetDecimal(16),
+            reader.GetInt32(17),
+            reader.GetBoolean(18),
+            ReadNullableDateTime(reader, 19),
+            reader.GetDateTime(20),
+            ReadNullableString(reader, 21),
+            reader.GetDateTime(22),
+            ReadNullableInt32(reader, 23),
+            ReadNullableDateTime(reader, 24),
+            ReadNullableInt32(reader, 25),
+            reader.GetBoolean(26),
+            ReadNullableDateTime(reader, 27),
+            ReadNullableInt32(reader, 28),
+            reader.GetFieldValue<byte[]>(29));
+
+        if (await reader.ReadAsync())
+        {
+            throw new InvalidOperationException(
+                "The legacy inventory transaction identity is not unique.");
+        }
+
+        return signature;
+    }
+
+    private static async Task<HistoricalDependentCounts>
+        ReadHistoricalDependentCountsAsync(
+            InventoryPostingLocalDb database)
+        => new(
+            await database.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM [dbo].[InventoryValuationEntries];"),
+            await database.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM [dbo].[InventoryCostLayers];"),
+            await database.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM [dbo].[InventoryBalances];"));
+
+    private static int? ReadNullableInt32(
+        SqlDataReader reader,
+        int ordinal)
+        => reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetInt32(ordinal);
+
+    private static DateTime? ReadNullableDateTime(
+        SqlDataReader reader,
+        int ordinal)
+        => reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetDateTime(ordinal);
+
+    private static string? ReadNullableString(
+        SqlDataReader reader,
+        int ordinal)
+        => reader.IsDBNull(ordinal)
+            ? null
+            : reader.GetString(ordinal);
 
     private static string CreateDuplicateKeyInsertSql(
         string referenceId)
@@ -212,4 +376,41 @@ public sealed class InventoryPostingMigrationTests
              FROM [dbo].[InventoryTransactions]
              WHERE [ReferenceId] = N'R2-LEGACY';
              """;
+
+    private sealed record LegacyTransactionSignature(
+        int Id,
+        int StoreId,
+        int WarehouseId,
+        int ProductVariantId,
+        int TransactionType,
+        int ReferenceType,
+        string ReferenceId,
+        int? ReferenceLineId,
+        string? ReferenceSubKey,
+        decimal QuantityChange,
+        decimal BeforeQty,
+        decimal AfterQty,
+        decimal UnitCostSnapshot,
+        decimal TotalCost,
+        decimal BeforeInventoryValue,
+        decimal AfterInventoryValue,
+        decimal RunningAverageUnitCostAfter,
+        int CostSourceType,
+        bool IsProvisionalCost,
+        DateTime? CostFinalizedAtUtc,
+        DateTime OccurredAtUtc,
+        string? Note,
+        DateTime CreatedAtUtc,
+        int? CreatedBy,
+        DateTime? UpdatedAtUtc,
+        int? UpdatedBy,
+        bool IsDeleted,
+        DateTime? DeletedAtUtc,
+        int? DeletedBy,
+        byte[] RowVersion);
+
+    private sealed record HistoricalDependentCounts(
+        int ValuationEntries,
+        int CostLayers,
+        int InventoryBalances);
 }

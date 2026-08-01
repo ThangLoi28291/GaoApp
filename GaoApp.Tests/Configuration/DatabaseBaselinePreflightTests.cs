@@ -189,6 +189,33 @@ public sealed class DatabaseBaselinePreflightTests
         var applied = await database.ReadMigrationHistoryAsync();
         applied.Should().Equal(BaselineMigrationId);
         applied.Should().NotContain(InventoryPostingMigrationId);
+        (await database.ReadScalarAsync<int>(
+            """
+            SELECT COUNT(*)
+            FROM [sys].[columns]
+            WHERE [object_id] =
+                OBJECT_ID(N'[dbo].[InventoryTransactions]')
+              AND [name] = N'IdempotencyKey';
+            """)).Should().Be(0);
+        (await database.ReadScalarAsync<int>(
+            """
+            SELECT COUNT(*)
+            FROM [sys].[indexes]
+            WHERE [object_id] =
+                OBJECT_ID(N'[dbo].[InventoryTransactions]')
+              AND [name] =
+                N'UX_InventoryTransactions_StoreId_IdempotencyKey_Active';
+            """)).Should().Be(0);
+
+        var preflight = await CreatePreflight(db).InspectAsync();
+        preflight.IsAllowed.Should().BeTrue();
+        preflight.State.Should().Be(
+            DatabaseCompatibilityState.SupportedPendingUpgrade);
+        preflight.SafeReasonCode.Should().Be(
+            "SupportedMigrationPrefix");
+        preflight.SourceMigrationCount.Should().Be(2);
+        preflight.AppliedMigrationCount.Should().Be(1);
+        preflight.SchemaMismatchCategoryCount.Should().Be(0);
     }
 
     [Fact]
