@@ -24,18 +24,21 @@ public interface IInventoryTransactionRepository
 
     Task<List<InventoryTransaction>> GetByVariantAsync(int productVariantId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Kiểm tra transaction đã tồn tại chưa để chống ghi trùng khi finalize / void / refund.
-    /// </summary>
-    Task<bool> ExistsAsync(
-   int warehouseId,
-   int productVariantId,
-   InventoryTransactionType transactionType,
-   InventoryReferenceType referenceType,
-   string? referenceId,
-   int? referenceLineId,
-   string? referenceSubKey,
-   CancellationToken ct = default);
+    Task<InventoryTransaction?> GetByIdempotencyKeyAsync(
+        int storeId,
+        byte[] idempotencyKey,
+        CancellationToken ct = default);
+
+    Task<InventoryTransaction?> GetByLegacyIdentityAsync(
+        int storeId,
+        int warehouseId,
+        int productVariantId,
+        InventoryTransactionType transactionType,
+        InventoryReferenceType referenceType,
+        string referenceId,
+        int? referenceLineId,
+        string? referenceSubKey,
+        CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);
 

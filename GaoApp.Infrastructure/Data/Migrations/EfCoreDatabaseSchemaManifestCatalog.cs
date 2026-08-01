@@ -31,12 +31,20 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         IReadOnlyList<string> appliedMigrationIds,
         out DatabaseSchemaManifest manifest)
     {
-        var current = GetCurrentManifest();
-        if (appliedMigrationIds.SequenceEqual(
-            current.AppliedMigrationIds,
-            StringComparer.Ordinal))
+        var sourceMigrationIds =
+            _db.Database.GetMigrations().ToList();
+        if (appliedMigrationIds.Count > 0
+            && appliedMigrationIds.Count
+                <= sourceMigrationIds.Count
+            && appliedMigrationIds.SequenceEqual(
+                sourceMigrationIds.Take(
+                    appliedMigrationIds.Count),
+                StringComparer.Ordinal))
         {
-            manifest = current;
+            manifest = appliedMigrationIds.Count
+                    == sourceMigrationIds.Count
+                ? GetCurrentManifest()
+                : BuildManifest(appliedMigrationIds);
             return true;
         }
 
@@ -47,6 +55,12 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
     private DatabaseSchemaManifest BuildCurrentManifest()
     {
         var sourceMigrationIds = _db.Database.GetMigrations().ToList();
+        return BuildManifest(sourceMigrationIds);
+    }
+
+    private DatabaseSchemaManifest BuildManifest(
+        IReadOnlyList<string> sourceMigrationIds)
+    {
         var migrationsAssembly = _db.GetService<IMigrationsAssembly>();
         var activeProvider = _db.Database.ProviderName
             ?? throw new InvalidOperationException(
@@ -110,6 +124,10 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 ApplyCreateIndex(createIndex, tables, defaultSchema);
                 break;
 
+            case AddColumnOperation addColumn:
+                ApplyAddColumn(addColumn, tables, defaultSchema);
+                break;
+
             case AddForeignKeyOperation addForeignKey:
                 ApplyAddForeignKey(
                     addForeignKey,
@@ -138,6 +156,24 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 throw new InvalidOperationException(
                     $"Current schema manifest does not support migration operation {operation.GetType().Name}. Add an explicit, reviewed manifest handler before deployment.");
         }
+    }
+
+    private static void ApplyAddColumn(
+        AddColumnOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema,
+            operation.Table);
+
+        if (!tables.TryGetValue(identity, out var table))
+        {
+            throw new InvalidOperationException(
+                "Migration column references a table absent from the schema manifest.");
+        }
+
+        table.Columns.Add(CreateColumn(operation));
     }
 
     private static void ApplyAddForeignKey(

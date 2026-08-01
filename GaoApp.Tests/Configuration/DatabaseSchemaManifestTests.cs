@@ -24,6 +24,17 @@ public sealed class DatabaseSchemaManifestTests
             "ALTER TABLE [dbo].[Stores] ADD [AcceptanceExtra] int NULL;");
 
     [Fact]
+    public Task Current_history_missing_inventory_idempotency_column_should_be_rejected()
+        => AssertCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            ALTER TABLE [dbo].[InventoryTransactions]
+                DROP COLUMN [IdempotencyKey];
+            """);
+
+    [Fact]
     public Task Current_history_wrong_column_type_should_be_rejected()
         => AssertCorruptionRejectedAsync(
             "ALTER TABLE [dbo].[Stores] ALTER COLUMN [Name] nvarchar(201) NOT NULL;");
@@ -78,6 +89,21 @@ public sealed class DatabaseSchemaManifestTests
             ON [dbo].[InvoiceDetails]
                 ([StoreId], [InvoiceHeadId], [OrderLegalEntityAllocationId])
             WHERE [OrderLegalEntityAllocationId] IS NOT NULL
+              AND [IsDeleted] = 1;
+            """);
+
+    [Fact]
+    public Task Current_history_wrong_inventory_idempotency_index_filter_should_be_rejected()
+        => AssertCorruptionRejectedAsync("""
+            DROP INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions];
+
+            CREATE UNIQUE INDEX
+                [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
+            ON [dbo].[InventoryTransactions]
+                ([StoreId], [IdempotencyKey])
+            WHERE [IdempotencyKey] IS NOT NULL
               AND [IsDeleted] = 1;
             """);
 

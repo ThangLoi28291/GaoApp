@@ -60,6 +60,22 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
             .ToListAsync(ct);
     }
 
+    public Task<List<InventoryValuationEntry>> GetByInventoryTransactionIdAsync(
+        int storeId,
+        int inventoryTransactionId,
+        CancellationToken ct = default)
+    {
+        return _db.InventoryValuationEntries
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId
+                        && !x.IsDeleted
+                        && x.InventoryTransactionId == inventoryTransactionId)
+            .OrderBy(x => x.OccurredAtUtc)
+            .ThenBy(x => x.Id)
+            .ToListAsync(ct);
+    }
+
     public Task<List<InventoryValuationEntry>> GetSaleIssueEntriesByOrderLineAsync(
         int orderId,
         int orderLineId,

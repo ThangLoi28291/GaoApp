@@ -13,6 +13,12 @@ namespace GaoApp.Tests.Configuration;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class DatabaseSecurityMetadataTests
 {
+    private const string BaselineMigrationId =
+        "20260726073029_InitialProductionBaseline";
+
+    private const string InventoryPostingMigrationId =
+        "20260801110856_AddInventoryPostingIdempotency";
+
     [Fact]
     public Task Current_baseline_with_application_database_user_should_be_allowed()
         => AssertCurrentBaselineSecurityMetadataAllowedAsync(
@@ -150,7 +156,7 @@ public sealed class DatabaseSecurityMetadataTests
             .Should().Be(provisioningAfterFirst);
         (await database.ReadMigrationHistoryAsync())
             .Should().Equal(historyAfterFirst);
-        historyAfterFirst.Should().ContainSingle();
+        AssertCurrentMigrationHistory(historyAfterFirst);
         AssertTwoNoOpSafeRuns(execution);
         AssertNamesAbsent(output, userName, roleName);
     }
@@ -287,7 +293,7 @@ public sealed class DatabaseSecurityMetadataTests
             .Should().Be(provisioningAfterFirst);
         (await database.ReadMigrationHistoryAsync())
             .Should().Equal(historyAfterFirst);
-        historyAfterFirst.Should().ContainSingle();
+        AssertCurrentMigrationHistory(historyAfterFirst);
         AssertTwoNoOpSafeRuns(execution);
         AssertNamesAbsent(output, securityMetadataNames);
     }
@@ -336,8 +342,8 @@ public sealed class DatabaseSecurityMetadataTests
         transaction.Count.Should().Be(0);
         (await database.ReadDatabaseObjectSignatureAsync())
             .Should().Be(signatureBefore);
-        (await database.ReadMigrationHistoryAsync())
-            .Should().ContainSingle();
+        AssertCurrentMigrationHistory(
+            await database.ReadMigrationHistoryAsync());
     }
 
     private static SqlServerDatabaseBaselinePreflight CreatePreflight(
@@ -348,6 +354,16 @@ public sealed class DatabaseSecurityMetadataTests
             new SqlServerDatabaseObjectInventoryReader(db),
             new EfCoreDatabaseSchemaManifestCatalog(db),
             new SqlServerSchemaSnapshotReader(db));
+
+    private static void AssertCurrentMigrationHistory(
+        IReadOnlyList<string> migrationIds)
+    {
+        migrationIds.Should().BeEquivalentTo(
+            [
+                BaselineMigrationId,
+                InventoryPostingMigrationId
+            ]);
+    }
 
     private static ExecutionHarness CreateExecutionHarness(
         AppDbContext db,

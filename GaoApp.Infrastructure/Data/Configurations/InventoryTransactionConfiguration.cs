@@ -16,6 +16,9 @@ public class InventoryTransactionConfiguration : IEntityTypeConfiguration<Invent
             .HasMaxLength(64)
             .IsRequired();
 
+        builder.Property(x => x.IdempotencyKey)
+            .HasColumnType("varbinary(32)");
+
         builder.Property(x => x.QuantityChange)
             .HasPrecision(18, 4);
 
@@ -68,6 +71,17 @@ public class InventoryTransactionConfiguration : IEntityTypeConfiguration<Invent
             x.ReferenceLineId,
             x.TransactionType
         });
+
+        builder.HasIndex(x => new
+            {
+                x.StoreId,
+                x.IdempotencyKey
+            })
+            .HasDatabaseName(
+                "UX_InventoryTransactions_StoreId_IdempotencyKey_Active")
+            .IsUnique()
+            .HasFilter(
+                "[IdempotencyKey] IS NOT NULL AND [IsDeleted] = 0");
 
         // =========================================================
         // Chốt rõ quan hệ Warehouse <-> InventoryTransactions

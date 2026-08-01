@@ -13,6 +13,12 @@ namespace GaoApp.Tests.Configuration;
 
 public sealed class ProductionBootstrapTests
 {
+    private const string BaselineMigrationId =
+        "20260726073029_InitialProductionBaseline";
+
+    private const string InventoryPostingMigrationId =
+        "20260801110856_AddInventoryPostingIdempotency";
+
     [Fact]
     public void Disabled_configuration_is_valid_without_bootstrap_values()
     {
@@ -158,8 +164,11 @@ public sealed class ProductionBootstrapTests
 
         var migrations = db.Database.GetMigrations().ToList();
 
-        migrations.Should().ContainSingle()
-            .Which.Should().EndWith("_InitialProductionBaseline");
+        migrations.Should().BeEquivalentTo(
+            [
+                BaselineMigrationId,
+                InventoryPostingMigrationId
+            ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }
 

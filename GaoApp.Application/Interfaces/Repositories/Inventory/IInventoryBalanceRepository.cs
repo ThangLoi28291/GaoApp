@@ -27,6 +27,12 @@ public interface IInventoryBalanceRepository
         int productVariantId,
         CancellationToken ct = default);
 
+    Task<InventoryBalance> LockAndGetOrCreateAsync(
+        int storeId,
+        int warehouseId,
+        int productVariantId,
+        CancellationToken ct = default);
+
     Task AddAsync(InventoryBalance balance, CancellationToken ct = default);
 
     Task<List<InventoryBalance>> GetByVariantAsync(
