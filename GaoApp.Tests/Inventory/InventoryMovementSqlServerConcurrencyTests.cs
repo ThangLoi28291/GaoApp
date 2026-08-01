@@ -1,4 +1,5 @@
 using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -224,6 +225,82 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
             .Should().Be(0);
     }
 
+    [Fact]
+    public async Task Inverse_order_balance_batches_complete_without_deadlock_in_canonical_order()
+    {
+        await using var database = new InventoryPostingLocalDb();
+        await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        var secondWarehouseId = await AddSecondWarehouseAsync(
+            database,
+            seed);
+        var canonicalKeys = new[]
+        {
+            new InventoryPostingLockKey(
+                seed.StoreId,
+                seed.WarehouseId,
+                seed.ProductVariantId),
+            new InventoryPostingLockKey(
+                seed.StoreId,
+                secondWarehouseId,
+                seed.ProductVariantId)
+        }
+            .OrderBy(x => x.StoreId)
+            .ThenBy(x => x.WarehouseId)
+            .ThenBy(x => x.ProductVariantId)
+            .ToArray();
+        var inverseKeys = canonicalKeys
+            .Reverse()
+            .ToArray();
+        var firstObserver = new BalanceLockObserver(
+            pauseAfterFirstLock: true);
+        var secondObserver = new BalanceLockObserver(
+            pauseAfterFirstLock: false);
+        using var timeoutCts =
+            new CancellationTokenSource(ConcurrentWaitTimeout);
+
+        var first = RunPreLockBatchAsync(
+            database,
+            seed,
+            inverseKeys,
+            firstObserver,
+            timeoutCts.Token);
+        await firstObserver.FirstLockCompleted.WaitAsync(
+            ConcurrentWaitTimeout);
+
+        var second = RunPreLockBatchAsync(
+            database,
+            seed,
+            canonicalKeys,
+            secondObserver,
+            timeoutCts.Token);
+        await secondObserver.FirstLockStarted.WaitAsync(
+            ConcurrentWaitTimeout);
+
+        _ = await Task.WhenAny(
+            secondObserver.FirstLockCompleted,
+            Task.Delay(
+                TimeSpan.FromMilliseconds(500),
+                timeoutCts.Token));
+        firstObserver.ReleasePause();
+
+        await Task.WhenAll(first, second).WaitAsync(
+            ConcurrentWaitTimeout);
+
+        firstObserver.Invocations.Should().Equal(canonicalKeys);
+        secondObserver.Invocations.Should().Equal(canonicalKeys);
+        await using var verification =
+            database.CreateHostContext();
+        (await verification.InventoryBalances
+                .IgnoreQueryFilters()
+                .CountAsync(x =>
+                    x.StoreId == seed.StoreId
+                    && x.ProductVariantId == seed.ProductVariantId
+                    && (x.WarehouseId == seed.WarehouseId
+                        || x.WarehouseId == secondWarehouseId)))
+            .Should().Be(2);
+    }
+
     private static async Task<InventoryMovementResultDto>
         RunMovementAsync(
             InventoryPostingLocalDb database,
@@ -242,6 +319,26 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
         }
 
         return await CreateService(db).CreateAsync(request, ct);
+    }
+
+    private static async Task RunPreLockBatchAsync(
+        InventoryPostingLocalDb database,
+        InventoryPostingSeed seed,
+        IReadOnlyCollection<InventoryPostingLockKey> keys,
+        BalanceLockObserver observer,
+        CancellationToken ct)
+    {
+        await using var db =
+            database.CreateTenantContext(seed.StoreId);
+        await using var transaction =
+            await db.Database.BeginTransactionAsync(ct);
+        var balances = new ObservedInventoryBalanceRepository(
+            new InventoryBalanceRepository(db),
+            observer);
+
+        await CreateService(db, balances)
+            .PreLockBalancesAsync(keys, ct);
+        await transaction.CommitAsync(ct);
     }
 
     private static async Task<InventoryMovementResultDto[]>
@@ -274,15 +371,37 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
     }
 
     private static InventoryMovementService CreateService(
-        AppDbContext db)
+        AppDbContext db,
+        IInventoryBalanceRepository? balances = null)
         => new(
-            new InventoryBalanceRepository(db),
+            balances ?? new InventoryBalanceRepository(db),
             new InventoryTransactionRepository(db),
             new InventoryValuationEntryRepository(db),
             new InventoryCostLayerRepository(db),
             new InventoryCostLayerAllocationRepository(db),
             new WarehouseRepository(db),
             new InventoryPostingTransactionCoordinator(db));
+
+    private static async Task<int> AddSecondWarehouseAsync(
+        InventoryPostingLocalDb database,
+        InventoryPostingSeed seed)
+    {
+        await using var db =
+            database.CreateTenantContext(seed.StoreId);
+        var firstWarehouse = await db.Warehouses
+            .SingleAsync(x => x.Id == seed.WarehouseId);
+        var warehouse = new Warehouse
+        {
+            StoreId = seed.StoreId,
+            LegalEntityId = firstWarehouse.LegalEntityId,
+            Code = "R2-WH-SECOND",
+            Name = "R2 Inventory Warehouse Second",
+            IsActive = true
+        };
+        db.Warehouses.Add(warehouse);
+        await db.SaveChangesAsync();
+        return warehouse.Id;
+    }
 
     private static CreateInventoryMovementRequest
         CreateInboundRequest(
@@ -409,4 +528,136 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
 
     private sealed class InjectedPostingFailureException
         : Exception;
+
+    private sealed class BalanceLockObserver(bool pauseAfterFirstLock)
+    {
+        private readonly TaskCompletionSource _firstLockStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _firstLockCompleted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _pauseRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _calls;
+
+        public List<InventoryPostingLockKey> Invocations { get; } = [];
+        public Task FirstLockStarted => _firstLockStarted.Task;
+        public Task FirstLockCompleted => _firstLockCompleted.Task;
+
+        public async Task<InventoryBalance> ObserveAsync(
+            Func<Task<InventoryBalance>> acquire,
+            InventoryPostingLockKey key,
+            CancellationToken ct)
+        {
+            var call = Interlocked.Increment(ref _calls);
+            Invocations.Add(key);
+            if (call == 1)
+            {
+                _firstLockStarted.TrySetResult();
+            }
+
+            var balance = await acquire();
+            if (call == 1)
+            {
+                _firstLockCompleted.TrySetResult();
+                if (pauseAfterFirstLock)
+                {
+                    await _pauseRelease.Task.WaitAsync(ct);
+                }
+            }
+
+            return balance;
+        }
+
+        public void ReleasePause()
+            => _pauseRelease.TrySetResult();
+    }
+
+    private sealed class ObservedInventoryBalanceRepository(
+        IInventoryBalanceRepository inner,
+        BalanceLockObserver observer)
+        : IInventoryBalanceRepository
+    {
+        public Task<InventoryBalance> LockAndGetOrCreateAsync(
+            int storeId,
+            int warehouseId,
+            int productVariantId,
+            CancellationToken ct = default)
+            => observer.ObserveAsync(
+                () => inner.LockAndGetOrCreateAsync(
+                    storeId,
+                    warehouseId,
+                    productVariantId,
+                    ct),
+                new InventoryPostingLockKey(
+                    storeId,
+                    warehouseId,
+                    productVariantId),
+                ct);
+
+        public Task<InventoryBalance?>
+            GetByWarehouseAndVariantAsync(
+                int warehouseId,
+                int productVariantId,
+                CancellationToken ct = default)
+            => inner.GetByWarehouseAndVariantAsync(
+                warehouseId,
+                productVariantId,
+                ct);
+
+        public Task<InventoryBalance> GetOrCreateAsync(
+            int warehouseId,
+            int productVariantId,
+            CancellationToken ct = default)
+            => inner.GetOrCreateAsync(
+                warehouseId,
+                productVariantId,
+                ct);
+
+        public Task AddAsync(
+            InventoryBalance balance,
+            CancellationToken ct = default)
+            => inner.AddAsync(balance, ct);
+
+        public Task<List<InventoryBalance>> GetByVariantAsync(
+            int productVariantId,
+            CancellationToken ct = default)
+            => inner.GetByVariantAsync(productVariantId, ct);
+
+        public Task SaveChangesAsync(
+            CancellationToken ct = default)
+            => inner.SaveChangesAsync(ct);
+
+        public Task<List<InventoryBalance>>
+            GetNegativeBalancesAsync(
+                CancellationToken ct = default)
+            => inner.GetNegativeBalancesAsync(ct);
+
+        public Task<InventoryBalance?>
+            GetDetailByWarehouseAndVariantAsync(
+                int warehouseId,
+                int productVariantId,
+                CancellationToken ct = default)
+            => inner.GetDetailByWarehouseAndVariantAsync(
+                warehouseId,
+                productVariantId,
+                ct);
+
+        public Task<(List<InventoryBalance> Items, int TotalItems)>
+            QueryCurrentBalancesAsync(
+                InventoryBalanceQueryRequest request,
+                CancellationToken ct = default)
+            => inner.QueryCurrentBalancesAsync(request, ct);
+
+        public Task<Dictionary<int, decimal>>
+            GetAvailableQtyMapByVariantIdsAsync(
+                int storeId,
+                int warehouseId,
+                IReadOnlyCollection<int> variantIds,
+                CancellationToken ct = default)
+            => inner.GetAvailableQtyMapByVariantIdsAsync(
+                storeId,
+                warehouseId,
+                variantIds,
+                ct);
+    }
 }

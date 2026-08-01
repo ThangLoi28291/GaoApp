@@ -378,11 +378,29 @@ public class StockTransferService : IStockTransferService
         if (document.Lines.Count == 0)
             throw new InvalidOperationException("Phiếu chuyển kho chưa có dòng hàng.");
 
+        var movementLines = document.Lines
+            .OrderBy(x => x.LineNo)
+            .ToList();
+
         await _stockTransferRepository.BeginTransactionAsync(ct);
 
         try
         {
-            foreach (var line in document.Lines.OrderBy(x => x.LineNo))
+            await _inventoryMovementService.PreLockBalancesAsync(
+                movementLines.SelectMany(line => new[]
+                {
+                    new InventoryPostingLockKey(
+                        document.StoreId,
+                        document.FromWarehouseId,
+                        line.ProductVariantId),
+                    new InventoryPostingLockKey(
+                        document.StoreId,
+                        document.ToWarehouseId,
+                        line.ProductVariantId)
+                }),
+                ct);
+
+            foreach (var line in movementLines)
             {
                 // =====================================================
                 // 🔥 FIX QUAN TRỌNG NHẤT

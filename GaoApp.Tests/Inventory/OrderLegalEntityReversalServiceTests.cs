@@ -291,6 +291,11 @@ public sealed class OrderLegalEntityReversalServiceTests
         private int _nextId = 900;
         public List<CreateInventoryMovementRequest> Requests { get; } = [];
 
+        public Task PreLockBalancesAsync(
+            IEnumerable<InventoryPostingLockKey> keys,
+            CancellationToken ct = default)
+            => Task.CompletedTask;
+
         public Task<InventoryMovementResultDto> CreateAsync(
             CreateInventoryMovementRequest request,
             CancellationToken ct = default)

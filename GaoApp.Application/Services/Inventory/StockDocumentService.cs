@@ -1222,6 +1222,13 @@ public class StockDocumentService : IStockDocumentService
 
         try
         {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                activeLines.Select(line => new InventoryPostingLockKey(
+                    document.StoreId,
+                    document.WarehouseId,
+                    line.ProductVariantId)),
+                ct);
+
             var occurredAtUtc = DateTime.UtcNow;
 
             // Đồng bộ lại tổng tiền phiếu theo các dòng hợp lệ trước khi duyệt.

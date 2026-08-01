@@ -14,6 +14,15 @@ namespace GaoApp.Application.Interfaces.Services.Inventory;
 public interface IInventoryMovementService
 {
     /// <summary>
+    /// Acquires all balance locks for a multi-movement posting in canonical
+    /// Store/Warehouse/Variant order. A non-empty batch must run inside the
+    /// caller's active database transaction.
+    /// </summary>
+    Task PreLockBalancesAsync(
+        IEnumerable<InventoryPostingLockKey> keys,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Tạo 1 movement tồn kho thực sự:
     /// - cập nhật balance
     /// - ghi InventoryTransaction

@@ -55,6 +55,85 @@ public class InventoryMovementService : IInventoryMovementService
         _postingCoordinator = postingCoordinator;
     }
 
+    public async Task PreLockBalancesAsync(
+        IEnumerable<InventoryPostingLockKey> keys,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var materializedKeys = keys.ToList();
+        foreach (var key in materializedKeys)
+        {
+            if (key is null)
+            {
+                throw new ArgumentException(
+                    "Inventory posting lock keys cannot contain null values.",
+                    nameof(keys));
+            }
+
+            if (key.StoreId <= 0
+                || key.WarehouseId <= 0
+                || key.ProductVariantId <= 0)
+            {
+                throw new BusinessRuleException(
+                    "Inventory posting lock identity values must be greater than zero.");
+            }
+        }
+
+        var orderedKeys = materializedKeys
+            .Distinct()
+            .OrderBy(x => x.StoreId)
+            .ThenBy(x => x.WarehouseId)
+            .ThenBy(x => x.ProductVariantId)
+            .ToList();
+
+        if (orderedKeys.Count == 0)
+        {
+            return;
+        }
+
+        if (!_postingCoordinator.HasActiveTransaction)
+        {
+            throw new InvalidOperationException(
+                "Inventory balance batch pre-locking requires an active database transaction.");
+        }
+
+        var warehouseStores = new Dictionary<int, int>();
+        foreach (var warehouseId in orderedKeys
+                     .Select(x => x.WarehouseId)
+                     .Distinct()
+                     .OrderBy(x => x))
+        {
+            var warehouse = await _warehouseRepository
+                .GetByIdAsync(warehouseId, ct);
+            if (warehouse is null)
+            {
+                throw new BusinessRuleException(
+                    $"Inventory posting warehouse {warehouseId} does not exist.");
+            }
+
+            warehouseStores.Add(warehouseId, warehouse.StoreId);
+        }
+
+        foreach (var key in orderedKeys)
+        {
+            if (warehouseStores[key.WarehouseId] != key.StoreId)
+            {
+                throw new BusinessRuleException(
+                    $"Inventory posting warehouse {key.WarehouseId} does not belong to store {key.StoreId}.");
+            }
+        }
+
+        foreach (var key in orderedKeys)
+        {
+            await _balanceRepository.LockAndGetOrCreateAsync(
+                key.StoreId,
+                key.WarehouseId,
+                key.ProductVariantId,
+                ct);
+        }
+    }
+
     public async Task<InventoryMovementResultDto> CreateAsync(
         CreateInventoryMovementRequest request,
         CancellationToken ct = default)

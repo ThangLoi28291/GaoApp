@@ -22,6 +22,9 @@ public sealed class InventoryPostingTransactionCoordinator
         _db = db;
     }
 
+    public bool HasActiveTransaction
+        => _db.Database.CurrentTransaction is not null;
+
     public async Task<T> ExecuteAsync<T>(
         Func<CancellationToken, Task<T>> operation,
         CancellationToken ct = default)

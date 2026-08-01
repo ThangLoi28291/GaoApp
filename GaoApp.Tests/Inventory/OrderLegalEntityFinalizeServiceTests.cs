@@ -423,6 +423,11 @@ public sealed class OrderLegalEntityFinalizeServiceTests
         public List<CreateInventoryMovementRequest> Requests { get; } = [];
         public bool ReturnConflict { get; init; }
 
+        public Task PreLockBalancesAsync(
+            IEnumerable<InventoryPostingLockKey> keys,
+            CancellationToken ct = default)
+            => Task.CompletedTask;
+
         public Task<InventoryMovementResultDto> CreateAsync(
             CreateInventoryMovementRequest request,
             CancellationToken ct = default)
