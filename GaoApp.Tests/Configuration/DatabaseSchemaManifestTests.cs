@@ -31,14 +31,26 @@ public sealed class DatabaseSchemaManifestTests
 
     [Fact]
     public Task Current_history_missing_inventory_idempotency_column_should_be_rejected()
-        => AssertCorruptionRejectedAsync("""
+        => AssertCorruptionRejectedAsync(
+            """
             DROP INDEX
                 [UX_InventoryTransactions_StoreId_IdempotencyKey_Active]
             ON [dbo].[InventoryTransactions];
 
             ALTER TABLE [dbo].[InventoryTransactions]
                 DROP COLUMN [IdempotencyKey];
-            """);
+            """,
+            mismatches =>
+            {
+                mismatches.Columns.Should().BeGreaterThan(0);
+                mismatches.Indexes.Should().BeGreaterThan(0);
+                mismatches.Tables.Should().Be(0);
+                mismatches.PrimaryKeys.Should().Be(0);
+                mismatches.ForeignKeys.Should().Be(0);
+                mismatches.CheckConstraints.Should().Be(0);
+                mismatches.Sequences.Should().Be(0);
+            },
+            expectedMismatchCategoryCount: 2);
 
     [Fact]
     public Task Current_history_wrong_inventory_idempotency_column_type_should_be_rejected()
@@ -410,7 +422,8 @@ public sealed class DatabaseSchemaManifestTests
 
     private static async Task AssertCorruptionRejectedAsync(
         string corruptionSql,
-        Action<DatabaseSchemaMismatchCounts>? assertMismatches = null)
+        Action<DatabaseSchemaMismatchCounts>? assertMismatches = null,
+        int? expectedMismatchCategoryCount = null)
     {
         await using var database = new PreflightAcceptanceDatabase();
         await using var db = database.CreateContext();
@@ -445,6 +458,12 @@ public sealed class DatabaseSchemaManifestTests
             "StructuralSchemaMismatch");
         exception.Which.Result.SchemaMismatchCategoryCount
             .Should().BeGreaterThan(0);
+        if (expectedMismatchCategoryCount is { } expectedCount)
+        {
+            exception.Which.Result.SchemaMismatchCategoryCount
+                .Should().Be(expectedCount);
+        }
+
         exception.Which.Result.SchemaMismatches.Should().NotBeNull();
         assertMismatches?.Invoke(
             exception.Which.Result.SchemaMismatches!);
