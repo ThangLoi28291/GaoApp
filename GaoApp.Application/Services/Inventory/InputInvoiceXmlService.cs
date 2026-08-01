@@ -210,26 +210,19 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         var map = await _repository.GetLineMapAsync(
             storeId,
+            stockDocumentId,
             request.StockDocumentLineId,
             ct);
 
-        if (map == null)
-        {
-            map = new StockDocumentLineInputInvoiceMap
-            {
-                StoreId = storeId,
-                StockDocumentId = stockDocumentId,
-                StockDocumentLineId = request.StockDocumentLineId
-            };
-
-            // Nếu repository chưa có Add riêng thì có thể thêm method AddLineMapAsync.
-            throw new BusinessRuleException("Map dòng chưa được khởi tạo. Hãy reload phiếu hoặc gọi AddMissingLineMapsAsync trước.");
-        }
-
-        map.UseInputInvoice = request.UseInputInvoice;
+        if (map == null ||
+            map.StoreId != storeId ||
+            map.StockDocumentId != stockDocumentId ||
+            map.StockDocumentLineId != request.StockDocumentLineId)
+            throw new BusinessRuleException("Map dòng không hợp lệ hoặc không thuộc phiếu hiện tại.");
 
         if (!request.UseInputInvoice)
         {
+            map.UseInputInvoice = false;
             map.InputInvoiceDetailId = null;
             map.MatchStatus = InputInvoiceMatchStatus.Excluded;
             map.QuantityDifference = 0;
@@ -243,6 +236,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             // InputInvoiceDetailId không bắt buộc, chỉ dùng để đối chiếu sâu nếu user chọn.
             if (!request.InputInvoiceDetailId.HasValue || request.InputInvoiceDetailId.Value <= 0)
             {
+                map.UseInputInvoice = true;
                 map.InputInvoiceDetailId = null;
                 map.MatchStatus = InputInvoiceMatchStatus.None;
                 map.QuantityDifference = 0;
@@ -252,12 +246,16 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             else
             {
                 var xmlLine = await _repository.GetInputInvoiceDetailAsync(
+                    storeId,
+                    stockDocumentId,
+                    request.StockDocumentLineId,
                     request.InputInvoiceDetailId.Value,
                     ct);
 
                 if (xmlLine == null)
-                    throw new BusinessRuleException("Không tìm thấy dòng XML.");
+                    throw new BusinessRuleException("Không thể map dòng XML cho phiếu hiện tại.");
 
+                map.UseInputInvoice = true;
                 map.InputInvoiceDetailId = xmlLine.Id;
 
                 var quantityDiff = line.Quantity - xmlLine.Quantity;
