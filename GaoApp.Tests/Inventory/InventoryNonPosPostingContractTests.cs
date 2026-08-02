@@ -203,9 +203,14 @@ public sealed class InventoryNonPosPostingContractTests
         string approveSource,
         string[] expectedViolations)
     {
+        var baselineViolations =
+            GetAdjustmentReferenceContractViolations(
+                BuildSyntheticAdjustmentReferenceContract());
         var violations =
             GetAdjustmentReferenceContractViolations(approveSource);
 
+        baselineViolations.Should().BeEmpty(
+            because: $"{mutant} must start from the valid contract baseline");
         violations.Should().NotBeEmpty(
             because: $"{mutant} must violate the durable identity contract");
         foreach (var expectedViolation in expectedViolations)
@@ -294,6 +299,165 @@ public sealed class InventoryNonPosPostingContractTests
                 "CurrentUICulture"
             }
         ];
+        yield return
+        [
+            "M7 legal comment-trivia reassignment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "documentReferenceId /* legal C# trivia */ = " +
+                "$\"{document.Id}\";"),
+            new[]
+            {
+                "DocumentReferenceAssignmentCount"
+            }
+        ];
+        yield return
+        [
+            "M8 commented declaration bypass",
+            ReplaceSyntheticInvariantDeclaration(
+                BuildSyntheticAdjustmentReferenceContract(),
+                """
+                BuildReference(document, out var documentReferenceId);
+
+                // var documentReferenceId =
+                //     document.Id.ToString(CultureInfo.InvariantCulture);
+                """),
+            new[]
+            {
+                "InvariantDeclarationCount",
+                "InvariantConversionCount"
+            }
+        ];
+        yield return
+        [
+            "M9 string-literal declaration bypass",
+            ReplaceSyntheticInvariantDeclaration(
+                BuildSyntheticAdjustmentReferenceContract(),
+                """
+                BuildReference(document, out var documentReferenceId);
+
+                var fakeContract =
+                    "var documentReferenceId = " +
+                    "document.Id.ToString(CultureInfo.InvariantCulture);";
+                """),
+            new[]
+            {
+                "InvariantDeclarationCount",
+                "InvariantConversionCount"
+            }
+        ];
+        yield return
+        [
+            "M10 commented correct decrease with executable bypass",
+            BuildSyntheticAdjustmentReferenceContract(
+                sourceBeforeDecreaseCall:
+                    BuildCommentedCorrectDecreaseCall(),
+                decreaseReferenceArgument:
+                    "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            new[]
+            {
+                "DecreaseReferenceArgument"
+            }
+        ];
+    }
+
+    [Theory]
+    [MemberData(nameof(AdjustmentReferenceContractTriviaControls))]
+    public void Adjustment_reference_contract_ignores_harmless_non_code_text(
+        string control,
+        string approveSource)
+    {
+        GetAdjustmentReferenceContractViolations(approveSource)
+            .Should().BeEmpty(
+                because: $"{control} is non-code trivia or literal content");
+    }
+
+    public static IEnumerable<object[]>
+        AdjustmentReferenceContractTriviaControls()
+    {
+        yield return
+        [
+            "CurrentCulture in comment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "// CultureInfo.CurrentCulture")
+        ];
+        yield return
+        [
+            "parameterless conversion in string",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "var harmlessText = \"document.Id.ToString()\";")
+        ];
+        yield return
+        [
+            "assignment in comment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "// documentReferenceId = alternateReferenceId;")
+        ];
+    }
+
+    [Fact]
+    public void Adjustment_reference_scanner_strips_non_code_preserving_layout()
+    {
+        var source =
+            """
+            var before = 1;
+            // line_marker " quote
+            var block = before /* block_marker
+            " quote */ + 1;
+            var regular =
+                "regular_marker // not a comment \" escaped quote";
+            var verbatim =
+                @"verbatim_marker "" quoted /* not a comment */";
+            var interpolated =
+                $"interpolated_marker {document.Id}";
+            var interpolatedVerbatim =
+                $@"interpolated_verbatim_marker {document.Id}";
+            var alternateInterpolated =
+                @$"alternate_interpolated_marker {document.Id}";
+            var quote = '\'';
+            var slash = '\\';
+            documentReferenceId /* trivia_marker */ = value;
+            var after = 2;
+            """;
+
+        var sanitized =
+            StripNonCodeTriviaPreservingLayout(source);
+
+        sanitized.Length.Should().Be(source.Length);
+        sanitized
+            .Select((value, index) => (value, index))
+            .Where(item => item.value == '\n')
+            .Select(item => item.index)
+            .Should().Equal(
+                source
+                    .Select((value, index) => (value, index))
+                    .Where(item => item.value == '\n')
+                    .Select(item => item.index));
+        sanitized.Should().Contain("var before = 1;");
+        sanitized.Should().Contain("var after = 2;");
+        Regex.IsMatch(
+                sanitized,
+                @"\bdocumentReferenceId\s+=\s+value;",
+                RegexOptions.CultureInvariant)
+            .Should().BeTrue();
+
+        foreach (var marker in new[]
+                 {
+                     "line_marker",
+                     "block_marker",
+                     "regular_marker",
+                     "verbatim_marker",
+                     "interpolated_marker",
+                     "interpolated_verbatim_marker",
+                     "alternate_interpolated_marker",
+                     "trivia_marker"
+                 })
+        {
+            sanitized.Should().NotContain(marker);
+        }
     }
 
     [Fact]
@@ -1116,19 +1280,402 @@ public sealed class InventoryNonPosPostingContractTests
     {
         var source = ReadRepositoryFile(
             "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
-        var approveStart = source.IndexOf(
-            "public async Task<InventoryAdjustmentDocumentDetailDto> ApproveAsync(",
-            StringComparison.Ordinal);
-        var rejectStart = source.IndexOf(
-            "public async Task<InventoryAdjustmentDocumentDetailDto> RejectAsync(",
-            approveStart,
-            StringComparison.Ordinal);
+        var sanitizedSource =
+            StripNonCodeTriviaPreservingLayout(source);
+        const string approveBoundaryPattern =
+            """
+            \bpublic\s+async\s+Task\s*<
+            \s*InventoryAdjustmentDocumentDetailDto\s*>
+            \s+ApproveAsync\s*\(
+            """;
+        const string rejectBoundaryPattern =
+            """
+            \bpublic\s+async\s+Task\s*<
+            \s*InventoryAdjustmentDocumentDetailDto\s*>
+            \s+RejectAsync\s*\(
+            """;
+        const RegexOptions options =
+            RegexOptions.IgnorePatternWhitespace
+            | RegexOptions.CultureInvariant;
 
-        approveStart.Should().BeGreaterThanOrEqualTo(0);
-        rejectStart.Should().BeGreaterThan(approveStart);
+        var approveBoundaries = Regex.Matches(
+            sanitizedSource,
+            approveBoundaryPattern,
+            options);
+        var rejectBoundaries = Regex.Matches(
+            sanitizedSource,
+            rejectBoundaryPattern,
+            options);
+
+        approveBoundaries.Count.Should().Be(
+            1,
+            "ApproveAsync must have one unambiguous executable boundary");
+        rejectBoundaries.Count.Should().Be(
+            1,
+            "RejectAsync must have one unambiguous executable boundary");
+
+        var approveStart = approveBoundaries[0].Index;
+        var rejectStart = rejectBoundaries[0].Index;
+        rejectStart.Should().BeGreaterThan(
+            approveStart,
+            "RejectAsync must follow ApproveAsync");
 
         return source[approveStart..rejectStart];
     }
+
+    private static string StripNonCodeTriviaPreservingLayout(
+        string source)
+    {
+        var sanitized = source.ToCharArray();
+        var index = 0;
+
+        while (index < source.Length)
+        {
+            if (!TryBlankNonCodeToken(
+                    source,
+                    sanitized,
+                    ref index))
+            {
+                index++;
+            }
+        }
+
+        return new string(sanitized);
+    }
+
+    private static bool TryBlankNonCodeToken(
+        string source,
+        char[] sanitized,
+        ref int index)
+    {
+        if (StartsWithAt(source, index, "//"))
+        {
+            index = BlankLineComment(
+                source,
+                sanitized,
+                index);
+            return true;
+        }
+
+        if (StartsWithAt(source, index, "/*"))
+        {
+            index = BlankBlockComment(
+                source,
+                sanitized,
+                index);
+            return true;
+        }
+
+        if (StartsWithAt(source, index, "$@\"")
+            || StartsWithAt(source, index, "@$\""))
+        {
+            index = BlankInterpolatedString(
+                source,
+                sanitized,
+                index,
+                prefixLength: 3,
+                verbatim: true);
+            return true;
+        }
+
+        if (StartsWithAt(source, index, "$\""))
+        {
+            index = BlankInterpolatedString(
+                source,
+                sanitized,
+                index,
+                prefixLength: 2,
+                verbatim: false);
+            return true;
+        }
+
+        if (StartsWithAt(source, index, "@\""))
+        {
+            index = BlankVerbatimString(
+                source,
+                sanitized,
+                index,
+                prefixLength: 2);
+            return true;
+        }
+
+        if (source[index] == '"')
+        {
+            index = BlankEscapedLiteral(
+                source,
+                sanitized,
+                index,
+                prefixLength: 1,
+                delimiter: '"');
+            return true;
+        }
+
+        if (source[index] == '\'')
+        {
+            index = BlankEscapedLiteral(
+                source,
+                sanitized,
+                index,
+                prefixLength: 1,
+                delimiter: '\'');
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int BlankLineComment(
+        string source,
+        char[] sanitized,
+        int start)
+    {
+        var index = start;
+        while (index < source.Length
+               && source[index] is not '\r' and not '\n')
+        {
+            BlankNonNewline(sanitized, index);
+            index++;
+        }
+
+        return index;
+    }
+
+    private static int BlankBlockComment(
+        string source,
+        char[] sanitized,
+        int start)
+    {
+        var index = start;
+        while (index < source.Length)
+        {
+            if (StartsWithAt(source, index, "*/"))
+            {
+                BlankNonNewline(sanitized, index);
+                BlankNonNewline(sanitized, index + 1);
+                return index + 2;
+            }
+
+            BlankNonNewline(sanitized, index);
+            index++;
+        }
+
+        return index;
+    }
+
+    private static int BlankEscapedLiteral(
+        string source,
+        char[] sanitized,
+        int start,
+        int prefixLength,
+        char delimiter)
+    {
+        BlankRangePreservingNewlines(
+            sanitized,
+            start,
+            prefixLength);
+        var index = start + prefixLength;
+
+        while (index < source.Length)
+        {
+            if (source[index] == '\\')
+            {
+                BlankNonNewline(sanitized, index);
+                index++;
+                if (index < source.Length)
+                {
+                    BlankNonNewline(sanitized, index);
+                    index++;
+                }
+
+                continue;
+            }
+
+            var current = source[index];
+            BlankNonNewline(sanitized, index);
+            index++;
+            if (current == delimiter)
+            {
+                return index;
+            }
+        }
+
+        return index;
+    }
+
+    private static int BlankVerbatimString(
+        string source,
+        char[] sanitized,
+        int start,
+        int prefixLength)
+    {
+        BlankRangePreservingNewlines(
+            sanitized,
+            start,
+            prefixLength);
+        var index = start + prefixLength;
+
+        while (index < source.Length)
+        {
+            if (source[index] == '"')
+            {
+                BlankNonNewline(sanitized, index);
+                if (index + 1 < source.Length
+                    && source[index + 1] == '"')
+                {
+                    BlankNonNewline(sanitized, index + 1);
+                    index += 2;
+                    continue;
+                }
+
+                return index + 1;
+            }
+
+            BlankNonNewline(sanitized, index);
+            index++;
+        }
+
+        return index;
+    }
+
+    private static int BlankInterpolatedString(
+        string source,
+        char[] sanitized,
+        int start,
+        int prefixLength,
+        bool verbatim)
+    {
+        BlankRangePreservingNewlines(
+            sanitized,
+            start,
+            prefixLength);
+        var index = start + prefixLength;
+        var interpolationDepth = 0;
+
+        while (index < source.Length)
+        {
+            if (interpolationDepth == 0)
+            {
+                if (!verbatim && source[index] == '\\')
+                {
+                    BlankNonNewline(sanitized, index);
+                    index++;
+                    if (index < source.Length)
+                    {
+                        BlankNonNewline(sanitized, index);
+                        index++;
+                    }
+
+                    continue;
+                }
+
+                if (source[index] == '"')
+                {
+                    BlankNonNewline(sanitized, index);
+                    if (verbatim
+                        && index + 1 < source.Length
+                        && source[index + 1] == '"')
+                    {
+                        BlankNonNewline(sanitized, index + 1);
+                        index += 2;
+                        continue;
+                    }
+
+                    return index + 1;
+                }
+
+                if (source[index] == '{')
+                {
+                    BlankNonNewline(sanitized, index);
+                    if (index + 1 < source.Length
+                        && source[index + 1] == '{')
+                    {
+                        BlankNonNewline(sanitized, index + 1);
+                        index += 2;
+                        continue;
+                    }
+
+                    interpolationDepth = 1;
+                    index++;
+                    continue;
+                }
+
+                if (source[index] == '}'
+                    && index + 1 < source.Length
+                    && source[index + 1] == '}')
+                {
+                    BlankNonNewline(sanitized, index);
+                    BlankNonNewline(sanitized, index + 1);
+                    index += 2;
+                    continue;
+                }
+
+                BlankNonNewline(sanitized, index);
+                index++;
+                continue;
+            }
+
+            if (TryBlankNonCodeToken(
+                    source,
+                    sanitized,
+                    ref index))
+            {
+                continue;
+            }
+
+            var current = source[index];
+            BlankNonNewline(sanitized, index);
+            index++;
+            if (current == '{')
+            {
+                interpolationDepth++;
+            }
+            else if (current == '}')
+            {
+                interpolationDepth--;
+            }
+        }
+
+        return index;
+    }
+
+    private static void BlankRangePreservingNewlines(
+        char[] sanitized,
+        int start,
+        int length)
+    {
+        var end = Math.Min(
+            sanitized.Length,
+            start + length);
+        for (var index = start; index < end; index++)
+        {
+            BlankNonNewline(sanitized, index);
+        }
+    }
+
+    private static void BlankNonNewline(
+        char[] sanitized,
+        int index)
+    {
+        if (index >= 0
+            && index < sanitized.Length
+            && sanitized[index] is not '\r' and not '\n')
+        {
+            sanitized[index] = ' ';
+        }
+    }
+
+    private static bool StartsWithAt(
+        string source,
+        int index,
+        string value)
+        => index >= 0
+            && index + value.Length <= source.Length
+            && string.CompareOrdinal(
+                source,
+                index,
+                value,
+                0,
+                value.Length) == 0;
 
     private static IReadOnlyList<string>
         GetAdjustmentReferenceContractViolations(
@@ -1154,7 +1701,9 @@ public sealed class InventoryNonPosPostingContractTests
             RegexOptions.IgnorePatternWhitespace
             | RegexOptions.CultureInvariant;
 
-        var source = approveSource.ReplaceLineEndings("\n");
+        var source = StripNonCodeTriviaPreservingLayout(
+                approveSource)
+            .ReplaceLineEndings("\n");
         var violations = new List<string>();
 
         if (Regex.Matches(
@@ -1357,6 +1906,7 @@ public sealed class InventoryNonPosPostingContractTests
     private static string BuildSyntheticAdjustmentReferenceContract(
         string? reassignment = null,
         string? additionalIdentityDeclaration = null,
+        string? sourceBeforeDecreaseCall = null,
         string decreaseReferenceArgument = "documentReferenceId")
         => $$"""
              var documentReferenceId =
@@ -1375,6 +1925,8 @@ public sealed class InventoryNonPosPostingContractTests
                      note,
                      occurredAtUtc);
 
+             {{sourceBeforeDecreaseCall}}
+
              movementRequest =
                  _inventoryMovementFactory.CreateAdjustmentDecrease(
                      warehouseId,
@@ -1386,6 +1938,49 @@ public sealed class InventoryNonPosPostingContractTests
                      note,
                      occurredAtUtc);
              """;
+
+    private static string ReplaceSyntheticInvariantDeclaration(
+        string source,
+        string replacement)
+    {
+        const string invariantDeclaration =
+            """
+            var documentReferenceId =
+                document.Id.ToString(CultureInfo.InvariantCulture);
+            """;
+        var mutated = source.Replace(
+            invariantDeclaration,
+            replacement,
+            StringComparison.Ordinal);
+
+        if (string.Equals(
+                mutated,
+                source,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Synthetic invariant declaration was not found.");
+        }
+
+        return mutated;
+    }
+
+    private static string BuildCommentedCorrectDecreaseCall()
+        =>
+            """
+            /*
+            movementRequest =
+                _inventoryMovementFactory.CreateAdjustmentDecrease(
+                    warehouseId,
+                    productVariantId,
+                    quantity,
+                    provisionalUnitCost,
+                    documentReferenceId,
+                    lineId,
+                    note,
+                    occurredAtUtc);
+            */
+            """;
 
     private static string ReadRepositoryFile(string relativePath)
     {
