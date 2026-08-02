@@ -220,6 +220,15 @@ public sealed class InventoryNonPosPostingContractTests
         result.PreLockCallCount.Should().Be(1);
         result.PostingLoopCount.Should().Be(1);
         result.PostingCallCount.Should().Be(1);
+        result.TransactionTryCount.Should().Be(1);
+        result.ConstructionLoopIsDirectStatement.Should().BeTrue();
+        result.MovementRequestAddIsDirectStatement.Should().BeTrue();
+        result.PreLockIsDirectStatement.Should().BeTrue();
+        result.PreLockHasAwaitShape.Should().BeTrue();
+        result.PostingLoopIsDirectStatement.Should().BeTrue();
+        result.PostingCreateIsDirectStatement.Should().BeTrue();
+        result.PostingCreateHasAwaitShape.Should().BeTrue();
+        result.ProtectedOrderingIsValid.Should().BeTrue();
         result.ConstructionFlowIsValid.Should().BeTrue();
         result.PostingFlowIsValid.Should().BeTrue();
     }
@@ -642,6 +651,100 @@ public sealed class InventoryNonPosPostingContractTests
                 "MovementRequestProvenance"
             }
         ];
+        yield return
+        [
+            "M25 posting call gated by impossible condition",
+            WrapPostingCreateStatement(
+                source,
+                "if (document.Id < 0)"),
+            new[]
+            {
+                "PostingCreateDirectStatement"
+            }
+        ];
+        yield return
+        [
+            "M26 Add gated by impossible condition",
+            WrapMovementRequestAddStatement(
+                source,
+                "if (line.Id < 0)"),
+            new[]
+            {
+                "MovementRequestAddDirectStatement",
+                "MovementRequestAddFlow"
+            }
+        ];
+        yield return
+        [
+            "M27 prelock gated by impossible condition",
+            WrapPreLockStatement(
+                source,
+                "if (document.Id < 0)"),
+            new[]
+            {
+                "PreLockDirectStatement"
+            }
+        ];
+        yield return
+        [
+            "M28 dropped await from posting",
+            DropAwaitFromPostingCreate(source),
+            new[]
+            {
+                "PostingCreateAwaitShape"
+            }
+        ];
+        yield return
+        [
+            "M29 dropped await from prelock",
+            DropAwaitFromPreLock(source),
+            new[]
+            {
+                "PreLockAwaitShape"
+            }
+        ];
+        yield return
+        [
+            "M30 posting foreach gated",
+            WrapPostingLoop(
+                source,
+                "if (document.Id < 0)"),
+            new[]
+            {
+                "PostingLoopDirectStatement"
+            }
+        ];
+        yield return
+        [
+            "M31 construction foreach gated",
+            WrapConstructionLoop(
+                source,
+                "if (document.Id < 0)"),
+            new[]
+            {
+                "ConstructionLoopDirectStatement"
+            }
+        ];
+        yield return
+        [
+            "M32 posting call inside nested alternate loop",
+            WrapPostingCreateStatement(
+                source,
+                "for (var attempt = 0; attempt < 1; attempt++)"),
+            new[]
+            {
+                "PostingCreateDirectStatement"
+            }
+        ];
+        yield return
+        [
+            "M33 prelock inside nested switch",
+            WrapPreLockStatementInSwitch(source),
+            new[]
+            {
+                "PreLockDirectStatement"
+            }
+        ];
     }
 
     [Fact]
@@ -734,6 +837,149 @@ public sealed class InventoryNonPosPostingContractTests
                 nestedLambda.ExpressionBody!,
                 scopeMethod)
             .Should().BeFalse();
+    }
+
+    [Fact]
+    public void Adjustment_direct_statement_classifier_rejects_intermediate_control_flow()
+    {
+        var root = ParseRequiredCompilationUnit(
+            """
+            class DirectStatementFixture
+            {
+                async Task CheckAsync(bool condition)
+                {
+                    await DirectAwait();
+                    DroppedAwait();
+                    _ = AssignedAwait();
+                    await (condition
+                        ? ConditionalAwait()
+                        : Task.CompletedTask);
+
+                    if (condition)
+                    {
+                        await InIf();
+                    }
+
+                    switch (condition)
+                    {
+                        case true:
+                            await InSwitch();
+                            break;
+                    }
+
+                    for (var index = 0; index < 1; index++)
+                    {
+                        await InFor();
+                    }
+
+                    foreach (var item in items)
+                    {
+                        await InForeach();
+                    }
+
+                    try
+                    {
+                        await InTry();
+                    }
+                    finally
+                    {
+                    }
+
+                    Func<Task> lambda = async () =>
+                    {
+                        await InLambda();
+                    };
+
+                    async Task LocalAsync()
+                    {
+                        await InLocal();
+                    }
+                }
+            }
+            """);
+        var method = root
+            .DescendantNodes()
+            .OfType<MethodDeclarationSyntax>()
+            .Single(x => x.Identifier.ValueText == "CheckAsync");
+        var expectedBlock = method.Body!;
+        var invocations = method
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .ToDictionary(
+                x => GetInvokedMethodName(x)!,
+                StringComparer.Ordinal);
+        ExpressionStatementSyntax GetStatement(string methodName)
+            => invocations[methodName]
+                .Ancestors()
+                .OfType<ExpressionStatementSyntax>()
+                .First();
+
+        IsDirectStatementInBlock(
+                GetStatement("DirectAwait"),
+                expectedBlock)
+            .Should().BeTrue();
+        IsDirectStatementInBlock(
+                GetStatement("InIf"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InSwitch"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InFor"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InForeach"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InTry"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InLambda"),
+                expectedBlock)
+            .Should().BeFalse();
+        IsDirectStatementInBlock(
+                GetStatement("InLocal"),
+                expectedBlock)
+            .Should().BeFalse();
+        HasAwaitExpressionStatementShape(
+                invocations["DirectAwait"])
+            .Should().BeTrue();
+        HasAwaitExpressionStatementShape(
+                invocations["DroppedAwait"])
+            .Should().BeFalse();
+        HasAwaitExpressionStatementShape(
+                invocations["AssignedAwait"])
+            .Should().BeFalse();
+        HasAwaitExpressionStatementShape(
+                invocations["ConditionalAwait"])
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public void Adjustment_direct_statement_contract_allows_unrelated_control_flow()
+    {
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            InsertAfterDocumentReferenceDeclaration(
+                ReadAdjustmentServiceSource(),
+                """
+                if (request.Id == int.MinValue)
+                {
+                    _ = request.ApprovalNote;
+                }
+                """),
+            ReadInventoryMovementFactoryInterfaceSource());
+
+        result.Violations.Should().BeEmpty();
+        result.PreLockIsDirectStatement.Should().BeTrue();
+        result.PreLockHasAwaitShape.Should().BeTrue();
+        result.PostingLoopIsDirectStatement.Should().BeTrue();
+        result.PostingCreateIsDirectStatement.Should().BeTrue();
+        result.PostingCreateHasAwaitShape.Should().BeTrue();
     }
 
     [Theory]
@@ -2373,6 +2619,15 @@ public sealed class InventoryNonPosPostingContractTests
             twoStageFlow.PreLockCallCount,
             twoStageFlow.PostingLoopCount,
             twoStageFlow.PostingCallCount,
+            twoStageFlow.TransactionTryCount,
+            twoStageFlow.ConstructionLoopIsDirectStatement,
+            twoStageFlow.MovementRequestAddIsDirectStatement,
+            twoStageFlow.PreLockIsDirectStatement,
+            twoStageFlow.PreLockHasAwaitShape,
+            twoStageFlow.PostingLoopIsDirectStatement,
+            twoStageFlow.PostingCreateIsDirectStatement,
+            twoStageFlow.PostingCreateHasAwaitShape,
+            twoStageFlow.ProtectedOrderingIsValid,
             twoStageFlow.ConstructionFlowIsValid,
             twoStageFlow.PostingFlowIsValid);
     }
@@ -2670,6 +2925,28 @@ public sealed class InventoryNonPosPostingContractTests
         return node.AncestorsAndSelf().Contains(approveMethod);
     }
 
+    private static bool IsDirectStatementInBlock(
+        StatementSyntax statement,
+        BlockSyntax expectedBlock)
+        => statement.Parent == expectedBlock;
+
+    private static ExpressionStatementSyntax?
+        GetContainingExpressionStatement(
+            InvocationExpressionSyntax? invocation)
+        => invocation?
+            .Ancestors()
+            .OfType<ExpressionStatementSyntax>()
+            .FirstOrDefault();
+
+    private static bool HasAwaitExpressionStatementShape(
+        InvocationExpressionSyntax? invocation)
+        => invocation?.Parent
+            is AwaitExpressionSyntax awaitExpression
+            && awaitExpression.Expression == invocation
+            && awaitExpression.Parent
+                is ExpressionStatementSyntax statement
+            && statement.Expression == awaitExpression;
+
     private static TwoStageFlowContractResult
         ValidateTwoStagePostingFlow(
             MethodDeclarationSyntax approveMethod,
@@ -2677,6 +2954,9 @@ public sealed class InventoryNonPosPostingContractTests
             IReadOnlyList<InvocationExpressionSyntax> decreaseCalls,
             List<string> violations)
     {
+        var approveBody = approveMethod.Body
+            ?? throw new InvalidOperationException(
+                "ApproveAsync must have a block body.");
         var rootForeachStatements = approveMethod
             .DescendantNodes()
             .OfType<ForEachStatementSyntax>()
@@ -2696,6 +2976,18 @@ public sealed class InventoryNonPosPostingContractTests
         var constructionLoop = constructionLoops.Count == 1
             ? constructionLoops[0]
             : null;
+        var constructionLoopIsDirectStatement =
+            constructionLoop is not null
+            && IsDirectStatementInBlock(
+                constructionLoop,
+                approveBody);
+        if (!constructionLoopIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "ConstructionLoopDirectStatement");
+        }
+
         var postingCandidates = rootForeachStatements
             .Where(x => x.Identifier.ValueText
                 == "movementRequest")
@@ -2945,9 +3237,27 @@ public sealed class InventoryNonPosPostingContractTests
                 "MovementRequestAddArgument");
         }
 
+        var constructionBody =
+            constructionLoop?.Statement as BlockSyntax;
+        var addStatement = GetContainingExpressionStatement(
+            approvedAdd);
+        var movementRequestAddIsDirectStatement =
+            constructionBody is not null
+            && addStatement is not null
+            && IsDirectStatementInBlock(
+                addStatement,
+                constructionBody);
+        if (!movementRequestAddIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddDirectStatement");
+        }
+
         var addFlowIsValid =
             approvedAdd is not null
             && sharedSelectionIf is not null
+            && movementRequestAddIsDirectStatement
             && approvedAdd.SpanStart
                 > sharedSelectionIf.Span.End;
         if (!addFlowIsValid)
@@ -3061,6 +3371,73 @@ public sealed class InventoryNonPosPostingContractTests
             AddViolation(violations, "PreLockFlow");
         }
 
+        var transactionTryCandidates =
+            FindTransactionTryCandidates(
+                approveMethod,
+                approvedPreLock,
+                postingLoop);
+        if (transactionTryCandidates.Count != 1)
+        {
+            AddViolation(
+                violations,
+                "TransactionTrySelection");
+        }
+
+        var transactionTry =
+            transactionTryCandidates.Count == 1
+                ? transactionTryCandidates[0]
+                : null;
+        var transactionTryIsDirectStatement =
+            transactionTry is not null
+            && IsDirectStatementInBlock(
+                transactionTry,
+                approveBody);
+        if (!transactionTryIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "TransactionTryDirectStatement");
+        }
+
+        var preLockStatement =
+            GetContainingExpressionStatement(
+                approvedPreLock);
+        var preLockIsDirectStatement =
+            transactionTry is not null
+            && preLockStatement is not null
+            && IsDirectStatementInBlock(
+                preLockStatement,
+                transactionTry.Block);
+        if (!preLockIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "PreLockDirectStatement");
+        }
+
+        var preLockHasAwaitShape =
+            HasAwaitExpressionStatementShape(
+                approvedPreLock);
+        if (!preLockHasAwaitShape)
+        {
+            AddViolation(
+                violations,
+                "PreLockAwaitShape");
+        }
+
+        var postingLoopIsDirectStatement =
+            transactionTry is not null
+            && postingLoop is not null
+            && IsDirectStatementInBlock(
+                postingLoop,
+                transactionTry.Block);
+        if (!postingLoopIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "PostingLoopDirectStatement");
+        }
+
         var relevantPostingCalls =
             allInvocations
                 .Where(x => GetInvokedMethodName(x)
@@ -3123,15 +3500,49 @@ public sealed class InventoryNonPosPostingContractTests
             AddViolation(violations, "PostingArgument");
         }
 
-        var orderingIsValid =
-            constructionLoop is not null
-            && approvedPreLock is not null
-            && postingLoop is not null
+        var postingBody =
+            postingLoop?.Statement as BlockSyntax;
+        var postingCreateStatement =
+            GetContainingExpressionStatement(
+                approvedPostingCall);
+        var postingCreateIsDirectStatement =
+            postingBody is not null
+            && postingCreateStatement is not null
+            && IsDirectStatementInBlock(
+                postingCreateStatement,
+                postingBody);
+        if (!postingCreateIsDirectStatement)
+        {
+            AddViolation(
+                violations,
+                "PostingCreateDirectStatement");
+        }
+
+        var postingCreateHasAwaitShape =
+            HasAwaitExpressionStatementShape(
+                approvedPostingCall);
+        if (!postingCreateHasAwaitShape)
+        {
+            AddViolation(
+                violations,
+                "PostingCreateAwaitShape");
+        }
+
+        var protectedOrderingIsValid =
+            constructionLoopIsDirectStatement
+            && constructionLoop is not null
+            && preLockIsDirectStatement
+            && preLockStatement is not null
+            && postingLoopIsDirectStatement
+            && postingCreateIsDirectStatement
+            && postingCreateStatement is not null
             && constructionLoop.Span.End
-                < approvedPreLock.SpanStart
-            && approvedPreLock.Span.End
-                < postingLoop.SpanStart;
-        if (!orderingIsValid)
+                < preLockStatement.SpanStart
+            && preLockStatement.Span.End
+                < postingLoop!.SpanStart
+            && postingLoop.SpanStart
+                < postingCreateStatement.SpanStart;
+        if (!protectedOrderingIsValid)
         {
             AddViolation(violations, "PostingFlow");
         }
@@ -3218,6 +3629,7 @@ public sealed class InventoryNonPosPostingContractTests
 
         var constructionFlowIsValid =
             constructionLoop is not null
+            && constructionLoopIsDirectStatement
             && movementRequestsDeclarationIsValid
             && movementRequestDeclarationIsValid
             && increaseAssignmentIsValid
@@ -3226,6 +3638,7 @@ public sealed class InventoryNonPosPostingContractTests
             && approvedAdd is not null
             && addReceiverIsValid
             && addArgumentIsValid
+            && movementRequestAddIsDirectStatement
             && addFlowIsValid
             && actualRequestWrites.SequenceEqual(
                 expectedRequestWrites)
@@ -3234,10 +3647,17 @@ public sealed class InventoryNonPosPostingContractTests
             postingLoop is not null
             && postingCollectionIsValid
             && preLockShapeIsValid
+            && transactionTryCandidates.Count == 1
+            && transactionTryIsDirectStatement
+            && preLockIsDirectStatement
+            && preLockHasAwaitShape
+            && postingLoopIsDirectStatement
             && approvedPostingCall is not null
             && postingReceiverIsValid
             && postingArgumentIsValid
-            && orderingIsValid;
+            && postingCreateIsDirectStatement
+            && postingCreateHasAwaitShape
+            && protectedOrderingIsValid;
 
         return new TwoStageFlowContractResult(
             constructionLoops.Count,
@@ -3245,9 +3665,110 @@ public sealed class InventoryNonPosPostingContractTests
             rootPreLockCalls.Count,
             postingCandidates.Count,
             postingCallsInLoop.Count,
+            transactionTryCandidates.Count,
+            constructionLoopIsDirectStatement,
+            movementRequestAddIsDirectStatement,
+            preLockIsDirectStatement,
+            preLockHasAwaitShape,
+            postingLoopIsDirectStatement,
+            postingCreateIsDirectStatement,
+            postingCreateHasAwaitShape,
+            protectedOrderingIsValid,
             constructionFlowIsValid,
             postingFlowIsValid);
     }
+
+    private static List<TryStatementSyntax>
+        FindTransactionTryCandidates(
+            MethodDeclarationSyntax approveMethod,
+            InvocationExpressionSyntax? preLockCall,
+            ForEachStatementSyntax? postingLoop)
+    {
+        if (preLockCall is null || postingLoop is null)
+        {
+            return [];
+        }
+
+        var approvedStatusAssignments = approveMethod
+            .DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .Where(IsApprovedStatusAssignment)
+            .ToList();
+        var saveCalls = approveMethod
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .Where(x => IsExactUnitOfWorkCall(
+                x,
+                "SaveChangesAsync"))
+            .ToList();
+        var commitCalls = approveMethod
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .Where(x => IsExactUnitOfWorkCall(
+                x,
+                "CommitTransactionAsync"))
+            .ToList();
+        if (approvedStatusAssignments.Count != 1
+            || saveCalls.Count != 1
+            || commitCalls.Count != 1)
+        {
+            return [];
+        }
+
+        return approveMethod
+            .DescendantNodes()
+            .OfType<TryStatementSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .Where(x => x.Block.Span.Contains(
+                preLockCall.Span))
+            .Where(x => x.Block.Span.Contains(
+                postingLoop.Span))
+            .Where(x => x.Block.Span.Contains(
+                approvedStatusAssignments[0].Span))
+            .Where(x => x.Block.Span.Contains(
+                saveCalls[0].Span))
+            .Where(x => x.Block.Span.Contains(
+                commitCalls[0].Span))
+            .ToList();
+    }
+
+    private static bool IsApprovedStatusAssignment(
+        AssignmentExpressionSyntax assignment)
+        => assignment.IsKind(
+                SyntaxKind.SimpleAssignmentExpression)
+            && IsMemberAccess(
+                assignment.Left,
+                "document",
+                "Status")
+            && IsMemberAccess(
+                assignment.Right,
+                "InventoryAdjustmentDocumentStatus",
+                "Approved");
+
+    private static bool IsExactUnitOfWorkCall(
+        InvocationExpressionSyntax invocation,
+        string methodName)
+        => GetInvokedMethodName(invocation) == methodName
+            && HasExactReceiver(
+                invocation,
+                "_unitOfWork")
+            && invocation.ArgumentList.Arguments.Count == 1
+            && invocation.ArgumentList.Arguments[0]
+                .NameColon is null
+            && IsIdentifier(
+                invocation.ArgumentList.Arguments[0].Expression,
+                "ct");
 
     private static bool IsDocumentLinesExpression(
         ExpressionSyntax expression)
@@ -3645,6 +4166,122 @@ public sealed class InventoryNonPosPostingContractTests
             + "movementRequests.Add(movementRequest);");
     }
 
+    private static string WrapPostingCreateStatement(
+        string source,
+        string controlHeader)
+        => WrapStatement(
+            source,
+            GetContainingExpressionStatement(
+                GetRequiredPostingCreateInvocation(source))
+                ?? throw new InvalidOperationException(
+                    "Expected posting expression statement."),
+            controlHeader);
+
+    private static string WrapMovementRequestAddStatement(
+        string source,
+        string controlHeader)
+        => WrapStatement(
+            source,
+            GetContainingExpressionStatement(
+                GetRequiredMovementRequestAddInvocation(source))
+                ?? throw new InvalidOperationException(
+                    "Expected Add expression statement."),
+            controlHeader);
+
+    private static string WrapPreLockStatement(
+        string source,
+        string controlHeader)
+        => WrapStatement(
+            source,
+            GetContainingExpressionStatement(
+                GetRequiredPreLockInvocation(source))
+                ?? throw new InvalidOperationException(
+                    "Expected prelock expression statement."),
+            controlHeader);
+
+    private static string DropAwaitFromPostingCreate(
+        string source)
+        => DropAwaitFromInvocation(
+            source,
+            GetRequiredPostingCreateInvocation(source));
+
+    private static string DropAwaitFromPreLock(
+        string source)
+        => DropAwaitFromInvocation(
+            source,
+            GetRequiredPreLockInvocation(source));
+
+    private static string WrapPostingLoop(
+        string source,
+        string controlHeader)
+        => WrapStatement(
+            source,
+            GetRequiredPostingLoop(source),
+            controlHeader);
+
+    private static string WrapConstructionLoop(
+        string source,
+        string controlHeader)
+        => WrapStatement(
+            source,
+            GetRequiredConstructionLoop(source),
+            controlHeader);
+
+    private static string WrapPreLockStatementInSwitch(
+        string source)
+    {
+        var statement = GetContainingExpressionStatement(
+            GetRequiredPreLockInvocation(source))
+            ?? throw new InvalidOperationException(
+                "Expected prelock expression statement.");
+        var statementText = source[
+            statement.Span.Start..statement.Span.End];
+
+        return ReplaceSourceSpan(
+            source,
+            statement.Span,
+            "switch (document.Id)\n"
+            + "{\n"
+            + "    default:\n"
+            + statementText
+            + "\n        break;\n"
+            + "}");
+    }
+
+    private static string WrapStatement(
+        string source,
+        StatementSyntax statement,
+        string controlHeader)
+    {
+        var statementText = source[
+            statement.Span.Start..statement.Span.End];
+        return ReplaceSourceSpan(
+            source,
+            statement.Span,
+            controlHeader
+            + "\n{\n"
+            + statementText
+            + "\n}");
+    }
+
+    private static string DropAwaitFromInvocation(
+        string source,
+        InvocationExpressionSyntax invocation)
+    {
+        if (invocation.Parent
+            is not AwaitExpressionSyntax awaitExpression
+            || awaitExpression.Expression != invocation)
+        {
+            throw new InvalidOperationException(
+                "Expected directly awaited invocation.");
+        }
+
+        return ReplaceSourceSpan(
+            source,
+            awaitExpression.Span,
+            source[invocation.Span.Start..invocation.Span.End]);
+    }
+
     private static string ReplaceMovementRequestAddArgument(
         string source,
         string replacement)
@@ -3765,6 +4402,27 @@ public sealed class InventoryNonPosPostingContractTests
             .Single(x => x.Identifier.ValueText
                 == "ApproveAsync");
 
+    private static ForEachStatementSyntax
+        GetRequiredConstructionLoop(
+            string source)
+        => GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Single(x => x.Identifier.ValueText == "line"
+                && IsDocumentLinesExpression(x.Expression));
+
+    private static ForEachStatementSyntax
+        GetRequiredPostingLoop(
+            string source)
+        => GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Single(x => x.Identifier.ValueText
+                == "movementRequest"
+                && IsIdentifier(
+                    x.Expression,
+                    "movementRequests"));
+
     private static InvocationExpressionSyntax
         GetRequiredMovementRequestAddInvocation(
             string source)
@@ -3779,6 +4437,18 @@ public sealed class InventoryNonPosPostingContractTests
                 && IsIdentifier(
                     x.ArgumentList.Arguments[0].Expression,
                     "movementRequest"));
+
+    private static InvocationExpressionSyntax
+        GetRequiredPreLockInvocation(
+            string source)
+        => GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Single(x => GetInvokedMethodName(x)
+                    == "PreLockBalancesAsync"
+                && HasExactReceiver(
+                    x,
+                    "_inventoryMovementService"));
 
     private static InvocationExpressionSyntax
         GetRequiredPostingCreateInvocation(
@@ -4378,6 +5048,15 @@ public sealed class InventoryNonPosPostingContractTests
         int PreLockCallCount,
         int PostingLoopCount,
         int PostingCallCount,
+        int TransactionTryCount,
+        bool ConstructionLoopIsDirectStatement,
+        bool MovementRequestAddIsDirectStatement,
+        bool PreLockIsDirectStatement,
+        bool PreLockHasAwaitShape,
+        bool PostingLoopIsDirectStatement,
+        bool PostingCreateIsDirectStatement,
+        bool PostingCreateHasAwaitShape,
+        bool ProtectedOrderingIsValid,
         bool ConstructionFlowIsValid,
         bool PostingFlowIsValid);
 
@@ -4387,11 +5066,36 @@ public sealed class InventoryNonPosPostingContractTests
         int PreLockCallCount,
         int PostingLoopCount,
         int PostingCallCount,
+        int TransactionTryCount,
+        bool ConstructionLoopIsDirectStatement,
+        bool MovementRequestAddIsDirectStatement,
+        bool PreLockIsDirectStatement,
+        bool PreLockHasAwaitShape,
+        bool PostingLoopIsDirectStatement,
+        bool PostingCreateIsDirectStatement,
+        bool PostingCreateHasAwaitShape,
+        bool ProtectedOrderingIsValid,
         bool ConstructionFlowIsValid,
         bool PostingFlowIsValid)
     {
         public static TwoStageFlowContractResult Empty { get; } =
-            new(0, 0, 0, 0, 0, false, false);
+            new(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false);
     }
 
     private sealed record RelationalDocumentSnapshot(
