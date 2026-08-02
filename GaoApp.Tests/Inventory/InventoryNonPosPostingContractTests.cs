@@ -14,6 +14,7 @@ using GaoApp.Tests.Configuration;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace GaoApp.Tests.Inventory;
 
@@ -189,58 +190,110 @@ public sealed class InventoryNonPosPostingContractTests
     [Fact]
     public void Adjustment_approval_derives_one_invariant_document_reference_for_both_paths()
     {
-        var source = ReadRepositoryFile(
-            "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
-        var approveStart = source.IndexOf(
-            "public async Task<InventoryAdjustmentDocumentDetailDto> ApproveAsync(",
-            StringComparison.Ordinal);
-        var rejectStart = source.IndexOf(
-            "public async Task<InventoryAdjustmentDocumentDetailDto> RejectAsync(",
-            approveStart,
-            StringComparison.Ordinal);
+        var approveSource = ReadAdjustmentApprovalSource();
 
-        approveStart.Should().BeGreaterThanOrEqualTo(0);
-        rejectStart.Should().BeGreaterThan(approveStart);
+        GetAdjustmentReferenceContractViolations(approveSource)
+            .Should().BeEmpty();
+    }
 
-        var approveSource = source[approveStart..rejectStart]
-            .ReplaceLineEndings("\n");
-        const string invariantConversion =
-            "document.Id.ToString(CultureInfo.InvariantCulture)";
-        const string callEnd = "occurredAtUtc);";
+    [Theory]
+    [MemberData(nameof(AdjustmentReferenceContractMutants))]
+    public void Adjustment_reference_contract_rejects_mutant(
+        string mutant,
+        string approveSource,
+        string[] expectedViolations)
+    {
+        var violations =
+            GetAdjustmentReferenceContractViolations(approveSource);
 
-        approveSource.Should().Contain(
-            $"var documentReferenceId =\n" +
-            $"            {invariantConversion};");
-        approveSource.Split(
-                invariantConversion,
-                StringSplitOptions.None)
-            .Should().HaveCount(2);
-        approveSource.Should().NotContain("document.Id.ToString()");
+        violations.Should().NotBeEmpty(
+            because: $"{mutant} must violate the durable identity contract");
+        foreach (var expectedViolation in expectedViolations)
+        {
+            violations.Should().Contain(
+                expectedViolation,
+                because: $"{mutant} must be rejected for this violation");
+        }
+    }
 
-        var increaseStart = approveSource.IndexOf(
-            "_inventoryMovementFactory.CreateAdjustmentIncrease(",
-            StringComparison.Ordinal);
-        var increaseEnd = approveSource.IndexOf(
-            callEnd,
-            increaseStart,
-            StringComparison.Ordinal);
-        var decreaseStart = approveSource.IndexOf(
-            "_inventoryMovementFactory.CreateAdjustmentDecrease(",
-            StringComparison.Ordinal);
-        var decreaseEnd = approveSource.IndexOf(
-            callEnd,
-            decreaseStart,
-            StringComparison.Ordinal);
-
-        increaseStart.Should().BeGreaterThanOrEqualTo(0);
-        increaseEnd.Should().BeGreaterThan(increaseStart);
-        decreaseStart.Should().BeGreaterThan(increaseEnd);
-        decreaseEnd.Should().BeGreaterThan(decreaseStart);
-
-        approveSource[increaseStart..(increaseEnd + callEnd.Length)]
-            .Should().Contain("documentReferenceId,");
-        approveSource[decreaseStart..(decreaseEnd + callEnd.Length)]
-            .Should().Contain("documentReferenceId,");
+    public static IEnumerable<object[]>
+        AdjustmentReferenceContractMutants()
+    {
+        yield return
+        [
+            "M1 CurrentCulture reassignment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "documentReferenceId = " +
+                "document.Id.ToString(CultureInfo.CurrentCulture);"),
+            new[]
+            {
+                "DocumentReferenceAssignmentCount",
+                "CurrentCulture"
+            }
+        ];
+        yield return
+        [
+            "M2 parameterless reassignment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "documentReferenceId = document.Id.ToString();"),
+            new[]
+            {
+                "DocumentReferenceAssignmentCount",
+                "ParameterlessDocumentIdConversion"
+            }
+        ];
+        yield return
+        [
+            "M3 interpolation reassignment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "documentReferenceId = $\"{document.Id}\";"),
+            new[]
+            {
+                "DocumentReferenceAssignmentCount"
+            }
+        ];
+        yield return
+        [
+            "M4 decrease direct conversion",
+            BuildSyntheticAdjustmentReferenceContract(
+                decreaseReferenceArgument:
+                "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            new[]
+            {
+                "InvariantConversionCount",
+                "DecreaseReferenceArgument"
+            }
+        ];
+        yield return
+        [
+            "M5 separate decrease variable",
+            BuildSyntheticAdjustmentReferenceContract(
+                additionalIdentityDeclaration:
+                "var decreaseReferenceId = " +
+                "document.Id.ToString(CultureInfo.InvariantCulture);",
+                decreaseReferenceArgument: "decreaseReferenceId"),
+            new[]
+            {
+                "InvariantConversionCount",
+                "DecreaseReferenceArgument"
+            }
+        ];
+        yield return
+        [
+            "M6 CurrentUICulture compound reassignment",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                "documentReferenceId ??= " +
+                "document.Id.ToString(CultureInfo.CurrentUICulture);"),
+            new[]
+            {
+                "DocumentReferenceAssignmentCount",
+                "CurrentUICulture"
+            }
+        ];
     }
 
     [Fact]
@@ -1058,6 +1111,281 @@ public sealed class InventoryNonPosPostingContractTests
                 }
             ]
         };
+
+    private static string ReadAdjustmentApprovalSource()
+    {
+        var source = ReadRepositoryFile(
+            "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
+        var approveStart = source.IndexOf(
+            "public async Task<InventoryAdjustmentDocumentDetailDto> ApproveAsync(",
+            StringComparison.Ordinal);
+        var rejectStart = source.IndexOf(
+            "public async Task<InventoryAdjustmentDocumentDetailDto> RejectAsync(",
+            approveStart,
+            StringComparison.Ordinal);
+
+        approveStart.Should().BeGreaterThanOrEqualTo(0);
+        rejectStart.Should().BeGreaterThan(approveStart);
+
+        return source[approveStart..rejectStart];
+    }
+
+    private static IReadOnlyList<string>
+        GetAdjustmentReferenceContractViolations(
+            string approveSource)
+    {
+        const string invariantConversionPattern =
+            """
+            document\s*\.\s*Id\s*\.\s*ToString\s*\(
+            \s*CultureInfo\s*\.\s*InvariantCulture\s*\)
+            """;
+        const string invariantDeclarationPattern =
+            """
+            \bvar\s+documentReferenceId\s*=\s*
+            document\s*\.\s*Id\s*\.\s*ToString\s*\(
+            \s*CultureInfo\s*\.\s*InvariantCulture\s*\)\s*;
+            """;
+        const string assignmentPattern =
+            """
+            \bdocumentReferenceId\s*
+            (?:\?\?=|<<=|>>=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|=(?!=|>))
+            """;
+        const RegexOptions options =
+            RegexOptions.IgnorePatternWhitespace
+            | RegexOptions.CultureInvariant;
+
+        var source = approveSource.ReplaceLineEndings("\n");
+        var violations = new List<string>();
+
+        if (Regex.Matches(
+                source,
+                invariantDeclarationPattern,
+                options).Count != 1)
+        {
+            violations.Add("InvariantDeclarationCount");
+        }
+
+        if (Regex.Matches(
+                source,
+                invariantConversionPattern,
+                options).Count != 1)
+        {
+            violations.Add("InvariantConversionCount");
+        }
+
+        if (Regex.Matches(
+                source,
+                assignmentPattern,
+                options).Count != 1)
+        {
+            violations.Add("DocumentReferenceAssignmentCount");
+        }
+
+        if (Regex.IsMatch(
+                source,
+                @"CultureInfo\s*\.\s*CurrentCulture\b",
+                options))
+        {
+            violations.Add("CurrentCulture");
+        }
+
+        if (Regex.IsMatch(
+                source,
+                @"CultureInfo\s*\.\s*CurrentUICulture\b",
+                options))
+        {
+            violations.Add("CurrentUICulture");
+        }
+
+        if (Regex.IsMatch(
+                source,
+                """
+                document\s*\.\s*Id\s*\.\s*ToString\s*\(\s*\)
+                """,
+                options))
+        {
+            violations.Add("ParameterlessDocumentIdConversion");
+        }
+
+        AddFactoryReferenceViolations(
+            violations,
+            source,
+            "_inventoryMovementFactory.CreateAdjustmentIncrease",
+            "IncreaseCallCount",
+            "IncreaseReferenceArgument");
+        AddFactoryReferenceViolations(
+            violations,
+            source,
+            "_inventoryMovementFactory.CreateAdjustmentDecrease",
+            "DecreaseCallCount",
+            "DecreaseReferenceArgument");
+
+        return violations;
+    }
+
+    private static void AddFactoryReferenceViolations(
+        List<string> violations,
+        string source,
+        string invocationName,
+        string callCountViolation,
+        string referenceArgumentViolation)
+    {
+        var calls = GetInvocationArguments(source, invocationName);
+        if (calls.Count != 1)
+        {
+            violations.Add(callCountViolation);
+            return;
+        }
+
+        var arguments = calls[0];
+        if (arguments.Count != 8
+            || !string.Equals(
+                arguments[4].Trim(),
+                "documentReferenceId",
+                StringComparison.Ordinal))
+        {
+            violations.Add(referenceArgumentViolation);
+        }
+    }
+
+    private static IReadOnlyList<IReadOnlyList<string>>
+        GetInvocationArguments(
+            string source,
+            string invocationName)
+    {
+        var calls = new List<IReadOnlyList<string>>();
+        var searchStart = 0;
+
+        while (searchStart < source.Length)
+        {
+            var invocationStart = source.IndexOf(
+                invocationName,
+                searchStart,
+                StringComparison.Ordinal);
+            if (invocationStart < 0)
+            {
+                break;
+            }
+
+            var openParenthesis = source.IndexOf(
+                '(',
+                invocationStart + invocationName.Length);
+            if (openParenthesis < 0)
+            {
+                break;
+            }
+
+            var closeParenthesis =
+                FindMatchingCloseParenthesis(
+                    source,
+                    openParenthesis);
+            if (closeParenthesis < 0)
+            {
+                calls.Add([]);
+                break;
+            }
+
+            calls.Add(SplitTopLevelArguments(
+                source[(openParenthesis + 1)..closeParenthesis]));
+            searchStart = closeParenthesis + 1;
+        }
+
+        return calls;
+    }
+
+    private static int FindMatchingCloseParenthesis(
+        string source,
+        int openParenthesis)
+    {
+        var depth = 0;
+        for (var index = openParenthesis;
+             index < source.Length;
+             index++)
+        {
+            if (source[index] == '(')
+            {
+                depth++;
+            }
+            else if (source[index] == ')')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return index;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static IReadOnlyList<string>
+        SplitTopLevelArguments(string argumentsSource)
+    {
+        var arguments = new List<string>();
+        var depth = 0;
+        var argumentStart = 0;
+
+        for (var index = 0;
+             index < argumentsSource.Length;
+             index++)
+        {
+            switch (argumentsSource[index])
+            {
+                case '(':
+                case '[':
+                case '{':
+                    depth++;
+                    break;
+                case ')':
+                case ']':
+                case '}':
+                    depth--;
+                    break;
+                case ',' when depth == 0:
+                    arguments.Add(
+                        argumentsSource[argumentStart..index]);
+                    argumentStart = index + 1;
+                    break;
+            }
+        }
+
+        arguments.Add(argumentsSource[argumentStart..]);
+        return arguments;
+    }
+
+    private static string BuildSyntheticAdjustmentReferenceContract(
+        string? reassignment = null,
+        string? additionalIdentityDeclaration = null,
+        string decreaseReferenceArgument = "documentReferenceId")
+        => $$"""
+             var documentReferenceId =
+                 document.Id.ToString(CultureInfo.InvariantCulture);
+             {{reassignment}}
+             {{additionalIdentityDeclaration}}
+
+             movementRequest =
+                 _inventoryMovementFactory.CreateAdjustmentIncrease(
+                     warehouseId,
+                     productVariantId,
+                     quantity,
+                     unitCost,
+                     documentReferenceId,
+                     lineId,
+                     note,
+                     occurredAtUtc);
+
+             movementRequest =
+                 _inventoryMovementFactory.CreateAdjustmentDecrease(
+                     warehouseId,
+                     productVariantId,
+                     quantity,
+                     provisionalUnitCost,
+                     {{decreaseReferenceArgument}},
+                     lineId,
+                     note,
+                     occurredAtUtc);
+             """;
 
     private static string ReadRepositoryFile(string relativePath)
     {
