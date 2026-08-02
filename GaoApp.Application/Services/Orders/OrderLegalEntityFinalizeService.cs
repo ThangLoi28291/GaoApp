@@ -1,4 +1,5 @@
 using GaoApp.Application.Common.Exceptions.Pos;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Orders.LegalEntityAllocation;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Services.Inventory;
@@ -184,6 +185,20 @@ public sealed class OrderLegalEntityFinalizeService : IOrderLegalEntityFinalizeS
         }
 
         var persistedAllocations = BuildPersistedAllocations(order, lines, preview);
+        var balanceKeys = preview.Allocations
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId))
+            .Distinct()
+            .ToList();
+        if (balanceKeys.Count > 0)
+        {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                balanceKeys,
+                ct);
+        }
+
         var inventoryResult = await ApplyInventoryMovementsAsync(
             order,
             lines,

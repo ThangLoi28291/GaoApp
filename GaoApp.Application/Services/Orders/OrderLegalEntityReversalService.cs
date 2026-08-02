@@ -7,12 +7,29 @@ using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Orders;
 
+internal interface IOrderLegalEntitySalesReturnBatchService
+{
+    Task<OrderLegalEntityReversalService.PreparedSalesReturnBatch>
+        PrepareSalesReturnBatchAsync(
+            Order order,
+            SalesReturn salesReturn,
+            IReadOnlyCollection<SalesReturnLine> salesReturnLines,
+            CancellationToken ct = default);
+
+    Task ApplyPreparedSalesReturnLineAsync(
+        OrderLegalEntityReversalService.PreparedSalesReturnBatch batch,
+        int salesReturnLineId,
+        CancellationToken ct = default);
+}
+
 /// <summary>
 /// Orchestrator reversal của order đã allocation. Không suy đoán lại SalePriority và
 /// không dùng kho ca POS; mọi fragment phải quay về đúng allocation/valuation gốc.
 /// Caller sở hữu transaction ngoài cùng.
 /// </summary>
-public sealed class OrderLegalEntityReversalService : IOrderLegalEntityReversalService
+public sealed class OrderLegalEntityReversalService
+    : IOrderLegalEntityReversalService,
+      IOrderLegalEntitySalesReturnBatchService
 {
     private const decimal QuantityTolerance = 0.0001m;
 
@@ -72,6 +89,18 @@ public sealed class OrderLegalEntityReversalService : IOrderLegalEntityReversalS
         }
 
         AllocateVoidFinancialAmounts(plans);
+        var balanceKeys = plans
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.Source.WarehouseId,
+                x.Source.ProductVariantId))
+            .Distinct()
+            .ToList();
+        if (balanceKeys.Count > 0)
+        {
+            await _movements.PreLockBalancesAsync(balanceKeys, ct);
+        }
+
         var reversalRows = new List<OrderLegalEntityAllocationReversal>();
         var occurredAtUtc = DateTime.UtcNow;
 
@@ -120,66 +149,245 @@ public sealed class OrderLegalEntityReversalService : IOrderLegalEntityReversalS
         ArgumentNullException.ThrowIfNull(salesReturn);
         ArgumentNullException.ThrowIfNull(salesReturnLine);
 
-        var persistedAllocations = await _allocations.GetForOrderAsync(order.Id, ct);
-        if (persistedAllocations.Count == 0)
+        var batch = await PrepareSalesReturnBatchAsync(
+            order,
+            salesReturn,
+            [salesReturnLine],
+            ct);
+        if (!batch.HandledLineIds.Contains(salesReturnLine.Id))
             return false;
 
-        var allocationByTransaction = BuildAllocationMap(order, persistedAllocations);
-        var fragments = await _returnableFragments.GetForOrderLineAsync(
-            order.Id,
-            salesReturnLine.OrderLineId,
-            ct);
-        var costAllocations = _returnCostAllocator.Allocate(
-            fragments,
-            salesReturnLine.ReturnBaseQuantity);
-        var orderLine = order.Lines.FirstOrDefault(x =>
-                x.Id == salesReturnLine.OrderLineId && !x.IsDeleted)
-            ?? throw new InvalidOperationException(
-                $"Không tìm thấy OrderLine #{salesReturnLine.OrderLineId} của return.");
-        var plans = BuildPlans(
-            orderLine,
-            fragments,
-            costAllocations,
-            allocationByTransaction);
-
-        AllocateFinancialAmounts(plans, salesReturnLine.RefundLineTotal);
-
-        var isRestock = salesReturnLine.Action == SalesReturnLineAction.Restock;
-        var reversalType = isRestock
-            ? OrderLegalEntityReversalType.ReturnRestock
-            : OrderLegalEntityReversalType.ReturnNoRestock;
-        var occurredAtUtc = DateTime.UtcNow;
-        var reversalRows = new List<OrderLegalEntityAllocationReversal>();
-
-        if (isRestock)
+        if (batch.LockKeys.Count > 0)
         {
-            salesReturnLine.LineCostTotal = plans.Sum(x => x.BaseQuantity * x.UnitCost);
-            salesReturnLine.UnitCostSnapshot = salesReturnLine.ReturnBaseQuantity > 0
-                ? Math.Round(
-                    salesReturnLine.LineCostTotal / salesReturnLine.ReturnBaseQuantity,
-                    6,
-                    MidpointRounding.AwayFromZero)
-                : 0m;
-            salesReturnLine.IsProvisionalCost = plans.Any(x => x.Source.IsProvisional);
+            await _movements.PreLockBalancesAsync(batch.LockKeys, ct);
         }
 
-        foreach (var plan in plans)
+        await ApplySalesReturnBatchAsync(batch, ct);
+        return true;
+    }
+
+    async Task<PreparedSalesReturnBatch>
+        IOrderLegalEntitySalesReturnBatchService.PrepareSalesReturnBatchAsync(
+            Order order,
+            SalesReturn salesReturn,
+            IReadOnlyCollection<SalesReturnLine> salesReturnLines,
+            CancellationToken ct)
+        => await PrepareSalesReturnBatchAsync(
+            order,
+            salesReturn,
+            salesReturnLines,
+            ct);
+
+    Task IOrderLegalEntitySalesReturnBatchService
+        .ApplyPreparedSalesReturnLineAsync(
+            PreparedSalesReturnBatch batch,
+            int salesReturnLineId,
+            CancellationToken ct)
+        => ApplyPreparedSalesReturnLineAsync(
+            batch,
+            salesReturnLineId,
+            ct);
+
+    internal async Task<PreparedSalesReturnBatch> PrepareSalesReturnBatchAsync(
+        Order order,
+        SalesReturn salesReturn,
+        IReadOnlyCollection<SalesReturnLine> salesReturnLines,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        ArgumentNullException.ThrowIfNull(salesReturn);
+        ArgumentNullException.ThrowIfNull(salesReturnLines);
+
+        var persistedAllocations = await _allocations.GetForOrderAsync(order.Id, ct);
+        var allocationByTransaction = persistedAllocations.Count == 0
+            ? new Dictionary<int, OrderLegalEntityAllocation>()
+            : BuildAllocationMap(order, persistedAllocations);
+        var preparedLines = new List<PreparedSalesReturnLine>();
+        var handledLineIds = new HashSet<int>();
+
+        // Classify every persisted return line independently. Historical or
+        // transitional orders may contain both allocated and legacy lines.
+        foreach (var salesReturnLine in salesReturnLines)
+        {
+            if (salesReturnLine.Id <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Sales return line must be persisted before LegalEntity planning.");
+            }
+
+            var orderLine = order.Lines.FirstOrDefault(x =>
+                    x.Id == salesReturnLine.OrderLineId && !x.IsDeleted)
+                ?? throw new InvalidOperationException(
+                    $"Không tìm thấy OrderLine #{salesReturnLine.OrderLineId} của return.");
+            var lineAllocations = persistedAllocations
+                .Where(x => x.OrderLineId == orderLine.Id)
+                .ToList();
+
+            if (lineAllocations.Count == 0)
+            {
+                var fragmentsWithoutAllocation = await _returnableFragments
+                    .GetForOrderLineAsync(
+                        order.Id,
+                        salesReturnLine.OrderLineId,
+                        ct);
+                if (fragmentsWithoutAllocation.Any(x =>
+                        allocationByTransaction.ContainsKey(
+                            x.InventoryTransactionId) ||
+                        IsLegalEntitySource(x)))
+                {
+                    throw PartialLegalEntityEvidence(salesReturnLine);
+                }
+
+                continue;
+            }
+
+            var fragments = await _returnableFragments.GetForOrderLineAsync(
+                order.Id,
+                salesReturnLine.OrderLineId,
+                ct);
+            var lineAllocationByTransaction = lineAllocations.ToDictionary(
+                x => x.InventoryTransactionId
+                    ?? throw PartialLegalEntityEvidence(salesReturnLine),
+                x => x);
+            if (fragments.Count == 0 ||
+                fragments.Any(x =>
+                    !lineAllocationByTransaction.ContainsKey(
+                        x.InventoryTransactionId)))
+            {
+                throw PartialLegalEntityEvidence(salesReturnLine);
+            }
+
+            var costAllocations = _returnCostAllocator.Allocate(
+                fragments,
+                salesReturnLine.ReturnBaseQuantity);
+            List<ReversalPlan> plans;
+            try
+            {
+                plans = BuildPlans(
+                    orderLine,
+                    fragments,
+                    costAllocations,
+                    lineAllocationByTransaction);
+            }
+            catch (InvalidOperationException exception)
+            {
+                throw PartialLegalEntityEvidence(
+                    salesReturnLine,
+                    exception);
+            }
+
+            AllocateFinancialAmounts(plans, salesReturnLine.RefundLineTotal);
+
+            var isRestock =
+                salesReturnLine.Action == SalesReturnLineAction.Restock;
+            preparedLines.Add(new PreparedSalesReturnLine
+            {
+                SalesReturnLine = salesReturnLine,
+                Plans = plans,
+                IsRestock = isRestock,
+                ReversalType = isRestock
+                    ? OrderLegalEntityReversalType.ReturnRestock
+                    : OrderLegalEntityReversalType.ReturnNoRestock,
+                OccurredAtUtc = DateTime.UtcNow
+            });
+            handledLineIds.Add(salesReturnLine.Id);
+        }
+
+        var lockKeys = preparedLines
+            .Where(x => x.IsRestock)
+            .SelectMany(x => x.Plans)
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.Source.WarehouseId,
+                x.Source.ProductVariantId))
+            .Distinct()
+            .ToList();
+
+        return new PreparedSalesReturnBatch
+        {
+            Order = order,
+            SalesReturn = salesReturn,
+            Lines = preparedLines,
+            LockKeys = lockKeys,
+            HandledLineIds = handledLineIds
+        };
+    }
+
+    internal async Task ApplySalesReturnBatchAsync(
+        PreparedSalesReturnBatch batch,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+
+        foreach (var preparedLine in batch.Lines)
+        {
+            await ApplyPreparedSalesReturnLineCoreAsync(
+                batch,
+                preparedLine,
+                ct);
+        }
+    }
+
+    internal async Task ApplyPreparedSalesReturnLineAsync(
+        PreparedSalesReturnBatch batch,
+        int salesReturnLineId,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        var preparedLine = batch.Lines.SingleOrDefault(x =>
+            x.SalesReturnLine.Id == salesReturnLineId);
+        if (preparedLine is null)
+        {
+            throw new InvalidOperationException(
+                $"SalesReturnLine #{salesReturnLineId} was not prepared as LegalEntity.");
+        }
+
+        await ApplyPreparedSalesReturnLineCoreAsync(
+            batch,
+            preparedLine,
+            ct);
+    }
+
+    private async Task ApplyPreparedSalesReturnLineCoreAsync(
+        PreparedSalesReturnBatch batch,
+        PreparedSalesReturnLine preparedLine,
+        CancellationToken ct)
+    {
+        var salesReturnLine = preparedLine.SalesReturnLine;
+        if (preparedLine.IsRestock)
+        {
+            salesReturnLine.LineCostTotal = preparedLine.Plans
+                .Sum(x => x.BaseQuantity * x.UnitCost);
+            salesReturnLine.UnitCostSnapshot =
+                salesReturnLine.ReturnBaseQuantity > 0
+                    ? Math.Round(
+                        salesReturnLine.LineCostTotal /
+                        salesReturnLine.ReturnBaseQuantity,
+                        6,
+                        MidpointRounding.AwayFromZero)
+                    : 0m;
+            salesReturnLine.IsProvisionalCost = preparedLine.Plans
+                .Any(x => x.Source.IsProvisional);
+        }
+
+        var reversalRows = new List<OrderLegalEntityAllocationReversal>();
+        foreach (var plan in preparedLine.Plans)
         {
             int? inventoryTransactionId = null;
 
-            if (isRestock)
+            if (preparedLine.IsRestock)
             {
                 var subKey =
                     $"LE-RET:R{salesReturnLine.Id}:A{plan.Allocation.Id}:S{plan.Source.SourceValuationEntryId}";
                 var request = _movementFactory.CreateSaleRefund(
                     plan.Source.WarehouseId,
                     plan.Source.ProductVariantId,
-                    salesReturn.Id,
+                    batch.SalesReturn.Id,
                     salesReturnLine.Id,
                     plan.BaseQuantity,
                     plan.UnitCost,
-                    salesReturn.Reason,
-                    occurredAtUtc,
+                    batch.SalesReturn.Reason,
+                    preparedLine.OccurredAtUtc,
                     subKey,
                     plan.Source.SourceValuationEntryId,
                     plan.Source.ReferenceSubKey);
@@ -188,25 +396,24 @@ public sealed class OrderLegalEntityReversalService : IOrderLegalEntityReversalS
                 EnsureMovementCreated(
                     movement,
                     "return",
-                    order.Id,
+                    batch.Order.Id,
                     plan.Source.SourceValuationEntryId);
                 inventoryTransactionId = movement.InventoryTransactionId;
             }
 
             reversalRows.Add(BuildReversal(
-                order,
+                batch.Order,
                 plan,
-                reversalType,
+                preparedLine.ReversalType,
                 plan.FinancialAmount,
                 inventoryTransactionId,
-                salesReturn,
+                batch.SalesReturn,
                 salesReturnLine,
-                salesReturn.Reason,
-                occurredAtUtc));
+                batch.SalesReturn.Reason,
+                preparedLine.OccurredAtUtc));
         }
 
         await _reversals.AddRangeAsync(reversalRows, ct);
-        return true;
     }
 
     private static Dictionary<int, OrderLegalEntityAllocation> BuildAllocationMap(
@@ -364,7 +571,38 @@ public sealed class OrderLegalEntityReversalService : IOrderLegalEntityReversalS
         return clean.Length <= maxLength ? clean : clean[..maxLength];
     }
 
-    private sealed class ReversalPlan
+    private static bool IsLegalEntitySource(
+        ReturnableValuationFragmentDto fragment)
+        => fragment.ReferenceSubKey?.StartsWith(
+               "LE:",
+               StringComparison.Ordinal) == true;
+
+    private static InvalidOperationException PartialLegalEntityEvidence(
+        SalesReturnLine line,
+        Exception? innerException = null)
+        => new(
+            $"SalesReturnLine #{line.Id} có persisted LegalEntity allocation/source evidence không đầy đủ hoặc không nhất quán.",
+            innerException);
+
+    internal sealed class PreparedSalesReturnBatch
+    {
+        public required Order Order { get; init; }
+        public required SalesReturn SalesReturn { get; init; }
+        public required IReadOnlyList<PreparedSalesReturnLine> Lines { get; init; }
+        public required IReadOnlyList<InventoryPostingLockKey> LockKeys { get; init; }
+        public required IReadOnlySet<int> HandledLineIds { get; init; }
+    }
+
+    internal sealed class PreparedSalesReturnLine
+    {
+        public required SalesReturnLine SalesReturnLine { get; init; }
+        public required List<ReversalPlan> Plans { get; init; }
+        public bool IsRestock { get; init; }
+        public OrderLegalEntityReversalType ReversalType { get; init; }
+        public DateTime OccurredAtUtc { get; init; }
+    }
+
+    internal sealed class ReversalPlan
     {
         public required OrderLine OrderLine { get; init; }
         public required OrderLegalEntityAllocation Allocation { get; init; }
