@@ -13,8 +13,10 @@ using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Tests.Configuration;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 namespace GaoApp.Tests.Inventory;
 
@@ -190,32 +192,53 @@ public sealed class InventoryNonPosPostingContractTests
     [Fact]
     public void Adjustment_approval_derives_one_invariant_document_reference_for_both_paths()
     {
-        var approveSource = ReadAdjustmentApprovalSource();
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            ReadAdjustmentServiceSource(),
+            ReadInventoryMovementFactoryInterfaceSource());
 
-        GetAdjustmentReferenceContractViolations(approveSource)
-            .Should().BeEmpty();
+        result.Violations.Should().BeEmpty();
+        result.ServiceParseErrorCount.Should().Be(0);
+        result.FactoryInterfaceParseErrorCount.Should().Be(0);
+        result.ServiceClassCount.Should().Be(1);
+        result.ApproveMethodCount.Should().Be(1);
+        result.DocumentReferenceDeclarationCount.Should().Be(1);
+        result.DocumentReferenceDeclarationIsDirectVar.Should().BeTrue();
+        result.DocumentReferenceInitializerIsInvariant.Should().BeTrue();
+        result.DocumentReferenceConversionCount.Should().Be(1);
+        result.DocumentReferenceWriteCount.Should().Be(0);
+        result.DocumentReferenceReadCount.Should().Be(2);
+        result.IncreaseOverloadCount.Should().Be(1);
+        result.DecreaseOverloadCount.Should().Be(1);
+        result.IncreaseReferenceIndex.Should().Be(4);
+        result.DecreaseReferenceIndex.Should().Be(4);
+        result.IncreaseCallCount.Should().Be(1);
+        result.DecreaseCallCount.Should().Be(1);
+        result.IncreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
+        result.DecreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
     }
 
     [Theory]
     [MemberData(nameof(AdjustmentReferenceContractMutants))]
     public void Adjustment_reference_contract_rejects_mutant(
         string mutant,
-        string approveSource,
+        string serviceSource,
+        string factoryInterfaceSource,
         string[] expectedViolations)
     {
-        var baselineViolations =
-            GetAdjustmentReferenceContractViolations(
-                BuildSyntheticAdjustmentReferenceContract());
-        var violations =
-            GetAdjustmentReferenceContractViolations(approveSource);
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            ReadAdjustmentServiceSource(),
+            ReadInventoryMovementFactoryInterfaceSource());
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
 
-        baselineViolations.Should().BeEmpty(
+        baseline.Violations.Should().BeEmpty(
             because: $"{mutant} must start from the valid contract baseline");
-        violations.Should().NotBeEmpty(
+        result.Violations.Should().NotBeEmpty(
             because: $"{mutant} must violate the durable identity contract");
         foreach (var expectedViolation in expectedViolations)
         {
-            violations.Should().Contain(
+            result.Violations.Should().Contain(
                 expectedViolation,
                 because: $"{mutant} must be rejected for this violation");
         }
@@ -224,115 +247,134 @@ public sealed class InventoryNonPosPostingContractTests
     public static IEnumerable<object[]>
         AdjustmentReferenceContractMutants()
     {
+        var serviceSource = ReadAdjustmentServiceSource();
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+
         yield return
         [
             "M1 CurrentCulture reassignment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "documentReferenceId = " +
                 "document.Id.ToString(CultureInfo.CurrentCulture);"),
+            factoryInterfaceSource,
             new[]
             {
-                "DocumentReferenceAssignmentCount",
-                "CurrentCulture"
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M2 parameterless reassignment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "documentReferenceId = document.Id.ToString();"),
+            factoryInterfaceSource,
             new[]
             {
-                "DocumentReferenceAssignmentCount",
-                "ParameterlessDocumentIdConversion"
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M3 interpolation reassignment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "documentReferenceId = $\"{document.Id}\";"),
+            factoryInterfaceSource,
             new[]
             {
-                "DocumentReferenceAssignmentCount"
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M4 decrease direct conversion",
-            BuildSyntheticAdjustmentReferenceContract(
-                decreaseReferenceArgument:
+            ReplaceFactoryReferenceArgument(
+                serviceSource,
+                "CreateAdjustmentDecrease",
                 "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantConversionCount",
-                "DecreaseReferenceArgument"
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceUseCount",
+                "DecreaseReferenceArgument",
             }
         ];
         yield return
         [
             "M5 separate decrease variable",
-            BuildSyntheticAdjustmentReferenceContract(
-                additionalIdentityDeclaration:
-                "var decreaseReferenceId = " +
-                "document.Id.ToString(CultureInfo.InvariantCulture);",
-                decreaseReferenceArgument: "decreaseReferenceId"),
+            ReplaceFactoryReferenceArgument(
+                InsertAfterDocumentReferenceDeclaration(
+                    serviceSource,
+                    "var decreaseReferenceId = " +
+                    "document.Id.ToString(CultureInfo.InvariantCulture);"),
+                "CreateAdjustmentDecrease",
+                "decreaseReferenceId"),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantConversionCount",
-                "DecreaseReferenceArgument"
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceUseCount",
+                "DecreaseReferenceArgument",
             }
         ];
         yield return
         [
             "M6 CurrentUICulture compound reassignment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "documentReferenceId ??= " +
                 "document.Id.ToString(CultureInfo.CurrentUICulture);"),
+            factoryInterfaceSource,
             new[]
             {
-                "DocumentReferenceAssignmentCount",
-                "CurrentUICulture"
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M7 legal comment-trivia reassignment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "documentReferenceId /* legal C# trivia */ = " +
                 "$\"{document.Id}\";"),
+            factoryInterfaceSource,
             new[]
             {
-                "DocumentReferenceAssignmentCount"
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M8 commented declaration bypass",
-            ReplaceSyntheticInvariantDeclaration(
-                BuildSyntheticAdjustmentReferenceContract(),
+            ReplaceDocumentReferenceDeclaration(
+                serviceSource,
                 """
                 BuildReference(document, out var documentReferenceId);
 
                 // var documentReferenceId =
                 //     document.Id.ToString(CultureInfo.InvariantCulture);
                 """),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantDeclarationCount",
-                "InvariantConversionCount"
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceInitializer",
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M9 string-literal declaration bypass",
-            ReplaceSyntheticInvariantDeclaration(
-                BuildSyntheticAdjustmentReferenceContract(),
+            ReplaceDocumentReferenceDeclaration(
+                serviceSource,
                 """
                 BuildReference(document, out var documentReferenceId);
 
@@ -340,133 +382,327 @@ public sealed class InventoryNonPosPostingContractTests
                     "var documentReferenceId = " +
                     "document.Id.ToString(CultureInfo.InvariantCulture);";
                 """),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantDeclarationCount",
-                "InvariantConversionCount"
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceInitializer",
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M10 commented correct decrease with executable bypass",
-            BuildSyntheticAdjustmentReferenceContract(
-                sourceBeforeDecreaseCall:
-                    BuildCommentedCorrectDecreaseCall(),
-                decreaseReferenceArgument:
+            ReplaceFactoryReferenceArgument(
+                InsertBeforeFactoryAssignment(
+                    serviceSource,
+                    "CreateAdjustmentDecrease",
+                    BuildCommentedCorrectDecreaseCall()),
+                "CreateAdjustmentDecrease",
                     "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            factoryInterfaceSource,
             new[]
             {
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceUseCount",
                 "DecreaseReferenceArgument"
             }
         ];
         yield return
         [
             "M11 raw-string declaration bypass",
-            ReplaceSyntheticInvariantDeclaration(
-                BuildSyntheticAdjustmentReferenceContract(),
+            ReplaceDocumentReferenceDeclaration(
+                serviceSource,
                 BuildRawStringDeclarationBypass(
                     dollarCount: 0)),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantDeclarationCount",
-                "InvariantConversionCount"
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceInitializer",
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M12 interpolated raw-string declaration bypass",
-            ReplaceSyntheticInvariantDeclaration(
-                BuildSyntheticAdjustmentReferenceContract(),
+            ReplaceDocumentReferenceDeclaration(
+                serviceSource,
                 BuildRawStringDeclarationBypass(
                     dollarCount: 2)),
+            factoryInterfaceSource,
             new[]
             {
-                "InvariantDeclarationCount",
-                "InvariantConversionCount"
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceInitializer",
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
             }
         ];
         yield return
         [
             "M13 raw-string fake factory call",
-            BuildSyntheticAdjustmentReferenceContract(
-                sourceBeforeDecreaseCall:
-                    BuildRawStringContainingCorrectDecreaseCall(),
-                decreaseReferenceArgument:
+            ReplaceFactoryReferenceArgument(
+                InsertBeforeFactoryAssignment(
+                    serviceSource,
+                    "CreateAdjustmentDecrease",
+                    BuildRawStringContainingCorrectDecreaseCall()),
+                "CreateAdjustmentDecrease",
                     "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            factoryInterfaceSource,
             new[]
             {
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceUseCount",
                 "DecreaseReferenceArgument"
             }
         ];
+        yield return
+        [
+            "M15 nested raw interpolation declaration bypass",
+            ReplaceDocumentReferenceDeclaration(
+                serviceSource,
+                "BuildReference(document, out var documentReferenceId);\n\n"
+                + BuildNestedInterpolatedRawContractStatement()),
+            factoryInterfaceSource,
+            new[]
+            {
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceInitializer",
+                "DocumentReferenceConversionCount",
+                "DocumentReferenceWrite"
+            }
+        ];
+    }
+
+    [Theory]
+    [MemberData(nameof(AdjustmentReferenceWriteMutants))]
+    public void Adjustment_reference_contract_rejects_every_later_write_shape(
+        string writeShape,
+        string serviceSource,
+        string[] expectedViolations)
+    {
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            ReadAdjustmentServiceSource(),
+            factoryInterfaceSource);
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
+
+        baseline.Violations.Should().BeEmpty();
+        result.Violations.Should().NotBeEmpty(
+            because: $"{writeShape} must fail closed");
+        foreach (var expectedViolation in expectedViolations)
+        {
+            result.Violations.Should().Contain(expectedViolation);
+        }
+    }
+
+    public static IEnumerable<object[]>
+        AdjustmentReferenceWriteMutants()
+    {
+        var source = ReadAdjustmentServiceSource();
+
+        yield return
+        [
+            "prefix increment",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "++documentReferenceId;"),
+            new[] { "DocumentReferenceWrite" }
+        ];
+        yield return
+        [
+            "postfix decrement",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "documentReferenceId--;"),
+            new[] { "DocumentReferenceWrite" }
+        ];
+        yield return
+        [
+            "ref argument",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "BuildReference(ref documentReferenceId);"),
+            new[] { "DocumentReferenceWrite" }
+        ];
+        yield return
+        [
+            "out argument",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "BuildReference(document, out documentReferenceId);"),
+            new[] { "DocumentReferenceWrite" }
+        ];
+        yield return
+        [
+            "duplicate local declaration",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "var documentReferenceId = alternateReferenceId;"),
+            new[]
+            {
+                "DocumentReferenceDeclarationCount",
+                "DocumentReferenceDeclarationShape"
+            }
+        ];
+        yield return
+        [
+            "pattern declaration",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "if (document is { Id: var documentReferenceId }) { }"),
+            new[]
+            {
+                "DocumentReferenceDeclarationCount",
+                "DocumentReferenceDeclarationShape",
+                "DocumentReferenceWrite"
+            }
+        ];
+    }
+
+    [Fact]
+    public void Adjustment_reference_contract_M14_ignores_raw_fake_method_boundaries()
+    {
+        var serviceSource = ReadAdjustmentServiceSource();
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
+        var mutated = AnalyzeAdjustmentReferenceAstContract(
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                BuildRawFakeMethodBoundariesStatement()),
+            factoryInterfaceSource);
+
+        baseline.Violations.Should().BeEmpty();
+        mutated.Violations.Should().BeEmpty(
+            "M14 method-like raw-string content is not executable syntax");
     }
 
     [Theory]
     [MemberData(nameof(AdjustmentReferenceContractTriviaControls))]
     public void Adjustment_reference_contract_ignores_harmless_non_code_text(
         string control,
-        string approveSource)
+        string serviceSource)
     {
-        GetAdjustmentReferenceContractViolations(approveSource)
-            .Should().BeEmpty(
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            ReadAdjustmentServiceSource(),
+            factoryInterfaceSource);
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
+
+        baseline.Violations.Should().BeEmpty();
+        result.Violations.Should().BeEmpty(
                 because: $"{control} is non-code trivia or literal content");
     }
 
     public static IEnumerable<object[]>
         AdjustmentReferenceContractTriviaControls()
     {
+        var serviceSource = ReadAdjustmentServiceSource();
+
         yield return
         [
             "CurrentCulture in comment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "// CultureInfo.CurrentCulture")
         ];
         yield return
         [
             "parameterless conversion in string",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "var harmlessText = \"document.Id.ToString()\";")
         ];
         yield return
         [
             "assignment in comment",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                 "// documentReferenceId = alternateReferenceId;")
         ];
         yield return
         [
+            "block comment",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "/* documentReferenceId = document.Id.ToString(); */")
+        ];
+        yield return
+        [
+            "verbatim string",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "var harmlessVerbatim = @\"documentReferenceId = "
+                + "document.Id.ToString(CultureInfo.CurrentCulture);\";")
+        ];
+        yield return
+        [
+            "regular interpolated string",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "var harmlessInterpolated = "
+                + "$\"documentReferenceId = document.Id.ToString()\";")
+        ];
+        yield return
+        [
+            "dollar-at interpolated verbatim string",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "var harmlessDollarAt = "
+                + "$@\"documentReferenceId = document.Id.ToString()\";")
+        ];
+        yield return
+        [
+            "at-dollar interpolated verbatim string",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "var harmlessAtDollar = "
+                + "@$\"documentReferenceId = document.Id.ToString()\";")
+        ];
+        yield return
+        [
             "plain raw string",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
-                    BuildHarmlessRawStringStatement(
-                        dollarCount: 0,
-                        quoteCount: 3))
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                BuildHarmlessRawStringStatement(
+                    dollarCount: 0,
+                    quoteCount: 3))
         ];
         yield return
         [
             "one-dollar interpolated raw string",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
-                    BuildHarmlessRawStringStatement(
-                        dollarCount: 1,
-                        quoteCount: 3))
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                BuildHarmlessRawStringStatement(
+                    dollarCount: 1,
+                    quoteCount: 3))
         ];
         yield return
         [
             "two-dollar interpolated raw string",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
-                    BuildHarmlessRawStringStatement(
-                        dollarCount: 2,
-                        quoteCount: 3))
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                BuildHarmlessRawStringStatement(
+                    dollarCount: 2,
+                    quoteCount: 3))
         ];
         yield return
         [
             "four-quote raw string containing triple quotes",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                     BuildHarmlessRawStringStatement(
                         dollarCount: 0,
                         quoteCount: 4,
@@ -476,185 +712,144 @@ public sealed class InventoryNonPosPostingContractTests
         yield return
         [
             "multiline CRLF raw string",
-            BuildSyntheticAdjustmentReferenceContract(
-                reassignment:
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
                     BuildHarmlessRawStringStatement(
                         dollarCount: 0,
                         quoteCount: 3,
                         lineEnding: "\r\n"))
         ];
+        yield return
+        [
+            "nested interpolated raw string",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                BuildNestedInterpolatedRawContractStatement())
+        ];
     }
 
-    [Fact]
-    public void Adjustment_reference_scanner_strips_non_code_preserving_layout()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Adjustment_reference_contract_fails_closed_on_parse_errors(
+        bool malformedService)
     {
-        var source =
-            """
-            var before = 1;
-            // line_marker " quote
-            var block = before /* block_marker
-            " quote */ + 1;
-            var regular =
-                "regular_marker // not a comment \" escaped quote";
-            var verbatim =
-                @"verbatim_marker "" quoted /* not a comment */";
-            var interpolated =
-                $"interpolated_marker {document.Id}";
-            var interpolatedVerbatim =
-                $@"interpolated_verbatim_marker {document.Id}";
-            var alternateInterpolated =
-                @$"alternate_interpolated_marker {document.Id}";
-            var quote = '\'';
-            var slash = '\\';
-            documentReferenceId /* trivia_marker */ = value;
-            var after = 2;
-            """;
+        var serviceSource = ReadAdjustmentServiceSource();
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            malformedService
+                ? serviceSource[..serviceSource.LastIndexOf(
+                    '}')]
+                : serviceSource,
+            malformedService
+                ? factoryInterfaceSource
+                : factoryInterfaceSource[..factoryInterfaceSource.LastIndexOf(
+                    '}')]);
 
-        var sanitization =
-            StripNonCodeTriviaPreservingLayout(source);
-        var sanitized = sanitization.SanitizedSource;
-
-        sanitization.Violations.Should().BeEmpty();
-        sanitized.Length.Should().Be(source.Length);
-        sanitized
-            .Select((value, index) => (value, index))
-            .Where(item => item.value == '\n')
-            .Select(item => item.index)
-            .Should().Equal(
-                source
-                    .Select((value, index) => (value, index))
-                    .Where(item => item.value == '\n')
-                    .Select(item => item.index));
-        sanitized.Should().Contain("var before = 1;");
-        sanitized.Should().Contain("var after = 2;");
-        Regex.IsMatch(
-                sanitized,
-                @"\bdocumentReferenceId\s+=\s+value;",
-                RegexOptions.CultureInvariant)
-            .Should().BeTrue();
-
-        foreach (var marker in new[]
-                 {
-                     "line_marker",
-                     "block_marker",
-                     "regular_marker",
-                     "verbatim_marker",
-                     "interpolated_marker",
-                     "interpolated_verbatim_marker",
-                     "alternate_interpolated_marker",
-                     "trivia_marker"
-                 })
+        result.Violations.Should().Contain(
+            malformedService
+                ? "ServiceParseError"
+                : "FactoryInterfaceParseError");
+        if (malformedService)
         {
-            sanitized.Should().NotContain(marker);
+            result.ServiceParseErrorCount.Should().BeGreaterThan(0);
+        }
+        else
+        {
+            result.FactoryInterfaceParseErrorCount.Should().BeGreaterThan(0);
         }
     }
 
     [Theory]
-    [InlineData(0, 3)]
-    [InlineData(1, 3)]
-    [InlineData(2, 3)]
-    [InlineData(3, 3)]
-    [InlineData(0, 4)]
-    [InlineData(1, 4)]
-    [InlineData(2, 4)]
-    public void Adjustment_reference_scanner_blanks_raw_strings_preserving_layout(
-        int dollarCount,
-        int quoteCount)
+    [MemberData(nameof(AdjustmentReferenceInterfaceDrifts))]
+    public void Adjustment_reference_contract_fails_closed_on_interface_drift(
+        string drift,
+        string factoryInterfaceSource,
+        string[] expectedViolations)
     {
-        const string lineEnding = "\r\n";
-        var shorterQuoteRun = new string(
-            '"',
-            quoteCount - 1);
-        var rawLiteral = BuildRawStringLiteral(
-            $"first{lineEnding}" +
-            $"{shorterQuoteRun}{lineEnding}" +
-            "last",
-            dollarCount,
-            quoteCount,
-            lineEnding);
-        var source =
-            $"var before = 1;{lineEnding}" +
-            rawLiteral +
-            $"{lineEnding}var after = 2;";
+        var serviceSource = ReadAdjustmentServiceSource();
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            ReadInventoryMovementFactoryInterfaceSource());
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
 
-        var sanitization =
-            StripNonCodeTriviaPreservingLayout(source);
-        var sanitized = sanitization.SanitizedSource;
-        var literalStart = source.IndexOf(
-            rawLiteral,
-            StringComparison.Ordinal);
-        var afterStart = source.IndexOf(
-            "var after = 2;",
-            StringComparison.Ordinal);
-
-        sanitization.Violations.Should().BeEmpty();
-        sanitized.Length.Should().Be(source.Length);
-        sanitized
-            .Select((value, index) => (value, index))
-            .Where(item => item.value is '\r' or '\n')
-            .Should().Equal(
-                source
-                    .Select((value, index) => (value, index))
-                    .Where(item => item.value is '\r' or '\n'));
-        literalStart.Should().BeGreaterThanOrEqualTo(0);
-        afterStart.Should().BeGreaterThan(literalStart);
-        sanitized.IndexOf(
-                "var after = 2;",
-                StringComparison.Ordinal)
-            .Should().Be(afterStart);
-
-        for (var index = literalStart;
-             index < literalStart + rawLiteral.Length;
-             index++)
+        baseline.Violations.Should().BeEmpty(
+            because: $"{drift} must start from the valid interface baseline");
+        result.Violations.Should().NotBeEmpty(
+            because: $"{drift} must fail closed");
+        foreach (var expectedViolation in expectedViolations)
         {
-            sanitized[index].Should().Be(
-                source[index] is '\r' or '\n'
-                    ? source[index]
-                    : ' ');
+            result.Violations.Should().Contain(expectedViolation);
         }
     }
 
-    [Fact]
-    public void Adjustment_reference_contract_fails_closed_for_unterminated_raw_string()
+    public static IEnumerable<object[]>
+        AdjustmentReferenceInterfaceDrifts()
     {
-        var approveSource =
-            BuildSyntheticAdjustmentReferenceContract()
-            + "\nvar broken = $$\"\"\"\n"
-            + BuildDangerousRawStringContent();
+        var source = ReadInventoryMovementFactoryInterfaceSource();
 
-        var violations =
-            GetAdjustmentReferenceContractViolations(approveSource);
-
-        violations.Should().Contain("UnterminatedRawString");
-        violations.Should().NotBeEmpty();
-    }
-
-    [Fact]
-    public void Adjustment_reference_boundary_ignores_raw_string_method_names()
-    {
-        var boundaryNoise = BuildRawStringLiteral(
-            """
-            public async Task<InventoryAdjustmentDocumentDetailDto>
-                ApproveAsync(fake)
-            public async Task<InventoryAdjustmentDocumentDetailDto>
-                RejectAsync(fake)
-            """,
-            dollarCount: 2,
-            quoteCount: 3);
-        var serviceSource =
-            "var before = " + boundaryNoise + ";\n"
-            + "public async Task<InventoryAdjustmentDocumentDetailDto> "
-            + "ApproveAsync(request)\n{\n"
-            + BuildSyntheticAdjustmentReferenceContract()
-            + "\nvar inside = " + boundaryNoise + ";\n}\n"
-            + "public async Task<InventoryAdjustmentDocumentDetailDto> "
-            + "RejectAsync(request)\n{\n}\n";
-
-        var approveSource =
-            ExtractAdjustmentApprovalSource(serviceSource);
-
-        GetAdjustmentReferenceContractViolations(approveSource)
-            .Should().BeEmpty();
+        yield return
+        [
+            "missing durable overload",
+            RemoveDurableFactoryMethod(
+                source,
+                "CreateAdjustmentIncrease"),
+            new[] { "IncreaseOverloadCount" }
+        ];
+        yield return
+        [
+            "duplicate durable overload",
+            DuplicateDurableFactoryMethod(
+                source,
+                "CreateAdjustmentIncrease"),
+            new[] { "IncreaseOverloadCount" }
+        ];
+        yield return
+        [
+            "missing documentId parameter",
+            RenameDurableFactoryParameter(
+                source,
+                "CreateAdjustmentIncrease",
+                "documentId",
+                "referenceId"),
+            new[] { "IncreaseOverloadCount" }
+        ];
+        yield return
+        [
+            "changed documentId argument position",
+            MoveDurableFactoryParameter(
+                MoveDurableFactoryParameter(
+                    source,
+                    "CreateAdjustmentIncrease",
+                    "documentId",
+                    3),
+                "CreateAdjustmentDecrease",
+                "documentId",
+                3),
+            new[] { "ReferenceParameterIndex" }
+        ];
+        yield return
+        [
+            "wrong parameter count",
+            RemoveDurableFactoryParameter(
+                source,
+                "CreateAdjustmentIncrease",
+                "occurredAtUtc"),
+            new[] { "IncreaseOverloadCount" }
+        ];
+        yield return
+        [
+            "increase decrease index mismatch",
+            MoveDurableFactoryParameter(
+                source,
+                "CreateAdjustmentDecrease",
+                "documentId",
+                3),
+            new[] { "ReferenceParameterIndex" }
+        ];
     }
 
     [Fact]
@@ -1473,814 +1668,830 @@ public sealed class InventoryNonPosPostingContractTests
             ]
         };
 
-    private static string ReadAdjustmentApprovalSource()
-    {
-        var source = ReadRepositoryFile(
+    private static string ReadAdjustmentServiceSource()
+        => ReadRepositoryFile(
             "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
 
-        return ExtractAdjustmentApprovalSource(source);
-    }
+    private static string ReadInventoryMovementFactoryInterfaceSource()
+        => ReadRepositoryFile(
+            "GaoApp.Application/Interfaces/Services/Inventory/IInventoryMovementFactory.cs");
 
-    private static string ExtractAdjustmentApprovalSource(
-        string source)
+    private static AdjustmentReferenceAstContractResult
+        AnalyzeAdjustmentReferenceAstContract(
+            string serviceSource,
+            string factoryInterfaceSource)
     {
-        var sanitization =
-            StripNonCodeTriviaPreservingLayout(source);
-        var sanitizedSource =
-            sanitization.SanitizedSource;
-        const string approveBoundaryPattern =
-            """
-            \bpublic\s+async\s+Task\s*<
-            \s*InventoryAdjustmentDocumentDetailDto\s*>
-            \s+ApproveAsync\s*\(
-            """;
-        const string rejectBoundaryPattern =
-            """
-            \bpublic\s+async\s+Task\s*<
-            \s*InventoryAdjustmentDocumentDetailDto\s*>
-            \s+RejectAsync\s*\(
-            """;
-        const RegexOptions options =
-            RegexOptions.IgnorePatternWhitespace
-            | RegexOptions.CultureInvariant;
-
-        sanitization.Violations.Should().BeEmpty(
-            "method boundary extraction must fail closed on lexical errors");
-        var approveBoundaries = Regex.Matches(
-            sanitizedSource,
-            approveBoundaryPattern,
-            options);
-        var rejectBoundaries = Regex.Matches(
-            sanitizedSource,
-            rejectBoundaryPattern,
-            options);
-
-        approveBoundaries.Count.Should().Be(
-            1,
-            "ApproveAsync must have one unambiguous executable boundary");
-        rejectBoundaries.Count.Should().Be(
-            1,
-            "RejectAsync must have one unambiguous executable boundary");
-
-        var approveStart = approveBoundaries[0].Index;
-        var rejectStart = rejectBoundaries[0].Index;
-        rejectStart.Should().BeGreaterThan(
-            approveStart,
-            "RejectAsync must follow ApproveAsync");
-
-        return source[approveStart..rejectStart];
-    }
-
-    private static LexicalSanitizationResult
-        StripNonCodeTriviaPreservingLayout(
-        string source)
-    {
-        var sanitized = source.ToCharArray();
+        var parseOptions =
+            new CSharpParseOptions(LanguageVersion.CSharp12);
+        var serviceTree = CSharpSyntaxTree.ParseText(
+            serviceSource,
+            parseOptions);
+        var factoryInterfaceTree = CSharpSyntaxTree.ParseText(
+            factoryInterfaceSource,
+            parseOptions);
+        var serviceParseErrorCount = serviceTree
+            .GetDiagnostics()
+            .Count(x => x.Severity == DiagnosticSeverity.Error);
+        var factoryInterfaceParseErrorCount = factoryInterfaceTree
+            .GetDiagnostics()
+            .Count(x => x.Severity == DiagnosticSeverity.Error);
         var violations = new List<string>();
-        var index = 0;
 
-        while (index < source.Length)
+        if (serviceParseErrorCount != 0)
         {
-            if (!TryBlankNonCodeToken(
-                    source,
-                    sanitized,
-                    ref index,
-                    violations))
+            AddViolation(violations, "ServiceParseError");
+        }
+
+        if (factoryInterfaceParseErrorCount != 0)
+        {
+            AddViolation(violations, "FactoryInterfaceParseError");
+        }
+
+        var serviceRoot = serviceTree.GetCompilationUnitRoot();
+        var serviceClasses = serviceRoot
+            .DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "InventoryAdjustmentDocumentService")
+            .ToList();
+        if (serviceClasses.Count != 1)
+        {
+            AddViolation(violations, "ServiceClassCount");
+        }
+
+        var approveMethods = serviceClasses.Count == 1
+            ? serviceClasses[0]
+                .Members
+                .OfType<MethodDeclarationSyntax>()
+                .Where(x => x.Identifier.ValueText == "ApproveAsync")
+                .ToList()
+            : [];
+        if (approveMethods.Count != 1)
+        {
+            AddViolation(violations, "ApproveMethodCount");
+        }
+
+        var factoryInterfaceRoot =
+            factoryInterfaceTree.GetCompilationUnitRoot();
+        var factoryInterfaces = factoryInterfaceRoot
+            .DescendantNodes()
+            .OfType<InterfaceDeclarationSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "IInventoryMovementFactory")
+            .ToList();
+        if (factoryInterfaces.Count != 1)
+        {
+            AddViolation(violations, "FactoryInterfaceCount");
+        }
+
+        var factoryInterface = factoryInterfaces.Count == 1
+            ? factoryInterfaces[0]
+            : null;
+        var increaseOverloads = FindDurableFactoryMethods(
+            factoryInterface,
+            "CreateAdjustmentIncrease");
+        var decreaseOverloads = FindDurableFactoryMethods(
+            factoryInterface,
+            "CreateAdjustmentDecrease");
+        if (increaseOverloads.Count != 1)
+        {
+            AddViolation(violations, "IncreaseOverloadCount");
+        }
+
+        if (decreaseOverloads.Count != 1)
+        {
+            AddViolation(violations, "DecreaseOverloadCount");
+        }
+
+        var increaseReferenceIndex = increaseOverloads.Count == 1
+            ? GetParameterIndex(
+                increaseOverloads[0],
+                "documentId")
+            : null;
+        var decreaseReferenceIndex = decreaseOverloads.Count == 1
+            ? GetParameterIndex(
+                decreaseOverloads[0],
+                "documentId")
+            : null;
+        if (increaseReferenceIndex is null
+            || decreaseReferenceIndex is null
+            || increaseReferenceIndex != decreaseReferenceIndex
+            || increaseReferenceIndex != 4)
+        {
+            AddViolation(violations, "ReferenceParameterIndex");
+        }
+
+        var documentReferenceDeclarationCount = 0;
+        var documentReferenceConversionCount = 0;
+        var documentReferenceWriteCount = 0;
+        var documentReferenceReadCount = 0;
+        var documentReferenceDeclarationIsDirectVar = false;
+        var documentReferenceInitializerIsInvariant = false;
+        var increaseReferenceArgumentIsDocumentReference = false;
+        var decreaseReferenceArgumentIsDocumentReference = false;
+        var increaseCalls = new List<InvocationExpressionSyntax>();
+        var decreaseCalls = new List<InvocationExpressionSyntax>();
+
+        if (approveMethods.Count == 1
+            && approveMethods[0].Body is { } approveBody)
+        {
+            var approveMethod = approveMethods[0];
+            var declarators = approveMethod
+                .DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Where(x => x.Identifier.ValueText
+                    == "documentReferenceId")
+                .ToList();
+            var designations = approveMethod
+                .DescendantNodes()
+                .OfType<SingleVariableDesignationSyntax>()
+                .Where(x => x.Identifier.ValueText
+                    == "documentReferenceId")
+                .ToList();
+            documentReferenceDeclarationCount =
+                declarators.Count + designations.Count;
+            documentReferenceWriteCount = designations.Count;
+            if (documentReferenceDeclarationCount != 1)
             {
-                index++;
-            }
-        }
-
-        return new LexicalSanitizationResult(
-            new string(sanitized),
-            violations);
-    }
-
-    private static bool TryBlankNonCodeToken(
-        string source,
-        char[] sanitized,
-        ref int index,
-        ICollection<string> violations)
-    {
-        if (TryGetRawStringStart(
-                source,
-                index,
-                out var dollarCount,
-                out var openingQuoteCount))
-        {
-            index = BlankRawString(
-                source,
-                sanitized,
-                index,
-                dollarCount,
-                openingQuoteCount,
-                out var terminated);
-            if (!terminated)
-            {
-                violations.Add("UnterminatedRawString");
-            }
-
-            return true;
-        }
-
-        if (StartsWithAt(source, index, "//"))
-        {
-            index = BlankLineComment(
-                source,
-                sanitized,
-                index);
-            return true;
-        }
-
-        if (StartsWithAt(source, index, "/*"))
-        {
-            index = BlankBlockComment(
-                source,
-                sanitized,
-                index);
-            return true;
-        }
-
-        if (StartsWithAt(source, index, "$@\"")
-            || StartsWithAt(source, index, "@$\""))
-        {
-            index = BlankInterpolatedString(
-                source,
-                sanitized,
-                index,
-                prefixLength: 3,
-                verbatim: true,
-                violations);
-            return true;
-        }
-
-        if (StartsWithAt(source, index, "$\""))
-        {
-            index = BlankInterpolatedString(
-                source,
-                sanitized,
-                index,
-                prefixLength: 2,
-                verbatim: false,
-                violations);
-            return true;
-        }
-
-        if (StartsWithAt(source, index, "@\""))
-        {
-            index = BlankVerbatimString(
-                source,
-                sanitized,
-                index,
-                prefixLength: 2);
-            return true;
-        }
-
-        if (source[index] == '"')
-        {
-            index = BlankEscapedLiteral(
-                source,
-                sanitized,
-                index,
-                prefixLength: 1,
-                delimiter: '"');
-            return true;
-        }
-
-        if (source[index] == '\'')
-        {
-            index = BlankEscapedLiteral(
-                source,
-                sanitized,
-                index,
-                prefixLength: 1,
-                delimiter: '\'');
-            return true;
-        }
-
-        return false;
-    }
-
-    private static int BlankLineComment(
-        string source,
-        char[] sanitized,
-        int start)
-    {
-        var index = start;
-        while (index < source.Length
-               && source[index] is not '\r' and not '\n')
-        {
-            BlankNonNewline(sanitized, index);
-            index++;
-        }
-
-        return index;
-    }
-
-    private static int BlankBlockComment(
-        string source,
-        char[] sanitized,
-        int start)
-    {
-        var index = start;
-        while (index < source.Length)
-        {
-            if (StartsWithAt(source, index, "*/"))
-            {
-                BlankNonNewline(sanitized, index);
-                BlankNonNewline(sanitized, index + 1);
-                return index + 2;
+                AddViolation(
+                    violations,
+                    "DocumentReferenceDeclarationCount");
             }
 
-            BlankNonNewline(sanitized, index);
-            index++;
-        }
-
-        return index;
-    }
-
-    private static int BlankEscapedLiteral(
-        string source,
-        char[] sanitized,
-        int start,
-        int prefixLength,
-        char delimiter)
-    {
-        BlankRangePreservingNewlines(
-            sanitized,
-            start,
-            prefixLength);
-        var index = start + prefixLength;
-
-        while (index < source.Length)
-        {
-            if (source[index] == '\\')
+            LocalDeclarationStatementSyntax? referenceStatement = null;
+            InvocationExpressionSyntax? approvedInitializer = null;
+            if (declarators.Count == 1
+                && designations.Count == 0
+                && declarators[0].Parent
+                    is VariableDeclarationSyntax declaration
+                && declaration.Type
+                    is IdentifierNameSyntax
+                    {
+                        Identifier.ValueText: "var"
+                    }
+                && declaration.Variables.Count == 1
+                && declaration.Parent
+                    is LocalDeclarationStatementSyntax localStatement
+                && localStatement.Parent == approveBody)
             {
-                BlankNonNewline(sanitized, index);
-                index++;
-                if (index < source.Length)
-                {
-                    BlankNonNewline(sanitized, index);
-                    index++;
-                }
-
-                continue;
+                referenceStatement = localStatement;
+                documentReferenceDeclarationIsDirectVar = true;
+                approvedInitializer =
+                    declarators[0].Initializer?.Value
+                    as InvocationExpressionSyntax;
+            }
+            else
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceDeclarationShape");
             }
 
-            var current = source[index];
-            BlankNonNewline(sanitized, index);
-            index++;
-            if (current == delimiter)
+            documentReferenceInitializerIsInvariant =
+                approvedInitializer is not null
+                && IsDocumentIdToStringInvocation(
+                    approvedInitializer)
+                && approvedInitializer.ArgumentList.Arguments.Count == 1
+                && approvedInitializer.ArgumentList.Arguments[0]
+                    .NameColon is null
+                && IsInvariantCultureExpression(
+                    approvedInitializer.ArgumentList.Arguments[0]
+                        .Expression);
+            if (!documentReferenceInitializerIsInvariant)
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceInitializer");
+            }
+
+            var documentIdConversions = approveMethod
+                .DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(IsDocumentIdToStringInvocation)
+                .ToList();
+            documentReferenceConversionCount =
+                documentIdConversions.Count;
+            if (documentIdConversions.Count != 1
+                || approvedInitializer is null
+                || documentIdConversions[0].Span
+                    != approvedInitializer.Span)
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceConversionCount");
+            }
+
+            var referenceIdentifiers = approveMethod
+                .DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .Where(x => x.Identifier.ValueText
+                    == "documentReferenceId")
+                .ToList();
+            var writeIdentifiers = referenceIdentifiers
+                .Where(IsWriteIdentifier)
+                .ToList();
+            documentReferenceWriteCount +=
+                writeIdentifiers.Count;
+            if (documentReferenceWriteCount != 0)
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceWrite");
+            }
+
+            var readIdentifiers = referenceIdentifiers
+                .Except(writeIdentifiers)
+                .ToList();
+            documentReferenceReadCount =
+                readIdentifiers.Count;
+
+            increaseCalls = FindFactoryInvocations(
+                approveMethod,
+                "CreateAdjustmentIncrease");
+            decreaseCalls = FindFactoryInvocations(
+                approveMethod,
+                "CreateAdjustmentDecrease");
+            if (increaseCalls.Count != 1)
+            {
+                AddViolation(violations, "IncreaseCallCount");
+            }
+
+            if (decreaseCalls.Count != 1)
+            {
+                AddViolation(violations, "DecreaseCallCount");
+            }
+
+            var validatedReferenceArguments =
+                new List<IdentifierNameSyntax>();
+            increaseReferenceArgumentIsDocumentReference =
+                ValidateFactoryInvocation(
+                violations,
+                increaseCalls,
+                increaseOverloads,
+                increaseReferenceIndex,
+                "IncreaseReferenceArgument",
+                validatedReferenceArguments);
+            decreaseReferenceArgumentIsDocumentReference =
+                ValidateFactoryInvocation(
+                violations,
+                decreaseCalls,
+                decreaseOverloads,
+                decreaseReferenceIndex,
+                "DecreaseReferenceArgument",
+                validatedReferenceArguments);
+
+            var readSpans = readIdentifiers
+                .Select(x => x.Span)
+                .OrderBy(x => x.Start)
+                .ToList();
+            var validatedSpans = validatedReferenceArguments
+                .Select(x => x.Span)
+                .OrderBy(x => x.Start)
+                .ToList();
+            if (referenceStatement is null
+                || readSpans.Count != 2
+                || validatedSpans.Count != 2
+                || !readSpans.SequenceEqual(validatedSpans))
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceUseCount");
+            }
+        }
+        else
+        {
+            AddViolation(
+                violations,
+                "DocumentReferenceDeclarationCount");
+            AddViolation(
+                violations,
+                "DocumentReferenceDeclarationShape");
+            AddViolation(
+                violations,
+                "DocumentReferenceInitializer");
+            AddViolation(
+                violations,
+                "DocumentReferenceConversionCount");
+            AddViolation(
+                violations,
+                "DocumentReferenceUseCount");
+            AddViolation(violations, "IncreaseCallCount");
+            AddViolation(violations, "DecreaseCallCount");
+        }
+
+        return new AdjustmentReferenceAstContractResult(
+            violations,
+            serviceParseErrorCount,
+            factoryInterfaceParseErrorCount,
+            serviceClasses.Count,
+            approveMethods.Count,
+            documentReferenceDeclarationCount,
+            documentReferenceDeclarationIsDirectVar,
+            documentReferenceInitializerIsInvariant,
+            documentReferenceConversionCount,
+            documentReferenceWriteCount,
+            documentReferenceReadCount,
+            increaseOverloads.Count,
+            decreaseOverloads.Count,
+            increaseReferenceIndex,
+            decreaseReferenceIndex,
+            increaseCalls.Count,
+            decreaseCalls.Count,
+            increaseReferenceArgumentIsDocumentReference,
+            decreaseReferenceArgumentIsDocumentReference);
+    }
+
+    private static IReadOnlyList<MethodDeclarationSyntax>
+        FindDurableFactoryMethods(
+            InterfaceDeclarationSyntax? factoryInterface,
+            string methodName)
+        => factoryInterface?
+            .Members
+            .OfType<MethodDeclarationSyntax>()
+            .Where(x => x.Identifier.ValueText == methodName)
+            .Where(x => x.ParameterList.Parameters.Count == 8)
+            .Where(x => GetParameterIndex(x, "documentId") is not null)
+            .Where(x => GetParameterIndex(x, "lineId") is not null)
+            .ToList()
+            ?? [];
+
+    private static int? GetParameterIndex(
+        MethodDeclarationSyntax method,
+        string parameterName)
+    {
+        for (var index = 0;
+             index < method.ParameterList.Parameters.Count;
+             index++)
+        {
+            if (method.ParameterList.Parameters[index]
+                    .Identifier.ValueText == parameterName)
             {
                 return index;
             }
         }
 
-        return index;
+        return null;
     }
 
-    private static int BlankVerbatimString(
-        string source,
-        char[] sanitized,
-        int start,
-        int prefixLength)
-    {
-        BlankRangePreservingNewlines(
-            sanitized,
-            start,
-            prefixLength);
-        var index = start + prefixLength;
-
-        while (index < source.Length)
-        {
-            if (source[index] == '"')
+    private static bool IsDocumentIdToStringInvocation(
+        InvocationExpressionSyntax invocation)
+        => invocation.Expression
+            is MemberAccessExpressionSyntax
             {
-                BlankNonNewline(sanitized, index);
-                if (index + 1 < source.Length
-                    && source[index + 1] == '"')
-                {
-                    BlankNonNewline(sanitized, index + 1);
-                    index += 2;
-                    continue;
-                }
-
-                return index + 1;
-            }
-
-            BlankNonNewline(sanitized, index);
-            index++;
-        }
-
-        return index;
-    }
-
-    private static int BlankInterpolatedString(
-        string source,
-        char[] sanitized,
-        int start,
-        int prefixLength,
-        bool verbatim,
-        ICollection<string> violations)
-    {
-        BlankRangePreservingNewlines(
-            sanitized,
-            start,
-            prefixLength);
-        var index = start + prefixLength;
-        var interpolationDepth = 0;
-
-        while (index < source.Length)
-        {
-            if (interpolationDepth == 0)
-            {
-                if (!verbatim && source[index] == '\\')
-                {
-                    BlankNonNewline(sanitized, index);
-                    index++;
-                    if (index < source.Length)
+                Expression:
+                    MemberAccessExpressionSyntax
                     {
-                        BlankNonNewline(sanitized, index);
-                        index++;
-                    }
-
-                    continue;
-                }
-
-                if (source[index] == '"')
-                {
-                    BlankNonNewline(sanitized, index);
-                    if (verbatim
-                        && index + 1 < source.Length
-                        && source[index + 1] == '"')
+                        Expression:
+                            IdentifierNameSyntax
+                            {
+                                Identifier.ValueText: "document"
+                            },
+                        Name:
+                            IdentifierNameSyntax
+                            {
+                                Identifier.ValueText: "Id"
+                            }
+                    },
+                Name:
+                    IdentifierNameSyntax
                     {
-                        BlankNonNewline(sanitized, index + 1);
-                        index += 2;
-                        continue;
+                        Identifier.ValueText: "ToString"
                     }
+            };
 
-                    return index + 1;
-                }
-
-                if (source[index] == '{')
-                {
-                    BlankNonNewline(sanitized, index);
-                    if (index + 1 < source.Length
-                        && source[index + 1] == '{')
+    private static bool IsInvariantCultureExpression(
+        ExpressionSyntax expression)
+        => expression
+            is MemberAccessExpressionSyntax
+            {
+                Expression:
+                    IdentifierNameSyntax
                     {
-                        BlankNonNewline(sanitized, index + 1);
-                        index += 2;
-                        continue;
+                        Identifier.ValueText: "CultureInfo"
+                    },
+                Name:
+                    IdentifierNameSyntax
+                    {
+                        Identifier.ValueText: "InvariantCulture"
                     }
+            };
 
-                    interpolationDepth = 1;
-                    index++;
-                    continue;
-                }
+    private static bool IsWriteIdentifier(
+        IdentifierNameSyntax identifier)
+    {
+        foreach (var ancestor in identifier.Ancestors())
+        {
+            if (ancestor is AssignmentExpressionSyntax assignment
+                && assignment.Left.Span.Contains(identifier.Span))
+            {
+                return true;
+            }
 
-                if (source[index] == '}'
-                    && index + 1 < source.Length
-                    && source[index + 1] == '}')
+            if (ancestor is PrefixUnaryExpressionSyntax prefix
+                && (prefix.IsKind(
+                        SyntaxKind.PreIncrementExpression)
+                    || prefix.IsKind(
+                        SyntaxKind.PreDecrementExpression))
+                && prefix.Operand.Span.Contains(identifier.Span))
+            {
+                return true;
+            }
+
+            if (ancestor is PostfixUnaryExpressionSyntax postfix
+                && (postfix.IsKind(
+                        SyntaxKind.PostIncrementExpression)
+                    || postfix.IsKind(
+                        SyntaxKind.PostDecrementExpression))
+                && postfix.Operand.Span.Contains(identifier.Span))
+            {
+                return true;
+            }
+
+            if (ancestor is ArgumentSyntax argument
+                && (argument.RefKindKeyword.IsKind(
+                        SyntaxKind.RefKeyword)
+                    || argument.RefKindKeyword.IsKind(
+                        SyntaxKind.OutKeyword))
+                && argument.Expression.Span.Contains(identifier.Span))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<InvocationExpressionSyntax>
+        FindFactoryInvocations(
+            MethodDeclarationSyntax approveMethod,
+            string methodName)
+        => approveMethod
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(x => x.Expression
+                is MemberAccessExpressionSyntax
                 {
-                    BlankNonNewline(sanitized, index);
-                    BlankNonNewline(sanitized, index + 1);
-                    index += 2;
-                    continue;
+                    Expression:
+                        IdentifierNameSyntax
+                        {
+                            Identifier.ValueText:
+                                "_inventoryMovementFactory"
+                        },
+                    Name:
+                        IdentifierNameSyntax name
                 }
+                && name.Identifier.ValueText == methodName)
+            .ToList();
 
-                BlankNonNewline(sanitized, index);
-                index++;
-                continue;
-            }
-
-            if (TryBlankNonCodeToken(
-                    source,
-                    sanitized,
-                    ref index,
-                    violations))
-            {
-                continue;
-            }
-
-            var current = source[index];
-            BlankNonNewline(sanitized, index);
-            index++;
-            if (current == '{')
-            {
-                interpolationDepth++;
-            }
-            else if (current == '}')
-            {
-                interpolationDepth--;
-            }
-        }
-
-        return index;
-    }
-
-    private static bool TryGetRawStringStart(
-        string source,
-        int start,
-        out int dollarCount,
-        out int openingQuoteCount)
-    {
-        var index = start;
-        while (index < source.Length
-               && source[index] == '$')
-        {
-            index++;
-        }
-
-        dollarCount = index - start;
-        var quoteStart = index;
-        while (index < source.Length
-               && source[index] == '"')
-        {
-            index++;
-        }
-
-        openingQuoteCount = index - quoteStart;
-        return openingQuoteCount >= 3;
-    }
-
-    private static int BlankRawString(
-        string source,
-        char[] sanitized,
-        int start,
-        int dollarCount,
-        int openingQuoteCount,
-        out bool terminated)
-    {
-        var prefixLength =
-            dollarCount + openingQuoteCount;
-        BlankRangePreservingNewlines(
-            sanitized,
-            start,
-            prefixLength);
-        var index = start + prefixLength;
-
-        while (index < source.Length)
-        {
-            if (source[index] == '"')
-            {
-                var quoteRunStart = index;
-                while (index < source.Length
-                       && source[index] == '"')
-                {
-                    index++;
-                }
-
-                var quoteRunLength =
-                    index - quoteRunStart;
-                BlankRangePreservingNewlines(
-                    sanitized,
-                    quoteRunStart,
-                    quoteRunLength);
-                if (quoteRunLength == openingQuoteCount)
-                {
-                    terminated = true;
-                    return index;
-                }
-
-                continue;
-            }
-
-            BlankNonNewline(sanitized, index);
-            index++;
-        }
-
-        terminated = false;
-        return index;
-    }
-
-    private static void BlankRangePreservingNewlines(
-        char[] sanitized,
-        int start,
-        int length)
-    {
-        var end = Math.Min(
-            sanitized.Length,
-            start + length);
-        for (var index = start; index < end; index++)
-        {
-            BlankNonNewline(sanitized, index);
-        }
-    }
-
-    private static void BlankNonNewline(
-        char[] sanitized,
-        int index)
-    {
-        if (index >= 0
-            && index < sanitized.Length
-            && sanitized[index] is not '\r' and not '\n')
-        {
-            sanitized[index] = ' ';
-        }
-    }
-
-    private static bool StartsWithAt(
-        string source,
-        int index,
-        string value)
-        => index >= 0
-            && index + value.Length <= source.Length
-            && string.CompareOrdinal(
-                source,
-                index,
-                value,
-                0,
-                value.Length) == 0;
-
-    private static IReadOnlyList<string>
-        GetAdjustmentReferenceContractViolations(
-            string approveSource)
-    {
-        const string invariantConversionPattern =
-            """
-            document\s*\.\s*Id\s*\.\s*ToString\s*\(
-            \s*CultureInfo\s*\.\s*InvariantCulture\s*\)
-            """;
-        const string invariantDeclarationPattern =
-            """
-            \bvar\s+documentReferenceId\s*=\s*
-            document\s*\.\s*Id\s*\.\s*ToString\s*\(
-            \s*CultureInfo\s*\.\s*InvariantCulture\s*\)\s*;
-            """;
-        const string assignmentPattern =
-            """
-            \bdocumentReferenceId\s*
-            (?:\?\?=|<<=|>>=|\+=|-=|\*=|/=|%=|&=|\|=|\^=|=(?!=|>))
-            """;
-        const RegexOptions options =
-            RegexOptions.IgnorePatternWhitespace
-            | RegexOptions.CultureInvariant;
-
-        var sanitization =
-            StripNonCodeTriviaPreservingLayout(
-                approveSource);
-        var source = sanitization.SanitizedSource
-            .ReplaceLineEndings("\n");
-        var violations =
-            sanitization.Violations.ToList();
-
-        if (Regex.Matches(
-                source,
-                invariantDeclarationPattern,
-                options).Count != 1)
-        {
-            violations.Add("InvariantDeclarationCount");
-        }
-
-        if (Regex.Matches(
-                source,
-                invariantConversionPattern,
-                options).Count != 1)
-        {
-            violations.Add("InvariantConversionCount");
-        }
-
-        if (Regex.Matches(
-                source,
-                assignmentPattern,
-                options).Count != 1)
-        {
-            violations.Add("DocumentReferenceAssignmentCount");
-        }
-
-        if (Regex.IsMatch(
-                source,
-                @"CultureInfo\s*\.\s*CurrentCulture\b",
-                options))
-        {
-            violations.Add("CurrentCulture");
-        }
-
-        if (Regex.IsMatch(
-                source,
-                @"CultureInfo\s*\.\s*CurrentUICulture\b",
-                options))
-        {
-            violations.Add("CurrentUICulture");
-        }
-
-        if (Regex.IsMatch(
-                source,
-                """
-                document\s*\.\s*Id\s*\.\s*ToString\s*\(\s*\)
-                """,
-                options))
-        {
-            violations.Add("ParameterlessDocumentIdConversion");
-        }
-
-        AddFactoryReferenceViolations(
-            violations,
-            source,
-            "_inventoryMovementFactory.CreateAdjustmentIncrease",
-            "IncreaseCallCount",
-            "IncreaseReferenceArgument");
-        AddFactoryReferenceViolations(
-            violations,
-            source,
-            "_inventoryMovementFactory.CreateAdjustmentDecrease",
-            "DecreaseCallCount",
-            "DecreaseReferenceArgument");
-
-        return violations;
-    }
-
-    private static void AddFactoryReferenceViolations(
+    private static bool ValidateFactoryInvocation(
         List<string> violations,
-        string source,
-        string invocationName,
-        string callCountViolation,
-        string referenceArgumentViolation)
+        IReadOnlyList<InvocationExpressionSyntax> calls,
+        IReadOnlyList<MethodDeclarationSyntax> overloads,
+        int? referenceIndex,
+        string violation,
+        ICollection<IdentifierNameSyntax> validatedReferenceArguments)
     {
-        var calls = GetInvocationArguments(source, invocationName);
-        if (calls.Count != 1)
+        if (calls.Count != 1
+            || overloads.Count != 1
+            || referenceIndex is null)
         {
-            violations.Add(callCountViolation);
-            return;
+            AddViolation(violations, violation);
+            return false;
         }
 
-        var arguments = calls[0];
-        if (arguments.Count != 8
-            || !string.Equals(
-                arguments[4].Trim(),
-                "documentReferenceId",
-                StringComparison.Ordinal))
-        {
-            violations.Add(referenceArgumentViolation);
-        }
-    }
-
-    private static IReadOnlyList<IReadOnlyList<string>>
-        GetInvocationArguments(
-            string source,
-            string invocationName)
-    {
-        var calls = new List<IReadOnlyList<string>>();
-        var searchStart = 0;
-
-        while (searchStart < source.Length)
-        {
-            var invocationStart = source.IndexOf(
-                invocationName,
-                searchStart,
-                StringComparison.Ordinal);
-            if (invocationStart < 0)
-            {
-                break;
-            }
-
-            var openParenthesis = source.IndexOf(
-                '(',
-                invocationStart + invocationName.Length);
-            if (openParenthesis < 0)
-            {
-                break;
-            }
-
-            var closeParenthesis =
-                FindMatchingCloseParenthesis(
-                    source,
-                    openParenthesis);
-            if (closeParenthesis < 0)
-            {
-                calls.Add([]);
-                break;
-            }
-
-            calls.Add(SplitTopLevelArguments(
-                source[(openParenthesis + 1)..closeParenthesis]));
-            searchStart = closeParenthesis + 1;
-        }
-
-        return calls;
-    }
-
-    private static int FindMatchingCloseParenthesis(
-        string source,
-        int openParenthesis)
-    {
-        var depth = 0;
-        for (var index = openParenthesis;
-             index < source.Length;
-             index++)
-        {
-            if (source[index] == '(')
-            {
-                depth++;
-            }
-            else if (source[index] == ')')
-            {
-                depth--;
-                if (depth == 0)
+        var call = calls[0];
+        var arguments = call.ArgumentList.Arguments;
+        var expectedArgumentCount =
+            overloads[0].ParameterList.Parameters.Count;
+        var assignment = call.Parent
+            as AssignmentExpressionSyntax;
+        var hasExpectedAssignmentShape =
+            assignment is not null
+            && assignment.IsKind(
+                SyntaxKind.SimpleAssignmentExpression)
+            && assignment.Right == call
+            && assignment.Left
+                is IdentifierNameSyntax
                 {
-                    return index;
+                    Identifier.ValueText: "movementRequest"
                 }
-            }
-        }
+            && assignment.Parent is ExpressionStatementSyntax;
+        var hasExpectedArgumentShape =
+            arguments.Count == expectedArgumentCount
+            && arguments.All(x => x.NameColon is null)
+            && referenceIndex.Value < arguments.Count
+            && arguments[referenceIndex.Value].Expression
+                is IdentifierNameSyntax
+                {
+                    Identifier.ValueText: "documentReferenceId"
+                };
 
-        return -1;
-    }
-
-    private static IReadOnlyList<string>
-        SplitTopLevelArguments(string argumentsSource)
-    {
-        var arguments = new List<string>();
-        var depth = 0;
-        var argumentStart = 0;
-
-        for (var index = 0;
-             index < argumentsSource.Length;
-             index++)
+        if (!hasExpectedAssignmentShape
+            || !hasExpectedArgumentShape)
         {
-            switch (argumentsSource[index])
-            {
-                case '(':
-                case '[':
-                case '{':
-                    depth++;
-                    break;
-                case ')':
-                case ']':
-                case '}':
-                    depth--;
-                    break;
-                case ',' when depth == 0:
-                    arguments.Add(
-                        argumentsSource[argumentStart..index]);
-                    argumentStart = index + 1;
-                    break;
-            }
+            AddViolation(violations, violation);
+            return false;
         }
 
-        arguments.Add(argumentsSource[argumentStart..]);
-        return arguments;
+        validatedReferenceArguments.Add(
+            (IdentifierNameSyntax)
+            arguments[referenceIndex.Value].Expression);
+        return true;
     }
 
-    private static string BuildSyntheticAdjustmentReferenceContract(
-        string? reassignment = null,
-        string? additionalIdentityDeclaration = null,
-        string? sourceBeforeDecreaseCall = null,
-        string decreaseReferenceArgument = "documentReferenceId")
-        => $$"""
-             var documentReferenceId =
-                 document.Id.ToString(CultureInfo.InvariantCulture);
-             {{reassignment}}
-             {{additionalIdentityDeclaration}}
+    private static void AddViolation(
+        ICollection<string> violations,
+        string violation)
+    {
+        if (!violations.Contains(violation))
+        {
+            violations.Add(violation);
+        }
+    }
 
-             movementRequest =
-                 _inventoryMovementFactory.CreateAdjustmentIncrease(
-                     warehouseId,
-                     productVariantId,
-                     quantity,
-                     unitCost,
-                     documentReferenceId,
-                     lineId,
-                     note,
-                     occurredAtUtc);
-
-             {{sourceBeforeDecreaseCall}}
-
-             movementRequest =
-                 _inventoryMovementFactory.CreateAdjustmentDecrease(
-                     warehouseId,
-                     productVariantId,
-                     quantity,
-                     provisionalUnitCost,
-                     {{decreaseReferenceArgument}},
-                     lineId,
-                     note,
-                     occurredAtUtc);
-             """;
-
-    private static string ReplaceSyntheticInvariantDeclaration(
+    private static string ReplaceDocumentReferenceDeclaration(
         string source,
         string replacement)
     {
-        const string invariantDeclaration =
-            """
-            var documentReferenceId =
-                document.Id.ToString(CultureInfo.InvariantCulture);
-            """;
-        var mutated = source.Replace(
-            invariantDeclaration,
-            replacement,
-            StringComparison.Ordinal);
+        var statement = GetDocumentReferenceDeclarationStatement(
+            source);
+        return ReplaceSourceSpan(
+            source,
+            statement.Span,
+            replacement);
+    }
 
-        if (string.Equals(
-                mutated,
-                source,
-                StringComparison.Ordinal))
+    private static string InsertAfterDocumentReferenceDeclaration(
+        string source,
+        string statement)
+    {
+        var declaration = GetDocumentReferenceDeclarationStatement(
+            source);
+        return source.Insert(
+            declaration.Span.End,
+            "\n" + statement);
+    }
+
+    private static LocalDeclarationStatementSyntax
+        GetDocumentReferenceDeclarationStatement(
+            string source)
+    {
+        var root = ParseRequiredCompilationUnit(source);
+        var declarations = root
+            .DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "documentReferenceId")
+            .Select(x => x.Parent?.Parent)
+            .OfType<LocalDeclarationStatementSyntax>()
+            .ToList();
+
+        return declarations.Count == 1
+            ? declarations[0]
+            : throw new InvalidOperationException(
+                "Expected one documentReferenceId local declaration.");
+    }
+
+    private static string ReplaceFactoryReferenceArgument(
+        string source,
+        string methodName,
+        string replacement)
+    {
+        var invocation = GetRequiredFactoryInvocation(
+            source,
+            methodName);
+        var referenceArguments = invocation
+            .ArgumentList
+            .Arguments
+            .Where(x => x.Expression
+                is IdentifierNameSyntax
+                {
+                    Identifier.ValueText: "documentReferenceId"
+                })
+            .ToList();
+        if (referenceArguments.Count != 1)
         {
             throw new InvalidOperationException(
-                "Synthetic invariant declaration was not found.");
+                $"Expected one {methodName} reference argument.");
         }
 
-        return mutated;
+        return ReplaceSourceSpan(
+            source,
+            referenceArguments[0].Expression.Span,
+            replacement);
     }
+
+    private static string InsertBeforeFactoryAssignment(
+        string source,
+        string methodName,
+        string statement)
+    {
+        var invocation = GetRequiredFactoryInvocation(
+            source,
+            methodName);
+        var expressionStatement = invocation
+            .Ancestors()
+            .OfType<ExpressionStatementSyntax>()
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                $"Expected {methodName} expression statement.");
+
+        return source.Insert(
+            expressionStatement.SpanStart,
+            statement + "\n");
+    }
+
+    private static InvocationExpressionSyntax
+        GetRequiredFactoryInvocation(
+            string source,
+            string methodName)
+    {
+        var root = ParseRequiredCompilationUnit(source);
+        var calls = root
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(x => x.Expression
+                is MemberAccessExpressionSyntax
+                {
+                    Expression:
+                        IdentifierNameSyntax
+                        {
+                            Identifier.ValueText:
+                                "_inventoryMovementFactory"
+                        },
+                    Name:
+                        IdentifierNameSyntax name
+                }
+                && name.Identifier.ValueText == methodName)
+            .ToList();
+
+        return calls.Count == 1
+            ? calls[0]
+            : throw new InvalidOperationException(
+                $"Expected one {methodName} invocation.");
+    }
+
+    private static string RemoveDurableFactoryMethod(
+        string source,
+        string methodName)
+    {
+        var (root, factoryInterface, method) =
+            GetRequiredDurableFactoryMethod(
+                source,
+                methodName);
+        var updatedInterface = factoryInterface.RemoveNode(
+            method,
+            SyntaxRemoveOptions.KeepExteriorTrivia)
+            ?? throw new InvalidOperationException(
+                $"Could not remove {methodName}.");
+
+        return root.ReplaceNode(
+                factoryInterface,
+                updatedInterface)
+            .ToFullString();
+    }
+
+    private static string DuplicateDurableFactoryMethod(
+        string source,
+        string methodName)
+    {
+        var (root, factoryInterface, method) =
+            GetRequiredDurableFactoryMethod(
+                source,
+                methodName);
+        var index = factoryInterface.Members.IndexOf(method);
+        var updatedInterface = factoryInterface.WithMembers(
+            factoryInterface.Members.Insert(
+                index + 1,
+                method));
+
+        return root.ReplaceNode(
+                factoryInterface,
+                updatedInterface)
+            .ToFullString();
+    }
+
+    private static string RenameDurableFactoryParameter(
+        string source,
+        string methodName,
+        string oldName,
+        string newName)
+    {
+        var (root, _, method) =
+            GetRequiredDurableFactoryMethod(
+                source,
+                methodName);
+        var parameter = method.ParameterList.Parameters
+            .Single(x => x.Identifier.ValueText == oldName);
+        var updatedParameter = parameter.WithIdentifier(
+            SyntaxFactory.Identifier(newName)
+                .WithTriviaFrom(parameter.Identifier));
+
+        return root.ReplaceNode(
+                parameter,
+                updatedParameter)
+            .ToFullString();
+    }
+
+    private static string MoveDurableFactoryParameter(
+        string source,
+        string methodName,
+        string parameterName,
+        int destinationIndex)
+    {
+        var (root, _, method) =
+            GetRequiredDurableFactoryMethod(
+                source,
+                methodName);
+        var parameters =
+            method.ParameterList.Parameters.ToList();
+        var parameter = parameters.Single(
+            x => x.Identifier.ValueText == parameterName);
+        parameters.Remove(parameter);
+        parameters.Insert(destinationIndex, parameter);
+        var updatedMethod = method.WithParameterList(
+            method.ParameterList.WithParameters(
+                SyntaxFactory.SeparatedList(parameters)));
+
+        return root.ReplaceNode(
+                method,
+                updatedMethod)
+            .ToFullString();
+    }
+
+    private static string RemoveDurableFactoryParameter(
+        string source,
+        string methodName,
+        string parameterName)
+    {
+        var (root, _, method) =
+            GetRequiredDurableFactoryMethod(
+                source,
+                methodName);
+        var parameter = method.ParameterList.Parameters
+            .Single(x => x.Identifier.ValueText
+                == parameterName);
+        var updatedMethod = method.WithParameterList(
+            method.ParameterList.WithParameters(
+                method.ParameterList.Parameters.Remove(
+                    parameter)));
+
+        return root.ReplaceNode(
+                method,
+                updatedMethod)
+            .ToFullString();
+    }
+
+    private static (
+        CompilationUnitSyntax Root,
+        InterfaceDeclarationSyntax FactoryInterface,
+        MethodDeclarationSyntax Method)
+        GetRequiredDurableFactoryMethod(
+            string source,
+            string methodName)
+    {
+        var root = ParseRequiredCompilationUnit(source);
+        var factoryInterface = root
+            .DescendantNodes()
+            .OfType<InterfaceDeclarationSyntax>()
+            .Single(x => x.Identifier.ValueText
+                == "IInventoryMovementFactory");
+        var methods = FindDurableFactoryMethods(
+            factoryInterface,
+            methodName);
+
+        return methods.Count == 1
+            ? (root, factoryInterface, methods[0])
+            : throw new InvalidOperationException(
+                $"Expected one durable {methodName} overload.");
+    }
+
+    private static CompilationUnitSyntax ParseRequiredCompilationUnit(
+        string source)
+    {
+        var tree = CSharpSyntaxTree.ParseText(
+            source,
+            new CSharpParseOptions(LanguageVersion.CSharp12));
+        var errors = tree.GetDiagnostics()
+            .Where(x => x.Severity == DiagnosticSeverity.Error)
+            .ToList();
+        if (errors.Count != 0)
+        {
+            throw new InvalidOperationException(
+                "Mutation baseline must parse without errors: "
+                + string.Join("; ", errors));
+        }
+
+        return tree.GetCompilationUnitRoot();
+    }
+
+    private static string ReplaceSourceSpan(
+        string source,
+        Microsoft.CodeAnalysis.Text.TextSpan span,
+        string replacement)
+        => source[..span.Start]
+            + replacement
+            + source[span.End..];
 
     private static string BuildCommentedCorrectDecreaseCall()
         =>
@@ -2333,6 +2544,35 @@ public sealed class InventoryNonPosPostingContractTests
                 dollarCount: 0,
                 quoteCount: 3)
             + ";";
+
+    private static string BuildRawFakeMethodBoundariesStatement()
+        =>
+            "var fakeMethodBoundaries = "
+            + BuildRawStringLiteral(
+                """
+                class InventoryAdjustmentDocumentService
+                {
+                    public Task ApproveAsync() => Task.CompletedTask;
+                    public Task RejectAsync() => Task.CompletedTask;
+                }
+                """,
+                dollarCount: 2,
+                quoteCount: 3)
+            + ";";
+
+    private static string
+        BuildNestedInterpolatedRawContractStatement()
+        =>
+            """"
+            var fakeContract = $"""
+                {
+                    """
+                    var documentReferenceId =
+                        document.Id.ToString(CultureInfo.InvariantCulture);
+                    """
+                }
+                """;
+            """";
 
     private static string BuildHarmlessRawStringStatement(
         int dollarCount,
@@ -2588,9 +2828,26 @@ public sealed class InventoryNonPosPostingContractTests
         IReadOnlyList<int> LineIds,
         IReadOnlyList<int> VariantIds);
 
-    private sealed record LexicalSanitizationResult(
-        string SanitizedSource,
-        IReadOnlyList<string> Violations);
+    private sealed record AdjustmentReferenceAstContractResult(
+        IReadOnlyList<string> Violations,
+        int ServiceParseErrorCount,
+        int FactoryInterfaceParseErrorCount,
+        int ServiceClassCount,
+        int ApproveMethodCount,
+        int DocumentReferenceDeclarationCount,
+        bool DocumentReferenceDeclarationIsDirectVar,
+        bool DocumentReferenceInitializerIsInvariant,
+        int DocumentReferenceConversionCount,
+        int DocumentReferenceWriteCount,
+        int DocumentReferenceReadCount,
+        int IncreaseOverloadCount,
+        int DecreaseOverloadCount,
+        int? IncreaseReferenceIndex,
+        int? DecreaseReferenceIndex,
+        int IncreaseCallCount,
+        int DecreaseCallCount,
+        bool IncreaseReferenceArgumentIsDocumentReference,
+        bool DecreaseReferenceArgumentIsDocumentReference);
 
     private sealed record RelationalDocumentSnapshot(
         InventoryAdjustmentDocumentStatus Status,
