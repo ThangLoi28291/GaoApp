@@ -12,6 +12,7 @@ using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Tests.Configuration;
 using FluentAssertions;
+using FluentAssertions.Execution;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -215,22 +216,6 @@ public sealed class InventoryNonPosPostingContractTests
         result.DecreaseCallCount.Should().Be(1);
         result.IncreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
         result.DecreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
-        result.ConstructionLoopCount.Should().Be(1);
-        result.MovementRequestAddCount.Should().Be(1);
-        result.PreLockCallCount.Should().Be(1);
-        result.PostingLoopCount.Should().Be(1);
-        result.PostingCallCount.Should().Be(1);
-        result.TransactionTryCount.Should().Be(1);
-        result.ConstructionLoopIsDirectStatement.Should().BeTrue();
-        result.MovementRequestAddIsDirectStatement.Should().BeTrue();
-        result.PreLockIsDirectStatement.Should().BeTrue();
-        result.PreLockHasAwaitShape.Should().BeTrue();
-        result.PostingLoopIsDirectStatement.Should().BeTrue();
-        result.PostingCreateIsDirectStatement.Should().BeTrue();
-        result.PostingCreateHasAwaitShape.Should().BeTrue();
-        result.ProtectedOrderingIsValid.Should().BeTrue();
-        result.ConstructionFlowIsValid.Should().BeTrue();
-        result.PostingFlowIsValid.Should().BeTrue();
     }
 
     [Theory]
@@ -494,8 +479,8 @@ public sealed class InventoryNonPosPostingContractTests
     }
 
     [Theory]
-    [MemberData(nameof(AdjustmentTwoStageFlowMutants))]
-    public void Adjustment_two_stage_contract_rejects_mutant(
+    [MemberData(nameof(AdjustmentFactoryIdentityMutants))]
+    public void Adjustment_factory_identity_contract_rejects_mutant(
         string mutant,
         string serviceSource,
         string[] expectedViolations)
@@ -525,7 +510,7 @@ public sealed class InventoryNonPosPostingContractTests
     }
 
     public static IEnumerable<object[]>
-        AdjustmentTwoStageFlowMutants()
+        AdjustmentFactoryIdentityMutants()
     {
         var source = ReadAdjustmentServiceSource();
 
@@ -544,8 +529,8 @@ public sealed class InventoryNonPosPostingContractTests
                 "DecreaseFactoryReceiver",
                 "IncreaseFactoryArgumentCount",
                 "DecreaseFactoryArgumentCount",
-                "IncreaseFactoryFlowShape",
-                "DecreaseFactoryFlowShape",
+                "IncreaseFactoryCallShape",
+                "DecreaseFactoryCallShape",
                 "DocumentReferenceNestedUse",
                 "DocumentReferenceUseCount"
             }
@@ -565,8 +550,8 @@ public sealed class InventoryNonPosPostingContractTests
                 "DecreaseFactoryReceiver",
                 "IncreaseFactoryArgumentCount",
                 "DecreaseFactoryArgumentCount",
-                "IncreaseFactoryFlowShape",
-                "DecreaseFactoryFlowShape"
+                "IncreaseFactoryCallShape",
+                "DecreaseFactoryCallShape"
             }
         ];
         yield return
@@ -579,7 +564,7 @@ public sealed class InventoryNonPosPostingContractTests
                 "IncreaseCallCount",
                 "FactoryCallNestedExecutableScope",
                 "IncreaseFactoryArgumentCount",
-                "IncreaseFactoryFlowShape",
+                "IncreaseFactoryCallShape",
                 "DocumentReferenceNestedUse"
             }
         ];
@@ -590,7 +575,7 @@ public sealed class InventoryNonPosPostingContractTests
             new[]
             {
                 "IncreaseFactoryReceiver",
-                "IncreaseFactoryFlowShape"
+                "IncreaseFactoryCallShape"
             }
         ];
         yield return
@@ -606,145 +591,6 @@ public sealed class InventoryNonPosPostingContractTests
                 "DocumentReferenceUseCount"
             }
         ];
-        yield return
-        [
-            "M21 wrong request added",
-            ReplaceMovementRequestAddArgument(
-                source,
-                "alternateMovementRequest"),
-            new[]
-            {
-                "MovementRequestAddArgument",
-                "MovementRequestProvenance"
-            }
-        ];
-        yield return
-        [
-            "M22 wrong posting collection",
-            ReplacePostingCollection(
-                source,
-                "alternateMovementRequests"),
-            new[]
-            {
-                "PostingCollection",
-                "MovementRequestsUse"
-            }
-        ];
-        yield return
-        [
-            "M23 posting through movement-service alias",
-            BuildPostingServiceAlias(source),
-            new[]
-            {
-                "PostingReceiver"
-            }
-        ];
-        yield return
-        [
-            "M24 Add hidden inside lambda",
-            HideMovementRequestAddInLambda(source),
-            new[]
-            {
-                "MovementRequestAddCount",
-                "MovementRequestAddNestedScope",
-                "MovementRequestAddFlow",
-                "MovementRequestProvenance"
-            }
-        ];
-        yield return
-        [
-            "M25 posting call gated by impossible condition",
-            WrapPostingCreateStatement(
-                source,
-                "if (document.Id < 0)"),
-            new[]
-            {
-                "PostingCreateDirectStatement"
-            }
-        ];
-        yield return
-        [
-            "M26 Add gated by impossible condition",
-            WrapMovementRequestAddStatement(
-                source,
-                "if (line.Id < 0)"),
-            new[]
-            {
-                "MovementRequestAddDirectStatement",
-                "MovementRequestAddFlow"
-            }
-        ];
-        yield return
-        [
-            "M27 prelock gated by impossible condition",
-            WrapPreLockStatement(
-                source,
-                "if (document.Id < 0)"),
-            new[]
-            {
-                "PreLockDirectStatement"
-            }
-        ];
-        yield return
-        [
-            "M28 dropped await from posting",
-            DropAwaitFromPostingCreate(source),
-            new[]
-            {
-                "PostingCreateAwaitShape"
-            }
-        ];
-        yield return
-        [
-            "M29 dropped await from prelock",
-            DropAwaitFromPreLock(source),
-            new[]
-            {
-                "PreLockAwaitShape"
-            }
-        ];
-        yield return
-        [
-            "M30 posting foreach gated",
-            WrapPostingLoop(
-                source,
-                "if (document.Id < 0)"),
-            new[]
-            {
-                "PostingLoopDirectStatement"
-            }
-        ];
-        yield return
-        [
-            "M31 construction foreach gated",
-            WrapConstructionLoop(
-                source,
-                "if (document.Id < 0)"),
-            new[]
-            {
-                "ConstructionLoopDirectStatement"
-            }
-        ];
-        yield return
-        [
-            "M32 posting call inside nested alternate loop",
-            WrapPostingCreateStatement(
-                source,
-                "for (var attempt = 0; attempt < 1; attempt++)"),
-            new[]
-            {
-                "PostingCreateDirectStatement"
-            }
-        ];
-        yield return
-        [
-            "M33 prelock inside nested switch",
-            WrapPreLockStatementInSwitch(source),
-            new[]
-            {
-                "PreLockDirectStatement"
-            }
-        ];
     }
 
     [Fact]
@@ -756,17 +602,16 @@ public sealed class InventoryNonPosPostingContractTests
             .DescendantNodes()
             .OfType<MethodDeclarationSyntax>()
             .Single(x => x.Identifier.ValueText == "ApproveAsync");
-        var rootForeachStatements = approveMethod
+        var rootFactoryCalls = approveMethod
             .DescendantNodes()
-            .OfType<ForEachStatementSyntax>()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(x => GetInvokedMethodName(x)
+                is "CreateAdjustmentIncrease"
+                    or "CreateAdjustmentDecrease")
             .Where(x => IsInRootApproveExecutableScope(
                 x,
                 approveMethod))
             .ToList();
-        var constructionLoop = rootForeachStatements.Single(
-            x => IsDocumentLinesExpression(x.Expression));
-        var postingLoop = rootForeachStatements.Single(
-            x => x.Identifier.ValueText == "movementRequest");
         var scopeRoot = ParseRequiredCompilationUnit(
             """
             class ScopeFixture
@@ -810,11 +655,15 @@ public sealed class InventoryNonPosPostingContractTests
             .Single();
 
         IsInRootApproveExecutableScope(
-                constructionLoop,
+                rootFactoryCalls.Single(
+                    x => GetInvokedMethodName(x)
+                        == "CreateAdjustmentIncrease"),
                 approveMethod)
             .Should().BeTrue();
         IsInRootApproveExecutableScope(
-                postingLoop,
+                rootFactoryCalls.Single(
+                    x => GetInvokedMethodName(x)
+                        == "CreateAdjustmentDecrease"),
                 approveMethod)
             .Should().BeTrue();
         IsInRootApproveExecutableScope(
@@ -837,149 +686,6 @@ public sealed class InventoryNonPosPostingContractTests
                 nestedLambda.ExpressionBody!,
                 scopeMethod)
             .Should().BeFalse();
-    }
-
-    [Fact]
-    public void Adjustment_direct_statement_classifier_rejects_intermediate_control_flow()
-    {
-        var root = ParseRequiredCompilationUnit(
-            """
-            class DirectStatementFixture
-            {
-                async Task CheckAsync(bool condition)
-                {
-                    await DirectAwait();
-                    DroppedAwait();
-                    _ = AssignedAwait();
-                    await (condition
-                        ? ConditionalAwait()
-                        : Task.CompletedTask);
-
-                    if (condition)
-                    {
-                        await InIf();
-                    }
-
-                    switch (condition)
-                    {
-                        case true:
-                            await InSwitch();
-                            break;
-                    }
-
-                    for (var index = 0; index < 1; index++)
-                    {
-                        await InFor();
-                    }
-
-                    foreach (var item in items)
-                    {
-                        await InForeach();
-                    }
-
-                    try
-                    {
-                        await InTry();
-                    }
-                    finally
-                    {
-                    }
-
-                    Func<Task> lambda = async () =>
-                    {
-                        await InLambda();
-                    };
-
-                    async Task LocalAsync()
-                    {
-                        await InLocal();
-                    }
-                }
-            }
-            """);
-        var method = root
-            .DescendantNodes()
-            .OfType<MethodDeclarationSyntax>()
-            .Single(x => x.Identifier.ValueText == "CheckAsync");
-        var expectedBlock = method.Body!;
-        var invocations = method
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .ToDictionary(
-                x => GetInvokedMethodName(x)!,
-                StringComparer.Ordinal);
-        ExpressionStatementSyntax GetStatement(string methodName)
-            => invocations[methodName]
-                .Ancestors()
-                .OfType<ExpressionStatementSyntax>()
-                .First();
-
-        IsDirectStatementInBlock(
-                GetStatement("DirectAwait"),
-                expectedBlock)
-            .Should().BeTrue();
-        IsDirectStatementInBlock(
-                GetStatement("InIf"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InSwitch"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InFor"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InForeach"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InTry"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InLambda"),
-                expectedBlock)
-            .Should().BeFalse();
-        IsDirectStatementInBlock(
-                GetStatement("InLocal"),
-                expectedBlock)
-            .Should().BeFalse();
-        HasAwaitExpressionStatementShape(
-                invocations["DirectAwait"])
-            .Should().BeTrue();
-        HasAwaitExpressionStatementShape(
-                invocations["DroppedAwait"])
-            .Should().BeFalse();
-        HasAwaitExpressionStatementShape(
-                invocations["AssignedAwait"])
-            .Should().BeFalse();
-        HasAwaitExpressionStatementShape(
-                invocations["ConditionalAwait"])
-            .Should().BeFalse();
-    }
-
-    [Fact]
-    public void Adjustment_direct_statement_contract_allows_unrelated_control_flow()
-    {
-        var result = AnalyzeAdjustmentReferenceAstContract(
-            InsertAfterDocumentReferenceDeclaration(
-                ReadAdjustmentServiceSource(),
-                """
-                if (request.Id == int.MinValue)
-                {
-                    _ = request.ApprovalNote;
-                }
-                """),
-            ReadInventoryMovementFactoryInterfaceSource());
-
-        result.Violations.Should().BeEmpty();
-        result.PreLockIsDirectStatement.Should().BeTrue();
-        result.PreLockHasAwaitShape.Should().BeTrue();
-        result.PostingLoopIsDirectStatement.Should().BeTrue();
-        result.PostingCreateIsDirectStatement.Should().BeTrue();
-        result.PostingCreateHasAwaitShape.Should().BeTrue();
     }
 
     [Theory]
@@ -1488,6 +1194,42 @@ public sealed class InventoryNonPosPostingContractTests
         movements.Requests.Should().BeEmpty();
     }
 
+    // AST tests above protect durable identity/factory structure. These
+    // LocalDB tests protect execution, persistence, rollback, and retry.
+    [Theory]
+    [InlineData(InventoryTransactionType.AdjustmentIncrease)]
+    [InlineData(InventoryTransactionType.AdjustmentDecrease)]
+    public async Task Adjustment_document_success_should_persist_exact_posting_effects_in_order(
+        InventoryTransactionType adjustmentType)
+    {
+        using var timeoutCts =
+            new CancellationTokenSource(RelationalTestTimeout);
+        var ct = timeoutCts.Token;
+        await using var database = new InventoryPostingLocalDb();
+        await database.MigrateAsync(ct: ct);
+        var seed = await database.SeedInventoryCatalogAsync(ct: ct);
+        var fixture = await CreateRelationalAdjustmentFixtureAsync(
+            database,
+            seed,
+            adjustmentType,
+            ct);
+        await SeedInitialInventoryAsync(
+            database,
+            fixture,
+            ct);
+        var before = await CaptureRelationalSnapshotAsync(
+            database,
+            fixture,
+            ct);
+
+        await ApproveAndAssertSuccessfulAdjustmentAsync(
+            database,
+            fixture,
+            before,
+            $"approved {adjustmentType}",
+            ct);
+    }
+
     [Fact]
     public async Task Adjustment_document_second_movement_failure_should_rollback_first_real_posting()
     {
@@ -1500,6 +1242,7 @@ public sealed class InventoryNonPosPostingContractTests
         var fixture = await CreateRelationalAdjustmentFixtureAsync(
             database,
             seed,
+            InventoryTransactionType.AdjustmentDecrease,
             ct);
         await SeedInitialInventoryAsync(
             database,
@@ -1509,6 +1252,8 @@ public sealed class InventoryNonPosPostingContractTests
             database,
             fixture,
             ct);
+        var events = new List<string>();
+        using var assertionScope = new AssertionScope();
         RealMovementFailureDecorator? movements = null;
 
         await using (var posting =
@@ -1516,10 +1261,15 @@ public sealed class InventoryNonPosPostingContractTests
         {
             movements = new RealMovementFailureDecorator(
                 CreateRealMovementService(posting),
-                failOnCreateCall: 2);
+                failOnCreateCall: 2,
+                events);
+            var unitOfWork = new RecordingUnitOfWork(
+                events,
+                new UnitOfWork(posting));
             var service = CreateRealAdjustmentService(
                 posting,
-                movements);
+                movements,
+                unitOfWork);
 
             var action = () => service.ApproveAsync(
                 new ApproveInventoryAdjustmentDocumentRequest
@@ -1557,6 +1307,8 @@ public sealed class InventoryNonPosPostingContractTests
             .Should().Equal(fixture.LineIds.Cast<int?>());
         movements.Requests.Select(x => x.SkipIfExists)
             .Should().OnlyContain(x => x);
+        movements.Requests.Select(x => x.ReferenceSubKey)
+            .Should().OnlyContain(x => x == null);
         movements.PreLockedKeys.Should().Equal(
             fixture.VariantIds
                 .OrderBy(x => x)
@@ -1564,6 +1316,14 @@ public sealed class InventoryNonPosPostingContractTests
                     fixture.StoreId,
                     fixture.WarehouseId,
                     x)));
+        events.Should().Equal(
+            "begin",
+            "prelock",
+            $"create line {fixture.LineIds[0]}",
+            $"create line {fixture.LineIds[1]}",
+            "rollback");
+        events.Should().NotContain("save");
+        events.Should().NotContain("commit");
 
         var after = await CaptureRelationalSnapshotAsync(
             database,
@@ -1576,13 +1336,29 @@ public sealed class InventoryNonPosPostingContractTests
         after.Document.ApprovedAtUtc.Should().BeNull();
         after.Document.ApprovedByUserId.Should().BeNull();
         after.Document.ApprovalNote.Should().BeNull();
-        after.DocumentTransactionIds.Should().BeEmpty();
-        after.DocumentValuationIds.Should().BeEmpty();
-        after.DocumentLayerIds.Should().BeEmpty();
-        after.DocumentAllocationIds.Should().BeEmpty();
+        GetNewRecords(
+                before.Transactions,
+                after.Transactions,
+                x => x.Id)
+            .Should().BeEmpty();
+        GetNewRecords(
+                before.Valuations,
+                after.Valuations,
+                x => x.Id)
+            .Should().BeEmpty();
+        GetNewRecords(
+                before.Layers,
+                after.Layers,
+                x => x.Id)
+            .Should().BeEmpty();
+        GetNewRecords(
+                before.Allocations,
+                after.Allocations,
+                x => x.Id)
+            .Should().BeEmpty();
         after.Balances.Should().HaveCount(2);
         after.Layers.Should().HaveCount(2);
-        after.AllocationIds.Should().BeEmpty(
+        after.Allocations.Should().BeEmpty(
             "the first real outbound allocation must be rolled back");
     }
 
@@ -1598,71 +1374,41 @@ public sealed class InventoryNonPosPostingContractTests
         var fixture = await CreateRelationalAdjustmentFixtureAsync(
             database,
             seed,
+            InventoryTransactionType.AdjustmentDecrease,
             ct);
         await SeedInitialInventoryAsync(
             database,
             fixture,
             ct);
 
-        await using (var firstApproval =
-                     database.CreateTenantContext(seed.StoreId))
-        {
-            var service = CreateRealAdjustmentService(
-                firstApproval,
-                CreateRealMovementService(firstApproval));
-
-            var result = await service.ApproveAsync(
-                new ApproveInventoryAdjustmentDocumentRequest
-                {
-                    Id = fixture.DocumentId,
-                    ApprovalNote = "approved once"
-                },
-                ct);
-
-            result.Id.Should().Be(fixture.DocumentId);
-            result.Status.Should().Be(
-                InventoryAdjustmentDocumentStatus.Approved);
-            firstApproval.Database.CurrentTransaction.Should().BeNull();
-        }
-
-        var afterFirstApproval =
-            await CaptureRelationalSnapshotAsync(
-                database,
-                fixture,
-                ct);
-        afterFirstApproval.Document.Status.Should().Be(
-            InventoryAdjustmentDocumentStatus.Approved);
-        afterFirstApproval.Document.ApprovedAtUtc
-            .Should().NotBeNull();
-        afterFirstApproval.Document.ApprovalNote
-            .Should().Be("approved once");
-        afterFirstApproval.DocumentTransactionIds
-            .Should().HaveCount(2);
-        afterFirstApproval.DocumentValuationIds
-            .Should().HaveCount(2);
-        afterFirstApproval.DocumentLayerIds
-            .Should().BeEmpty(
-                "outbound adjustments consume existing FIFO layers");
-        afterFirstApproval.DocumentAllocationIds
-            .Should().HaveCount(2);
-        afterFirstApproval.Balances.Should().HaveCount(2);
-        afterFirstApproval.Layers.Should().HaveCount(2);
-        afterFirstApproval.AllocationIds.Should().HaveCount(2);
-        await AssertExactlyOneDocumentMovementPerLineAsync(
+        var before = await CaptureRelationalSnapshotAsync(
             database,
             fixture,
             ct);
+        var afterFirstApproval =
+            await ApproveAndAssertSuccessfulAdjustmentAsync(
+                database,
+                fixture,
+                before,
+                "approved once",
+                ct);
 
+        var retryEvents = new List<string>();
         RealMovementFailureDecorator? retryMovements = null;
         await using (var retry =
                      database.CreateTenantContext(seed.StoreId))
         {
             retryMovements = new RealMovementFailureDecorator(
                 CreateRealMovementService(retry),
-                failOnCreateCall: null);
+                failOnCreateCall: null,
+                retryEvents);
+            var unitOfWork = new RecordingUnitOfWork(
+                retryEvents,
+                new UnitOfWork(retry));
             var service = CreateRealAdjustmentService(
                 retry,
-                retryMovements);
+                retryMovements,
+                unitOfWork);
 
             var result = await service.ApproveAsync(
                 new ApproveInventoryAdjustmentDocumentRequest
@@ -1684,6 +1430,9 @@ public sealed class InventoryNonPosPostingContractTests
         retryMovements.CreateCallCount.Should().Be(0);
         retryMovements.DelegatedCreateCallCount.Should().Be(0);
         retryMovements.Requests.Should().BeEmpty();
+        retryMovements.Results.Should().BeEmpty();
+        retryMovements.PreLockedKeys.Should().BeEmpty();
+        retryEvents.Should().BeEmpty();
 
         var afterRetry = await CaptureRelationalSnapshotAsync(
             database,
@@ -1694,10 +1443,17 @@ public sealed class InventoryNonPosPostingContractTests
             afterRetry);
         afterRetry.Document.Status.Should().Be(
             InventoryAdjustmentDocumentStatus.Approved);
-        await AssertExactlyOneDocumentMovementPerLineAsync(
-            database,
-            fixture,
-            ct);
+        GetNewRecords(
+                before.Transactions,
+                afterRetry.Transactions,
+                x => x.Id)
+            .Should().HaveCount(2);
+        afterRetry.Transactions
+            .Where(x => !before.Transactions.Select(y => y.Id)
+                .Contains(x.Id))
+            .Select(x => x.ReferenceLineId)
+            .Should().BeEquivalentTo(
+                fixture.LineIds.Cast<int?>());
     }
 
     [Theory]
@@ -1763,56 +1519,11 @@ public sealed class InventoryNonPosPostingContractTests
         inMovement.Should().BeGreaterThan(inFactory);
     }
 
-    [Fact]
-    public void Adjustment_approval_wraps_prelock_movements_and_status_save_in_outer_transaction()
-    {
-        var source = ReadRepositoryFile(
-            "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
-        var approveStart = source.IndexOf(
-            "ApproveAsync(",
-            StringComparison.Ordinal);
-        var beginIndex = source.IndexOf(
-            "_unitOfWork.BeginTransactionAsync(ct)",
-            approveStart,
-            StringComparison.Ordinal);
-        var preLockIndex = source.IndexOf(
-            "_inventoryMovementService.PreLockBalancesAsync(",
-            beginIndex,
-            StringComparison.Ordinal);
-        var movementIndex = source.IndexOf(
-            "_inventoryMovementService.CreateAsync(",
-            preLockIndex,
-            StringComparison.Ordinal);
-        var approvedIndex = source.IndexOf(
-            "document.Status = InventoryAdjustmentDocumentStatus.Approved",
-            movementIndex,
-            StringComparison.Ordinal);
-        var saveIndex = source.IndexOf(
-            "_unitOfWork.SaveChangesAsync(ct)",
-            approvedIndex,
-            StringComparison.Ordinal);
-        var commitIndex = source.IndexOf(
-            "_unitOfWork.CommitTransactionAsync(ct)",
-            saveIndex,
-            StringComparison.Ordinal);
-        var rollbackIndex = source.IndexOf(
-            "_unitOfWork.RollbackTransactionAsync(",
-            commitIndex,
-            StringComparison.Ordinal);
-
-        beginIndex.Should().BeGreaterThan(approveStart);
-        preLockIndex.Should().BeGreaterThan(beginIndex);
-        movementIndex.Should().BeGreaterThan(preLockIndex);
-        approvedIndex.Should().BeGreaterThan(movementIndex);
-        saveIndex.Should().BeGreaterThan(approvedIndex);
-        commitIndex.Should().BeGreaterThan(saveIndex);
-        rollbackIndex.Should().BeGreaterThan(commitIndex);
-    }
-
     private static async Task<RelationalAdjustmentFixture>
         CreateRelationalAdjustmentFixtureAsync(
             InventoryPostingLocalDb database,
             InventoryPostingSeed seed,
+            InventoryTransactionType adjustmentType,
             CancellationToken ct)
     {
         await using var db =
@@ -1845,8 +1556,7 @@ public sealed class InventoryNonPosPostingContractTests
             DocumentNo = $"R2-ADJ-{Guid.NewGuid():N}"[..20],
             DocumentDate = DateTime.UtcNow,
             WarehouseId = seed.WarehouseId,
-            AdjustmentType =
-                InventoryTransactionType.AdjustmentDecrease,
+            AdjustmentType = adjustmentType,
             Status =
                 InventoryAdjustmentDocumentStatus.PendingApproval,
             SubmittedAtUtc = DateTime.UtcNow,
@@ -1861,8 +1571,15 @@ public sealed class InventoryNonPosPostingContractTests
                     Quantity = 2m,
                     Factor = 1m,
                     BaseQuantity = 2m,
-                    ProvisionalUnitCost = 10m,
-                    Note = "first real outbound movement"
+                    UnitCost = adjustmentType
+                        == InventoryTransactionType.AdjustmentIncrease
+                            ? 10m
+                            : null,
+                    ProvisionalUnitCost = adjustmentType
+                        == InventoryTransactionType.AdjustmentDecrease
+                            ? 10m
+                            : null,
+                    Note = "first real adjustment movement"
                 },
                 new InventoryAdjustmentLine
                 {
@@ -1872,8 +1589,15 @@ public sealed class InventoryNonPosPostingContractTests
                     Quantity = 3m,
                     Factor = 1m,
                     BaseQuantity = 3m,
-                    ProvisionalUnitCost = 12m,
-                    Note = "second real outbound movement"
+                    UnitCost = adjustmentType
+                        == InventoryTransactionType.AdjustmentIncrease
+                            ? 12m
+                            : null,
+                    ProvisionalUnitCost = adjustmentType
+                        == InventoryTransactionType.AdjustmentDecrease
+                            ? 12m
+                            : null,
+                    Note = "second real adjustment movement"
                 }
             ]
         };
@@ -1885,6 +1609,7 @@ public sealed class InventoryNonPosPostingContractTests
             seed.StoreId,
             seed.WarehouseId,
             document.Id.ToString(CultureInfo.InvariantCulture),
+            adjustmentType,
             document.Lines
                 .OrderBy(x => x.Id)
                 .Select(x => x.Id)
@@ -1892,7 +1617,10 @@ public sealed class InventoryNonPosPostingContractTests
             document.Lines
                 .OrderBy(x => x.Id)
                 .Select(x => x.ProductVariantId)
-                .ToArray());
+                .ToArray(),
+            [2m, 3m],
+            [10m, 12m],
+            [10m, 20m]);
     }
 
     private static async Task SeedInitialInventoryAsync(
@@ -1964,26 +1692,92 @@ public sealed class InventoryNonPosPostingContractTests
                 x.CancelledByUserId))
             .SingleAsync(ct);
 
-        var transactionIds = await db.InventoryTransactions
+        var transactions = await db.InventoryTransactions
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(x => x.StoreId == fixture.StoreId)
             .OrderBy(x => x.Id)
-            .Select(x => x.Id)
+            .Select(x => new RelationalTransactionSnapshot(
+                x.Id,
+                x.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId,
+                x.IdempotencyKey,
+                x.TransactionType,
+                x.ReferenceType,
+                x.ReferenceId,
+                x.ReferenceLineId,
+                x.ReferenceSubKey,
+                x.QuantityChange,
+                x.BeforeQty,
+                x.AfterQty,
+                x.UnitCostSnapshot,
+                x.TotalCost,
+                x.BeforeInventoryValue,
+                x.AfterInventoryValue,
+                x.RunningAverageUnitCostAfter,
+                x.CostSourceType,
+                x.IsProvisionalCost,
+                x.CostFinalizedAtUtc,
+                x.OccurredAtUtc,
+                x.Note,
+                x.IsDeleted))
             .ToArrayAsync(ct);
-        var valuationIds = await db.InventoryValuationEntries
+        var valuations = await db.InventoryValuationEntries
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(x => x.StoreId == fixture.StoreId)
             .OrderBy(x => x.Id)
-            .Select(x => x.Id)
+            .Select(x => new RelationalValuationSnapshot(
+                x.Id,
+                x.StoreId,
+                x.InventoryTransactionId,
+                x.WarehouseId,
+                x.ProductVariantId,
+                x.EntryType,
+                x.ReferenceType,
+                x.ReferenceId,
+                x.ReferenceLineId,
+                x.ReferenceSubKey,
+                x.Quantity,
+                x.UnitCost,
+                x.Amount,
+                x.RunningQtyAfter,
+                x.RunningValueAfter,
+                x.RunningAverageUnitCostAfter,
+                x.CostSourceType,
+                x.IsProvisional,
+                x.CostFinalizedAtUtc,
+                x.RevaluationOfEntryId,
+                x.SourceValuationEntryId,
+                x.SourceReferenceSubKey,
+                x.InventoryCostLayerId,
+                x.Note,
+                x.OccurredAtUtc,
+                x.IsDeleted))
             .ToArrayAsync(ct);
-        var allocationIds = await db.InventoryCostLayerAllocations
+        var allocations = await db.InventoryCostLayerAllocations
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(x => x.StoreId == fixture.StoreId)
             .OrderBy(x => x.Id)
-            .Select(x => x.Id)
+            .Select(x => new RelationalAllocationSnapshot(
+                x.Id,
+                x.StoreId,
+                x.InventoryValuationEntryId,
+                x.InventoryCostLayerId,
+                x.ReverseOfAllocationId,
+                x.Quantity,
+                x.UnitCost,
+                x.Amount,
+                x.IsProvisional,
+                x.IsResolved,
+                x.ResolvedQuantity,
+                x.ResolvedAmount,
+                x.ResolvedAtUtc,
+                x.ResolvedByInventoryCostLayerId,
+                x.Note,
+                x.IsDeleted))
             .ToArrayAsync(ct);
         var balances = await db.InventoryBalances
             .IgnoreQueryFilters()
@@ -1996,6 +1790,7 @@ public sealed class InventoryNonPosPostingContractTests
             .OrderBy(x => x.ProductVariantId)
             .Select(x => new RelationalBalanceSnapshot(
                 x.Id,
+                x.StoreId,
                 x.WarehouseId,
                 x.ProductVariantId,
                 x.OnHandQty,
@@ -2018,6 +1813,7 @@ public sealed class InventoryNonPosPostingContractTests
             .OrderBy(x => x.Id)
             .Select(x => new RelationalLayerSnapshot(
                 x.Id,
+                x.StoreId,
                 x.WarehouseId,
                 x.ProductVariantId,
                 x.InventoryTransactionId,
@@ -2025,78 +1821,471 @@ public sealed class InventoryNonPosPostingContractTests
                 x.ReferenceType,
                 x.ReferenceId,
                 x.ReferenceLineId,
+                x.ReferenceSubKey,
                 x.OriginalQuantity,
                 x.RemainingQuantity,
                 x.ResolvedProvisionalQty,
                 x.RemainingOpenProvisionalQty,
                 x.UnitCost,
+                x.IsProvisionalSource,
+                x.OccurredAtUtc,
+                x.Note,
                 x.IsDeleted))
             .ToArrayAsync(ct);
 
-        var documentTransactionIds =
-            await db.InventoryTransactions
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(x =>
-                    x.StoreId == fixture.StoreId
-                    && x.ReferenceType
-                        == InventoryReferenceType.Adjustment
-                    && x.ReferenceId
-                        == fixture.InvariantDocumentId)
-                .OrderBy(x => x.Id)
-                .Select(x => x.Id)
-                .ToArrayAsync(ct);
-        var documentValuationIds =
-            await db.InventoryValuationEntries
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(x =>
-                    x.StoreId == fixture.StoreId
-                    && x.ReferenceType
-                        == InventoryReferenceType.Adjustment
-                    && x.ReferenceId
-                        == fixture.InvariantDocumentId)
-                .OrderBy(x => x.Id)
-                .Select(x => x.Id)
-                .ToArrayAsync(ct);
-        var documentLayerIds =
-            await db.InventoryCostLayers
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(x =>
-                    x.StoreId == fixture.StoreId
-                    && x.ReferenceType
-                        == InventoryReferenceType.Adjustment
-                    && x.ReferenceId
-                        == fixture.InvariantDocumentId)
-                .OrderBy(x => x.Id)
-                .Select(x => x.Id)
-                .ToArrayAsync(ct);
-        var documentAllocationIds =
-            documentValuationIds.Length == 0
-                ? []
-                : await db.InventoryCostLayerAllocations
-                    .IgnoreQueryFilters()
-                    .AsNoTracking()
-                    .Where(x =>
-                        x.StoreId == fixture.StoreId
-                        && documentValuationIds.Contains(
-                            x.InventoryValuationEntryId))
-                    .OrderBy(x => x.Id)
-                    .Select(x => x.Id)
-                    .ToArrayAsync(ct);
-
         return new RelationalInventorySnapshot(
             document,
-            transactionIds,
-            valuationIds,
+            transactions,
+            valuations,
             layers,
-            allocationIds,
-            balances,
-            documentTransactionIds,
-            documentValuationIds,
-            documentLayerIds,
-            documentAllocationIds);
+            allocations,
+            balances);
+    }
+
+    private static async Task<RelationalInventorySnapshot>
+        ApproveAndAssertSuccessfulAdjustmentAsync(
+            InventoryPostingLocalDb database,
+            RelationalAdjustmentFixture fixture,
+            RelationalInventorySnapshot before,
+            string approvalNote,
+            CancellationToken ct)
+    {
+        var events = new List<string>();
+        RealMovementFailureDecorator? movements = null;
+        var startedAtUtc = DateTime.UtcNow;
+
+        await using (var posting =
+                     database.CreateTenantContext(fixture.StoreId))
+        {
+            movements = new RealMovementFailureDecorator(
+                CreateRealMovementService(posting),
+                failOnCreateCall: null,
+                events);
+            var unitOfWork = new RecordingUnitOfWork(
+                events,
+                new UnitOfWork(posting));
+            var service = CreateRealAdjustmentService(
+                posting,
+                movements,
+                unitOfWork);
+
+            var result = await service.ApproveAsync(
+                new ApproveInventoryAdjustmentDocumentRequest
+                {
+                    Id = fixture.DocumentId,
+                    ApprovalNote = approvalNote
+                },
+                ct);
+
+            result.Id.Should().Be(fixture.DocumentId);
+            result.Status.Should().Be(
+                InventoryAdjustmentDocumentStatus.Approved);
+            posting.Database.CurrentTransaction.Should().BeNull();
+        }
+
+        var completedAtUtc = DateTime.UtcNow;
+        using var assertionScope = new AssertionScope();
+        movements.Should().NotBeNull();
+        movements!.PreLockCallCount.Should().Be(1);
+        movements.CreateCallCount.Should().Be(2);
+        movements.DelegatedCreateCallCount.Should().Be(2);
+        movements.Requests.Should().HaveCount(2);
+        movements.Results.Should().HaveCount(2);
+        movements.Results.Should().OnlyContain(x => x.IsCreated);
+        movements.Results.Should().OnlyContain(x => !x.IsSkipped);
+        movements.PreLockedKeys.Should().Equal(
+            fixture.VariantIds
+                .OrderBy(x => x)
+                .Select(x => new InventoryPostingLockKey(
+                    fixture.StoreId,
+                    fixture.WarehouseId,
+                    x)));
+        events.Should().Equal(
+            "begin",
+            "prelock",
+            $"create line {fixture.LineIds[0]}",
+            $"create line {fixture.LineIds[1]}",
+            "save",
+            "commit");
+        events.Should().NotContain("rollback");
+
+        var after = await CaptureRelationalSnapshotAsync(
+            database,
+            fixture,
+            ct);
+        AssertSuccessfulAdjustmentPersistence(
+            before,
+            after,
+            fixture,
+            movements.Requests,
+            movements.Results,
+            approvalNote,
+            startedAtUtc,
+            completedAtUtc);
+        await AssertExactlyOneDocumentMovementPerLineAsync(
+            database,
+            fixture,
+            ct);
+
+        return after;
+    }
+
+    private static void AssertSuccessfulAdjustmentPersistence(
+        RelationalInventorySnapshot before,
+        RelationalInventorySnapshot after,
+        RelationalAdjustmentFixture fixture,
+        IReadOnlyList<CreateInventoryMovementRequest> requests,
+        IReadOnlyList<InventoryMovementResultDto> results,
+        string approvalNote,
+        DateTime startedAtUtc,
+        DateTime completedAtUtc)
+    {
+        before.Document.Status.Should().Be(
+            InventoryAdjustmentDocumentStatus.PendingApproval);
+        before.Document.ApprovalNote.Should().BeNull();
+        before.Document.ApprovedAtUtc.Should().BeNull();
+        before.Document.ApprovedByUserId.Should().BeNull();
+        before.Document.RejectedAtUtc.Should().BeNull();
+        before.Document.RejectedByUserId.Should().BeNull();
+        before.Document.CancelledAtUtc.Should().BeNull();
+        before.Document.CancelledByUserId.Should().BeNull();
+
+        var newTransactions = GetNewRecords(
+            before.Transactions,
+            after.Transactions,
+            x => x.Id);
+        var newValuations = GetNewRecords(
+            before.Valuations,
+            after.Valuations,
+            x => x.Id);
+        var newLayers = GetNewRecords(
+            before.Layers,
+            after.Layers,
+            x => x.Id);
+        var newAllocations = GetNewRecords(
+            before.Allocations,
+            after.Allocations,
+            x => x.Id);
+
+        newTransactions.Should().HaveCount(2,
+            "every new transaction is inspected before identity filtering");
+        newValuations.Should().HaveCount(2);
+        newTransactions.Select(x => x.ReferenceLineId)
+            .Should().BeEquivalentTo(
+                fixture.LineIds.Cast<int?>());
+        newTransactions.Select(x => Convert.ToHexString(
+                x.IdempotencyKey
+                ?? throw new InvalidOperationException(
+                    "A durable transaction must have an idempotency key.")))
+            .Should().OnlyHaveUniqueItems();
+
+        for (var index = 0; index < fixture.LineIds.Count; index++)
+        {
+            var lineId = fixture.LineIds[index];
+            var variantId = fixture.VariantIds[index];
+            var quantity = fixture.LineQuantities[index];
+            var unitCost = fixture.UnitCosts[index];
+            var signedQuantity = fixture.AdjustmentType
+                == InventoryTransactionType.AdjustmentIncrease
+                    ? quantity
+                    : -quantity;
+            var request = requests[index];
+            var result = results[index];
+            var beforeBalance = before.Balances.Single(
+                x => x.ProductVariantId == variantId);
+            var transaction = newTransactions.Single(
+                x => x.ReferenceLineId == lineId);
+            var expectedAfterQty =
+                beforeBalance.OnHandQty + signedQuantity;
+            var expectedValueChange =
+                signedQuantity * unitCost;
+            var expectedAfterValue =
+                beforeBalance.InventoryValue + expectedValueChange;
+            var expectedAverage =
+                expectedAfterValue / expectedAfterQty;
+
+            beforeBalance.StoreId.Should().Be(fixture.StoreId);
+            beforeBalance.WarehouseId.Should().Be(
+                fixture.WarehouseId);
+            beforeBalance.OnHandQty.Should().Be(
+                fixture.SeedQuantities[index]);
+            beforeBalance.InventoryValue.Should().Be(
+                fixture.SeedQuantities[index] * unitCost);
+            beforeBalance.AverageUnitCost.Should().Be(unitCost);
+
+            request.WarehouseId.Should().Be(fixture.WarehouseId);
+            request.ProductVariantId.Should().Be(variantId);
+            request.QuantityChange.Should().Be(signedQuantity);
+            request.TransactionType.Should().Be(
+                fixture.AdjustmentType);
+            request.ReferenceType.Should().Be(
+                InventoryReferenceType.Adjustment);
+            request.ReferenceId.Should().Be(
+                fixture.InvariantDocumentId);
+            request.ReferenceLineId.Should().Be(lineId);
+            request.ReferenceSubKey.Should().BeNull();
+            request.SkipIfExists.Should().BeTrue();
+            if (fixture.AdjustmentType
+                == InventoryTransactionType.AdjustmentIncrease)
+            {
+                request.UnitCost.Should().Be(unitCost);
+            }
+            else
+            {
+                request.UnitCost.Should().BeNull();
+                request.ProvisionalUnitCost.Should().Be(unitCost);
+            }
+
+            transaction.StoreId.Should().Be(fixture.StoreId);
+            transaction.WarehouseId.Should().Be(
+                fixture.WarehouseId);
+            transaction.ProductVariantId.Should().Be(variantId);
+            transaction.TransactionType.Should().Be(
+                fixture.AdjustmentType);
+            transaction.ReferenceType.Should().Be(
+                InventoryReferenceType.Adjustment);
+            transaction.ReferenceId.Should().Be(
+                fixture.InvariantDocumentId);
+            transaction.ReferenceLineId.Should().Be(lineId);
+            transaction.ReferenceSubKey.Should().BeNull();
+            transaction.QuantityChange.Should().Be(signedQuantity);
+            transaction.BeforeQty.Should().Be(
+                beforeBalance.OnHandQty);
+            transaction.AfterQty.Should().Be(expectedAfterQty);
+            transaction.UnitCostSnapshot.Should().Be(unitCost);
+            transaction.TotalCost.Should().Be(expectedValueChange);
+            transaction.BeforeInventoryValue.Should().Be(
+                beforeBalance.InventoryValue);
+            transaction.AfterInventoryValue.Should().Be(
+                expectedAfterValue);
+            transaction.RunningAverageUnitCostAfter.Should().Be(
+                expectedAverage);
+            transaction.CostSourceType.Should().Be(
+                InventoryCostSourceType.Manual);
+            transaction.IsProvisionalCost.Should().BeFalse();
+            transaction.CostFinalizedAtUtc.Should().Be(
+                request.OccurredAtUtc);
+            transaction.OccurredAtUtc.Should().Be(
+                request.OccurredAtUtc);
+            transaction.Note.Should().Be(request.Note);
+            transaction.IdempotencyKey.Should().NotBeNull();
+            transaction.IdempotencyKey.Should().HaveCount(32);
+            transaction.IsDeleted.Should().BeFalse();
+
+            result.InventoryTransactionId.Should().Be(
+                transaction.Id);
+            result.InventoryValuationEntryIds.Should()
+                .ContainSingle();
+            result.BeforeQty.Should().Be(beforeBalance.OnHandQty);
+            result.QuantityChange.Should().Be(signedQuantity);
+            result.AfterQty.Should().Be(expectedAfterQty);
+            result.BeforeValue.Should().Be(
+                beforeBalance.InventoryValue);
+            result.ValueChange.Should().Be(expectedValueChange);
+            result.AfterValue.Should().Be(expectedAfterValue);
+            result.AfterAverageCost.Should().Be(expectedAverage);
+            result.HasProvisionalValuation.Should().BeFalse();
+
+            var valuation = newValuations.Single(
+                x => x.InventoryTransactionId == transaction.Id);
+            valuation.Id.Should().Be(
+                result.InventoryValuationEntryIds.Single());
+            valuation.StoreId.Should().Be(fixture.StoreId);
+            valuation.WarehouseId.Should().Be(
+                fixture.WarehouseId);
+            valuation.ProductVariantId.Should().Be(variantId);
+            valuation.EntryType.Should().Be(
+                fixture.AdjustmentType
+                    == InventoryTransactionType.AdjustmentIncrease
+                        ? InventoryValuationEntryType.Inbound
+                        : InventoryValuationEntryType.Outbound);
+            valuation.ReferenceType.Should().Be(
+                InventoryReferenceType.Adjustment);
+            valuation.ReferenceId.Should().Be(
+                fixture.InvariantDocumentId);
+            valuation.ReferenceLineId.Should().Be(lineId);
+            valuation.Quantity.Should().Be(signedQuantity);
+            valuation.UnitCost.Should().Be(unitCost);
+            valuation.Amount.Should().Be(expectedValueChange);
+            valuation.RunningQtyAfter.Should().Be(expectedAfterQty);
+            valuation.RunningValueAfter.Should().Be(
+                expectedAfterValue);
+            valuation.RunningAverageUnitCostAfter.Should().Be(
+                expectedAverage);
+            valuation.CostSourceType.Should().Be(
+                InventoryCostSourceType.Manual);
+            valuation.IsProvisional.Should().BeFalse();
+            valuation.CostFinalizedAtUtc.Should().Be(
+                request.OccurredAtUtc);
+            valuation.RevaluationOfEntryId.Should().BeNull();
+            valuation.SourceValuationEntryId.Should().BeNull();
+            valuation.SourceReferenceSubKey.Should().BeNull();
+            valuation.Note.Should().Be(request.Note);
+            valuation.OccurredAtUtc.Should().Be(
+                request.OccurredAtUtc);
+            valuation.IsDeleted.Should().BeFalse();
+
+            var afterBalance = after.Balances.Single(
+                x => x.ProductVariantId == variantId);
+            afterBalance.StoreId.Should().Be(fixture.StoreId);
+            afterBalance.WarehouseId.Should().Be(
+                fixture.WarehouseId);
+            afterBalance.OnHandQty.Should().Be(expectedAfterQty);
+            afterBalance.ReservedQty.Should().Be(
+                beforeBalance.ReservedQty);
+            afterBalance.InventoryValue.Should().Be(
+                expectedAfterValue);
+            afterBalance.AverageUnitCost.Should().Be(
+                expectedAverage);
+            afterBalance.LastValuationAtUtc.Should().Be(
+                request.OccurredAtUtc);
+            afterBalance.IsDeleted.Should().BeFalse();
+
+            var sourceLayer = before.Layers.Single(
+                x => x.ProductVariantId == variantId);
+            if (fixture.AdjustmentType
+                == InventoryTransactionType.AdjustmentIncrease)
+            {
+                var createdLayer = newLayers.Single(
+                    x => x.InventoryTransactionId
+                        == transaction.Id);
+                createdLayer.StoreId.Should().Be(fixture.StoreId);
+                createdLayer.WarehouseId.Should().Be(
+                    fixture.WarehouseId);
+                createdLayer.ProductVariantId.Should().Be(
+                    variantId);
+                createdLayer.InventoryValuationEntryId.Should()
+                    .Be(valuation.Id);
+                createdLayer.ReferenceType.Should().Be(
+                    InventoryReferenceType.Adjustment);
+                createdLayer.ReferenceId.Should().Be(
+                    fixture.InvariantDocumentId);
+                createdLayer.ReferenceLineId.Should().Be(lineId);
+                createdLayer.ReferenceSubKey.Should().BeNull();
+                createdLayer.OriginalQuantity.Should().Be(quantity);
+                createdLayer.RemainingQuantity.Should().Be(quantity);
+                createdLayer.ResolvedProvisionalQty.Should().Be(0m);
+                createdLayer.RemainingOpenProvisionalQty.Should()
+                    .Be(quantity);
+                createdLayer.UnitCost.Should().Be(unitCost);
+                createdLayer.IsProvisionalSource.Should().BeFalse();
+                createdLayer.OccurredAtUtc.Should().Be(
+                    request.OccurredAtUtc);
+                createdLayer.Note.Should().Be(request.Note);
+                createdLayer.IsDeleted.Should().BeFalse();
+                valuation.InventoryCostLayerId.Should().Be(
+                    createdLayer.Id);
+                valuation.ReferenceSubKey.Should().BeNull();
+                after.Layers.Single(x => x.Id == sourceLayer.Id)
+                    .Should().BeEquivalentTo(sourceLayer);
+                afterBalance.LastInboundUnitCost.Should().Be(
+                    unitCost);
+                afterBalance.LastInboundAtUtc.Should().Be(
+                    request.OccurredAtUtc);
+            }
+            else
+            {
+                newLayers.Should().BeEmpty();
+                var consumedLayer = after.Layers.Single(
+                    x => x.Id == sourceLayer.Id);
+                consumedLayer.RemainingQuantity.Should().Be(
+                    sourceLayer.RemainingQuantity - quantity);
+                consumedLayer.OriginalQuantity.Should().Be(
+                    sourceLayer.OriginalQuantity);
+                consumedLayer.UnitCost.Should().Be(unitCost);
+                consumedLayer.InventoryTransactionId.Should().Be(
+                    sourceLayer.InventoryTransactionId);
+                consumedLayer.InventoryValuationEntryId.Should().Be(
+                    sourceLayer.InventoryValuationEntryId);
+                valuation.InventoryCostLayerId.Should().Be(
+                    sourceLayer.Id);
+                valuation.ReferenceSubKey.Should().Be(
+                    $"LAYER:{sourceLayer.Id}:PART:1");
+                afterBalance.LastInboundUnitCost.Should().Be(
+                    beforeBalance.LastInboundUnitCost);
+                afterBalance.LastInboundAtUtc.Should().Be(
+                    beforeBalance.LastInboundAtUtc);
+
+                var allocation = newAllocations.Single(
+                    x => x.InventoryValuationEntryId
+                        == valuation.Id);
+                allocation.StoreId.Should().Be(fixture.StoreId);
+                allocation.InventoryCostLayerId.Should().Be(
+                    sourceLayer.Id);
+                allocation.ReverseOfAllocationId.Should().BeNull();
+                allocation.Quantity.Should().Be(quantity);
+                allocation.UnitCost.Should().Be(unitCost);
+                allocation.Amount.Should().Be(quantity * unitCost);
+                allocation.IsProvisional.Should().BeFalse();
+                allocation.IsResolved.Should().BeTrue();
+                allocation.ResolvedQuantity.Should().Be(quantity);
+                allocation.ResolvedAmount.Should().Be(
+                    quantity * unitCost);
+                allocation.ResolvedAtUtc.Should().Be(
+                    request.OccurredAtUtc);
+                allocation.ResolvedByInventoryCostLayerId.Should()
+                    .Be(sourceLayer.Id);
+                allocation.Note.Should().Be(
+                    $"FIFO consume layer {sourceLayer.Id}");
+                allocation.IsDeleted.Should().BeFalse();
+            }
+        }
+
+        after.Balances.Should().HaveCount(2);
+        after.Balances
+            .GroupBy(x => new
+            {
+                x.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId
+            })
+            .Should().OnlyContain(x => x.Count() == 1);
+        if (fixture.AdjustmentType
+            == InventoryTransactionType.AdjustmentIncrease)
+        {
+            newLayers.Should().HaveCount(2);
+            newAllocations.Should().BeEmpty();
+        }
+        else
+        {
+            newLayers.Should().BeEmpty();
+            newAllocations.Should().HaveCount(2);
+        }
+
+        after.Document.Status.Should().Be(
+            InventoryAdjustmentDocumentStatus.Approved);
+        after.Document.ApprovalNote.Should().Be(approvalNote);
+        after.Document.ApprovedAtUtc.Should().NotBeNull();
+        after.Document.ApprovedAtUtc.Should().BeOnOrAfter(
+            startedAtUtc);
+        after.Document.ApprovedAtUtc.Should().BeOnOrBefore(
+            completedAtUtc);
+        after.Document.ApprovedByUserId.Should().BeNull();
+        after.Document.SubmittedAtUtc.Should().Be(
+            before.Document.SubmittedAtUtc);
+        after.Document.SubmittedByUserId.Should().Be(
+            before.Document.SubmittedByUserId);
+        after.Document.RejectedAtUtc.Should().Be(
+            before.Document.RejectedAtUtc);
+        after.Document.RejectedByUserId.Should().Be(
+            before.Document.RejectedByUserId);
+        after.Document.CancelledAtUtc.Should().Be(
+            before.Document.CancelledAtUtc);
+        after.Document.CancelledByUserId.Should().Be(
+            before.Document.CancelledByUserId);
+    }
+
+    private static IReadOnlyList<T> GetNewRecords<T>(
+        IReadOnlyList<T> before,
+        IReadOnlyList<T> after,
+        Func<T, int> getId)
+    {
+        var beforeIds = before
+            .Select(getId)
+            .ToHashSet();
+        return after
+            .Where(x => !beforeIds.Contains(getId(x)))
+            .ToArray();
     }
 
     private static void AssertRelationalSnapshotUnchanged(
@@ -2148,7 +2337,8 @@ public sealed class InventoryNonPosPostingContractTests
     private static InventoryAdjustmentDocumentService
         CreateRealAdjustmentService(
             AppDbContext db,
-            IInventoryMovementService movements)
+            IInventoryMovementService movements,
+            IUnitOfWork unitOfWork)
         => new(
             new InventoryAdjustmentDocumentRepository(db),
             new WarehouseRepository(db),
@@ -2159,7 +2349,7 @@ public sealed class InventoryNonPosPostingContractTests
             movements,
             new InventoryMovementFactory(),
             new InventoryMovementNoteBuilder(),
-            new UnitOfWork(db),
+            unitOfWork,
             null!);
 
     private static InventoryMovementService CreateService(
@@ -2353,8 +2543,6 @@ public sealed class InventoryNonPosPostingContractTests
         var decreaseReferenceArgumentIsDocumentReference = false;
         var increaseCalls = new List<InvocationExpressionSyntax>();
         var decreaseCalls = new List<InvocationExpressionSyntax>();
-        var twoStageFlow =
-            TwoStageFlowContractResult.Empty;
 
         if (approveMethods.Count == 1
             && approveMethods[0].Body is { } approveBody)
@@ -2567,11 +2755,6 @@ public sealed class InventoryNonPosPostingContractTests
                     "DocumentReferenceUseCount");
             }
 
-            twoStageFlow = ValidateTwoStagePostingFlow(
-                approveMethod,
-                increaseCalls,
-                decreaseCalls,
-                violations);
         }
         else
         {
@@ -2613,23 +2796,7 @@ public sealed class InventoryNonPosPostingContractTests
             increaseCalls.Count,
             decreaseCalls.Count,
             increaseReferenceArgumentIsDocumentReference,
-            decreaseReferenceArgumentIsDocumentReference,
-            twoStageFlow.ConstructionLoopCount,
-            twoStageFlow.MovementRequestAddCount,
-            twoStageFlow.PreLockCallCount,
-            twoStageFlow.PostingLoopCount,
-            twoStageFlow.PostingCallCount,
-            twoStageFlow.TransactionTryCount,
-            twoStageFlow.ConstructionLoopIsDirectStatement,
-            twoStageFlow.MovementRequestAddIsDirectStatement,
-            twoStageFlow.PreLockIsDirectStatement,
-            twoStageFlow.PreLockHasAwaitShape,
-            twoStageFlow.PostingLoopIsDirectStatement,
-            twoStageFlow.PostingCreateIsDirectStatement,
-            twoStageFlow.PostingCreateHasAwaitShape,
-            twoStageFlow.ProtectedOrderingIsValid,
-            twoStageFlow.ConstructionFlowIsValid,
-            twoStageFlow.PostingFlowIsValid);
+            decreaseReferenceArgumentIsDocumentReference);
     }
 
     private static IReadOnlyList<MethodDeclarationSyntax>
@@ -2831,29 +2998,16 @@ public sealed class InventoryNonPosPostingContractTests
             AddViolation(violations, violation);
             AddViolation(
                 violations,
-                $"{callPrefix}FactoryFlowShape");
+                $"{callPrefix}FactoryCallShape");
             return false;
         }
 
         var call = rootCalls[0];
         var arguments = call.ArgumentList.Arguments;
-        var assignment = call.Parent
-            as AssignmentExpressionSyntax;
         var hasExpectedReceiver =
             HasExactReceiver(
                 call,
                 "_inventoryMovementFactory");
-        var hasExpectedAssignmentShape =
-            assignment is not null
-            && assignment.IsKind(
-                SyntaxKind.SimpleAssignmentExpression)
-            && assignment.Right == call
-            && assignment.Left
-                is IdentifierNameSyntax
-                {
-                    Identifier.ValueText: "movementRequest"
-                }
-            && assignment.Parent is ExpressionStatementSyntax;
         var hasExpectedArgumentShape =
             arguments.Count == expectedArgumentCount
             && arguments.All(x => x.NameColon is null)
@@ -2864,14 +3018,16 @@ public sealed class InventoryNonPosPostingContractTests
                     Identifier.ValueText: "documentReferenceId"
                 };
 
-        if (!hasExpectedReceiver
-            || !hasExpectedAssignmentShape
-            || !hasExpectedArgumentShape)
+        if (!hasExpectedReceiver || !hasExpectedArgumentShape)
         {
-            AddViolation(violations, violation);
+            if (!hasExpectedArgumentShape)
+            {
+                AddViolation(violations, violation);
+            }
+
             AddViolation(
                 violations,
-                $"{callPrefix}FactoryFlowShape");
+                $"{callPrefix}FactoryCallShape");
             return false;
         }
 
@@ -2925,851 +3081,6 @@ public sealed class InventoryNonPosPostingContractTests
         return node.AncestorsAndSelf().Contains(approveMethod);
     }
 
-    private static bool IsDirectStatementInBlock(
-        StatementSyntax statement,
-        BlockSyntax expectedBlock)
-        => statement.Parent == expectedBlock;
-
-    private static ExpressionStatementSyntax?
-        GetContainingExpressionStatement(
-            InvocationExpressionSyntax? invocation)
-        => invocation?
-            .Ancestors()
-            .OfType<ExpressionStatementSyntax>()
-            .FirstOrDefault();
-
-    private static bool HasAwaitExpressionStatementShape(
-        InvocationExpressionSyntax? invocation)
-        => invocation?.Parent
-            is AwaitExpressionSyntax awaitExpression
-            && awaitExpression.Expression == invocation
-            && awaitExpression.Parent
-                is ExpressionStatementSyntax statement
-            && statement.Expression == awaitExpression;
-
-    private static TwoStageFlowContractResult
-        ValidateTwoStagePostingFlow(
-            MethodDeclarationSyntax approveMethod,
-            IReadOnlyList<InvocationExpressionSyntax> increaseCalls,
-            IReadOnlyList<InvocationExpressionSyntax> decreaseCalls,
-            List<string> violations)
-    {
-        var approveBody = approveMethod.Body
-            ?? throw new InvalidOperationException(
-                "ApproveAsync must have a block body.");
-        var rootForeachStatements = approveMethod
-            .DescendantNodes()
-            .OfType<ForEachStatementSyntax>()
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .ToList();
-        var constructionLoops = rootForeachStatements
-            .Where(x => x.Identifier.ValueText == "line")
-            .Where(x => IsDocumentLinesExpression(x.Expression))
-            .ToList();
-        if (constructionLoops.Count != 1)
-        {
-            AddViolation(violations, "ConstructionLoopCount");
-        }
-
-        var constructionLoop = constructionLoops.Count == 1
-            ? constructionLoops[0]
-            : null;
-        var constructionLoopIsDirectStatement =
-            constructionLoop is not null
-            && IsDirectStatementInBlock(
-                constructionLoop,
-                approveBody);
-        if (!constructionLoopIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "ConstructionLoopDirectStatement");
-        }
-
-        var postingCandidates = rootForeachStatements
-            .Where(x => x.Identifier.ValueText
-                == "movementRequest")
-            .ToList();
-        if (postingCandidates.Count != 1)
-        {
-            AddViolation(violations, "PostingLoopCount");
-        }
-
-        var postingLoop = postingCandidates.Count == 1
-            ? postingCandidates[0]
-            : null;
-        var postingCollectionIsValid =
-            postingLoop?.Expression
-                is IdentifierNameSyntax
-                {
-                    Identifier.ValueText: "movementRequests"
-                };
-        if (!postingCollectionIsValid)
-        {
-            AddViolation(violations, "PostingCollection");
-        }
-
-        var movementRequestsDeclarators = approveMethod
-            .DescendantNodes()
-            .OfType<VariableDeclaratorSyntax>()
-            .Where(x => x.Identifier.ValueText
-                == "movementRequests")
-            .ToList();
-        var movementRequestsDesignations = approveMethod
-            .DescendantNodes()
-            .OfType<SingleVariableDesignationSyntax>()
-            .Where(x => x.Identifier.ValueText
-                == "movementRequests")
-            .ToList();
-        var movementRequestsDeclarationIsValid =
-            movementRequestsDeclarators.Count == 1
-            && movementRequestsDesignations.Count == 0
-            && movementRequestsDeclarators[0].Parent
-                is VariableDeclarationSyntax
-                {
-                    Type:
-                        IdentifierNameSyntax
-                        {
-                            Identifier.ValueText: "var"
-                        }
-                } collectionDeclaration
-            && collectionDeclaration.Variables.Count == 1
-            && collectionDeclaration.Parent
-                is LocalDeclarationStatementSyntax
-                {
-                    Parent: BlockSyntax collectionBlock
-                }
-            && collectionBlock == approveMethod.Body
-            && IsExpectedMovementRequestsCreation(
-                movementRequestsDeclarators[0]
-                    .Initializer?.Value);
-        if (!movementRequestsDeclarationIsValid)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestsDeclaration");
-        }
-
-        var rootIncreaseCalls = increaseCalls
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .ToList();
-        var rootDecreaseCalls = decreaseCalls
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .ToList();
-        var increaseAssignment = rootIncreaseCalls.Count == 1
-            ? rootIncreaseCalls[0].Parent
-                as AssignmentExpressionSyntax
-            : null;
-        var decreaseAssignment = rootDecreaseCalls.Count == 1
-            ? rootDecreaseCalls[0].Parent
-                as AssignmentExpressionSyntax
-            : null;
-        var increaseAssignmentIsValid =
-            IsMovementRequestFactoryAssignment(
-                increaseAssignment,
-                rootIncreaseCalls.SingleOrDefault());
-        var decreaseAssignmentIsValid =
-            IsMovementRequestFactoryAssignment(
-                decreaseAssignment,
-                rootDecreaseCalls.SingleOrDefault());
-        if (!increaseAssignmentIsValid)
-        {
-            AddViolation(
-                violations,
-                "IncreaseFactoryFlowShape");
-        }
-
-        if (!decreaseAssignmentIsValid)
-        {
-            AddViolation(
-                violations,
-                "DecreaseFactoryFlowShape");
-        }
-
-        var sharedSelectionIfs =
-            constructionLoop is null
-                || rootIncreaseCalls.Count != 1
-                || rootDecreaseCalls.Count != 1
-                ? []
-                : constructionLoop
-                    .DescendantNodes()
-                    .OfType<IfStatementSyntax>()
-                    .Where(x => IsInRootApproveExecutableScope(
-                        x,
-                        approveMethod))
-                    .Where(x => x.Else is not null)
-                    .Where(x => x.Statement.Span.Contains(
-                        rootIncreaseCalls[0].Span))
-                    .Where(x => x.Else!.Statement.Span.Contains(
-                        rootDecreaseCalls[0].Span))
-                    .ToList();
-        if (sharedSelectionIfs.Count != 1)
-        {
-            AddViolation(
-                violations,
-                "FactorySelectionIfElse");
-        }
-
-        var sharedSelectionIf =
-            sharedSelectionIfs.Count == 1
-                ? sharedSelectionIfs[0]
-                : null;
-        var movementRequestDeclarators =
-            constructionLoop?.DescendantNodes()
-                .OfType<VariableDeclaratorSyntax>()
-                .Where(x => x.Identifier.ValueText
-                    == "movementRequest")
-                .Where(x => IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod))
-                .ToList()
-            ?? [];
-        var movementRequestDeclarationIsValid =
-            movementRequestDeclarators.Count == 1
-            && movementRequestDeclarators[0].Initializer is null
-            && movementRequestDeclarators[0].Parent
-                is VariableDeclarationSyntax
-                {
-                    Type:
-                        IdentifierNameSyntax
-                        {
-                            Identifier.ValueText:
-                                "CreateInventoryMovementRequest"
-                        }
-                } requestDeclaration
-            && requestDeclaration.Variables.Count == 1
-            && requestDeclaration.Parent
-                is LocalDeclarationStatementSyntax
-                {
-                    Parent: BlockSyntax requestBlock
-                }
-            && requestBlock == constructionLoop?.Statement;
-        if (!movementRequestDeclarationIsValid)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestDeclaration");
-        }
-
-        var allInvocations = approveMethod
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .ToList();
-        var relevantAddCalls = allInvocations
-            .Where(x => GetInvokedMethodName(x) == "Add")
-            .Where(x => HasExactReceiver(
-                    x,
-                    "movementRequests")
-                || x.ArgumentList.Arguments.Any(
-                    argument => IsIdentifier(
-                        argument.Expression,
-                        "movementRequest")))
-            .ToList();
-        var rootConstructionAddCalls = relevantAddCalls
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .Where(x => constructionLoop is not null
-                && x.AncestorsAndSelf().Contains(
-                    constructionLoop))
-            .ToList();
-        if (relevantAddCalls.Count != 1
-            || rootConstructionAddCalls.Count != 1)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddCount");
-        }
-
-        if (relevantAddCalls.Any(x =>
-                !IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod)))
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddNestedScope");
-        }
-
-        var approvedAdd = rootConstructionAddCalls.Count == 1
-            ? rootConstructionAddCalls[0]
-            : null;
-        var addReceiver = approvedAdd?.Expression
-            is MemberAccessExpressionSyntax
-            {
-                Expression:
-                    IdentifierNameSyntax receiver
-            }
-            ? receiver
-            : null;
-        var addReceiverIsValid =
-            addReceiver?.Identifier.ValueText
-                == "movementRequests";
-        if (!addReceiverIsValid)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddReceiver");
-        }
-
-        var addArgument =
-            approvedAdd?.ArgumentList.Arguments.Count == 1
-            && approvedAdd.ArgumentList.Arguments[0]
-                .NameColon is null
-            && approvedAdd.ArgumentList.Arguments[0]
-                .Expression
-                is IdentifierNameSyntax addArgumentIdentifier
-            ? addArgumentIdentifier
-            : null;
-        var addArgumentIsValid =
-            addArgument?.Identifier.ValueText
-                == "movementRequest";
-        if (!addArgumentIsValid)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddArgument");
-        }
-
-        var constructionBody =
-            constructionLoop?.Statement as BlockSyntax;
-        var addStatement = GetContainingExpressionStatement(
-            approvedAdd);
-        var movementRequestAddIsDirectStatement =
-            constructionBody is not null
-            && addStatement is not null
-            && IsDirectStatementInBlock(
-                addStatement,
-                constructionBody);
-        if (!movementRequestAddIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddDirectStatement");
-        }
-
-        var addFlowIsValid =
-            approvedAdd is not null
-            && sharedSelectionIf is not null
-            && movementRequestAddIsDirectStatement
-            && approvedAdd.SpanStart
-                > sharedSelectionIf.Span.End;
-        if (!addFlowIsValid)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestAddFlow");
-        }
-
-        var constructionRequestIdentifiers =
-            constructionLoop?.DescendantNodes()
-                .OfType<IdentifierNameSyntax>()
-                .Where(x => x.Identifier.ValueText
-                    == "movementRequest")
-                .ToList()
-            ?? [];
-        var nestedRequestIdentifiers =
-            constructionRequestIdentifiers
-                .Where(x => !IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod))
-                .ToList();
-        if (nestedRequestIdentifiers.Count != 0)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestNestedUse");
-        }
-
-        var requestWriteIdentifiers =
-            constructionRequestIdentifiers
-                .Where(IsWriteIdentifier)
-                .Where(x => IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod))
-                .ToList();
-        var expectedRequestWrites =
-            new[]
-            {
-                increaseAssignment?.Left
-                    as IdentifierNameSyntax,
-                decreaseAssignment?.Left
-                    as IdentifierNameSyntax
-            }
-            .Where(x => x is not null)
-            .Cast<IdentifierNameSyntax>()
-            .Select(x => x.Span)
-            .OrderBy(x => x.Start)
-            .ToList();
-        var actualRequestWrites =
-            requestWriteIdentifiers
-                .Select(x => x.Span)
-                .OrderBy(x => x.Start)
-                .ToList();
-        var requestReadIdentifiers =
-            constructionRequestIdentifiers
-                .Except(requestWriteIdentifiers)
-                .Where(x => IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod))
-                .ToList();
-        var expectedRequestReads =
-            addArgumentIsValid
-                ? new[] { addArgument!.Span }
-                : [];
-        if (!addArgumentIsValid
-            || expectedRequestWrites.Count != 2
-            || !actualRequestWrites.SequenceEqual(
-                expectedRequestWrites)
-            || requestReadIdentifiers.Count
-                != expectedRequestReads.Length
-            || !requestReadIdentifiers
-                .Select(x => x.Span)
-                .SequenceEqual(expectedRequestReads))
-        {
-            AddViolation(
-                violations,
-                "MovementRequestProvenance");
-        }
-
-        var preLockCalls = allInvocations
-            .Where(x => GetInvokedMethodName(x)
-                == "PreLockBalancesAsync")
-            .ToList();
-        var rootPreLockCalls = preLockCalls
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .ToList();
-        if (preLockCalls.Count != 1
-            || rootPreLockCalls.Count != 1)
-        {
-            AddViolation(violations, "PreLockCallCount");
-        }
-
-        var approvedPreLock =
-            rootPreLockCalls.Count == 1
-                ? rootPreLockCalls[0]
-                : null;
-        var preLockCollectionIdentifier =
-            GetExpectedPreLockCollectionIdentifier(
-                approvedPreLock);
-        var preLockShapeIsValid =
-            approvedPreLock is not null
-            && HasExactReceiver(
-                approvedPreLock,
-                "_inventoryMovementService")
-            && preLockCollectionIdentifier is not null;
-        if (!preLockShapeIsValid)
-        {
-            AddViolation(violations, "PreLockFlow");
-        }
-
-        var transactionTryCandidates =
-            FindTransactionTryCandidates(
-                approveMethod,
-                approvedPreLock,
-                postingLoop);
-        if (transactionTryCandidates.Count != 1)
-        {
-            AddViolation(
-                violations,
-                "TransactionTrySelection");
-        }
-
-        var transactionTry =
-            transactionTryCandidates.Count == 1
-                ? transactionTryCandidates[0]
-                : null;
-        var transactionTryIsDirectStatement =
-            transactionTry is not null
-            && IsDirectStatementInBlock(
-                transactionTry,
-                approveBody);
-        if (!transactionTryIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "TransactionTryDirectStatement");
-        }
-
-        var preLockStatement =
-            GetContainingExpressionStatement(
-                approvedPreLock);
-        var preLockIsDirectStatement =
-            transactionTry is not null
-            && preLockStatement is not null
-            && IsDirectStatementInBlock(
-                preLockStatement,
-                transactionTry.Block);
-        if (!preLockIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "PreLockDirectStatement");
-        }
-
-        var preLockHasAwaitShape =
-            HasAwaitExpressionStatementShape(
-                approvedPreLock);
-        if (!preLockHasAwaitShape)
-        {
-            AddViolation(
-                violations,
-                "PreLockAwaitShape");
-        }
-
-        var postingLoopIsDirectStatement =
-            transactionTry is not null
-            && postingLoop is not null
-            && IsDirectStatementInBlock(
-                postingLoop,
-                transactionTry.Block);
-        if (!postingLoopIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "PostingLoopDirectStatement");
-        }
-
-        var relevantPostingCalls =
-            allInvocations
-                .Where(x => GetInvokedMethodName(x)
-                    == "CreateAsync")
-                .Where(x => x.ArgumentList.Arguments.Count > 0)
-                .Where(x => IsIdentifier(
-                    x.ArgumentList.Arguments[0].Expression,
-                    "movementRequest"))
-                .ToList();
-        var postingCallsInLoop =
-            postingLoop is null
-                ? []
-                : relevantPostingCalls
-                    .Where(x => x.AncestorsAndSelf()
-                        .Contains(postingLoop))
-                    .ToList();
-        if (relevantPostingCalls.Count != 1
-            || postingCallsInLoop.Count != 1)
-        {
-            AddViolation(violations, "PostingCallCount");
-        }
-
-        if (relevantPostingCalls.Any(x =>
-                !IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod)))
-        {
-            AddViolation(
-                violations,
-                "PostingCallNestedScope");
-        }
-
-        var approvedPostingCall =
-            postingCallsInLoop.Count == 1
-                ? postingCallsInLoop[0]
-                : null;
-        var postingReceiverIsValid =
-            approvedPostingCall is not null
-            && HasExactReceiver(
-                approvedPostingCall,
-                "_inventoryMovementService");
-        if (!postingReceiverIsValid)
-        {
-            AddViolation(violations, "PostingReceiver");
-        }
-
-        var postingArgumentIsValid =
-            approvedPostingCall?.ArgumentList.Arguments
-                is { Count: 2 } postingArguments
-            && postingArguments.All(
-                argument => argument.NameColon is null)
-            && IsIdentifier(
-                postingArguments[0].Expression,
-                "movementRequest")
-            && IsIdentifier(
-                postingArguments[1].Expression,
-                "ct");
-        if (!postingArgumentIsValid)
-        {
-            AddViolation(violations, "PostingArgument");
-        }
-
-        var postingBody =
-            postingLoop?.Statement as BlockSyntax;
-        var postingCreateStatement =
-            GetContainingExpressionStatement(
-                approvedPostingCall);
-        var postingCreateIsDirectStatement =
-            postingBody is not null
-            && postingCreateStatement is not null
-            && IsDirectStatementInBlock(
-                postingCreateStatement,
-                postingBody);
-        if (!postingCreateIsDirectStatement)
-        {
-            AddViolation(
-                violations,
-                "PostingCreateDirectStatement");
-        }
-
-        var postingCreateHasAwaitShape =
-            HasAwaitExpressionStatementShape(
-                approvedPostingCall);
-        if (!postingCreateHasAwaitShape)
-        {
-            AddViolation(
-                violations,
-                "PostingCreateAwaitShape");
-        }
-
-        var protectedOrderingIsValid =
-            constructionLoopIsDirectStatement
-            && constructionLoop is not null
-            && preLockIsDirectStatement
-            && preLockStatement is not null
-            && postingLoopIsDirectStatement
-            && postingCreateIsDirectStatement
-            && postingCreateStatement is not null
-            && constructionLoop.Span.End
-                < preLockStatement.SpanStart
-            && preLockStatement.Span.End
-                < postingLoop!.SpanStart
-            && postingLoop.SpanStart
-                < postingCreateStatement.SpanStart;
-        if (!protectedOrderingIsValid)
-        {
-            AddViolation(violations, "PostingFlow");
-        }
-
-        var movementRequestsIdentifiers = approveMethod
-            .DescendantNodes()
-            .OfType<IdentifierNameSyntax>()
-            .Where(x => x.Identifier.ValueText
-                == "movementRequests")
-            .ToList();
-        var movementRequestsWrites =
-            movementRequestsIdentifiers
-                .Where(IsWriteIdentifier)
-                .ToList();
-        if (movementRequestsWrites.Count != 0
-            || movementRequestsDesignations.Count != 0)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestsWrite");
-        }
-
-        if (movementRequestsIdentifiers.Any(x =>
-                !IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod)))
-        {
-            AddViolation(
-                violations,
-                "MovementRequestsNestedUse");
-        }
-
-        var unexpectedCollectionMutations =
-            allInvocations
-                .Where(x => HasExactReceiver(
-                    x,
-                    "movementRequests"))
-                .Where(x => GetInvokedMethodName(x)
-                    is not "Add" and not "Select")
-                .ToList();
-        if (unexpectedCollectionMutations.Count != 0)
-        {
-            AddViolation(
-                violations,
-                "MovementRequestsMutation");
-        }
-
-        var postingCollectionIdentifier =
-            postingCollectionIsValid
-                ? (IdentifierNameSyntax)
-                    postingLoop!.Expression
-                : null;
-        var expectedCollectionReads =
-            new[]
-            {
-                addReceiverIsValid
-                    ? addReceiver
-                    : null,
-                preLockCollectionIdentifier,
-                postingCollectionIdentifier
-            }
-            .Where(x => x is not null)
-            .Cast<IdentifierNameSyntax>()
-            .Select(x => x.Span)
-            .OrderBy(x => x.Start)
-            .ToList();
-        var actualCollectionReads =
-            movementRequestsIdentifiers
-                .Except(movementRequestsWrites)
-                .Where(x => IsInRootApproveExecutableScope(
-                    x,
-                    approveMethod))
-                .Select(x => x.Span)
-                .OrderBy(x => x.Start)
-                .ToList();
-        if (expectedCollectionReads.Count != 3
-            || !actualCollectionReads.SequenceEqual(
-                expectedCollectionReads))
-        {
-            AddViolation(
-                violations,
-                "MovementRequestsUse");
-        }
-
-        var constructionFlowIsValid =
-            constructionLoop is not null
-            && constructionLoopIsDirectStatement
-            && movementRequestsDeclarationIsValid
-            && movementRequestDeclarationIsValid
-            && increaseAssignmentIsValid
-            && decreaseAssignmentIsValid
-            && sharedSelectionIf is not null
-            && approvedAdd is not null
-            && addReceiverIsValid
-            && addArgumentIsValid
-            && movementRequestAddIsDirectStatement
-            && addFlowIsValid
-            && actualRequestWrites.SequenceEqual(
-                expectedRequestWrites)
-            && requestReadIdentifiers.Count == 1;
-        var postingFlowIsValid =
-            postingLoop is not null
-            && postingCollectionIsValid
-            && preLockShapeIsValid
-            && transactionTryCandidates.Count == 1
-            && transactionTryIsDirectStatement
-            && preLockIsDirectStatement
-            && preLockHasAwaitShape
-            && postingLoopIsDirectStatement
-            && approvedPostingCall is not null
-            && postingReceiverIsValid
-            && postingArgumentIsValid
-            && postingCreateIsDirectStatement
-            && postingCreateHasAwaitShape
-            && protectedOrderingIsValid;
-
-        return new TwoStageFlowContractResult(
-            constructionLoops.Count,
-            rootConstructionAddCalls.Count,
-            rootPreLockCalls.Count,
-            postingCandidates.Count,
-            postingCallsInLoop.Count,
-            transactionTryCandidates.Count,
-            constructionLoopIsDirectStatement,
-            movementRequestAddIsDirectStatement,
-            preLockIsDirectStatement,
-            preLockHasAwaitShape,
-            postingLoopIsDirectStatement,
-            postingCreateIsDirectStatement,
-            postingCreateHasAwaitShape,
-            protectedOrderingIsValid,
-            constructionFlowIsValid,
-            postingFlowIsValid);
-    }
-
-    private static List<TryStatementSyntax>
-        FindTransactionTryCandidates(
-            MethodDeclarationSyntax approveMethod,
-            InvocationExpressionSyntax? preLockCall,
-            ForEachStatementSyntax? postingLoop)
-    {
-        if (preLockCall is null || postingLoop is null)
-        {
-            return [];
-        }
-
-        var approvedStatusAssignments = approveMethod
-            .DescendantNodes()
-            .OfType<AssignmentExpressionSyntax>()
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .Where(IsApprovedStatusAssignment)
-            .ToList();
-        var saveCalls = approveMethod
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .Where(x => IsExactUnitOfWorkCall(
-                x,
-                "SaveChangesAsync"))
-            .ToList();
-        var commitCalls = approveMethod
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .Where(x => IsExactUnitOfWorkCall(
-                x,
-                "CommitTransactionAsync"))
-            .ToList();
-        if (approvedStatusAssignments.Count != 1
-            || saveCalls.Count != 1
-            || commitCalls.Count != 1)
-        {
-            return [];
-        }
-
-        return approveMethod
-            .DescendantNodes()
-            .OfType<TryStatementSyntax>()
-            .Where(x => IsInRootApproveExecutableScope(
-                x,
-                approveMethod))
-            .Where(x => x.Block.Span.Contains(
-                preLockCall.Span))
-            .Where(x => x.Block.Span.Contains(
-                postingLoop.Span))
-            .Where(x => x.Block.Span.Contains(
-                approvedStatusAssignments[0].Span))
-            .Where(x => x.Block.Span.Contains(
-                saveCalls[0].Span))
-            .Where(x => x.Block.Span.Contains(
-                commitCalls[0].Span))
-            .ToList();
-    }
-
-    private static bool IsApprovedStatusAssignment(
-        AssignmentExpressionSyntax assignment)
-        => assignment.IsKind(
-                SyntaxKind.SimpleAssignmentExpression)
-            && IsMemberAccess(
-                assignment.Left,
-                "document",
-                "Status")
-            && IsMemberAccess(
-                assignment.Right,
-                "InventoryAdjustmentDocumentStatus",
-                "Approved");
-
-    private static bool IsExactUnitOfWorkCall(
-        InvocationExpressionSyntax invocation,
-        string methodName)
-        => GetInvokedMethodName(invocation) == methodName
-            && HasExactReceiver(
-                invocation,
-                "_unitOfWork")
-            && invocation.ArgumentList.Arguments.Count == 1
-            && invocation.ArgumentList.Arguments[0]
-                .NameColon is null
-            && IsIdentifier(
-                invocation.ArgumentList.Arguments[0].Expression,
-                "ct");
-
     private static bool IsDocumentLinesExpression(
         ExpressionSyntax expression)
         => expression
@@ -3786,129 +3097,6 @@ public sealed class InventoryNonPosPostingContractTests
                         Identifier.ValueText: "Lines"
                     }
             };
-
-    private static bool IsExpectedMovementRequestsCreation(
-        ExpressionSyntax? expression)
-        => expression
-            is ObjectCreationExpressionSyntax
-            {
-                Type:
-                    GenericNameSyntax
-                    {
-                        Identifier.ValueText: "List",
-                        TypeArgumentList.Arguments.Count: 1
-                    } generic,
-                ArgumentList.Arguments.Count: 0,
-                Initializer: null
-            }
-            && generic.TypeArgumentList.Arguments[0]
-                is IdentifierNameSyntax
-                {
-                    Identifier.ValueText:
-                        "CreateInventoryMovementRequest"
-                };
-
-    private static bool IsMovementRequestFactoryAssignment(
-        AssignmentExpressionSyntax? assignment,
-        InvocationExpressionSyntax? invocation)
-        => assignment is not null
-            && invocation is not null
-            && assignment.IsKind(
-                SyntaxKind.SimpleAssignmentExpression)
-            && assignment.Right == invocation
-            && assignment.Left
-                is IdentifierNameSyntax
-                {
-                    Identifier.ValueText: "movementRequest"
-                }
-            && assignment.Parent
-                is ExpressionStatementSyntax;
-
-    private static bool IsIdentifier(
-        ExpressionSyntax expression,
-        string identifier)
-        => expression
-            is IdentifierNameSyntax name
-            && name.Identifier.ValueText == identifier;
-
-    private static IdentifierNameSyntax?
-        GetExpectedPreLockCollectionIdentifier(
-            InvocationExpressionSyntax? preLockCall)
-    {
-        if (preLockCall is null
-            || preLockCall.ArgumentList.Arguments.Count != 2
-            || preLockCall.ArgumentList.Arguments.Any(
-                x => x.NameColon is not null)
-            || !IsIdentifier(
-                preLockCall.ArgumentList.Arguments[1].Expression,
-                "ct")
-            || preLockCall.ArgumentList.Arguments[0].Expression
-                is not InvocationExpressionSyntax
-                {
-                    Expression:
-                        MemberAccessExpressionSyntax
-                        {
-                            Expression:
-                                IdentifierNameSyntax collection,
-                            Name:
-                                IdentifierNameSyntax
-                                {
-                                    Identifier.ValueText: "Select"
-                                }
-                        },
-                    ArgumentList.Arguments.Count: 1
-                } selectCall
-            || collection.Identifier.ValueText
-                != "movementRequests"
-            || selectCall.ArgumentList.Arguments[0].Expression
-                is not SimpleLambdaExpressionSyntax
-                {
-                    Parameter.Identifier.ValueText: "movement",
-                    ExpressionBody:
-                        ObjectCreationExpressionSyntax
-                        {
-                            Type:
-                                IdentifierNameSyntax
-                                {
-                                    Identifier.ValueText:
-                                        "InventoryPostingLockKey"
-                                },
-                            ArgumentList.Arguments.Count: 3
-                        } lockKey
-                }
-            || !IsMemberAccess(
-                lockKey.ArgumentList.Arguments[0].Expression,
-                "document",
-                "StoreId")
-            || !IsMemberAccess(
-                lockKey.ArgumentList.Arguments[1].Expression,
-                "movement",
-                "WarehouseId")
-            || !IsMemberAccess(
-                lockKey.ArgumentList.Arguments[2].Expression,
-                "movement",
-                "ProductVariantId"))
-        {
-            return null;
-        }
-
-        return collection;
-    }
-
-    private static bool IsMemberAccess(
-        ExpressionSyntax expression,
-        string receiver,
-        string member)
-        => expression
-            is MemberAccessExpressionSyntax
-            {
-                Expression:
-                    IdentifierNameSyntax receiverIdentifier,
-                Name:
-                    IdentifierNameSyntax memberIdentifier
-            }
-            && receiverIdentifier.Identifier.ValueText == receiver
-            && memberIdentifier.Identifier.ValueText == member;
 
     private static void AddViolation(
         ICollection<string> violations,
@@ -4128,199 +3316,6 @@ public sealed class InventoryNonPosPostingContractTests
             + "_inventoryMovementFactory;");
     }
 
-    private static string BuildPostingServiceAlias(
-        string source)
-    {
-        var postingCall =
-            GetRequiredPostingCreateInvocation(source);
-        if (postingCall.Expression
-            is not MemberAccessExpressionSyntax member)
-        {
-            throw new InvalidOperationException(
-                "Expected member-access posting call.");
-        }
-
-        var mutated = ReplaceSourceSpan(
-            source,
-            member.Expression.Span,
-            "movementServiceAlias");
-        return InsertAfterDocumentReferenceDeclaration(
-            mutated,
-            "var movementServiceAlias = "
-            + "_inventoryMovementService;");
-    }
-
-    private static string HideMovementRequestAddInLambda(
-        string source)
-    {
-        var addCall = GetRequiredMovementRequestAddInvocation(
-            source);
-        var statement = addCall.Ancestors()
-            .OfType<ExpressionStatementSyntax>()
-            .First();
-
-        return ReplaceSourceSpan(
-            source,
-            statement.Span,
-            "Action hiddenAdd = () => "
-            + "movementRequests.Add(movementRequest);");
-    }
-
-    private static string WrapPostingCreateStatement(
-        string source,
-        string controlHeader)
-        => WrapStatement(
-            source,
-            GetContainingExpressionStatement(
-                GetRequiredPostingCreateInvocation(source))
-                ?? throw new InvalidOperationException(
-                    "Expected posting expression statement."),
-            controlHeader);
-
-    private static string WrapMovementRequestAddStatement(
-        string source,
-        string controlHeader)
-        => WrapStatement(
-            source,
-            GetContainingExpressionStatement(
-                GetRequiredMovementRequestAddInvocation(source))
-                ?? throw new InvalidOperationException(
-                    "Expected Add expression statement."),
-            controlHeader);
-
-    private static string WrapPreLockStatement(
-        string source,
-        string controlHeader)
-        => WrapStatement(
-            source,
-            GetContainingExpressionStatement(
-                GetRequiredPreLockInvocation(source))
-                ?? throw new InvalidOperationException(
-                    "Expected prelock expression statement."),
-            controlHeader);
-
-    private static string DropAwaitFromPostingCreate(
-        string source)
-        => DropAwaitFromInvocation(
-            source,
-            GetRequiredPostingCreateInvocation(source));
-
-    private static string DropAwaitFromPreLock(
-        string source)
-        => DropAwaitFromInvocation(
-            source,
-            GetRequiredPreLockInvocation(source));
-
-    private static string WrapPostingLoop(
-        string source,
-        string controlHeader)
-        => WrapStatement(
-            source,
-            GetRequiredPostingLoop(source),
-            controlHeader);
-
-    private static string WrapConstructionLoop(
-        string source,
-        string controlHeader)
-        => WrapStatement(
-            source,
-            GetRequiredConstructionLoop(source),
-            controlHeader);
-
-    private static string WrapPreLockStatementInSwitch(
-        string source)
-    {
-        var statement = GetContainingExpressionStatement(
-            GetRequiredPreLockInvocation(source))
-            ?? throw new InvalidOperationException(
-                "Expected prelock expression statement.");
-        var statementText = source[
-            statement.Span.Start..statement.Span.End];
-
-        return ReplaceSourceSpan(
-            source,
-            statement.Span,
-            "switch (document.Id)\n"
-            + "{\n"
-            + "    default:\n"
-            + statementText
-            + "\n        break;\n"
-            + "}");
-    }
-
-    private static string WrapStatement(
-        string source,
-        StatementSyntax statement,
-        string controlHeader)
-    {
-        var statementText = source[
-            statement.Span.Start..statement.Span.End];
-        return ReplaceSourceSpan(
-            source,
-            statement.Span,
-            controlHeader
-            + "\n{\n"
-            + statementText
-            + "\n}");
-    }
-
-    private static string DropAwaitFromInvocation(
-        string source,
-        InvocationExpressionSyntax invocation)
-    {
-        if (invocation.Parent
-            is not AwaitExpressionSyntax awaitExpression
-            || awaitExpression.Expression != invocation)
-        {
-            throw new InvalidOperationException(
-                "Expected directly awaited invocation.");
-        }
-
-        return ReplaceSourceSpan(
-            source,
-            awaitExpression.Span,
-            source[invocation.Span.Start..invocation.Span.End]);
-    }
-
-    private static string ReplaceMovementRequestAddArgument(
-        string source,
-        string replacement)
-    {
-        var addCall = GetRequiredMovementRequestAddInvocation(
-            source);
-        var argument = addCall.ArgumentList.Arguments.Single();
-        var statement = addCall.Ancestors()
-            .OfType<ExpressionStatementSyntax>()
-            .First();
-        var mutated = ReplaceSourceSpan(
-            source,
-            argument.Expression.Span,
-            replacement);
-
-        return mutated.Insert(
-            statement.SpanStart,
-            $"var {replacement} = movementRequest;\n");
-    }
-
-    private static string ReplacePostingCollection(
-        string source,
-        string replacement)
-    {
-        var postingLoop = GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<ForEachStatementSyntax>()
-            .Single(x => x.Identifier.ValueText
-                == "movementRequest");
-        var mutated = ReplaceSourceSpan(
-            source,
-            postingLoop.Expression.Span,
-            replacement);
-
-        return mutated.Insert(
-            postingLoop.SpanStart,
-            $"var {replacement} = movementRequests;\n");
-    }
-
     private static string ReplaceFactoryInvocationArgumentList(
         string source,
         string methodName,
@@ -4401,69 +3396,6 @@ public sealed class InventoryNonPosPostingContractTests
             .OfType<MethodDeclarationSyntax>()
             .Single(x => x.Identifier.ValueText
                 == "ApproveAsync");
-
-    private static ForEachStatementSyntax
-        GetRequiredConstructionLoop(
-            string source)
-        => GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<ForEachStatementSyntax>()
-            .Single(x => x.Identifier.ValueText == "line"
-                && IsDocumentLinesExpression(x.Expression));
-
-    private static ForEachStatementSyntax
-        GetRequiredPostingLoop(
-            string source)
-        => GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<ForEachStatementSyntax>()
-            .Single(x => x.Identifier.ValueText
-                == "movementRequest"
-                && IsIdentifier(
-                    x.Expression,
-                    "movementRequests"));
-
-    private static InvocationExpressionSyntax
-        GetRequiredMovementRequestAddInvocation(
-            string source)
-        => GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Single(x => GetInvokedMethodName(x) == "Add"
-                && HasExactReceiver(
-                    x,
-                    "movementRequests")
-                && x.ArgumentList.Arguments.Count == 1
-                && IsIdentifier(
-                    x.ArgumentList.Arguments[0].Expression,
-                    "movementRequest"));
-
-    private static InvocationExpressionSyntax
-        GetRequiredPreLockInvocation(
-            string source)
-        => GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Single(x => GetInvokedMethodName(x)
-                    == "PreLockBalancesAsync"
-                && HasExactReceiver(
-                    x,
-                    "_inventoryMovementService"));
-
-    private static InvocationExpressionSyntax
-        GetRequiredPostingCreateInvocation(
-            string source)
-        => GetRequiredApproveMethod(source)
-            .DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Single(x => GetInvokedMethodName(x) == "CreateAsync"
-                && HasExactReceiver(
-                    x,
-                    "_inventoryMovementService")
-                && x.ArgumentList.Arguments.Count == 2
-                && IsIdentifier(
-                    x.ArgumentList.Arguments[0].Expression,
-                    "movementRequest"));
 
     private static string BuildHiddenDurableLambdas(
         bool includeDecrease)
@@ -5020,8 +3952,12 @@ public sealed class InventoryNonPosPostingContractTests
         int StoreId,
         int WarehouseId,
         string InvariantDocumentId,
+        InventoryTransactionType AdjustmentType,
         IReadOnlyList<int> LineIds,
-        IReadOnlyList<int> VariantIds);
+        IReadOnlyList<int> VariantIds,
+        IReadOnlyList<decimal> LineQuantities,
+        IReadOnlyList<decimal> UnitCosts,
+        IReadOnlyList<decimal> SeedQuantities);
 
     private sealed record AdjustmentReferenceAstContractResult(
         IReadOnlyList<string> Violations,
@@ -5042,61 +3978,7 @@ public sealed class InventoryNonPosPostingContractTests
         int IncreaseCallCount,
         int DecreaseCallCount,
         bool IncreaseReferenceArgumentIsDocumentReference,
-        bool DecreaseReferenceArgumentIsDocumentReference,
-        int ConstructionLoopCount,
-        int MovementRequestAddCount,
-        int PreLockCallCount,
-        int PostingLoopCount,
-        int PostingCallCount,
-        int TransactionTryCount,
-        bool ConstructionLoopIsDirectStatement,
-        bool MovementRequestAddIsDirectStatement,
-        bool PreLockIsDirectStatement,
-        bool PreLockHasAwaitShape,
-        bool PostingLoopIsDirectStatement,
-        bool PostingCreateIsDirectStatement,
-        bool PostingCreateHasAwaitShape,
-        bool ProtectedOrderingIsValid,
-        bool ConstructionFlowIsValid,
-        bool PostingFlowIsValid);
-
-    private sealed record TwoStageFlowContractResult(
-        int ConstructionLoopCount,
-        int MovementRequestAddCount,
-        int PreLockCallCount,
-        int PostingLoopCount,
-        int PostingCallCount,
-        int TransactionTryCount,
-        bool ConstructionLoopIsDirectStatement,
-        bool MovementRequestAddIsDirectStatement,
-        bool PreLockIsDirectStatement,
-        bool PreLockHasAwaitShape,
-        bool PostingLoopIsDirectStatement,
-        bool PostingCreateIsDirectStatement,
-        bool PostingCreateHasAwaitShape,
-        bool ProtectedOrderingIsValid,
-        bool ConstructionFlowIsValid,
-        bool PostingFlowIsValid)
-    {
-        public static TwoStageFlowContractResult Empty { get; } =
-            new(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false);
-    }
+        bool DecreaseReferenceArgumentIsDocumentReference);
 
     private sealed record RelationalDocumentSnapshot(
         InventoryAdjustmentDocumentStatus Status,
@@ -5112,6 +3994,7 @@ public sealed class InventoryNonPosPostingContractTests
 
     private sealed record RelationalBalanceSnapshot(
         int Id,
+        int StoreId,
         int WarehouseId,
         int ProductVariantId,
         decimal OnHandQty,
@@ -5125,6 +4008,7 @@ public sealed class InventoryNonPosPostingContractTests
 
     private sealed record RelationalLayerSnapshot(
         int Id,
+        int StoreId,
         int WarehouseId,
         int ProductVariantId,
         int InventoryTransactionId,
@@ -5132,24 +4016,96 @@ public sealed class InventoryNonPosPostingContractTests
         InventoryReferenceType ReferenceType,
         string ReferenceId,
         int? ReferenceLineId,
+        string? ReferenceSubKey,
         decimal OriginalQuantity,
         decimal RemainingQuantity,
         decimal ResolvedProvisionalQty,
         decimal RemainingOpenProvisionalQty,
         decimal UnitCost,
+        bool IsProvisionalSource,
+        DateTime OccurredAtUtc,
+        string? Note,
+        bool IsDeleted);
+
+    private sealed record RelationalTransactionSnapshot(
+        int Id,
+        int StoreId,
+        int WarehouseId,
+        int ProductVariantId,
+        byte[]? IdempotencyKey,
+        InventoryTransactionType TransactionType,
+        InventoryReferenceType ReferenceType,
+        string? ReferenceId,
+        int? ReferenceLineId,
+        string? ReferenceSubKey,
+        decimal QuantityChange,
+        decimal BeforeQty,
+        decimal AfterQty,
+        decimal UnitCostSnapshot,
+        decimal TotalCost,
+        decimal BeforeInventoryValue,
+        decimal AfterInventoryValue,
+        decimal RunningAverageUnitCostAfter,
+        InventoryCostSourceType CostSourceType,
+        bool IsProvisionalCost,
+        DateTime? CostFinalizedAtUtc,
+        DateTime OccurredAtUtc,
+        string? Note,
+        bool IsDeleted);
+
+    private sealed record RelationalValuationSnapshot(
+        int Id,
+        int StoreId,
+        int InventoryTransactionId,
+        int WarehouseId,
+        int ProductVariantId,
+        InventoryValuationEntryType EntryType,
+        InventoryReferenceType ReferenceType,
+        string ReferenceId,
+        int? ReferenceLineId,
+        string? ReferenceSubKey,
+        decimal Quantity,
+        decimal UnitCost,
+        decimal Amount,
+        decimal RunningQtyAfter,
+        decimal RunningValueAfter,
+        decimal RunningAverageUnitCostAfter,
+        InventoryCostSourceType CostSourceType,
+        bool IsProvisional,
+        DateTime? CostFinalizedAtUtc,
+        int? RevaluationOfEntryId,
+        int? SourceValuationEntryId,
+        string? SourceReferenceSubKey,
+        int? InventoryCostLayerId,
+        string? Note,
+        DateTime OccurredAtUtc,
+        bool IsDeleted);
+
+    private sealed record RelationalAllocationSnapshot(
+        int Id,
+        int StoreId,
+        int InventoryValuationEntryId,
+        int? InventoryCostLayerId,
+        int? ReverseOfAllocationId,
+        decimal Quantity,
+        decimal UnitCost,
+        decimal Amount,
+        bool IsProvisional,
+        bool IsResolved,
+        decimal ResolvedQuantity,
+        decimal ResolvedAmount,
+        DateTime? ResolvedAtUtc,
+        int? ResolvedByInventoryCostLayerId,
+        string? Note,
         bool IsDeleted);
 
     private sealed record RelationalInventorySnapshot(
         RelationalDocumentSnapshot Document,
-        IReadOnlyList<int> TransactionIds,
-        IReadOnlyList<int> ValuationIds,
+        IReadOnlyList<RelationalTransactionSnapshot> Transactions,
+        IReadOnlyList<RelationalValuationSnapshot> Valuations,
         IReadOnlyList<RelationalLayerSnapshot> Layers,
-        IReadOnlyList<int> AllocationIds,
-        IReadOnlyList<RelationalBalanceSnapshot> Balances,
-        IReadOnlyList<int> DocumentTransactionIds,
-        IReadOnlyList<int> DocumentValuationIds,
-        IReadOnlyList<int> DocumentLayerIds,
-        IReadOnlyList<int> DocumentAllocationIds);
+        IReadOnlyList<RelationalAllocationSnapshot> Allocations,
+        IReadOnlyList<RelationalBalanceSnapshot> Balances);
 
     private sealed class FakeAdjustmentDocumentRepository(
         InventoryAdjustmentDocument document,
@@ -5207,7 +4163,8 @@ public sealed class InventoryNonPosPostingContractTests
 
     private sealed class RealMovementFailureDecorator(
         IInventoryMovementService inner,
-        int? failOnCreateCall)
+        int? failOnCreateCall,
+        List<string> events)
         : IInventoryMovementService
     {
         private int _preLockCalls;
@@ -5229,6 +4186,9 @@ public sealed class InventoryNonPosPostingContractTests
         public List<CreateInventoryMovementRequest> Requests { get; } =
             [];
 
+        public List<InventoryMovementResultDto> Results { get; } =
+            [];
+
         public InventoryMovementResultDto? FirstDelegatedResult
         {
             get;
@@ -5242,6 +4202,7 @@ public sealed class InventoryNonPosPostingContractTests
             Interlocked.Increment(ref _preLockCalls);
             var capturedKeys = keys.ToList();
             PreLockedKeys.AddRange(capturedKeys);
+            events.Add("prelock");
             await inner.PreLockBalancesAsync(capturedKeys, ct);
         }
 
@@ -5251,6 +4212,7 @@ public sealed class InventoryNonPosPostingContractTests
         {
             Requests.Add(request);
             var call = Interlocked.Increment(ref _createCalls);
+            events.Add($"create line {request.ReferenceLineId}");
             if (call == failOnCreateCall)
             {
                 throw new
@@ -5259,6 +4221,7 @@ public sealed class InventoryNonPosPostingContractTests
 
             Interlocked.Increment(ref _delegatedCreateCalls);
             var result = await inner.CreateAsync(request, ct);
+            Results.Add(result);
             if (call == 1)
             {
                 FirstDelegatedResult = result;
@@ -5325,35 +4288,48 @@ public sealed class InventoryNonPosPostingContractTests
             => throw new NotSupportedException();
     }
 
-    private sealed class RecordingUnitOfWork(List<string> events)
+    private sealed class RecordingUnitOfWork(
+        List<string> events,
+        IUnitOfWork? inner = null)
         : IUnitOfWork
     {
-        public Task BeginTransactionAsync(
+        public async Task BeginTransactionAsync(
             CancellationToken ct = default)
         {
             events.Add("begin");
-            return Task.CompletedTask;
+            if (inner is not null)
+            {
+                await inner.BeginTransactionAsync(ct);
+            }
         }
 
-        public Task CommitTransactionAsync(
+        public async Task CommitTransactionAsync(
             CancellationToken ct = default)
         {
             events.Add("commit");
-            return Task.CompletedTask;
+            if (inner is not null)
+            {
+                await inner.CommitTransactionAsync(ct);
+            }
         }
 
-        public Task RollbackTransactionAsync(
+        public async Task RollbackTransactionAsync(
             CancellationToken ct = default)
         {
             events.Add("rollback");
-            return Task.CompletedTask;
+            if (inner is not null)
+            {
+                await inner.RollbackTransactionAsync(ct);
+            }
         }
 
-        public Task<int> SaveChangesAsync(
+        public async Task<int> SaveChangesAsync(
             CancellationToken ct = default)
         {
             events.Add("save");
-            return Task.FromResult(1);
+            return inner is null
+                ? 1
+                : await inner.SaveChangesAsync(ct);
         }
     }
 
