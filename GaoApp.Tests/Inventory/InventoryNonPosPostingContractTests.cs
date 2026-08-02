@@ -215,6 +215,13 @@ public sealed class InventoryNonPosPostingContractTests
         result.DecreaseCallCount.Should().Be(1);
         result.IncreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
         result.DecreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
+        result.ConstructionLoopCount.Should().Be(1);
+        result.MovementRequestAddCount.Should().Be(1);
+        result.PreLockCallCount.Should().Be(1);
+        result.PostingLoopCount.Should().Be(1);
+        result.PostingCallCount.Should().Be(1);
+        result.ConstructionFlowIsValid.Should().BeTrue();
+        result.PostingFlowIsValid.Should().BeTrue();
     }
 
     [Theory]
@@ -478,6 +485,258 @@ public sealed class InventoryNonPosPostingContractTests
     }
 
     [Theory]
+    [MemberData(nameof(AdjustmentTwoStageFlowMutants))]
+    public void Adjustment_two_stage_contract_rejects_mutant(
+        string mutant,
+        string serviceSource,
+        string[] expectedViolations)
+    {
+        var factoryInterfaceSource =
+            ReadInventoryMovementFactoryInterfaceSource();
+        var baseline = AnalyzeAdjustmentReferenceAstContract(
+            ReadAdjustmentServiceSource(),
+            factoryInterfaceSource);
+        var result = AnalyzeAdjustmentReferenceAstContract(
+            serviceSource,
+            factoryInterfaceSource);
+
+        baseline.Violations.Should().BeEmpty(
+            because: $"{mutant} must start from the production baseline");
+        result.ServiceParseErrorCount.Should().Be(
+            0,
+            because: $"{mutant} must remain valid C# 12 syntax");
+        result.FactoryInterfaceParseErrorCount.Should().Be(0);
+        result.Violations.Should().NotBeEmpty();
+        foreach (var expectedViolation in expectedViolations)
+        {
+            result.Violations.Should().Contain(
+                expectedViolation,
+                because: $"{mutant} must fail for this exact contract rule");
+        }
+    }
+
+    public static IEnumerable<object[]>
+        AdjustmentTwoStageFlowMutants()
+    {
+        var source = ReadAdjustmentServiceSource();
+
+        yield return
+        [
+            "M16 alias standalone roots with durable lambdas",
+            BuildAliasStandaloneWithHiddenFactoryCalls(
+                source,
+                useLocalFunction: false),
+            new[]
+            {
+                "IncreaseCallCount",
+                "DecreaseCallCount",
+                "FactoryCallNestedExecutableScope",
+                "IncreaseFactoryReceiver",
+                "DecreaseFactoryReceiver",
+                "IncreaseFactoryArgumentCount",
+                "DecreaseFactoryArgumentCount",
+                "IncreaseFactoryFlowShape",
+                "DecreaseFactoryFlowShape",
+                "DocumentReferenceNestedUse",
+                "DocumentReferenceUseCount"
+            }
+        ];
+        yield return
+        [
+            "M17 alias standalone roots with durable local function",
+            BuildAliasStandaloneWithHiddenFactoryCalls(
+                source,
+                useLocalFunction: true),
+            new[]
+            {
+                "IncreaseCallCount",
+                "DecreaseCallCount",
+                "FactoryCallNestedExecutableScope",
+                "IncreaseFactoryReceiver",
+                "DecreaseFactoryReceiver",
+                "IncreaseFactoryArgumentCount",
+                "DecreaseFactoryArgumentCount",
+                "IncreaseFactoryFlowShape",
+                "DecreaseFactoryFlowShape"
+            }
+        ];
+        yield return
+        [
+            "M18 exact receiver standalone root with durable lambda",
+            BuildExactReceiverStandaloneWithHiddenDurableCall(
+                source),
+            new[]
+            {
+                "IncreaseCallCount",
+                "FactoryCallNestedExecutableScope",
+                "IncreaseFactoryArgumentCount",
+                "IncreaseFactoryFlowShape",
+                "DocumentReferenceNestedUse"
+            }
+        ];
+        yield return
+        [
+            "M19 alias durable construction call",
+            BuildAliasDurableFactoryCall(source),
+            new[]
+            {
+                "IncreaseFactoryReceiver",
+                "IncreaseFactoryFlowShape"
+            }
+        ];
+        yield return
+        [
+            "M20 hidden document reference read",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "Func<string> hiddenReferenceRead = "
+                + "() => documentReferenceId;"),
+            new[]
+            {
+                "DocumentReferenceNestedUse",
+                "DocumentReferenceUseCount"
+            }
+        ];
+        yield return
+        [
+            "M21 wrong request added",
+            ReplaceMovementRequestAddArgument(
+                source,
+                "alternateMovementRequest"),
+            new[]
+            {
+                "MovementRequestAddArgument",
+                "MovementRequestProvenance"
+            }
+        ];
+        yield return
+        [
+            "M22 wrong posting collection",
+            ReplacePostingCollection(
+                source,
+                "alternateMovementRequests"),
+            new[]
+            {
+                "PostingCollection",
+                "MovementRequestsUse"
+            }
+        ];
+        yield return
+        [
+            "M23 posting through movement-service alias",
+            BuildPostingServiceAlias(source),
+            new[]
+            {
+                "PostingReceiver"
+            }
+        ];
+        yield return
+        [
+            "M24 Add hidden inside lambda",
+            HideMovementRequestAddInLambda(source),
+            new[]
+            {
+                "MovementRequestAddCount",
+                "MovementRequestAddNestedScope",
+                "MovementRequestAddFlow",
+                "MovementRequestProvenance"
+            }
+        ];
+    }
+
+    [Fact]
+    public void Adjustment_reference_scope_classifier_distinguishes_root_and_nested_executable_nodes()
+    {
+        var productionRoot = ParseRequiredCompilationUnit(
+            ReadAdjustmentServiceSource());
+        var approveMethod = productionRoot
+            .DescendantNodes()
+            .OfType<MethodDeclarationSyntax>()
+            .Single(x => x.Identifier.ValueText == "ApproveAsync");
+        var rootForeachStatements = approveMethod
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        var constructionLoop = rootForeachStatements.Single(
+            x => IsDocumentLinesExpression(x.Expression));
+        var postingLoop = rootForeachStatements.Single(
+            x => x.Identifier.ValueText == "movementRequest");
+        var scopeRoot = ParseRequiredCompilationUnit(
+            """
+            class ScopeFixture
+            {
+                void ApproveAsync()
+                {
+                    Func<int> lambda = () => 1;
+                    Func<int, int> simple = value => value + 1;
+                    Func<int> anonymous = delegate { return 2; };
+                    int Local()
+                    {
+                        Func<int> nested = () => 3;
+                        return nested();
+                    }
+                }
+            }
+            """);
+        var scopeMethod = scopeRoot
+            .DescendantNodes()
+            .OfType<MethodDeclarationSyntax>()
+            .Single();
+        var lambda = scopeMethod
+            .DescendantNodes()
+            .OfType<ParenthesizedLambdaExpressionSyntax>()
+            .First();
+        var simpleLambda = scopeMethod
+            .DescendantNodes()
+            .OfType<SimpleLambdaExpressionSyntax>()
+            .Single();
+        var anonymousMethod = scopeMethod
+            .DescendantNodes()
+            .OfType<AnonymousMethodExpressionSyntax>()
+            .Single();
+        var localFunction = scopeMethod
+            .DescendantNodes()
+            .OfType<LocalFunctionStatementSyntax>()
+            .Single();
+        var nestedLambda = localFunction
+            .DescendantNodes()
+            .OfType<ParenthesizedLambdaExpressionSyntax>()
+            .Single();
+
+        IsInRootApproveExecutableScope(
+                constructionLoop,
+                approveMethod)
+            .Should().BeTrue();
+        IsInRootApproveExecutableScope(
+                postingLoop,
+                approveMethod)
+            .Should().BeTrue();
+        IsInRootApproveExecutableScope(
+                lambda.ExpressionBody!,
+                scopeMethod)
+            .Should().BeFalse();
+        IsInRootApproveExecutableScope(
+                simpleLambda.ExpressionBody!,
+                scopeMethod)
+            .Should().BeFalse();
+        IsInRootApproveExecutableScope(
+                anonymousMethod.Block!,
+                scopeMethod)
+            .Should().BeFalse();
+        IsInRootApproveExecutableScope(
+                localFunction.Body!,
+                scopeMethod)
+            .Should().BeFalse();
+        IsInRootApproveExecutableScope(
+                nestedLambda.ExpressionBody!,
+                scopeMethod)
+            .Should().BeFalse();
+    }
+
+    [Theory]
     [MemberData(nameof(AdjustmentReferenceWriteMutants))]
     public void Adjustment_reference_contract_rejects_every_later_write_shape(
         string writeShape,
@@ -563,6 +822,24 @@ public sealed class InventoryNonPosPostingContractTests
                 "DocumentReferenceDeclarationShape",
                 "DocumentReferenceWrite"
             }
+        ];
+        yield return
+        [
+            "CurrentCulture in nested function",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "Func<CultureInfo> hiddenCulture = "
+                + "() => CultureInfo.CurrentCulture;"),
+            new[] { "CurrentCulture" }
+        ];
+        yield return
+        [
+            "CurrentUICulture in local function",
+            InsertAfterDocumentReferenceDeclaration(
+                source,
+                "CultureInfo HiddenUiCulture() "
+                + "{ return CultureInfo.CurrentUICulture; }"),
+            new[] { "CurrentUICulture" }
         ];
     }
 
@@ -725,6 +1002,45 @@ public sealed class InventoryNonPosPostingContractTests
             InsertAfterDocumentReferenceDeclaration(
                 serviceSource,
                 BuildNestedInterpolatedRawContractStatement())
+        ];
+        yield return
+        [
+            "harmless lambda",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "Func<int> harmlessLambda = () => 1 + 2;")
+        ];
+        yield return
+        [
+            "harmless anonymous method",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "Func<int> harmlessAnonymous = "
+                + "delegate { return 3; };")
+        ];
+        yield return
+        [
+            "harmless local function",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "int HarmlessLocal() { return 4; }")
+        ];
+        yield return
+        [
+            "harmless nested lambda inside local function",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "int HarmlessNested() { "
+                + "Func<int> nested = () => 5; "
+                + "return nested(); }")
+        ];
+        yield return
+        [
+            "quote and backslash character literals",
+            InsertAfterDocumentReferenceDeclaration(
+                serviceSource,
+                "var harmlessQuote = '\\'';\n"
+                + "var harmlessSlash = '\\\\';")
         ];
     }
 
@@ -1791,6 +2107,8 @@ public sealed class InventoryNonPosPostingContractTests
         var decreaseReferenceArgumentIsDocumentReference = false;
         var increaseCalls = new List<InvocationExpressionSyntax>();
         var decreaseCalls = new List<InvocationExpressionSyntax>();
+        var twoStageFlow =
+            TwoStageFlowContractResult.Empty;
 
         if (approveMethods.Count == 1
             && approveMethods[0].Body is { } approveBody)
@@ -1881,6 +2199,30 @@ public sealed class InventoryNonPosPostingContractTests
                     "DocumentReferenceConversionCount");
             }
 
+            if (approveMethod
+                .DescendantNodes()
+                .OfType<MemberAccessExpressionSyntax>()
+                .Any(x => IsCultureInfoMember(
+                    x,
+                    "CurrentCulture")))
+            {
+                AddViolation(
+                    violations,
+                    "CurrentCulture");
+            }
+
+            if (approveMethod
+                .DescendantNodes()
+                .OfType<MemberAccessExpressionSyntax>()
+                .Any(x => IsCultureInfoMember(
+                    x,
+                    "CurrentUICulture")))
+            {
+                AddViolation(
+                    violations,
+                    "CurrentUICulture");
+            }
+
             var referenceIdentifiers = approveMethod
                 .DescendantNodes()
                 .OfType<IdentifierNameSyntax>()
@@ -1904,6 +2246,20 @@ public sealed class InventoryNonPosPostingContractTests
                 .ToList();
             documentReferenceReadCount =
                 readIdentifiers.Count;
+            var nestedReadIdentifiers = readIdentifiers
+                .Where(x => !IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .ToList();
+            if (nestedReadIdentifiers.Count != 0)
+            {
+                AddViolation(
+                    violations,
+                    "DocumentReferenceNestedUse");
+                AddViolation(
+                    violations,
+                    "DocumentReferenceUseCount");
+            }
 
             increaseCalls = FindFactoryInvocations(
                 approveMethod,
@@ -1929,6 +2285,8 @@ public sealed class InventoryNonPosPostingContractTests
                 increaseCalls,
                 increaseOverloads,
                 increaseReferenceIndex,
+                approveMethod,
+                "Increase",
                 "IncreaseReferenceArgument",
                 validatedReferenceArguments);
             decreaseReferenceArgumentIsDocumentReference =
@@ -1937,10 +2295,15 @@ public sealed class InventoryNonPosPostingContractTests
                 decreaseCalls,
                 decreaseOverloads,
                 decreaseReferenceIndex,
+                approveMethod,
+                "Decrease",
                 "DecreaseReferenceArgument",
                 validatedReferenceArguments);
 
             var readSpans = readIdentifiers
+                .Where(x => IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
                 .Select(x => x.Span)
                 .OrderBy(x => x.Start)
                 .ToList();
@@ -1957,6 +2320,12 @@ public sealed class InventoryNonPosPostingContractTests
                     violations,
                     "DocumentReferenceUseCount");
             }
+
+            twoStageFlow = ValidateTwoStagePostingFlow(
+                approveMethod,
+                increaseCalls,
+                decreaseCalls,
+                violations);
         }
         else
         {
@@ -1998,7 +2367,14 @@ public sealed class InventoryNonPosPostingContractTests
             increaseCalls.Count,
             decreaseCalls.Count,
             increaseReferenceArgumentIsDocumentReference,
-            decreaseReferenceArgumentIsDocumentReference);
+            decreaseReferenceArgumentIsDocumentReference,
+            twoStageFlow.ConstructionLoopCount,
+            twoStageFlow.MovementRequestAddCount,
+            twoStageFlow.PreLockCallCount,
+            twoStageFlow.PostingLoopCount,
+            twoStageFlow.PostingCallCount,
+            twoStageFlow.ConstructionFlowIsValid,
+            twoStageFlow.PostingFlowIsValid);
     }
 
     private static IReadOnlyList<MethodDeclarationSyntax>
@@ -2076,6 +2452,16 @@ public sealed class InventoryNonPosPostingContractTests
                     }
             };
 
+    private static bool IsCultureInfoMember(
+        MemberAccessExpressionSyntax expression,
+        string memberName)
+        => expression.Expression
+            is IdentifierNameSyntax
+            {
+                Identifier.ValueText: "CultureInfo"
+            }
+            && expression.Name.Identifier.ValueText == memberName;
+
     private static bool IsWriteIdentifier(
         IdentifierNameSyntax identifier)
     {
@@ -2128,19 +2514,7 @@ public sealed class InventoryNonPosPostingContractTests
         => approveMethod
             .DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
-            .Where(x => x.Expression
-                is MemberAccessExpressionSyntax
-                {
-                    Expression:
-                        IdentifierNameSyntax
-                        {
-                            Identifier.ValueText:
-                                "_inventoryMovementFactory"
-                        },
-                    Name:
-                        IdentifierNameSyntax name
-                }
-                && name.Identifier.ValueText == methodName)
+            .Where(x => GetInvokedMethodName(x) == methodName)
             .ToList();
 
     private static bool ValidateFactoryInvocation(
@@ -2148,23 +2522,72 @@ public sealed class InventoryNonPosPostingContractTests
         IReadOnlyList<InvocationExpressionSyntax> calls,
         IReadOnlyList<MethodDeclarationSyntax> overloads,
         int? referenceIndex,
+        MethodDeclarationSyntax approveMethod,
+        string callPrefix,
         string violation,
         ICollection<IdentifierNameSyntax> validatedReferenceArguments)
     {
+        var nestedCalls = calls
+            .Where(x => !IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        if (nestedCalls.Count != 0)
+        {
+            AddViolation(
+                violations,
+                "FactoryCallNestedExecutableScope");
+        }
+
+        if (calls.Any(x => !HasExactReceiver(
+                x,
+                "_inventoryMovementFactory")))
+        {
+            AddViolation(
+                violations,
+                $"{callPrefix}FactoryReceiver");
+        }
+
+        var expectedArgumentCount =
+            overloads.Count == 1
+                ? overloads[0].ParameterList.Parameters.Count
+                : 8;
+        if (calls.Any(x =>
+                x.ArgumentList.Arguments.Count
+                    != expectedArgumentCount
+                || x.ArgumentList.Arguments.Any(
+                    argument => argument.NameColon is not null)))
+        {
+            AddViolation(
+                violations,
+                $"{callPrefix}FactoryArgumentCount");
+        }
+
+        var rootCalls = calls
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
         if (calls.Count != 1
+            || rootCalls.Count != 1
             || overloads.Count != 1
             || referenceIndex is null)
         {
             AddViolation(violations, violation);
+            AddViolation(
+                violations,
+                $"{callPrefix}FactoryFlowShape");
             return false;
         }
 
-        var call = calls[0];
+        var call = rootCalls[0];
         var arguments = call.ArgumentList.Arguments;
-        var expectedArgumentCount =
-            overloads[0].ParameterList.Parameters.Count;
         var assignment = call.Parent
             as AssignmentExpressionSyntax;
+        var hasExpectedReceiver =
+            HasExactReceiver(
+                call,
+                "_inventoryMovementFactory");
         var hasExpectedAssignmentShape =
             assignment is not null
             && assignment.IsKind(
@@ -2186,10 +2609,14 @@ public sealed class InventoryNonPosPostingContractTests
                     Identifier.ValueText: "documentReferenceId"
                 };
 
-        if (!hasExpectedAssignmentShape
+        if (!hasExpectedReceiver
+            || !hasExpectedAssignmentShape
             || !hasExpectedArgumentShape)
         {
             AddViolation(violations, violation);
+            AddViolation(
+                violations,
+                $"{callPrefix}FactoryFlowShape");
             return false;
         }
 
@@ -2198,6 +2625,769 @@ public sealed class InventoryNonPosPostingContractTests
             arguments[referenceIndex.Value].Expression);
         return true;
     }
+
+    private static string? GetInvokedMethodName(
+        InvocationExpressionSyntax invocation)
+        => invocation.Expression switch
+        {
+            IdentifierNameSyntax identifier =>
+                identifier.Identifier.ValueText,
+            GenericNameSyntax generic =>
+                generic.Identifier.ValueText,
+            MemberAccessExpressionSyntax member =>
+                member.Name.Identifier.ValueText,
+            MemberBindingExpressionSyntax binding =>
+                binding.Name.Identifier.ValueText,
+            _ => null
+        };
+
+    private static bool HasExactReceiver(
+        InvocationExpressionSyntax invocation,
+        string receiverName)
+        => invocation.Expression
+            is MemberAccessExpressionSyntax
+            {
+                Expression:
+                    IdentifierNameSyntax receiver
+            }
+            && receiver.Identifier.ValueText == receiverName;
+
+    private static bool IsInRootApproveExecutableScope(
+        SyntaxNode node,
+        MethodDeclarationSyntax approveMethod)
+    {
+        for (SyntaxNode? current = node;
+             current is not null && current != approveMethod;
+             current = current.Parent)
+        {
+            if (current is AnonymousFunctionExpressionSyntax
+                or LocalFunctionStatementSyntax)
+            {
+                return false;
+            }
+        }
+
+        return node.AncestorsAndSelf().Contains(approveMethod);
+    }
+
+    private static TwoStageFlowContractResult
+        ValidateTwoStagePostingFlow(
+            MethodDeclarationSyntax approveMethod,
+            IReadOnlyList<InvocationExpressionSyntax> increaseCalls,
+            IReadOnlyList<InvocationExpressionSyntax> decreaseCalls,
+            List<string> violations)
+    {
+        var rootForeachStatements = approveMethod
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        var constructionLoops = rootForeachStatements
+            .Where(x => x.Identifier.ValueText == "line")
+            .Where(x => IsDocumentLinesExpression(x.Expression))
+            .ToList();
+        if (constructionLoops.Count != 1)
+        {
+            AddViolation(violations, "ConstructionLoopCount");
+        }
+
+        var constructionLoop = constructionLoops.Count == 1
+            ? constructionLoops[0]
+            : null;
+        var postingCandidates = rootForeachStatements
+            .Where(x => x.Identifier.ValueText
+                == "movementRequest")
+            .ToList();
+        if (postingCandidates.Count != 1)
+        {
+            AddViolation(violations, "PostingLoopCount");
+        }
+
+        var postingLoop = postingCandidates.Count == 1
+            ? postingCandidates[0]
+            : null;
+        var postingCollectionIsValid =
+            postingLoop?.Expression
+                is IdentifierNameSyntax
+                {
+                    Identifier.ValueText: "movementRequests"
+                };
+        if (!postingCollectionIsValid)
+        {
+            AddViolation(violations, "PostingCollection");
+        }
+
+        var movementRequestsDeclarators = approveMethod
+            .DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "movementRequests")
+            .ToList();
+        var movementRequestsDesignations = approveMethod
+            .DescendantNodes()
+            .OfType<SingleVariableDesignationSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "movementRequests")
+            .ToList();
+        var movementRequestsDeclarationIsValid =
+            movementRequestsDeclarators.Count == 1
+            && movementRequestsDesignations.Count == 0
+            && movementRequestsDeclarators[0].Parent
+                is VariableDeclarationSyntax
+                {
+                    Type:
+                        IdentifierNameSyntax
+                        {
+                            Identifier.ValueText: "var"
+                        }
+                } collectionDeclaration
+            && collectionDeclaration.Variables.Count == 1
+            && collectionDeclaration.Parent
+                is LocalDeclarationStatementSyntax
+                {
+                    Parent: BlockSyntax collectionBlock
+                }
+            && collectionBlock == approveMethod.Body
+            && IsExpectedMovementRequestsCreation(
+                movementRequestsDeclarators[0]
+                    .Initializer?.Value);
+        if (!movementRequestsDeclarationIsValid)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestsDeclaration");
+        }
+
+        var rootIncreaseCalls = increaseCalls
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        var rootDecreaseCalls = decreaseCalls
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        var increaseAssignment = rootIncreaseCalls.Count == 1
+            ? rootIncreaseCalls[0].Parent
+                as AssignmentExpressionSyntax
+            : null;
+        var decreaseAssignment = rootDecreaseCalls.Count == 1
+            ? rootDecreaseCalls[0].Parent
+                as AssignmentExpressionSyntax
+            : null;
+        var increaseAssignmentIsValid =
+            IsMovementRequestFactoryAssignment(
+                increaseAssignment,
+                rootIncreaseCalls.SingleOrDefault());
+        var decreaseAssignmentIsValid =
+            IsMovementRequestFactoryAssignment(
+                decreaseAssignment,
+                rootDecreaseCalls.SingleOrDefault());
+        if (!increaseAssignmentIsValid)
+        {
+            AddViolation(
+                violations,
+                "IncreaseFactoryFlowShape");
+        }
+
+        if (!decreaseAssignmentIsValid)
+        {
+            AddViolation(
+                violations,
+                "DecreaseFactoryFlowShape");
+        }
+
+        var sharedSelectionIfs =
+            constructionLoop is null
+                || rootIncreaseCalls.Count != 1
+                || rootDecreaseCalls.Count != 1
+                ? []
+                : constructionLoop
+                    .DescendantNodes()
+                    .OfType<IfStatementSyntax>()
+                    .Where(x => IsInRootApproveExecutableScope(
+                        x,
+                        approveMethod))
+                    .Where(x => x.Else is not null)
+                    .Where(x => x.Statement.Span.Contains(
+                        rootIncreaseCalls[0].Span))
+                    .Where(x => x.Else!.Statement.Span.Contains(
+                        rootDecreaseCalls[0].Span))
+                    .ToList();
+        if (sharedSelectionIfs.Count != 1)
+        {
+            AddViolation(
+                violations,
+                "FactorySelectionIfElse");
+        }
+
+        var sharedSelectionIf =
+            sharedSelectionIfs.Count == 1
+                ? sharedSelectionIfs[0]
+                : null;
+        var movementRequestDeclarators =
+            constructionLoop?.DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Where(x => x.Identifier.ValueText
+                    == "movementRequest")
+                .Where(x => IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .ToList()
+            ?? [];
+        var movementRequestDeclarationIsValid =
+            movementRequestDeclarators.Count == 1
+            && movementRequestDeclarators[0].Initializer is null
+            && movementRequestDeclarators[0].Parent
+                is VariableDeclarationSyntax
+                {
+                    Type:
+                        IdentifierNameSyntax
+                        {
+                            Identifier.ValueText:
+                                "CreateInventoryMovementRequest"
+                        }
+                } requestDeclaration
+            && requestDeclaration.Variables.Count == 1
+            && requestDeclaration.Parent
+                is LocalDeclarationStatementSyntax
+                {
+                    Parent: BlockSyntax requestBlock
+                }
+            && requestBlock == constructionLoop?.Statement;
+        if (!movementRequestDeclarationIsValid)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestDeclaration");
+        }
+
+        var allInvocations = approveMethod
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .ToList();
+        var relevantAddCalls = allInvocations
+            .Where(x => GetInvokedMethodName(x) == "Add")
+            .Where(x => HasExactReceiver(
+                    x,
+                    "movementRequests")
+                || x.ArgumentList.Arguments.Any(
+                    argument => IsIdentifier(
+                        argument.Expression,
+                        "movementRequest")))
+            .ToList();
+        var rootConstructionAddCalls = relevantAddCalls
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .Where(x => constructionLoop is not null
+                && x.AncestorsAndSelf().Contains(
+                    constructionLoop))
+            .ToList();
+        if (relevantAddCalls.Count != 1
+            || rootConstructionAddCalls.Count != 1)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddCount");
+        }
+
+        if (relevantAddCalls.Any(x =>
+                !IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod)))
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddNestedScope");
+        }
+
+        var approvedAdd = rootConstructionAddCalls.Count == 1
+            ? rootConstructionAddCalls[0]
+            : null;
+        var addReceiver = approvedAdd?.Expression
+            is MemberAccessExpressionSyntax
+            {
+                Expression:
+                    IdentifierNameSyntax receiver
+            }
+            ? receiver
+            : null;
+        var addReceiverIsValid =
+            addReceiver?.Identifier.ValueText
+                == "movementRequests";
+        if (!addReceiverIsValid)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddReceiver");
+        }
+
+        var addArgument =
+            approvedAdd?.ArgumentList.Arguments.Count == 1
+            && approvedAdd.ArgumentList.Arguments[0]
+                .NameColon is null
+            && approvedAdd.ArgumentList.Arguments[0]
+                .Expression
+                is IdentifierNameSyntax addArgumentIdentifier
+            ? addArgumentIdentifier
+            : null;
+        var addArgumentIsValid =
+            addArgument?.Identifier.ValueText
+                == "movementRequest";
+        if (!addArgumentIsValid)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddArgument");
+        }
+
+        var addFlowIsValid =
+            approvedAdd is not null
+            && sharedSelectionIf is not null
+            && approvedAdd.SpanStart
+                > sharedSelectionIf.Span.End;
+        if (!addFlowIsValid)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestAddFlow");
+        }
+
+        var constructionRequestIdentifiers =
+            constructionLoop?.DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .Where(x => x.Identifier.ValueText
+                    == "movementRequest")
+                .ToList()
+            ?? [];
+        var nestedRequestIdentifiers =
+            constructionRequestIdentifiers
+                .Where(x => !IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .ToList();
+        if (nestedRequestIdentifiers.Count != 0)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestNestedUse");
+        }
+
+        var requestWriteIdentifiers =
+            constructionRequestIdentifiers
+                .Where(IsWriteIdentifier)
+                .Where(x => IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .ToList();
+        var expectedRequestWrites =
+            new[]
+            {
+                increaseAssignment?.Left
+                    as IdentifierNameSyntax,
+                decreaseAssignment?.Left
+                    as IdentifierNameSyntax
+            }
+            .Where(x => x is not null)
+            .Cast<IdentifierNameSyntax>()
+            .Select(x => x.Span)
+            .OrderBy(x => x.Start)
+            .ToList();
+        var actualRequestWrites =
+            requestWriteIdentifiers
+                .Select(x => x.Span)
+                .OrderBy(x => x.Start)
+                .ToList();
+        var requestReadIdentifiers =
+            constructionRequestIdentifiers
+                .Except(requestWriteIdentifiers)
+                .Where(x => IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .ToList();
+        var expectedRequestReads =
+            addArgumentIsValid
+                ? new[] { addArgument!.Span }
+                : [];
+        if (!addArgumentIsValid
+            || expectedRequestWrites.Count != 2
+            || !actualRequestWrites.SequenceEqual(
+                expectedRequestWrites)
+            || requestReadIdentifiers.Count
+                != expectedRequestReads.Length
+            || !requestReadIdentifiers
+                .Select(x => x.Span)
+                .SequenceEqual(expectedRequestReads))
+        {
+            AddViolation(
+                violations,
+                "MovementRequestProvenance");
+        }
+
+        var preLockCalls = allInvocations
+            .Where(x => GetInvokedMethodName(x)
+                == "PreLockBalancesAsync")
+            .ToList();
+        var rootPreLockCalls = preLockCalls
+            .Where(x => IsInRootApproveExecutableScope(
+                x,
+                approveMethod))
+            .ToList();
+        if (preLockCalls.Count != 1
+            || rootPreLockCalls.Count != 1)
+        {
+            AddViolation(violations, "PreLockCallCount");
+        }
+
+        var approvedPreLock =
+            rootPreLockCalls.Count == 1
+                ? rootPreLockCalls[0]
+                : null;
+        var preLockCollectionIdentifier =
+            GetExpectedPreLockCollectionIdentifier(
+                approvedPreLock);
+        var preLockShapeIsValid =
+            approvedPreLock is not null
+            && HasExactReceiver(
+                approvedPreLock,
+                "_inventoryMovementService")
+            && preLockCollectionIdentifier is not null;
+        if (!preLockShapeIsValid)
+        {
+            AddViolation(violations, "PreLockFlow");
+        }
+
+        var relevantPostingCalls =
+            allInvocations
+                .Where(x => GetInvokedMethodName(x)
+                    == "CreateAsync")
+                .Where(x => x.ArgumentList.Arguments.Count > 0)
+                .Where(x => IsIdentifier(
+                    x.ArgumentList.Arguments[0].Expression,
+                    "movementRequest"))
+                .ToList();
+        var postingCallsInLoop =
+            postingLoop is null
+                ? []
+                : relevantPostingCalls
+                    .Where(x => x.AncestorsAndSelf()
+                        .Contains(postingLoop))
+                    .ToList();
+        if (relevantPostingCalls.Count != 1
+            || postingCallsInLoop.Count != 1)
+        {
+            AddViolation(violations, "PostingCallCount");
+        }
+
+        if (relevantPostingCalls.Any(x =>
+                !IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod)))
+        {
+            AddViolation(
+                violations,
+                "PostingCallNestedScope");
+        }
+
+        var approvedPostingCall =
+            postingCallsInLoop.Count == 1
+                ? postingCallsInLoop[0]
+                : null;
+        var postingReceiverIsValid =
+            approvedPostingCall is not null
+            && HasExactReceiver(
+                approvedPostingCall,
+                "_inventoryMovementService");
+        if (!postingReceiverIsValid)
+        {
+            AddViolation(violations, "PostingReceiver");
+        }
+
+        var postingArgumentIsValid =
+            approvedPostingCall?.ArgumentList.Arguments
+                is { Count: 2 } postingArguments
+            && postingArguments.All(
+                argument => argument.NameColon is null)
+            && IsIdentifier(
+                postingArguments[0].Expression,
+                "movementRequest")
+            && IsIdentifier(
+                postingArguments[1].Expression,
+                "ct");
+        if (!postingArgumentIsValid)
+        {
+            AddViolation(violations, "PostingArgument");
+        }
+
+        var orderingIsValid =
+            constructionLoop is not null
+            && approvedPreLock is not null
+            && postingLoop is not null
+            && constructionLoop.Span.End
+                < approvedPreLock.SpanStart
+            && approvedPreLock.Span.End
+                < postingLoop.SpanStart;
+        if (!orderingIsValid)
+        {
+            AddViolation(violations, "PostingFlow");
+        }
+
+        var movementRequestsIdentifiers = approveMethod
+            .DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Where(x => x.Identifier.ValueText
+                == "movementRequests")
+            .ToList();
+        var movementRequestsWrites =
+            movementRequestsIdentifiers
+                .Where(IsWriteIdentifier)
+                .ToList();
+        if (movementRequestsWrites.Count != 0
+            || movementRequestsDesignations.Count != 0)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestsWrite");
+        }
+
+        if (movementRequestsIdentifiers.Any(x =>
+                !IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod)))
+        {
+            AddViolation(
+                violations,
+                "MovementRequestsNestedUse");
+        }
+
+        var unexpectedCollectionMutations =
+            allInvocations
+                .Where(x => HasExactReceiver(
+                    x,
+                    "movementRequests"))
+                .Where(x => GetInvokedMethodName(x)
+                    is not "Add" and not "Select")
+                .ToList();
+        if (unexpectedCollectionMutations.Count != 0)
+        {
+            AddViolation(
+                violations,
+                "MovementRequestsMutation");
+        }
+
+        var postingCollectionIdentifier =
+            postingCollectionIsValid
+                ? (IdentifierNameSyntax)
+                    postingLoop!.Expression
+                : null;
+        var expectedCollectionReads =
+            new[]
+            {
+                addReceiverIsValid
+                    ? addReceiver
+                    : null,
+                preLockCollectionIdentifier,
+                postingCollectionIdentifier
+            }
+            .Where(x => x is not null)
+            .Cast<IdentifierNameSyntax>()
+            .Select(x => x.Span)
+            .OrderBy(x => x.Start)
+            .ToList();
+        var actualCollectionReads =
+            movementRequestsIdentifiers
+                .Except(movementRequestsWrites)
+                .Where(x => IsInRootApproveExecutableScope(
+                    x,
+                    approveMethod))
+                .Select(x => x.Span)
+                .OrderBy(x => x.Start)
+                .ToList();
+        if (expectedCollectionReads.Count != 3
+            || !actualCollectionReads.SequenceEqual(
+                expectedCollectionReads))
+        {
+            AddViolation(
+                violations,
+                "MovementRequestsUse");
+        }
+
+        var constructionFlowIsValid =
+            constructionLoop is not null
+            && movementRequestsDeclarationIsValid
+            && movementRequestDeclarationIsValid
+            && increaseAssignmentIsValid
+            && decreaseAssignmentIsValid
+            && sharedSelectionIf is not null
+            && approvedAdd is not null
+            && addReceiverIsValid
+            && addArgumentIsValid
+            && addFlowIsValid
+            && actualRequestWrites.SequenceEqual(
+                expectedRequestWrites)
+            && requestReadIdentifiers.Count == 1;
+        var postingFlowIsValid =
+            postingLoop is not null
+            && postingCollectionIsValid
+            && preLockShapeIsValid
+            && approvedPostingCall is not null
+            && postingReceiverIsValid
+            && postingArgumentIsValid
+            && orderingIsValid;
+
+        return new TwoStageFlowContractResult(
+            constructionLoops.Count,
+            rootConstructionAddCalls.Count,
+            rootPreLockCalls.Count,
+            postingCandidates.Count,
+            postingCallsInLoop.Count,
+            constructionFlowIsValid,
+            postingFlowIsValid);
+    }
+
+    private static bool IsDocumentLinesExpression(
+        ExpressionSyntax expression)
+        => expression
+            is MemberAccessExpressionSyntax
+            {
+                Expression:
+                    IdentifierNameSyntax
+                    {
+                        Identifier.ValueText: "document"
+                    },
+                Name:
+                    IdentifierNameSyntax
+                    {
+                        Identifier.ValueText: "Lines"
+                    }
+            };
+
+    private static bool IsExpectedMovementRequestsCreation(
+        ExpressionSyntax? expression)
+        => expression
+            is ObjectCreationExpressionSyntax
+            {
+                Type:
+                    GenericNameSyntax
+                    {
+                        Identifier.ValueText: "List",
+                        TypeArgumentList.Arguments.Count: 1
+                    } generic,
+                ArgumentList.Arguments.Count: 0,
+                Initializer: null
+            }
+            && generic.TypeArgumentList.Arguments[0]
+                is IdentifierNameSyntax
+                {
+                    Identifier.ValueText:
+                        "CreateInventoryMovementRequest"
+                };
+
+    private static bool IsMovementRequestFactoryAssignment(
+        AssignmentExpressionSyntax? assignment,
+        InvocationExpressionSyntax? invocation)
+        => assignment is not null
+            && invocation is not null
+            && assignment.IsKind(
+                SyntaxKind.SimpleAssignmentExpression)
+            && assignment.Right == invocation
+            && assignment.Left
+                is IdentifierNameSyntax
+                {
+                    Identifier.ValueText: "movementRequest"
+                }
+            && assignment.Parent
+                is ExpressionStatementSyntax;
+
+    private static bool IsIdentifier(
+        ExpressionSyntax expression,
+        string identifier)
+        => expression
+            is IdentifierNameSyntax name
+            && name.Identifier.ValueText == identifier;
+
+    private static IdentifierNameSyntax?
+        GetExpectedPreLockCollectionIdentifier(
+            InvocationExpressionSyntax? preLockCall)
+    {
+        if (preLockCall is null
+            || preLockCall.ArgumentList.Arguments.Count != 2
+            || preLockCall.ArgumentList.Arguments.Any(
+                x => x.NameColon is not null)
+            || !IsIdentifier(
+                preLockCall.ArgumentList.Arguments[1].Expression,
+                "ct")
+            || preLockCall.ArgumentList.Arguments[0].Expression
+                is not InvocationExpressionSyntax
+                {
+                    Expression:
+                        MemberAccessExpressionSyntax
+                        {
+                            Expression:
+                                IdentifierNameSyntax collection,
+                            Name:
+                                IdentifierNameSyntax
+                                {
+                                    Identifier.ValueText: "Select"
+                                }
+                        },
+                    ArgumentList.Arguments.Count: 1
+                } selectCall
+            || collection.Identifier.ValueText
+                != "movementRequests"
+            || selectCall.ArgumentList.Arguments[0].Expression
+                is not SimpleLambdaExpressionSyntax
+                {
+                    Parameter.Identifier.ValueText: "movement",
+                    ExpressionBody:
+                        ObjectCreationExpressionSyntax
+                        {
+                            Type:
+                                IdentifierNameSyntax
+                                {
+                                    Identifier.ValueText:
+                                        "InventoryPostingLockKey"
+                                },
+                            ArgumentList.Arguments.Count: 3
+                        } lockKey
+                }
+            || !IsMemberAccess(
+                lockKey.ArgumentList.Arguments[0].Expression,
+                "document",
+                "StoreId")
+            || !IsMemberAccess(
+                lockKey.ArgumentList.Arguments[1].Expression,
+                "movement",
+                "WarehouseId")
+            || !IsMemberAccess(
+                lockKey.ArgumentList.Arguments[2].Expression,
+                "movement",
+                "ProductVariantId"))
+        {
+            return null;
+        }
+
+        return collection;
+    }
+
+    private static bool IsMemberAccess(
+        ExpressionSyntax expression,
+        string receiver,
+        string member)
+        => expression
+            is MemberAccessExpressionSyntax
+            {
+                Expression:
+                    IdentifierNameSyntax receiverIdentifier,
+                Name:
+                    IdentifierNameSyntax memberIdentifier
+            }
+            && receiverIdentifier.Identifier.ValueText == receiver
+            && memberIdentifier.Identifier.ValueText == member;
 
     private static void AddViolation(
         ICollection<string> violations,
@@ -2330,6 +3520,341 @@ public sealed class InventoryNonPosPostingContractTests
             : throw new InvalidOperationException(
                 $"Expected one {methodName} invocation.");
     }
+
+    private static string
+        BuildAliasStandaloneWithHiddenFactoryCalls(
+            string source,
+            bool useLocalFunction)
+    {
+        var mutated = ReplaceFactoryInvocationArgumentList(
+            source,
+            "CreateAdjustmentIncrease",
+            """
+            (
+                document.WarehouseId,
+                line.ProductVariantId,
+                line.BaseQuantity,
+                finalUnitCost.Value,
+                note,
+                occurredAtUtc)
+            """);
+        mutated = ReplaceFactoryInvocationArgumentList(
+            mutated,
+            "CreateAdjustmentDecrease",
+            """
+            (
+                document.WarehouseId,
+                line.ProductVariantId,
+                line.BaseQuantity,
+                line.ProvisionalUnitCost,
+                note,
+                occurredAtUtc)
+            """);
+        mutated = ReplaceFactoryReceiver(
+            mutated,
+            "CreateAdjustmentIncrease",
+            "movementFactoryAlias");
+        mutated = ReplaceFactoryReceiver(
+            mutated,
+            "CreateAdjustmentDecrease",
+            "movementFactoryAlias");
+        var hiddenCalls = useLocalFunction
+            ? BuildHiddenDurableLocalFunction()
+            : BuildHiddenDurableLambdas(
+                includeDecrease: true);
+
+        return InsertBeforeConstructionSelection(
+            mutated,
+            "var movementFactoryAlias = "
+            + "_inventoryMovementFactory;\n"
+            + hiddenCalls);
+    }
+
+    private static string
+        BuildExactReceiverStandaloneWithHiddenDurableCall(
+            string source)
+    {
+        var mutated = ReplaceFactoryInvocationArgumentList(
+            source,
+            "CreateAdjustmentIncrease",
+            """
+            (
+                document.WarehouseId,
+                line.ProductVariantId,
+                line.BaseQuantity,
+                finalUnitCost.Value,
+                note,
+                occurredAtUtc)
+            """);
+
+        return InsertBeforeConstructionSelection(
+            mutated,
+            BuildHiddenDurableLambdas(
+                includeDecrease: false));
+    }
+
+    private static string BuildAliasDurableFactoryCall(
+        string source)
+    {
+        var mutated = ReplaceFactoryReceiver(
+            source,
+            "CreateAdjustmentIncrease",
+            "movementFactoryAlias");
+
+        return InsertBeforeConstructionSelection(
+            mutated,
+            "var movementFactoryAlias = "
+            + "_inventoryMovementFactory;");
+    }
+
+    private static string BuildPostingServiceAlias(
+        string source)
+    {
+        var postingCall =
+            GetRequiredPostingCreateInvocation(source);
+        if (postingCall.Expression
+            is not MemberAccessExpressionSyntax member)
+        {
+            throw new InvalidOperationException(
+                "Expected member-access posting call.");
+        }
+
+        var mutated = ReplaceSourceSpan(
+            source,
+            member.Expression.Span,
+            "movementServiceAlias");
+        return InsertAfterDocumentReferenceDeclaration(
+            mutated,
+            "var movementServiceAlias = "
+            + "_inventoryMovementService;");
+    }
+
+    private static string HideMovementRequestAddInLambda(
+        string source)
+    {
+        var addCall = GetRequiredMovementRequestAddInvocation(
+            source);
+        var statement = addCall.Ancestors()
+            .OfType<ExpressionStatementSyntax>()
+            .First();
+
+        return ReplaceSourceSpan(
+            source,
+            statement.Span,
+            "Action hiddenAdd = () => "
+            + "movementRequests.Add(movementRequest);");
+    }
+
+    private static string ReplaceMovementRequestAddArgument(
+        string source,
+        string replacement)
+    {
+        var addCall = GetRequiredMovementRequestAddInvocation(
+            source);
+        var argument = addCall.ArgumentList.Arguments.Single();
+        var statement = addCall.Ancestors()
+            .OfType<ExpressionStatementSyntax>()
+            .First();
+        var mutated = ReplaceSourceSpan(
+            source,
+            argument.Expression.Span,
+            replacement);
+
+        return mutated.Insert(
+            statement.SpanStart,
+            $"var {replacement} = movementRequest;\n");
+    }
+
+    private static string ReplacePostingCollection(
+        string source,
+        string replacement)
+    {
+        var postingLoop = GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Single(x => x.Identifier.ValueText
+                == "movementRequest");
+        var mutated = ReplaceSourceSpan(
+            source,
+            postingLoop.Expression.Span,
+            replacement);
+
+        return mutated.Insert(
+            postingLoop.SpanStart,
+            $"var {replacement} = movementRequests;\n");
+    }
+
+    private static string ReplaceFactoryInvocationArgumentList(
+        string source,
+        string methodName,
+        string replacement)
+    {
+        var invocation = GetRequiredFactoryInvocation(
+            source,
+            methodName);
+        return ReplaceSourceSpan(
+            source,
+            invocation.ArgumentList.Span,
+            replacement);
+    }
+
+    private static string ReplaceFactoryReceiver(
+        string source,
+        string methodName,
+        string replacement)
+    {
+        var invocation = GetRequiredFactoryInvocation(
+            source,
+            methodName);
+        if (invocation.Expression
+            is not MemberAccessExpressionSyntax member)
+        {
+            throw new InvalidOperationException(
+                $"Expected {methodName} member access.");
+        }
+
+        return ReplaceSourceSpan(
+            source,
+            member.Expression.Span,
+            replacement);
+    }
+
+    private static string InsertBeforeConstructionSelection(
+        string source,
+        string statement)
+    {
+        var selection = GetRequiredConstructionSelection(
+            source);
+        return source.Insert(
+            selection.SpanStart,
+            statement + "\n");
+    }
+
+    private static IfStatementSyntax
+        GetRequiredConstructionSelection(
+            string source)
+    {
+        var constructionLoop = GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<ForEachStatementSyntax>()
+            .Single(x => x.Identifier.ValueText == "line"
+                && IsDocumentLinesExpression(x.Expression));
+        return constructionLoop
+            .DescendantNodes()
+            .OfType<IfStatementSyntax>()
+            .Single(x => x.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Any(call => GetInvokedMethodName(call)
+                    == "CreateAdjustmentIncrease")
+                && x.DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>()
+                    .Any(call => GetInvokedMethodName(call)
+                        == "CreateAdjustmentDecrease"));
+    }
+
+    private static MethodDeclarationSyntax
+        GetRequiredApproveMethod(
+            string source)
+        => ParseRequiredCompilationUnit(source)
+            .DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .Single(x => x.Identifier.ValueText
+                == "InventoryAdjustmentDocumentService")
+            .Members
+            .OfType<MethodDeclarationSyntax>()
+            .Single(x => x.Identifier.ValueText
+                == "ApproveAsync");
+
+    private static InvocationExpressionSyntax
+        GetRequiredMovementRequestAddInvocation(
+            string source)
+        => GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Single(x => GetInvokedMethodName(x) == "Add"
+                && HasExactReceiver(
+                    x,
+                    "movementRequests")
+                && x.ArgumentList.Arguments.Count == 1
+                && IsIdentifier(
+                    x.ArgumentList.Arguments[0].Expression,
+                    "movementRequest"));
+
+    private static InvocationExpressionSyntax
+        GetRequiredPostingCreateInvocation(
+            string source)
+        => GetRequiredApproveMethod(source)
+            .DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Single(x => GetInvokedMethodName(x) == "CreateAsync"
+                && HasExactReceiver(
+                    x,
+                    "_inventoryMovementService")
+                && x.ArgumentList.Arguments.Count == 2
+                && IsIdentifier(
+                    x.ArgumentList.Arguments[0].Expression,
+                    "movementRequest"));
+
+    private static string BuildHiddenDurableLambdas(
+        bool includeDecrease)
+    {
+        const string increase =
+            """
+            Func<CreateInventoryMovementRequest> hiddenIncrease = () =>
+                _inventoryMovementFactory.CreateAdjustmentIncrease(
+                    document.WarehouseId,
+                    line.ProductVariantId,
+                    line.BaseQuantity,
+                    line.UnitCost ?? 1m,
+                    documentReferenceId,
+                    line.Id,
+                    note,
+                    occurredAtUtc);
+            """;
+        const string decrease =
+            """
+            Func<CreateInventoryMovementRequest> hiddenDecrease = () =>
+                _inventoryMovementFactory.CreateAdjustmentDecrease(
+                    document.WarehouseId,
+                    line.ProductVariantId,
+                    line.BaseQuantity,
+                    line.ProvisionalUnitCost,
+                    documentReferenceId,
+                    line.Id,
+                    note,
+                    occurredAtUtc);
+            """;
+
+        return includeDecrease
+            ? increase + "\n" + decrease
+            : increase;
+    }
+
+    private static string BuildHiddenDurableLocalFunction()
+        =>
+            """
+            void HiddenDurableRequests()
+            {
+                _ = _inventoryMovementFactory.CreateAdjustmentIncrease(
+                    document.WarehouseId,
+                    line.ProductVariantId,
+                    line.BaseQuantity,
+                    line.UnitCost ?? 1m,
+                    documentReferenceId,
+                    line.Id,
+                    note,
+                    occurredAtUtc);
+                _ = _inventoryMovementFactory.CreateAdjustmentDecrease(
+                    document.WarehouseId,
+                    line.ProductVariantId,
+                    line.BaseQuantity,
+                    line.ProvisionalUnitCost,
+                    documentReferenceId,
+                    line.Id,
+                    note,
+                    occurredAtUtc);
+            }
+            """;
 
     private static string RemoveDurableFactoryMethod(
         string source,
@@ -2847,7 +4372,27 @@ public sealed class InventoryNonPosPostingContractTests
         int IncreaseCallCount,
         int DecreaseCallCount,
         bool IncreaseReferenceArgumentIsDocumentReference,
-        bool DecreaseReferenceArgumentIsDocumentReference);
+        bool DecreaseReferenceArgumentIsDocumentReference,
+        int ConstructionLoopCount,
+        int MovementRequestAddCount,
+        int PreLockCallCount,
+        int PostingLoopCount,
+        int PostingCallCount,
+        bool ConstructionFlowIsValid,
+        bool PostingFlowIsValid);
+
+    private sealed record TwoStageFlowContractResult(
+        int ConstructionLoopCount,
+        int MovementRequestAddCount,
+        int PreLockCallCount,
+        int PostingLoopCount,
+        int PostingCallCount,
+        bool ConstructionFlowIsValid,
+        bool PostingFlowIsValid)
+    {
+        public static TwoStageFlowContractResult Empty { get; } =
+            new(0, 0, 0, 0, 0, false, false);
+    }
 
     private sealed record RelationalDocumentSnapshot(
         InventoryAdjustmentDocumentStatus Status,
