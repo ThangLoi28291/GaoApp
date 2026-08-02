@@ -137,6 +137,13 @@ public sealed class InventoryNonPosPostingContractTests
     public void Adjustment_document_factory_uses_stable_document_and_line_identity()
     {
         var factory = new InventoryMovementFactory();
+        var document = CreatePendingAdjustmentDocument();
+        var expectedReferenceId =
+            document.Id.ToString(CultureInfo.InvariantCulture);
+        var persistedLineIds = document.Lines
+            .OrderBy(line => line.Id)
+            .Select(line => line.Id)
+            .ToArray();
         var occurredAtUtc = new DateTime(
             2026,
             8,
@@ -151,8 +158,8 @@ public sealed class InventoryNonPosPostingContractTests
             100,
             2m,
             7.5m,
-            "42",
-            501,
+            expectedReferenceId,
+            persistedLineIds[0],
             "count correction",
             occurredAtUtc);
         var decrease = factory.CreateAdjustmentDecrease(
@@ -160,17 +167,80 @@ public sealed class InventoryNonPosPostingContractTests
             100,
             2m,
             7.5m,
-            "42",
-            502,
+            expectedReferenceId,
+            persistedLineIds[1],
             "damage correction",
             occurredAtUtc);
 
-        increase.ReferenceId.Should().Be("42");
-        increase.ReferenceLineId.Should().Be(501);
+        increase.ReferenceType.Should().Be(
+            InventoryReferenceType.Adjustment);
+        increase.ReferenceId.Should().Be(expectedReferenceId);
+        increase.ReferenceLineId.Should().Be(persistedLineIds[0]);
+        increase.ReferenceSubKey.Should().BeNull();
         increase.SkipIfExists.Should().BeTrue();
-        decrease.ReferenceId.Should().Be("42");
-        decrease.ReferenceLineId.Should().Be(502);
+        decrease.ReferenceType.Should().Be(
+            InventoryReferenceType.Adjustment);
+        decrease.ReferenceId.Should().Be(expectedReferenceId);
+        decrease.ReferenceLineId.Should().Be(persistedLineIds[1]);
+        decrease.ReferenceSubKey.Should().BeNull();
         decrease.SkipIfExists.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Adjustment_approval_derives_one_invariant_document_reference_for_both_paths()
+    {
+        var source = ReadRepositoryFile(
+            "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
+        var approveStart = source.IndexOf(
+            "public async Task<InventoryAdjustmentDocumentDetailDto> ApproveAsync(",
+            StringComparison.Ordinal);
+        var rejectStart = source.IndexOf(
+            "public async Task<InventoryAdjustmentDocumentDetailDto> RejectAsync(",
+            approveStart,
+            StringComparison.Ordinal);
+
+        approveStart.Should().BeGreaterThanOrEqualTo(0);
+        rejectStart.Should().BeGreaterThan(approveStart);
+
+        var approveSource = source[approveStart..rejectStart]
+            .ReplaceLineEndings("\n");
+        const string invariantConversion =
+            "document.Id.ToString(CultureInfo.InvariantCulture)";
+        const string callEnd = "occurredAtUtc);";
+
+        approveSource.Should().Contain(
+            $"var documentReferenceId =\n" +
+            $"            {invariantConversion};");
+        approveSource.Split(
+                invariantConversion,
+                StringSplitOptions.None)
+            .Should().HaveCount(2);
+        approveSource.Should().NotContain("document.Id.ToString()");
+
+        var increaseStart = approveSource.IndexOf(
+            "_inventoryMovementFactory.CreateAdjustmentIncrease(",
+            StringComparison.Ordinal);
+        var increaseEnd = approveSource.IndexOf(
+            callEnd,
+            increaseStart,
+            StringComparison.Ordinal);
+        var decreaseStart = approveSource.IndexOf(
+            "_inventoryMovementFactory.CreateAdjustmentDecrease(",
+            StringComparison.Ordinal);
+        var decreaseEnd = approveSource.IndexOf(
+            callEnd,
+            decreaseStart,
+            StringComparison.Ordinal);
+
+        increaseStart.Should().BeGreaterThanOrEqualTo(0);
+        increaseEnd.Should().BeGreaterThan(increaseStart);
+        decreaseStart.Should().BeGreaterThan(increaseEnd);
+        decreaseEnd.Should().BeGreaterThan(decreaseStart);
+
+        approveSource[increaseStart..(increaseEnd + callEnd.Length)]
+            .Should().Contain("documentReferenceId,");
+        approveSource[decreaseStart..(decreaseEnd + callEnd.Length)]
+            .Should().Contain("documentReferenceId,");
     }
 
     [Fact]
@@ -208,8 +278,11 @@ public sealed class InventoryNonPosPostingContractTests
         document.Status.Should().Be(
             InventoryAdjustmentDocumentStatus.PendingApproval);
         movements.Requests.Should().HaveCount(2);
+        var expectedReferenceId =
+            document.Id.ToString(CultureInfo.InvariantCulture);
         movements.Requests.Select(x => x.ReferenceId)
-            .Should().OnlyContain(x => x == document.Id.ToString());
+            .Should().OnlyContain(
+                x => x == expectedReferenceId);
         movements.Requests.Select(x => x.ReferenceLineId)
             .Should().Equal(501, 502);
     }

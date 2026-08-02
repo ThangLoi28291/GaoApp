@@ -6,6 +6,7 @@ using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Globalization;
 
 
 namespace GaoApp.Application.Services.Inventory;
@@ -307,6 +308,8 @@ IInventoryCostSuggestionService costSuggestionService)
         if (document.Lines == null || document.Lines.Count == 0)
             throw new InvalidOperationException("Phiếu điều chỉnh phải có ít nhất 1 dòng sản phẩm.");
 
+        var documentReferenceId =
+            document.Id.ToString(CultureInfo.InvariantCulture);
         var occurredAtUtc = DateTime.UtcNow;
         var movementRequests = new List<CreateInventoryMovementRequest>();
 
@@ -350,7 +353,7 @@ IInventoryCostSuggestionService costSuggestionService)
                     line.ProductVariantId,
                     line.BaseQuantity,
                     finalUnitCost.Value,
-                    document.Id.ToString(),
+                    documentReferenceId,
                     line.Id,
                     note,
                     occurredAtUtc);
@@ -362,7 +365,7 @@ IInventoryCostSuggestionService costSuggestionService)
                     line.ProductVariantId,
                     line.BaseQuantity,
                     line.ProvisionalUnitCost,
-                    document.Id.ToString(),
+                    documentReferenceId,
                     line.Id,
                     note,
                     occurredAtUtc);
