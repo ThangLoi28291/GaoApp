@@ -359,6 +359,45 @@ public sealed class InventoryNonPosPostingContractTests
                 "DecreaseReferenceArgument"
             }
         ];
+        yield return
+        [
+            "M11 raw-string declaration bypass",
+            ReplaceSyntheticInvariantDeclaration(
+                BuildSyntheticAdjustmentReferenceContract(),
+                BuildRawStringDeclarationBypass(
+                    dollarCount: 0)),
+            new[]
+            {
+                "InvariantDeclarationCount",
+                "InvariantConversionCount"
+            }
+        ];
+        yield return
+        [
+            "M12 interpolated raw-string declaration bypass",
+            ReplaceSyntheticInvariantDeclaration(
+                BuildSyntheticAdjustmentReferenceContract(),
+                BuildRawStringDeclarationBypass(
+                    dollarCount: 2)),
+            new[]
+            {
+                "InvariantDeclarationCount",
+                "InvariantConversionCount"
+            }
+        ];
+        yield return
+        [
+            "M13 raw-string fake factory call",
+            BuildSyntheticAdjustmentReferenceContract(
+                sourceBeforeDecreaseCall:
+                    BuildRawStringContainingCorrectDecreaseCall(),
+                decreaseReferenceArgument:
+                    "document.Id.ToString(CultureInfo.InvariantCulture)"),
+            new[]
+            {
+                "DecreaseReferenceArgument"
+            }
+        ];
     }
 
     [Theory]
@@ -396,6 +435,54 @@ public sealed class InventoryNonPosPostingContractTests
                 reassignment:
                 "// documentReferenceId = alternateReferenceId;")
         ];
+        yield return
+        [
+            "plain raw string",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                    BuildHarmlessRawStringStatement(
+                        dollarCount: 0,
+                        quoteCount: 3))
+        ];
+        yield return
+        [
+            "one-dollar interpolated raw string",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                    BuildHarmlessRawStringStatement(
+                        dollarCount: 1,
+                        quoteCount: 3))
+        ];
+        yield return
+        [
+            "two-dollar interpolated raw string",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                    BuildHarmlessRawStringStatement(
+                        dollarCount: 2,
+                        quoteCount: 3))
+        ];
+        yield return
+        [
+            "four-quote raw string containing triple quotes",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                    BuildHarmlessRawStringStatement(
+                        dollarCount: 0,
+                        quoteCount: 4,
+                        additionalContent:
+                            "short quote run: \"\"\""))
+        ];
+        yield return
+        [
+            "multiline CRLF raw string",
+            BuildSyntheticAdjustmentReferenceContract(
+                reassignment:
+                    BuildHarmlessRawStringStatement(
+                        dollarCount: 0,
+                        quoteCount: 3,
+                        lineEnding: "\r\n"))
+        ];
     }
 
     [Fact]
@@ -423,9 +510,11 @@ public sealed class InventoryNonPosPostingContractTests
             var after = 2;
             """;
 
-        var sanitized =
+        var sanitization =
             StripNonCodeTriviaPreservingLayout(source);
+        var sanitized = sanitization.SanitizedSource;
 
+        sanitization.Violations.Should().BeEmpty();
         sanitized.Length.Should().Be(source.Length);
         sanitized
             .Select((value, index) => (value, index))
@@ -458,6 +547,114 @@ public sealed class InventoryNonPosPostingContractTests
         {
             sanitized.Should().NotContain(marker);
         }
+    }
+
+    [Theory]
+    [InlineData(0, 3)]
+    [InlineData(1, 3)]
+    [InlineData(2, 3)]
+    [InlineData(3, 3)]
+    [InlineData(0, 4)]
+    [InlineData(1, 4)]
+    [InlineData(2, 4)]
+    public void Adjustment_reference_scanner_blanks_raw_strings_preserving_layout(
+        int dollarCount,
+        int quoteCount)
+    {
+        const string lineEnding = "\r\n";
+        var shorterQuoteRun = new string(
+            '"',
+            quoteCount - 1);
+        var rawLiteral = BuildRawStringLiteral(
+            $"first{lineEnding}" +
+            $"{shorterQuoteRun}{lineEnding}" +
+            "last",
+            dollarCount,
+            quoteCount,
+            lineEnding);
+        var source =
+            $"var before = 1;{lineEnding}" +
+            rawLiteral +
+            $"{lineEnding}var after = 2;";
+
+        var sanitization =
+            StripNonCodeTriviaPreservingLayout(source);
+        var sanitized = sanitization.SanitizedSource;
+        var literalStart = source.IndexOf(
+            rawLiteral,
+            StringComparison.Ordinal);
+        var afterStart = source.IndexOf(
+            "var after = 2;",
+            StringComparison.Ordinal);
+
+        sanitization.Violations.Should().BeEmpty();
+        sanitized.Length.Should().Be(source.Length);
+        sanitized
+            .Select((value, index) => (value, index))
+            .Where(item => item.value is '\r' or '\n')
+            .Should().Equal(
+                source
+                    .Select((value, index) => (value, index))
+                    .Where(item => item.value is '\r' or '\n'));
+        literalStart.Should().BeGreaterThanOrEqualTo(0);
+        afterStart.Should().BeGreaterThan(literalStart);
+        sanitized.IndexOf(
+                "var after = 2;",
+                StringComparison.Ordinal)
+            .Should().Be(afterStart);
+
+        for (var index = literalStart;
+             index < literalStart + rawLiteral.Length;
+             index++)
+        {
+            sanitized[index].Should().Be(
+                source[index] is '\r' or '\n'
+                    ? source[index]
+                    : ' ');
+        }
+    }
+
+    [Fact]
+    public void Adjustment_reference_contract_fails_closed_for_unterminated_raw_string()
+    {
+        var approveSource =
+            BuildSyntheticAdjustmentReferenceContract()
+            + "\nvar broken = $$\"\"\"\n"
+            + BuildDangerousRawStringContent();
+
+        var violations =
+            GetAdjustmentReferenceContractViolations(approveSource);
+
+        violations.Should().Contain("UnterminatedRawString");
+        violations.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public void Adjustment_reference_boundary_ignores_raw_string_method_names()
+    {
+        var boundaryNoise = BuildRawStringLiteral(
+            """
+            public async Task<InventoryAdjustmentDocumentDetailDto>
+                ApproveAsync(fake)
+            public async Task<InventoryAdjustmentDocumentDetailDto>
+                RejectAsync(fake)
+            """,
+            dollarCount: 2,
+            quoteCount: 3);
+        var serviceSource =
+            "var before = " + boundaryNoise + ";\n"
+            + "public async Task<InventoryAdjustmentDocumentDetailDto> "
+            + "ApproveAsync(request)\n{\n"
+            + BuildSyntheticAdjustmentReferenceContract()
+            + "\nvar inside = " + boundaryNoise + ";\n}\n"
+            + "public async Task<InventoryAdjustmentDocumentDetailDto> "
+            + "RejectAsync(request)\n{\n}\n";
+
+        var approveSource =
+            ExtractAdjustmentApprovalSource(serviceSource);
+
+        GetAdjustmentReferenceContractViolations(approveSource)
+            .Should().BeEmpty();
     }
 
     [Fact]
@@ -1280,8 +1477,17 @@ public sealed class InventoryNonPosPostingContractTests
     {
         var source = ReadRepositoryFile(
             "GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs");
-        var sanitizedSource =
+
+        return ExtractAdjustmentApprovalSource(source);
+    }
+
+    private static string ExtractAdjustmentApprovalSource(
+        string source)
+    {
+        var sanitization =
             StripNonCodeTriviaPreservingLayout(source);
+        var sanitizedSource =
+            sanitization.SanitizedSource;
         const string approveBoundaryPattern =
             """
             \bpublic\s+async\s+Task\s*<
@@ -1298,6 +1504,8 @@ public sealed class InventoryNonPosPostingContractTests
             RegexOptions.IgnorePatternWhitespace
             | RegexOptions.CultureInvariant;
 
+        sanitization.Violations.Should().BeEmpty(
+            "method boundary extraction must fail closed on lexical errors");
         var approveBoundaries = Regex.Matches(
             sanitizedSource,
             approveBoundaryPattern,
@@ -1323,10 +1531,12 @@ public sealed class InventoryNonPosPostingContractTests
         return source[approveStart..rejectStart];
     }
 
-    private static string StripNonCodeTriviaPreservingLayout(
+    private static LexicalSanitizationResult
+        StripNonCodeTriviaPreservingLayout(
         string source)
     {
         var sanitized = source.ToCharArray();
+        var violations = new List<string>();
         var index = 0;
 
         while (index < source.Length)
@@ -1334,20 +1544,45 @@ public sealed class InventoryNonPosPostingContractTests
             if (!TryBlankNonCodeToken(
                     source,
                     sanitized,
-                    ref index))
+                    ref index,
+                    violations))
             {
                 index++;
             }
         }
 
-        return new string(sanitized);
+        return new LexicalSanitizationResult(
+            new string(sanitized),
+            violations);
     }
 
     private static bool TryBlankNonCodeToken(
         string source,
         char[] sanitized,
-        ref int index)
+        ref int index,
+        ICollection<string> violations)
     {
+        if (TryGetRawStringStart(
+                source,
+                index,
+                out var dollarCount,
+                out var openingQuoteCount))
+        {
+            index = BlankRawString(
+                source,
+                sanitized,
+                index,
+                dollarCount,
+                openingQuoteCount,
+                out var terminated);
+            if (!terminated)
+            {
+                violations.Add("UnterminatedRawString");
+            }
+
+            return true;
+        }
+
         if (StartsWithAt(source, index, "//"))
         {
             index = BlankLineComment(
@@ -1374,7 +1609,8 @@ public sealed class InventoryNonPosPostingContractTests
                 sanitized,
                 index,
                 prefixLength: 3,
-                verbatim: true);
+                verbatim: true,
+                violations);
             return true;
         }
 
@@ -1385,7 +1621,8 @@ public sealed class InventoryNonPosPostingContractTests
                 sanitized,
                 index,
                 prefixLength: 2,
-                verbatim: false);
+                verbatim: false,
+                violations);
             return true;
         }
 
@@ -1542,7 +1779,8 @@ public sealed class InventoryNonPosPostingContractTests
         char[] sanitized,
         int start,
         int prefixLength,
-        bool verbatim)
+        bool verbatim,
+        ICollection<string> violations)
     {
         BlankRangePreservingNewlines(
             sanitized,
@@ -1617,7 +1855,8 @@ public sealed class InventoryNonPosPostingContractTests
             if (TryBlankNonCodeToken(
                     source,
                     sanitized,
-                    ref index))
+                    ref index,
+                    violations))
             {
                 continue;
             }
@@ -1635,6 +1874,81 @@ public sealed class InventoryNonPosPostingContractTests
             }
         }
 
+        return index;
+    }
+
+    private static bool TryGetRawStringStart(
+        string source,
+        int start,
+        out int dollarCount,
+        out int openingQuoteCount)
+    {
+        var index = start;
+        while (index < source.Length
+               && source[index] == '$')
+        {
+            index++;
+        }
+
+        dollarCount = index - start;
+        var quoteStart = index;
+        while (index < source.Length
+               && source[index] == '"')
+        {
+            index++;
+        }
+
+        openingQuoteCount = index - quoteStart;
+        return openingQuoteCount >= 3;
+    }
+
+    private static int BlankRawString(
+        string source,
+        char[] sanitized,
+        int start,
+        int dollarCount,
+        int openingQuoteCount,
+        out bool terminated)
+    {
+        var prefixLength =
+            dollarCount + openingQuoteCount;
+        BlankRangePreservingNewlines(
+            sanitized,
+            start,
+            prefixLength);
+        var index = start + prefixLength;
+
+        while (index < source.Length)
+        {
+            if (source[index] == '"')
+            {
+                var quoteRunStart = index;
+                while (index < source.Length
+                       && source[index] == '"')
+                {
+                    index++;
+                }
+
+                var quoteRunLength =
+                    index - quoteRunStart;
+                BlankRangePreservingNewlines(
+                    sanitized,
+                    quoteRunStart,
+                    quoteRunLength);
+                if (quoteRunLength == openingQuoteCount)
+                {
+                    terminated = true;
+                    return index;
+                }
+
+                continue;
+            }
+
+            BlankNonNewline(sanitized, index);
+            index++;
+        }
+
+        terminated = false;
         return index;
     }
 
@@ -1701,10 +2015,13 @@ public sealed class InventoryNonPosPostingContractTests
             RegexOptions.IgnorePatternWhitespace
             | RegexOptions.CultureInvariant;
 
-        var source = StripNonCodeTriviaPreservingLayout(
-                approveSource)
+        var sanitization =
+            StripNonCodeTriviaPreservingLayout(
+                approveSource);
+        var source = sanitization.SanitizedSource
             .ReplaceLineEndings("\n");
-        var violations = new List<string>();
+        var violations =
+            sanitization.Violations.ToList();
 
         if (Regex.Matches(
                 source,
@@ -1982,6 +2299,123 @@ public sealed class InventoryNonPosPostingContractTests
             */
             """;
 
+    private static string BuildRawStringDeclarationBypass(
+        int dollarCount)
+        =>
+            "BuildReference(document, out var documentReferenceId);\n\n"
+            + "var fakeContract = "
+            + BuildRawStringLiteral(
+                """
+                var documentReferenceId =
+                    document.Id.ToString(CultureInfo.InvariantCulture);
+                """,
+                dollarCount,
+                quoteCount: 3)
+            + ";";
+
+    private static string
+        BuildRawStringContainingCorrectDecreaseCall()
+        =>
+            "var fakeDecreaseCall = "
+            + BuildRawStringLiteral(
+                """
+                movementRequest =
+                    _inventoryMovementFactory.CreateAdjustmentDecrease(
+                        warehouseId,
+                        productVariantId,
+                        quantity,
+                        provisionalUnitCost,
+                        documentReferenceId,
+                        lineId,
+                        note,
+                        occurredAtUtc);
+                """,
+                dollarCount: 0,
+                quoteCount: 3)
+            + ";";
+
+    private static string BuildHarmlessRawStringStatement(
+        int dollarCount,
+        int quoteCount,
+        string? additionalContent = null,
+        string lineEnding = "\n")
+    {
+        var content =
+            BuildDangerousRawStringContent()
+                .ReplaceLineEndings(lineEnding);
+        if (!string.IsNullOrEmpty(additionalContent))
+        {
+            content +=
+                lineEnding + additionalContent;
+        }
+
+        return "var harmlessRaw = "
+               + BuildRawStringLiteral(
+                   content,
+                   dollarCount,
+                   quoteCount,
+                   lineEnding)
+               + ";";
+    }
+
+    private static string BuildDangerousRawStringContent()
+        =>
+            """
+            CultureInfo.CurrentCulture;
+            CultureInfo.CurrentUICulture;
+            document.Id.ToString();
+            documentReferenceId = alternateReferenceId;
+            _inventoryMovementFactory.CreateAdjustmentIncrease(
+                warehouseId,
+                productVariantId,
+                quantity,
+                unitCost,
+                wrongReferenceId,
+                lineId,
+                note,
+                occurredAtUtc);
+            _inventoryMovementFactory.CreateAdjustmentDecrease(
+                warehouseId,
+                productVariantId,
+                quantity,
+                provisionalUnitCost,
+                wrongReferenceId,
+                lineId,
+                note,
+                occurredAtUtc);
+            ApproveAsync(fake);
+            RejectAsync(fake);
+            """;
+
+    private static string BuildRawStringLiteral(
+        string content,
+        int dollarCount,
+        int quoteCount,
+        string lineEnding = "\n")
+    {
+        if (dollarCount < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(dollarCount));
+        }
+
+        if (quoteCount < 3)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(quoteCount));
+        }
+
+        var delimiter = new string(
+            '"',
+            quoteCount);
+        return new string('$', dollarCount)
+               + delimiter
+               + lineEnding
+               + content.ReplaceLineEndings(lineEnding)
+               + lineEnding
+               + delimiter;
+    }
+
     private static string ReadRepositoryFile(string relativePath)
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
@@ -2153,6 +2587,10 @@ public sealed class InventoryNonPosPostingContractTests
         string InvariantDocumentId,
         IReadOnlyList<int> LineIds,
         IReadOnlyList<int> VariantIds);
+
+    private sealed record LexicalSanitizationResult(
+        string SanitizedSource,
+        IReadOnlyList<string> Violations);
 
     private sealed record RelationalDocumentSnapshot(
         InventoryAdjustmentDocumentStatus Status,
