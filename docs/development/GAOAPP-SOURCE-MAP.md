@@ -9,12 +9,14 @@ Tài liệu mô tả **source đang tồn tại**, không mặc định rằng t
 | Thuộc tính | Giá trị |
 |---|---|
 | Source root | `D:\Datacode` |
-| Last verified branch | `docs/r2-0-governance-baseline` |
-| Last verified commit | `6f909420092ce0f7d2a7100b8eb94fb964727c0c` |
-| Last verified date | 2026-07-31 |
+| Last verified branch | `fix/r2-0-c2-durable-inventory-posting` |
+| Last verified commit | `0a5b2cf5734fd69dfa1e709de3984222c1ee4158` |
+| Last verified date | 2026-08-03 |
 | Runtime/build/test during verification | Không chạy; đây là task tài liệu Level A |
 
 > Cảnh báo cập nhật: bản đồ này phải được kiểm tra lại sau mọi thay đổi schema, workflow, endpoint, permission hoặc Confirm posting. Không dùng commit ở trên như bằng chứng cho source mới hơn.
+
+Baseline hiện tại bao gồm governance R2.0-A2 (`3086b86daf7c8ae5bfc2868c6badb3da3542f339`, merge `ae7bf491f2e75fa1b8009a600d064eac2b4883b9`), C1 tenant-safe XML detail mapping (`f0ebd2b4a864d18605806fb85b833dc547fa9f76`, merge `d9b4b06c2a8f35bc0021c8f41a88361307e1d634`) và ba chặng C2: C2A atomic posting core `d1b06dce5343808493ebb7d1b599e01a06ae5113`, C2B1 non-POS adoption `3c99f19131a8c1af0bbfeeba94eb286c0081686c`, C2B2 POS/Return/LegalEntity/Reservation/Revaluation adoption `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`. Tại thời điểm cập nhật tài liệu, C2B2 đã có Independent Review PASS và GitHub required checks 2/2 Success trên head này; PR #8 vẫn open và unmerged. Đây là evidence của implementation C2, không phải verdict cho task documentation C2C.
 
 ## 2. Solution and dependency direction
 
@@ -190,29 +192,25 @@ Khoảng trống đích:
 5. Request validation: `ApprovePurchaseReceiptCommercialRequest` DataAnnotations; controller/model binding, rồi business validation trong service.
 6. Service entry: `GaoApp.Application/Services/Inventory/StockDocumentService.cs`, `ApproveCommercialAsync`.
 7. Commercial persistence: service validate rowversion/status/line set/supplier/prices/tax/freight, cập nhật line/header, rồi gọi private `ApproveTrackedAsync`.
-8. Transaction: `IStockDocumentRepository.BeginTransactionAsync`; mọi posting sau đây nằm trong cùng transaction của repository/DbContext.
-9. Cost: `PurchasePricingPolicy.CalculateBaseUnitCost(line.LineTotal, line.FreightAllocation, line.BaseQuantity)`.
-10. Movement request: `GaoApp.Application/Services/Inventory/InventoryMovementFactory.cs`, `CreatePurchaseReceipt`, tạo `InventoryTransactionType.PurchaseReceipt`, reference type `StockDocument`, document/line identity và `SkipIfExists=true`.
-11. Inventory posting: `GaoApp.Application/Services/Inventory/InventoryMovementService.cs`, `CreateAsync`.
-12. Idempotency check: `InventoryTransactionRepository.ExistsAsync`.
-13. Balance: `InventoryBalanceRepository.GetOrCreateAsync`.
-14. Ledgers/layers: tạo `InventoryTransaction`, inbound `InventoryValuationEntry`, `InventoryCostLayer`, liên kết entry/layer, xử lý provisional revaluation rồi cập nhật `InventoryBalance`.
-15. Receipt effects: cập nhật `ProductVariant.HasInputInvoice` nếu mapping có mặt tại thời điểm Confirm; `ApplyApprovedReceiptToPurchaseOrder`; tạo payable nếu cần.
-16. Final state: set `StockDocumentStatus.Confirmed`, approved/confirmed actor/time; `SaveChangesAsync`; commit transaction.
-17. Failure: catch rollback; concurrency exception được API map thành HTTP 409.
+8. Transaction: `IStockDocumentRepository.BeginTransactionAsync`; caller sở hữu commit/rollback và mọi posting sau đây nằm trong cùng transaction của repository/DbContext.
+9. Pre-lock: `InventoryMovementService.PreLockBalancesAsync` materialize toàn bộ khóa Store/warehouse/variant của các active line và khóa theo thứ tự canonical trước movement đầu tiên.
+10. Cost: `PurchasePricingPolicy.CalculateBaseUnitCost(line.LineTotal, line.FreightAllocation, line.BaseQuantity)`.
+11. Movement request: `GaoApp.Application/Services/Inventory/InventoryMovementFactory.cs`, `CreatePurchaseReceipt`, tạo `InventoryTransactionType.PurchaseReceipt`, reference type `StockDocument`, giữ document/line identity và `SkipIfExists=true`.
+12. Inventory posting: `GaoApp.Application/Services/Inventory/InventoryMovementService.cs`, `CreateAsync`, tham gia transaction đang active qua `InventoryPostingTransactionCoordinator`.
+13. Durable identity: `InventoryIdempotencyKeyFactory` tạo key canonical SHA-256; repository kiểm tra key hiện tại và legacy identity, còn database bảo vệ uniqueness bằng `StoreId + IdempotencyKey` cho active rows.
+14. Balance: `InventoryBalanceRepository.LockAndGetOrCreateAsync` dùng SQL Server transaction-scoped locking.
+15. Ledgers/layers: tạo `InventoryTransaction`, inbound `InventoryValuationEntry`, `InventoryCostLayer`, liên kết entry/layer, xử lý provisional revaluation rồi cập nhật `InventoryBalance`.
+16. Receipt effects: cập nhật `ProductVariant.HasInputInvoice` nếu mapping có mặt tại thời điểm Confirm; `ApplyApprovedReceiptToPurchaseOrder`; tạo payable nếu cần.
+17. Final state: set `StockDocumentStatus.Confirmed`, approved/confirmed actor/time; `SaveChangesAsync`; commit transaction.
+18. Failure: catch rollback; conflict SQL Server được coordinator chuyển thành `ConcurrencyException`, và API có thể map concurrency exception thành HTTP 409.
 
 Current safeguards:
 
 - Confirm retry sau commit trả về nếu document đã `Confirmed`.
 - Request mang `RowVersion`.
-- Posting nằm trong transaction.
-- `SkipIfExists` kiểm tra movement đã tồn tại.
-
-Known concurrency gaps:
-
-- Business-reference index của `InventoryTransaction` không unique; hai request đồng thời có thể cùng vượt `ExistsAsync`.
-- `InventoryBalanceRepository.GetOrCreateAsync` query-then-add; unique balance index có thể phát sinh race khi balance chưa có.
-- Các gap này là blocker Level C trước khi mở rộng Confirm.
+- Posting, durable movement identity, balance lock và các effect của receipt nằm trong transaction do caller sở hữu.
+- `SkipIfExists` dùng durable key và kiểm tra payload của movement đã tồn tại; database filtered unique index là hàng rào cuối cho concurrent insert.
+- Toàn bộ balance key được pre-lock trước movement đầu tiên; thứ tự lock không thay đổi thứ tự business line/posting.
 
 ## 6. Inventory and costing
 
@@ -231,6 +229,48 @@ Services/repositories:
 - `InventoryMovementFactory.CreatePurchaseReceipt`: adapter receipt sang movement request.
 - Repositories trong `GaoApp.Infrastructure/Repositories/Inventory/`.
 - Configurations trong `GaoApp.Infrastructure/Data/Configurations/Inventory*Configuration.cs`.
+
+### 6.1 Durable inventory posting foundation — current implemented behavior
+
+Durable movement identity:
+
+- `GaoApp.Domain/Entities/InventoryTransaction.cs` có `IdempotencyKey` kiểu `byte[]?`. `GaoApp.Application/Services/Inventory/InventoryIdempotencyKeyFactory.cs` tạo key SHA-256 32 byte từ canonical identity có version, `StoreId`, `WarehouseId`, `ProductVariantId`, `TransactionType`, `ReferenceType`, `ReferenceId`, nullable `ReferenceLineId` và nullable `ReferenceSubKey`. String được normalize Unicode NFC nhưng vẫn phân biệt hoa/thường; null và empty subkey không bị đánh đồng.
+- `GaoApp.Infrastructure/Data/Configurations/InventoryTransactionConfiguration.cs` map key thành nullable `varbinary(32)`. Nullable là chủ ý để giữ nguyên historical rows và các transaction được tạo theo path non-idempotent; không có default và migration không phát minh hoặc backfill key cho dữ liệu lịch sử.
+- Filtered unique index `UX_InventoryTransactions_StoreId_IdempotencyKey_Active` bảo vệ `StoreId + IdempotencyKey`, chỉ cho row có key, active và non-deleted: `[IdempotencyKey] IS NOT NULL AND [IsDeleted] = 0`.
+- Migration hiện tại là `GaoApp.Infrastructure/Migrations/20260801110856_AddInventoryPostingIdempotency.cs`, cùng `GaoApp.Infrastructure/Migrations/20260801110856_AddInventoryPostingIdempotency.Designer.cs` và `GaoApp.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`. Migration chỉ add nullable column/index; `Down` chỉ drop index/column.
+- `InventoryMovementService.CreateAsync` dùng key khi request có `SkipIfExists`; `GaoApp.Infrastructure/Repositories/Inventory/InventoryTransactionRepository.cs` tải row keyed hoặc legacy identity, rồi service so canonical identity/quantity/unit cost và trả skipped cho retry tương thích. Database unique index vẫn là durable protection khi hai transaction cạnh tranh.
+
+Transaction và balance locking:
+
+- `GaoApp.Application/Interfaces/Common/IInventoryPostingTransactionCoordinator.cs` và `GaoApp.Infrastructure/Data/InventoryPostingTransactionCoordinator.cs` cung cấp `HasActiveTransaction` và `ExecuteAsync`. `CreateAsync` tham gia transaction caller nếu đã có; nếu là single-movement standalone call thì coordinator có thể mở, commit/rollback transaction của chính nó. SQL lock timeout/deadlock và duplicate-key conflict của các index đã biết được chuyển thành `ConcurrencyException`; không có global automatic retry/replay.
+- `GaoApp.Application/DTOs/Inventory/InventoryPostingLockKey.cs` là đúng bộ ba `StoreId`, `WarehouseId`, `ProductVariantId`; public pre-lock contract nằm tại `GaoApp.Application/Interfaces/Services/Inventory/IInventoryMovementService.cs`.
+- `InventoryMovementService.PreLockBalancesAsync` kiểm tra collection/null/ID, materialize toàn bộ input, dedupe rồi sort `StoreId → WarehouseId → ProductVariantId`. Empty batch là no-op. Batch không rỗng bắt buộc caller đã mở transaction; pre-lock không tự mở transaction, không commit và không rollback.
+- Trước balance lock đầu tiên, pre-lock tải toàn bộ warehouse distinct và xác minh warehouse tồn tại, đúng Store của từng key. Vì vậy invalid Store/warehouse bị từ chối trước mutation/partial balance locking.
+- `GaoApp.Infrastructure/Repositories/Inventory/InventoryBalanceRepository.cs`, `LockAndGetOrCreateAsync`, chỉ chạy trên SQL Server và trong active transaction. Query dùng `WITH (UPDLOCK,HOLDLOCK,ROWLOCK)` trên exact Store/warehouse/variant key, sau đó đọc cả soft-deleted identity, từ chối identity bị soft-delete hoặc tạo/save balance zero mới.
+- Canonical lock order chỉ điều phối concurrency. Caller vẫn post theo business order sẵn có, ví dụ transfer out trước transfer in, POS theo order line, và Sales Return theo persisted return line/allocation order.
+
+### 6.2 Current caller adoption map
+
+| Operation | Current pre-lock/posting behavior | Source |
+|---|---|---|
+| Purchase receipt Confirm | Materialize active receipt-line keys sau khi caller mở transaction; pre-lock một batch trước movement đầu tiên; giữ line order và receipt document/line identity. | `GaoApp.Application/Services/Inventory/StockDocumentService.cs`, `ApproveTrackedAsync` |
+| Stock count Confirm | Materialize các line có difference khác 0, pre-lock trong caller transaction, rồi post gain/loss theo `LineNo`. | `GaoApp.Application/Services/Inventory/StockCountService.cs`, `ConfirmAsync` |
+| Stock transfer Confirm | Union cả source và destination key cho mọi line; pre-lock một lần rồi giữ business order transfer out trước transfer in. | `GaoApp.Application/Services/Inventory/StockTransferService.cs`, `ConfirmAsync` |
+| Adjustment approval | Build tất cả movement request trước khi mở transaction, pre-lock toàn batch rồi post theo document line order. | `GaoApp.Application/Services/Inventory/InventoryAdjustmentDocumentService.cs`, `ApproveAsync` |
+| POS finalize | Legacy path materialize mọi active line và pre-lock một batch; multi-LegalEntity path pre-lock allocation keys trước movement. Cả hai nằm trong transaction ngoài cùng của `POSService.FinalizeAsync`. | `GaoApp.Application/Services/Orders/POSService.cs`, `ApplyInventoryForFinalizeAsync`; `GaoApp.Application/Services/Orders/OrderLegalEntityFinalizeService.cs`, `ApplyIfEnabledAsync` |
+| POS void | Legacy path khám phá mọi outbound valuation fragment trước union pre-lock; multi-LegalEntity reversal pre-lock mọi source warehouse/variant trước movement. Subkey/source valuation identity và fragment order được giữ nguyên. | `GaoApp.Application/Services/Orders/POSService.cs`, `ApplyInventoryForVoidAsync`; `GaoApp.Application/Services/Orders/OrderLegalEntityReversalService.cs`, `ReverseVoidIfAllocatedAsync` |
+| Sales Return | Parent `SalesReturnService.CreateAsync` lập một operation-wide union từ LegalEntity batch và legacy Restock plans, pre-lock đúng một lần rồi apply theo persisted return-line order. | `GaoApp.Application/Services/Orders/SalesReturnService.cs`; `GaoApp.Application/Services/Orders/OrderLegalEntityReversalService.cs` |
+| Reservation reserve/release/consume | Mỗi operation materialize exact active/new reservation keys và pre-lock trước khi đổi `ReservedQty`. Non-empty operation phải được caller bao bằng active transaction. | `GaoApp.Application/Services/Inventory/InventoryReservationService.cs` |
+| Reservation rebuild | Materialize union old reservation keys + new plan keys, pre-lock một lần, rồi release old và reserve new trong cùng held batch. | `GaoApp.Application/Services/Inventory/InventoryReservationService.cs`, `RebuildForOrderAsync` |
+| Revaluation | Pre-lock exact inbound-layer Store/warehouse/variant trước direct balance access và trước ghi revaluation transaction/valuation. | `GaoApp.Application/Services/Inventory/InventoryRevaluationService.cs`, `ResolveByInboundLayerAsync` |
+
+Sales Return có contract riêng cần giữ:
+
+- Mỗi persisted return line được classify độc lập thành legacy hoặc LegalEntity từ allocation/valuation evidence; document có thể mixed.
+- `NoRestock` không đóng góp balance key và không tạo inventory movement, nhưng vẫn có return/reversal ledger phù hợp.
+- Evidence LegalEntity partial hoặc không nhất quán fail closed trước pre-lock/movement.
+- Parent tạo một union LegalEntity + legacy cho toàn operation. Prepared LegalEntity line apply không pre-lock lồng; parent path không gọi direct per-line helper `ReverseSalesReturnLineIfAllocatedAsync`.
+- Canonical lock order không sắp xếp lại business line. Persisted line order, allocation order, source valuation identity và các legacy/LegalEntity subkey hiện hữu được bảo toàn.
 
 Đơn vị giá vốn:
 
@@ -290,7 +330,9 @@ Identity:
 - Nếu buyer legal entity từ XML khác legal entity hiện tại của receipt trước Confirm, warehouse cũ không còn hợp lệ; manager phải chọn warehouse thuộc legal entity mới trước Confirm và thay đổi này phải được audit.
 - Invoice/receipt invariant là: invoice legal entity được resolve từ buyer tax code phải bằng receipt legal entity được suy ra từ warehouse. Mismatch không phải warning có thể ghi reason để bỏ qua; không được Confirm hoặc tạo link hợp lệ cho đến khi sửa receipt warehouse/legal entity hoặc invoice.
 - Receipt đã Confirm không được đổi legal entity/warehouse do XML bổ sung sau đó.
-- Current source chỉ parse và lưu `InputInvoiceHead.BuyerTaxCode`; upload/view DTO không mang buyer legal entity, không có buyer-tax-code resolver, không audit legal-entity resolution/change và không enforce invoice/receipt same-legal-entity invariant.
+- C1 đã bảo vệ explicit detail mapping: `InputInvoiceRepository.GetInputInvoiceDetailAsync` chứng minh detail thuộc invoice head cùng Store, invoice đã link với đúng receipt, target là receipt, receipt line thuộc receipt, warehouse thuộc Store và có LegalEntity; cùng invoice head không được đang link sang receipt của LegalEntity khác. `InputInvoiceXmlService.UpdateLineMapAsync` còn kiểm tra ownership của receipt line và line map trước khi lookup detail.
+- Guard failure trả thông báo business an toàn chung, không lộ foreign detail ID và không mutate map trước khi từ chối. Đây là current implemented behavior của R2.0-C1.
+- C1 không triển khai SD1-F13: source vẫn chỉ parse/lưu `InputInvoiceHead.BuyerTaxCode`; upload/view DTO chưa mang buyer LegalEntity, chưa có buyer-tax-code resolver, chưa audit resolution/change và chưa gán LegalEntity identity cho invoice. Guard C1 không được diễn giải thành buyer LegalEntity resolution.
 
 ## 9. Supplier and warehouse
 
@@ -340,9 +382,9 @@ Mapping/gaps:
 - Detail không lưu XML item code.
 - Chưa tự resolve supplier bằng tax code.
 - Chưa resolve buyer tax code sang legal entity trong cùng Store; buyer fields cũng chưa được đưa ra upload/view DTO.
-- Chưa enforce invoice legal entity bằng receipt legal entity được suy ra từ warehouse; XML link hiện không có cross-legal-entity guard.
+- Explicit detail mapping hiện có C1 ownership guard cho Store/receipt/line và từ chối invoice head đã link qua nhiều receipt khác LegalEntity. Tuy nhiên invoice vẫn chưa có LegalEntity được resolve từ buyer tax code, nên invariant invoice LegalEntity = receipt LegalEntity chưa thể được chứng minh theo SD1-F13.
 - Chưa có manager-reason workflow cho mismatch/ignored line.
-- `GetInputInvoiceDetailAsync(id)` chỉ lookup ID; service chưa chứng minh detail thuộc invoice/receipt/store đang thao tác.
+- `GetInputInvoiceDetailAsync(storeId, stockDocumentId, stockDocumentLineId, inputInvoiceDetailId)` dùng relational joins/guards thay vì lookup ID đơn lẻ; rejected mapping không mutate line map.
 - `ProductVariant.HasInputInvoice` chỉ được refresh trong Confirm; XML bổ sung sau Confirm không refresh flag này.
 
 ## 11. Authorization, audit and tenant isolation
@@ -425,17 +467,40 @@ Project: `GaoApp.Tests` (xUnit). Các test dưới đây đã được đọc t�
 - `Inventory/StockReceiptLegalEntityTests.cs`: default legal entity/warehouse, inactive/cross-entity guards, selected warehouse movement.
 - `LegalEntities/LegalEntityFoundationTests.cs`: Store/LegalEntity/Warehouse foundation, legal-entity ownership fields và model relationship.
 - `Invoices/InvoiceInputStockRepositoryTests.cs`: confirmed+mapped input stock, issued quantity subtraction, insufficient input stock.
+- `Inventory/InputInvoiceXmlTenantGuardTests.cs`: cross-Store/unlinked/wrong-receipt-line/cross-LegalEntity detail bị từ chối, generic safe failure, rejected map không mutation và valid mapping thành công. Đây là C1 tenant/ownership evidence; không phải evidence cho buyer-tax-code LegalEntity resolution.
 - `Observability/ConcurrencyAndCancellationContractTests.cs`: `Stock_documents_approve_concurrency_should_return_409` bảo vệ controller mapping, không chứng minh DB idempotency.
 - `Products/ProductVariantRepositorySearchTests.cs`: pending catalog product searchable for stock but not POS và repository graph behavior.
 
-Missing or insufficient coverage for R2:
+### Durable posting relational SQL Server evidence
 
-- Hai Confirm đồng thời tạo đúng một movement tại database.
-- Race tạo `InventoryBalance`.
+- `Inventory/InventoryMovementSqlServerConcurrencyTests.cs` dùng SQL Server LocalDB và hai DbContext độc lập để chứng minh concurrent same identity tạo đúng một posting, distinct movements dùng chung initially-missing balance không lost update, committed retry không tạo dependents mới, rollback xóa staged effects và inverse input batches vẫn acquire canonical order không deadlock.
+- `Configuration/InventoryPostingMigrationTests.cs` migrate fresh/baseline LocalDB, xác minh nullable `varbinary(32)`, no default/no historical backfill, filtered unique index và duplicate-key rejection.
+- `Configuration/DatabaseSchemaManifestTests.cs` khóa manifest của nullable column, exact key order/filter/uniqueness và phân biệt baseline prefix trước migration với current prefix.
+- `Inventory/InventoryPosPostingContractTests.cs`, test `Mixed_sales_return_should_persist_legacy_and_legal_entity_restock_after_one_union_prelock`, là mixed Sales Return LocalDB evidence cho union pre-lock, durable subkeys, two persisted return transactions và final balances.
+- `Inventory/InventoryNonPosPostingContractTests.cs` có adjustment LocalDB success/rollback/retry tests: `Adjustment_document_success_should_persist_exact_posting_effects_in_order`, `Adjustment_document_second_movement_failure_should_rollback_first_real_posting`, `Approved_adjustment_document_retry_should_not_create_new_postings`.
+
+### Caller orchestration and structural evidence
+
+- `Inventory/InventoryIdempotencyKeyFactoryTests.cs`: golden SHA-256 vector, Unicode normalization, null/empty boundaries, case, field coverage/order và length validation.
+- `Inventory/InventoryNonPosPostingContractTests.cs`: pre-lock validation/order, purchase receipt/stock count/transfer/adjustment orchestration, transfer out-before-in và narrow source/AST contracts cho adjustment identity/call ordering.
+- `Inventory/InventoryPosPostingContractTests.cs`: POS finalize/void và Sales Return planning/union/order/subkey contracts, gồm pure legacy, pure LegalEntity, mixed, NoRestock và partial-evidence failure.
+- `Inventory/InventoryReservationServiceTests.cs`: reserve/release/consume/rebuild key orchestration; rebuild old+new union; active-transaction failure before mutation.
+- `Inventory/OrderLegalEntityFinalizeServiceTests.cs`: LegalEntity allocation lock batch và movement order/identity.
+- `Inventory/OrderLegalEntityReversalServiceTests.cs`: void/return source restoration, NoRestock, prepared batch và no nested pre-lock.
+- `Inventory/InventoryRevaluationPostingContractTests.cs`: exact pre-lock before direct balance access, transaction guard và allocation math/identity.
+
+Evidence boundary:
+
+- Chỉ các SQL Server LocalDB tests ở trên là relational persistence/concurrency evidence.
+- EF InMemory, recording repository/service và fake-based tests chứng minh caller behavior/key orchestration; chúng không chứng minh SQL Server lock/concurrency.
+- Source/AST contracts chỉ bảo vệ các structural invariant hẹp như call ordering/identity shape; chúng không thay thế behavior hoặc relational evidence.
+
+Remaining missing or insufficient coverage/behavior for future R2:
+
 - Pending receipt immutable theo actor/permission.
 - Multi-PO receipt; alternate receiving unit; managed overdelivery; close/reopen.
 - VAT-in-cost toggle, freight capitalization toggle, discount.
-- XML business-identity unique, tenant-safe detail mapping, post-confirm refresh.
+- XML business-identity unique và post-confirm refresh.
 - Seller supplier-tax-code matching, buyer LegalEntity resolution/same-legal-entity guard và XML product mapping.
 
 ## 14. Related migration and schema evidence
@@ -444,6 +509,8 @@ EF migration baseline:
 
 - `GaoApp.Infrastructure/Migrations/20260726073029_InitialProductionBaseline.cs`
 - `GaoApp.Infrastructure/Migrations/20260726073029_InitialProductionBaseline.Designer.cs`
+- `GaoApp.Infrastructure/Migrations/20260801110856_AddInventoryPostingIdempotency.cs`
+- `GaoApp.Infrastructure/Migrations/20260801110856_AddInventoryPostingIdempotency.Designer.cs`
 - `GaoApp.Infrastructure/Migrations/AppDbContextModelSnapshot.cs`
 
 Relevant tables:
@@ -458,7 +525,7 @@ Relevant tables:
 Important constraint observations:
 
 - Balance key is unique by store/warehouse/variant.
-- Inventory movement business reference index is not unique.
+- Durable inventory movement protection là filtered unique index `StoreId + IdempotencyKey` cho keyed active/non-deleted rows; historical rows có thể giữ null key. Legacy reference-field index vẫn tồn tại cho query/compatibility nhưng không phải durable uniqueness boundary.
 - Supplier tax code is not unique.
 - Legal entity tax code is unique per Store for non-empty, non-deleted rows.
 - Warehouse uses a same-Store composite foreign key to its required legal entity.
@@ -466,10 +533,23 @@ Important constraint observations:
 - Warehouse default is not uniqueness-enforced.
 - Product conversion is unique by store/variant/unit, but one-base-unit is not DB-enforced.
 
-## 15. Known unknowns and verification boundaries
+## 15. Historical resolved gaps, remaining limitations and verification boundaries
+
+Historical gaps resolved by R2.0-C2:
+
+- Trước C2, durable movement protection chỉ dựa vào application lookup và balance creation chưa có deterministic transaction-scoped protocol. C2A thiết lập canonical key, migration/index, transaction coordinator và SQL Server lock/get-or-create; C2B1 áp dụng cho non-POS callers; C2B2 áp dụng cho POS, Return, LegalEntity, Reservation và Revaluation.
+- Các mô tả lịch sử này giải thích SD1-F03/SD1-F12; chúng không phải current open blockers tại expected parent `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`.
+
+Remaining limitations/non-blocking notes:
 
 - Không chạy ứng dụng, build, test hoặc database query; runtime behavior ngoài call chain đọc từ source chưa được chứng minh.
 - Không xác minh dữ liệu production, mức độ duplicate thực tế hoặc execution plan/index contention.
+- Public `InventoryReservationService.ReserveForOrderAsync` hiện không có registered production runtime caller trong source search; method đã có active-transaction/pre-lock contract nhưng activation của caller là future integration work.
+- `InventoryRevaluationService.ResolveByInboundLayerAsync` có thể pre-lock lại exact key đã được outer purchase-receipt flow giữ. Đây là thao tác cùng transaction/key và không phải blocker C2C, nhưng là điểm cần theo dõi khi tối ưu contention.
+- Không có global automatic retry/replay; caller nhận conflict để quyết định reload/retry theo workflow.
+- C2C chỉ reconciliation tài liệu; không thay đổi runtime, test, project, migration/schema, database hoặc CI.
+- SD1-F01 pending receipt immutability vẫn Open.
+- SD1-F13 buyer-tax-code LegalEntity resolution/invoice-owner invariant vẫn Open; C1 guard không đóng finding này.
 - Role tùy biến có thể được cấu hình ngoài seed; source chỉ chứng minh permission checks và seeded defaults.
 - Chưa có quyết định schema cụ thể cho multi-PO receipt, close/reopen, cost toggles hoặc XML mapping; các task Level C phải chốt model/migration riêng.
 - Chưa quyết định thêm direct/snapshot `LegalEntityId` vào `StockDocument`; current invariant tiếp tục derive legal entity từ required warehouse.

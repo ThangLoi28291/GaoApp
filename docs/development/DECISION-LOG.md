@@ -370,6 +370,7 @@ Current `StockDocument`/`StockDocumentConfiguration` không có `LegalEntityId`;
 - **Consequences:** F03 và F12 là dependency Level C trước feature expansion; cần unique invariant/retry/concurrency tests.
 - **Source:** Coordinator locked business rule 37.
 - **Evidence:** `InventoryMovementService.CreateAsync`, `InventoryTransactionConfiguration`, `InventoryBalanceRepository.GetOrCreateAsync`.
+- **Implementation note (2026-08-03):** R2.0-C2 đã hoàn tất foundation cho dependency này; DATA-003 ghi contract durable identity/pre-lock hiện hành. DATA-001 được giữ nguyên như quyết định gốc và không có nghĩa mọi concurrency work tương lai đã hoàn tất.
 
 ## DATA-002 — Tenant-safe XML line mapping
 
@@ -380,6 +381,36 @@ Current `StockDocument`/`StockDocumentConfiguration` không có `LegalEntityId`;
 - **Consequences:** F02 là security/data blocker cần xử lý ngay sau docs; buyer LegalEntity resolution đầy đủ tiếp tục được theo dõi ở F13.
 - **Source:** Coordinator security constraint.
 - **Evidence:** `InputInvoiceRepository.GetInputInvoiceDetailAsync(int id)` và `InputInvoiceXmlService.UpdateLineMapAsync`.
+- **Implementation note (2026-08-03):** R2.0-C1 đã thay lookup ID đơn lẻ bằng `GetInputInvoiceDetailAsync(storeId, stockDocumentId, stockDocumentLineId, inputInvoiceDetailId)` với Store/receipt/line/LegalEntity ownership guard và no-mutation failure. F02 đã Closed; buyer-tax-code LegalEntity resolution vẫn là SD1-F13 Open.
+
+## DATA-003 — Canonical durable inventory posting identity and balance pre-lock
+
+- **Date:** 2026-08-03
+- **Status:** Accepted
+- **Context:** Historical SD1-F03/SD1-F12 showed that application-only duplicate lookup and query-then-add balance creation could not provide a durable concurrency invariant. R2.0-C2 introduced a database-backed movement identity, an atomic posting coordinator and operation-wide balance locking; the long-lived contract must distinguish this implemented foundation from future R2 feature work.
+- **Decision:** The accepted contract is:
+
+  1. New durable inventory movement requests use a deterministic SHA-256 idempotency identity produced by `InventoryIdempotencyKeyFactory`; callers must preserve the existing document/line/reference subkeys that feed that identity.
+  2. Database unique protection is `StoreId + IdempotencyKey` for rows with a non-null key that are active/non-deleted.
+  3. Historical rows may retain null keys. Migration `20260801110856_AddInventoryPostingIdempotency` does not invent/backfill keys and does not add a default.
+  4. Multi-key callers materialize the complete operation key set before the first inventory/balance mutation.
+  5. Balance keys lock in canonical `StoreId → WarehouseId → ProductVariantId` order after deduplication and Store/warehouse validation.
+  6. Canonical lock order does not change business posting order, allocation order or durable reference/subkey identity.
+  7. A non-empty `PreLockBalancesAsync` call requires an existing caller-owned active transaction; empty input is a no-op.
+  8. Pre-lock does not start a transaction and does not commit/rollback. The outer caller owns those boundaries; a standalone single `CreateAsync` may use `InventoryPostingTransactionCoordinator` to own its transaction.
+  9. No global automatic retry/replay is introduced. Known SQL Server lock/unique conflicts are surfaced as concurrency failures for the workflow caller to handle.
+  10. Complex caller behavior is protected with relational SQL Server evidence for persistence/concurrency, caller behavior tests for key orchestration and source/AST contracts only for narrowly locked structural invariants. InMemory/recording-fake evidence is not SQL concurrency proof.
+
+- **Consequences:** The operational consequences are:
+
+  - Future multi-key inventory callers must adopt operation-wide key materialization and cannot bypass the active-transaction requirement.
+  - Reservation rebuild must lock the old+new key union once before releasing old reservations and applying the new plan.
+  - Mixed Sales Return must classify each line and lock one LegalEntity+legacy union; `NoRestock` contributes no balance key/movement and partial LegalEntity evidence fails closed.
+  - Callers must preserve existing business order, document/line identity, source valuation identity and reference subkeys even though locks are acquired canonically.
+  - This decision establishes a foundation, not a claim that all future inventory concurrency or R2 feature expansion is complete.
+
+- **Source:** `GaoApp.Domain/Entities/InventoryTransaction.cs`; `GaoApp.Application/Services/Inventory/InventoryIdempotencyKeyFactory.cs`; `GaoApp.Application/Services/Inventory/InventoryMovementService.cs`; `GaoApp.Application/DTOs/Inventory/InventoryPostingLockKey.cs`; `GaoApp.Application/Interfaces/Common/IInventoryPostingTransactionCoordinator.cs`; `GaoApp.Infrastructure/Data/InventoryPostingTransactionCoordinator.cs`; `GaoApp.Infrastructure/Repositories/Inventory/InventoryBalanceRepository.cs`; `GaoApp.Infrastructure/Data/Configurations/InventoryTransactionConfiguration.cs`; `GaoApp.Infrastructure/Migrations/20260801110856_AddInventoryPostingIdempotency.cs`; caller services documented in `GAOAPP-SOURCE-MAP.md`.
+- **Evidence:** C2A final reviewed commit `d1b06dce5343808493ebb7d1b599e01a06ae5113`; C2B1 final reviewed commit `3c99f19131a8c1af0bbfeeba94eb286c0081686c`; C2B2 final reviewed commit `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`; `InventoryMovementSqlServerConcurrencyTests`, `InventoryPostingMigrationTests`, `DatabaseSchemaManifestTests`, `InventoryNonPosPostingContractTests`, `InventoryPosPostingContractTests`, `InventoryReservationServiceTests`, `OrderLegalEntityFinalizeServiceTests`, `OrderLegalEntityReversalServiceTests`, `InventoryRevaluationPostingContractTests`. Coordinator confirmed C2B2 Independent Review PASS and GitHub required checks 2/2 Success on PR #8 head `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`; PR #8 remained open and unmerged at documentation time.
 
 ## AUDIT-001 — Audit important overrides
 
