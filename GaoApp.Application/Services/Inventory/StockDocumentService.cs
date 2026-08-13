@@ -904,6 +904,11 @@ public class StockDocumentService : IStockDocumentService
         if (request.FreightNote?.Length > 1000)
             throw new BusinessRuleException("Ghi chú vận chuyển không được vượt quá 1.000 ký tự.");
 
+        PurchaseReceiptConfirmPrerequisitePolicy.EnsureSupplierSelected(request.SupplierId);
+        var supplier = await _stockDocumentRepository.GetSupplierAsync(request.SupplierId!.Value, ct)
+            ?? throw new BusinessRuleException(
+                "Nhà cung cấp không tồn tại hoặc không thuộc cửa hàng hiện tại.");
+
         var activeLines = document.Lines
             .Where(x => !x.IsDeleted)
             .OrderBy(x => x.LineNo)
@@ -922,13 +927,6 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException(
                 "Danh sách dòng đã thay đổi hoặc không đầy đủ. Vui lòng tải lại phiếu trước khi duyệt.");
 
-        Supplier? supplier = null;
-        if (request.SupplierId.HasValue)
-        {
-            supplier = await _stockDocumentRepository.GetSupplierAsync(request.SupplierId.Value, ct)
-                ?? throw new BusinessRuleException("Nhà cung cấp không tồn tại hoặc không thuộc cửa hàng hiện tại.");
-        }
-
         var isPurchaseOrderReceipt =
             document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || document.PurchaseOrderId.HasValue;
         if (isPurchaseOrderReceipt)
@@ -936,27 +934,14 @@ public class StockDocumentService : IStockDocumentService
             var order = document.PurchaseOrder
                 ?? throw new InvalidOperationException(
                     "Purchase-order receipt is missing its purchase-order relation.");
-            if (!request.SupplierId.HasValue || request.SupplierId.Value != order.SupplierId)
+            if (request.SupplierId.Value != order.SupplierId)
                 throw new BusinessRuleException("Không thể đổi nhà cung cấp của phiếu nhập theo đơn đặt hàng.");
-            supplier ??= order.Supplier;
-        }
-        else if (!request.IsMerchandisePaid && !request.SupplierId.HasValue)
-        {
-            throw new BusinessRuleException(
-                "Phiếu nhập còn nợ tiền hàng bắt buộc phải chọn nhà cung cấp.");
         }
 
         var merchandisePayeeName = supplier?.Name
             ?? (string.IsNullOrWhiteSpace(request.MerchandisePayeeName)
                 ? null
                 : request.MerchandisePayeeName.Trim());
-        if (request.IsMerchandisePaid && !request.SupplierId.HasValue &&
-            string.IsNullOrWhiteSpace(merchandisePayeeName))
-        {
-            throw new BusinessRuleException(
-                "Phiếu đã trả tiền nhưng không chọn nhà cung cấp thì phải nhập tên người bán.");
-        }
-
         var financialInputs = postedLines.ToDictionary(x => x.StockDocumentLineId);
         var taxCache = new Dictionary<int, Tax>();
         var lineAmounts = new Dictionary<int, PurchasePricingPolicy.LineAmounts>();
@@ -1116,6 +1101,11 @@ public class StockDocumentService : IStockDocumentService
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được duyệt nhập kho.");
 
+        PurchaseReceiptConfirmPrerequisitePolicy.EnsureSupplierSelected(document.SupplierId);
+        _ = await _stockDocumentRepository.GetSupplierAsync(document.SupplierId!.Value, ct)
+            ?? throw new BusinessRuleException(
+                "Nhà cung cấp không tồn tại hoặc không thuộc cửa hàng hiện tại.");
+
         var postingWarehouse = await _warehouseRepository.GetByIdAsync(document.WarehouseId, ct);
         StockReceiptLegalEntityPolicy.EnsureWarehouseSelectable(
             postingWarehouse?.LegalEntityId ?? 0,
@@ -1130,13 +1120,6 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
 
         ValidateReceiptSourceAndShortages(document);
-        if (!document.IsMerchandisePaid && !document.SupplierId.HasValue)
-            throw new BusinessRuleException(
-                "Phiếu nhập còn nợ tiền hàng bắt buộc phải chọn nhà cung cấp.");
-        if (document.IsMerchandisePaid && !document.SupplierId.HasValue &&
-            string.IsNullOrWhiteSpace(document.MerchandisePayeeName))
-            throw new BusinessRuleException(
-                "Phiếu đã trả tiền nhưng không chọn nhà cung cấp thì phải nhập tên người bán.");
         if (document.HasFreight)
         {
             if (document.FreightTotal <= 0)

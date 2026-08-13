@@ -300,14 +300,9 @@
             }
         }
 
-        const paid = document.getElementById('commercialMerchandisePaid')?.checked === true;
         const supplierId = nullablePositiveInt(document.getElementById('commercialSupplierId')?.value);
-        const payee = valueOrNull('commercialPayeeName');
-        if (!paid && !supplierId) {
-            return fail('Tiền hàng còn nợ: vui lòng chọn nhà cung cấp.', document.getElementById('commercialSupplierId'), focusInvalid);
-        }
-        if (paid && !supplierId && !payee) {
-            return fail('Đã trả ngay nhưng chưa chọn nhà cung cấp: vui lòng nhập người hoặc đơn vị nhận tiền.', document.getElementById('commercialPayeeName'), focusInvalid);
+        if (!supplierId) {
+            return fail('Vui lòng chọn nhà cung cấp trước khi duyệt nhập kho.', document.getElementById('commercialSupplierId'), focusInvalid);
         }
 
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
@@ -376,14 +371,13 @@
     }
 
     function syncSettlementState() {
-        const paid = document.getElementById('commercialMerchandisePaid')?.checked === true;
         const supplierId = nullablePositiveInt(document.getElementById('commercialSupplierId')?.value);
         const required = document.querySelector('.sd-supplier-required');
         const payee = document.getElementById('commercialPayeeName');
-        if (required) required.classList.toggle('d-none', paid);
-        if (payee) payee.placeholder = paid && !supplierId
-            ? 'Bắt buộc: tên người/đơn vị nhận tiền'
-            : 'Không bắt buộc khi đã chọn NCC';
+        if (required) required.classList.remove('d-none');
+        if (payee) payee.placeholder = supplierId
+            ? 'Thông tin thanh toán/hiển thị nếu cần'
+            : 'Chọn nhà cung cấp trước; trường này không thay thế NCC';
     }
 
     function syncFreightState(resetWhenDisabled) {
