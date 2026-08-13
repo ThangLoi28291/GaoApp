@@ -908,7 +908,8 @@ async function sendRevisionRequest() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                note: note
+                note: note,
+                rowVersion: window.warehouseReceivingDetail?.rowVersion || ''
             })
         });
 

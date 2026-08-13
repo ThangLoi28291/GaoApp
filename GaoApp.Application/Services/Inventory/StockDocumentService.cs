@@ -69,16 +69,6 @@ public class StockDocumentService : IStockDocumentService
         _currentUser = currentUser;
     }
 
-    /// NOTE:
-    /// Phase hiện tại chưa triển khai phân quyền.
-    /// Tạm thời cho phép chỉnh sửa chứng từ ở trạng thái:
-    /// - Draft
-    /// - PendingApproval
-    /// - Rejected
-    /// Khi hoàn thiện phân quyền:
-    /// - PendingApproval chỉ cho Manager/Admin sửa
-    /// - Confirmed khóa hoàn toàn
-
     public async Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
     {
         var documents = await _stockDocumentRepository.GetReceiptListAsync(ct);
@@ -467,7 +457,7 @@ public class StockDocumentService : IStockDocumentService
         if (document == null)
             throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
-        EnsureEditable(document.Status);
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(document.Status);
         EnsureDirectLineEditing(document);
 
         if (request.Quantity <= 0)
@@ -599,7 +589,7 @@ public class StockDocumentService : IStockDocumentService
         if (document == null)
             throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
-        EnsureEditable(document.Status);
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(document.Status);
         EnsureDirectLineEditing(document);
 
         var barcode = (request.Barcode ?? string.Empty).Trim();
@@ -707,7 +697,7 @@ public class StockDocumentService : IStockDocumentService
         if (line == null)
             throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
-        EnsureEditable(line.StockDocument.Status);
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(line.StockDocument.Status);
         EnsureDirectLineEditing(line.StockDocument);
 
         if (request.Quantity <= 0)
@@ -772,7 +762,7 @@ public class StockDocumentService : IStockDocumentService
         if (line == null)
             throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
-        EnsureEditable(line.StockDocument.Status);
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(line.StockDocument.Status);
         EnsureDirectLineEditing(line.StockDocument);
 
         var document = await _stockDocumentRepository.GetDetailAsync(line.StockDocumentId, ct);
@@ -1355,26 +1345,22 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
         if (document.Status != StockDocumentStatus.PendingApproval)
-            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
+            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được trả về chỉnh sửa.");
         EnsureRowVersion(document.RowVersion, rowVersion);
 
+        var returnReason = (approvalNote ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(returnReason))
+            throw new BusinessRuleException("Vui lòng nhập lý do trả phiếu về chỉnh sửa.");
+        if (returnReason.Length > 1000)
+            throw new BusinessRuleException("Lý do trả phiếu về chỉnh sửa không được vượt quá 1.000 ký tự.");
+
         document.Status = StockDocumentStatus.Rejected;
-        document.ApprovalNote = approvalNote;
+        document.ApprovalNote = returnReason;
         document.HasRevisionRequest = false;
         document.RevisionResolvedAtUtc = DateTime.UtcNow;
-        document.RevisionResolvedByUserId = null;
+        document.RevisionResolvedByUserId = _currentUser.UserId;
 
         await _stockDocumentRepository.SaveChangesAsync(ct);
-    }
-
-    private void EnsureEditable(StockDocumentStatus status)
-    {
-        if (status != StockDocumentStatus.Draft &&
-            status != StockDocumentStatus.PendingApproval &&
-            status != StockDocumentStatus.Rejected)
-        {
-            throw new BusinessRuleException("Phiếu hiện tại không được phép chỉnh sửa.");
-        }
     }
 
     private static void EnsureRowVersion(byte[] current, string? posted)
@@ -1586,7 +1572,7 @@ public class StockDocumentService : IStockDocumentService
         if (document == null)
             throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
 
-        EnsureEditable(document.Status);
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(document.Status);
 
         if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || document.PurchaseOrderId.HasValue)
             throw new BusinessRuleException("Không thể đổi kho, nhà cung cấp hoặc HKD của phiếu nhập tạo từ đơn đặt hàng.");
@@ -1746,9 +1732,10 @@ public class StockDocumentService : IStockDocumentService
         return $"NK-{documentDate:yyyyMMdd}-{sequence:D4}";
     }
     public async Task RequestRevisionAsync(
-    int documentId,
-    string note,
-    CancellationToken ct = default)
+        int documentId,
+        string note,
+        string? rowVersion,
+        CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetByIdAsync(documentId, ct);
         if (document == null)
@@ -1756,6 +1743,8 @@ public class StockDocumentService : IStockDocumentService
 
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được đề nghị sửa.");
+
+        EnsureRowVersion(document.RowVersion, rowVersion);
 
         if (document.HasRevisionRequest)
             throw new BusinessRuleException("Phiếu này đã có yêu cầu sửa, vui lòng chờ quản lý xử lý.");
@@ -1771,7 +1760,9 @@ public class StockDocumentService : IStockDocumentService
         document.HasRevisionRequest = true;
         document.RevisionRequestNote = note;
         document.RevisionRequestedAtUtc = DateTime.UtcNow;
-        document.RevisionRequestedByUserId = null;
+        document.RevisionRequestedByUserId = _currentUser.UserId;
+        document.RevisionResolvedAtUtc = null;
+        document.RevisionResolvedByUserId = null;
 
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
@@ -1779,6 +1770,7 @@ public class StockDocumentService : IStockDocumentService
     public async Task ResolveRevisionRequestAsync(
         int documentId,
         bool returnToEdit,
+        string? rowVersion,
         string? approvalNote = null,
         CancellationToken ct = default)
     {
@@ -1789,12 +1781,17 @@ public class StockDocumentService : IStockDocumentService
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới xử lý được yêu cầu sửa.");
 
+        EnsureRowVersion(document.RowVersion, rowVersion);
+
         if (!document.HasRevisionRequest)
             throw new BusinessRuleException("Phiếu này chưa có yêu cầu sửa.");
 
+        if (approvalNote?.Length > 1000)
+            throw new BusinessRuleException("Ghi chú xử lý yêu cầu sửa không được vượt quá 1.000 ký tự.");
+
         document.HasRevisionRequest = false;
         document.RevisionResolvedAtUtc = DateTime.UtcNow;
-        document.RevisionResolvedByUserId = null;
+        document.RevisionResolvedByUserId = _currentUser.UserId;
 
         if (returnToEdit)
         {

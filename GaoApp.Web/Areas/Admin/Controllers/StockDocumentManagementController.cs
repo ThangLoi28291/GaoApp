@@ -211,10 +211,13 @@ public class StockDocumentManagementController : Controller
         if (!authorized)
             return Forbid();
 
-        var hasCreatePermission = (await _authorizationService.AuthorizeAsync(
+        var updatePolicy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+            ? PermissionCodes.Purchase.Receipt.Update
+            : PermissionCodes.Inventory.StockDocument.Update;
+        var hasUpdatePermission = (await _authorizationService.AuthorizeAsync(
             User,
             resource: null,
-            policyName: AppPermissions.InventoryStockDocumentCreate)).Succeeded;
+            policyName: updatePolicy)).Succeeded;
         var approvePolicy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
             ? PermissionCodes.Purchase.Receipt.Approve
             : PermissionCodes.Inventory.StockDocument.Approve;
@@ -229,9 +232,8 @@ public class StockDocumentManagementController : Controller
 
         var vm = new StockDocumentLinesTableViewModel
         {
-            CanEdit = hasCreatePermission &&
+            CanEdit = hasUpdatePermission &&
                       (document.Status == StockDocumentStatus.Draft
-                    || document.Status == StockDocumentStatus.PendingApproval
                     || document.Status == StockDocumentStatus.Rejected),
 
             CanViewCost = hasApprovePermission || hasViewCostPermission,

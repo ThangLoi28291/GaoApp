@@ -12,23 +12,21 @@
     var isPurchaseOrderReceipt = Model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder;
     var employeePolicy = isPurchaseOrderReceipt
         ? PermissionCodes.Purchase.Receipt.Update
-        : AppPermissions.InventoryStockDocumentCreate;
+        : PermissionCodes.Inventory.StockDocument.Update;
     var managerPolicy = isPurchaseOrderReceipt
         ? PermissionCodes.Purchase.Receipt.Approve
         : AppPermissions.InventoryStockDocumentApprove;
 
-    var hasCreatePermission = (await AuthorizationService
+    var hasUpdatePermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: employeePolicy)).Succeeded;
 
     var hasApprovePermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: managerPolicy)).Succeeded;
 
     var canEditHeaderByStatus = Model.Status == StockDocumentStatus.Draft
-                             || Model.Status == StockDocumentStatus.PendingApproval
                              || Model.Status == StockDocumentStatus.Rejected;
 
     var canEditLinesByStatus = Model.Status == StockDocumentStatus.Draft
-                            || Model.Status == StockDocumentStatus.PendingApproval
                             || Model.Status == StockDocumentStatus.Rejected;
 
     var canSubmitApprovalByStatus = Model.Status == StockDocumentStatus.Draft
@@ -36,9 +34,9 @@
 
     var canApproveByStatus = Model.Status == StockDocumentStatus.PendingApproval;
 
-    var canEditHeader = !isPurchaseOrderReceipt && hasCreatePermission && canEditHeaderByStatus;
-    var canEditLines = !isPurchaseOrderReceipt && hasCreatePermission && canEditLinesByStatus;
-    var canSubmitApproval = hasCreatePermission && canSubmitApprovalByStatus;
+    var canEditHeader = !isPurchaseOrderReceipt && hasUpdatePermission && canEditHeaderByStatus;
+    var canEditLines = !isPurchaseOrderReceipt && hasUpdatePermission && canEditLinesByStatus;
+    var canSubmitApproval = hasUpdatePermission && canSubmitApprovalByStatus;
     var canApprove = hasApprovePermission && canApproveByStatus;
     var hasViewCostPermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
@@ -52,7 +50,7 @@
         StockDocumentStatus.Draft => "Nháp",
         StockDocumentStatus.PendingApproval => "Chờ duyệt",
         StockDocumentStatus.Confirmed => "Đã duyệt",
-        StockDocumentStatus.Rejected => "Bị từ chối",
+        StockDocumentStatus.Rejected => "Đã trả về chỉnh sửa",
         StockDocumentStatus.Cancelled => "Đã hủy",
         _ => Model.Status.ToString()
     };
@@ -118,7 +116,7 @@
                         </button>
 
                         <button type="button" class="btn btn-danger" id="btnOpenRejectModal">
-                            Từ chối
+                            Trả về chỉnh sửa
                         </button>
                     }
                 </div>
@@ -591,12 +589,12 @@
     <div class="modal-dialog">
         <div class="modal-content border-0 rounded-4">
             <div class="modal-header">
-                <h5 class="modal-title">Từ chối phiếu nhập</h5>
+                <h5 class="modal-title">Trả phiếu về chỉnh sửa</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
-                <label class="form-label">Lý do từ chối</label>
+                <label class="form-label">Lý do trả về chỉnh sửa</label>
                 <textarea class="form-control" id="rejectNote" rows="3"></textarea>
                 <div class="form-text text-danger mt-2" id="rejectMessage"></div>
             </div>
@@ -607,7 +605,7 @@
                 </button>
 
                 <button type="button" class="btn btn-danger" id="btnReject">
-                    Từ chối
+                    Trả về chỉnh sửa
                 </button>
             </div>
         </div>
