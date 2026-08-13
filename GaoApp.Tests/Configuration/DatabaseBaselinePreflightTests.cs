@@ -29,6 +29,24 @@ public sealed class DatabaseBaselinePreflightTests
         "20260801110856_AddInventoryPostingIdempotency";
 
     [Fact]
+    public async Task Acceptance_connections_should_pool_and_bound_login_retries()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        var settings = new SqlConnectionStringBuilder(
+            database.ConnectionString);
+        using var connection = LocalDbSqlConnectionFactory.Create(
+            database.ConnectionString);
+
+        settings.Pooling.Should().BeTrue();
+        settings.ConnectTimeout.Should().Be(30);
+        connection.RetryLogicProvider.RetryLogic.NumberOfTries
+            .Should().Be(2);
+        using var command = connection.CreateCommand();
+        command.RetryLogicProvider.RetryLogic.NumberOfTries
+            .Should().Be(1);
+    }
+
+    [Fact]
     public async Task Missing_database_should_be_allowed_and_migrate_successfully()
     {
         await using var database = new PreflightAcceptanceDatabase();
@@ -1078,6 +1096,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 {
     internal const int CreateDatabaseCommandTimeoutSeconds = 60;
 
+    private const int ConnectionTimeoutSeconds = 30;
+
     private const string Prefix = "GaoApp_R1Final_Preflight_";
     private const string TestDataSourceEnvironmentVariable =
         "GAOAPP_R1_FINAL_TEST_SQL_SERVER";
@@ -1103,16 +1123,18 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
             IntegratedSecurity = true,
             Encrypt = false,
             TrustServerCertificate = true,
-            ConnectTimeout = 15,
+            ConnectTimeout = ConnectionTimeoutSeconds,
             MultipleActiveResultSets = true,
-            Pooling = false
+            Pooling = true
         }.ConnectionString;
 
     public AppDbContext CreateContext(
         IInterceptor? interceptor = null)
     {
+        var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(ConnectionString);
+            .UseSqlServer(connection, contextOwnsConnection: true);
 
         if (interceptor is not null)
         {
@@ -1131,7 +1153,7 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
     public async Task CreateDatabaseAsync()
     {
         GuardDatabaseName(_databaseName);
-        await using var connection = new SqlConnection(
+        await using var connection = LocalDbSqlConnectionFactory.Create(
             CreateMasterConnectionString());
         await connection.OpenAsync();
 
@@ -1202,8 +1224,9 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
     private async Task<bool> DatabaseIsReadyUsingNewConnectionsAsync()
     {
         GuardDatabaseName(_databaseName);
-        await using var masterConnection = new SqlConnection(
-            CreateMasterConnectionString());
+        await using var masterConnection =
+            LocalDbSqlConnectionFactory.Create(
+                CreateMasterConnectionString());
         await masterConnection.OpenAsync();
         await using var stateCommand =
             masterConnection.CreateCommand();
@@ -1233,7 +1256,7 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
         }
 
         await using var targetConnection =
-            new SqlConnection(ConnectionString);
+            LocalDbSqlConnectionFactory.Create(ConnectionString);
         await targetConnection.OpenAsync();
         await using var probeCommand =
             targetConnection.CreateCommand();
@@ -1256,7 +1279,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
         string sql,
         params SqlParameter[] parameters)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -1266,7 +1290,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
     public async Task<T> ReadScalarAsync<T>(string sql)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -1402,7 +1427,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
               AND [table].[name] = @table;
             """;
 
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -1434,7 +1460,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
     public async Task<IReadOnlyList<string>> ReadMigrationHistoryAsync()
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -1462,23 +1489,25 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
         GuardDatabaseName(_databaseName);
 
-        await using var connection = new SqlConnection(
+        ClearTargetConnectionPool();
+
+        await using var connection = LocalDbSqlConnectionFactory.Create(
             CreateMasterConnectionString());
         await connection.OpenAsync();
 
-        if (!await DatabaseExistsAsync(connection))
-        {
-            _disposed = true;
-            return;
-        }
-
-        if (BeforeCleanupCommandAsync is not null)
-        {
-            await BeforeCleanupCommandAsync();
-        }
-
         try
         {
+            if (!await DatabaseExistsAsync(connection))
+            {
+                _disposed = true;
+                return;
+            }
+
+            if (BeforeCleanupCommandAsync is not null)
+            {
+                await BeforeCleanupCommandAsync();
+            }
+
             await ExecuteMasterCommandAsync(
                 connection,
                 $"""
@@ -1514,6 +1543,10 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
             throw;
         }
+        finally
+        {
+            ClearTargetConnectionPool();
+        }
 
         if (await DatabaseExistsAsync(connection))
         {
@@ -1538,7 +1571,7 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
 
     private async Task<bool> DatabaseExistsUsingNewConnectionAsync()
     {
-        await using var connection = new SqlConnection(
+        await using var connection = LocalDbSqlConnectionFactory.Create(
             CreateMasterConnectionString());
         await connection.OpenAsync();
         return await DatabaseExistsAsync(connection);
@@ -1570,6 +1603,12 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    private void ClearTargetConnectionPool()
+    {
+        using var connection = new SqlConnection(ConnectionString);
+        SqlConnection.ClearPool(connection);
+    }
+
     private static string CreateMasterConnectionString()
         => new SqlConnectionStringBuilder
         {
@@ -1578,8 +1617,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
             IntegratedSecurity = true,
             Encrypt = false,
             TrustServerCertificate = true,
-            ConnectTimeout = 15,
-            Pooling = false
+            ConnectTimeout = ConnectionTimeoutSeconds,
+            Pooling = true
         }.ConnectionString;
 
     private static string GetTestDataSource()

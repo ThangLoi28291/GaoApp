@@ -16,6 +16,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
 {
     private const string DataSource = @"(localdb)\MSSQLLocalDB";
     private const string Prefix = "GaoApp_R2_InventoryPosting_";
+    private const int ConnectionTimeoutSeconds = 30;
 
     private static readonly Regex SafeDatabaseName = new(
         "^GaoApp_R2_InventoryPosting_[A-F0-9]{32}$",
@@ -35,9 +36,9 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             IntegratedSecurity = true,
             Encrypt = false,
             TrustServerCertificate = true,
-            ConnectTimeout = 15,
+            ConnectTimeout = ConnectionTimeoutSeconds,
             MultipleActiveResultSets = true,
-            Pooling = false
+            Pooling = true
         }.ConnectionString;
 
     public AppDbContext CreateHostContext(
@@ -70,7 +71,8 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         string sql,
         CancellationToken ct = default)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -179,7 +181,8 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         string sql,
         CancellationToken ct = default)
     {
-        await using var connection = new SqlConnection(ConnectionString);
+        await using var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         await connection.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -199,6 +202,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
 
         _disposed = true;
         GuardDatabaseName();
+        ClearTargetConnectionPool();
 
         var connection = await EnsureMasterConnectionAsync(
             CancellationToken.None);
@@ -227,6 +231,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         }
         finally
         {
+            ClearTargetConnectionPool();
             await connection.DisposeAsync();
             _masterConnection = null;
         }
@@ -236,8 +241,10 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         int? storeId,
         IInterceptor? interceptor)
     {
+        var connection = LocalDbSqlConnectionFactory.Create(
+            ConnectionString);
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(ConnectionString);
+            .UseSqlServer(connection, contextOwnsConnection: true);
         if (interceptor is not null)
         {
             options.AddInterceptors(interceptor);
@@ -272,7 +279,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             await _masterConnection.DisposeAsync();
         }
 
-        _masterConnection = new SqlConnection(
+        _masterConnection = LocalDbSqlConnectionFactory.Create(
             new SqlConnectionStringBuilder
             {
                 DataSource = DataSource,
@@ -280,11 +287,17 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
                 IntegratedSecurity = true,
                 Encrypt = false,
                 TrustServerCertificate = true,
-                ConnectTimeout = 15,
-                Pooling = false
+                ConnectTimeout = ConnectionTimeoutSeconds,
+                Pooling = true
             }.ConnectionString);
         await _masterConnection.OpenAsync(ct);
         return _masterConnection;
+    }
+
+    private void ClearTargetConnectionPool()
+    {
+        using var connection = new SqlConnection(ConnectionString);
+        SqlConnection.ClearPool(connection);
     }
 
     private void GuardDatabaseName()
