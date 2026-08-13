@@ -464,7 +464,7 @@ public class StockDocumentsController : ControllerBase
     }
 
     /// <summary>
-    /// Từ chối duyệt phiếu nhập kho.
+    /// Trả phiếu nhập kho về để chỉnh sửa.
     /// Cần quyền duyệt chứng từ kho.
     /// </summary>
     [HttpPost("{id:int}/reject")]
@@ -483,7 +483,7 @@ public class StockDocumentsController : ControllerBase
 
         return Ok(new
         {
-            message = "Đã từ chối duyệt phiếu.",
+            message = "Đã trả phiếu về để chỉnh sửa.",
             redirectUrl = Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })
         });
     }
@@ -714,13 +714,17 @@ public class StockDocumentsController : ControllerBase
         if (!await HasWorkflowPermissionAsync(
                 id,
                 PermissionCodes.Purchase.Receipt.Update,
-                PermissionCodes.Inventory.StockDocument.Create,
+                PermissionCodes.Inventory.StockDocument.Update,
                 ct))
             return Forbid();
 
         try
         {
-            await _stockDocumentService.RequestRevisionAsync(id, request?.Note ?? string.Empty, ct);
+            await _stockDocumentService.RequestRevisionAsync(
+                id,
+                request?.Note ?? string.Empty,
+                request?.RowVersion,
+                ct);
 
             return Ok(new
             {
@@ -760,6 +764,7 @@ public class StockDocumentsController : ControllerBase
             await _stockDocumentService.ResolveRevisionRequestAsync(
                 id,
                 request.ReturnToEdit,
+                request.RowVersion,
                 request.Note,
                 ct);
 

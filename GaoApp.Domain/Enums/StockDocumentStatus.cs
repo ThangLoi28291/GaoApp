@@ -21,7 +21,7 @@ public enum StockDocumentStatus
     Confirmed = 3,
 
     /// <summary>
-    /// Bị từ chối duyệt.
+    /// Đã được trả về để chỉnh sửa.
     /// </summary>
     Rejected = 4,
 

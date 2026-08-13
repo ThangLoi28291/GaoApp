@@ -15,4 +15,7 @@ public class ResolveRevisionRequest
 
     [StringLength(1000)]
     public string? Note { get; set; }
+
+    [Required]
+    public string RowVersion { get; set; } = string.Empty;
 }

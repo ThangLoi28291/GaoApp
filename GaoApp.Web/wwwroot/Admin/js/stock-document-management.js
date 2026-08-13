@@ -1175,13 +1175,13 @@ function bindReject() {
         const api = await readApiResponse(response);
 
         if (!api.ok) {
-            if (msg) msg.textContent = api.data?.message || 'Từ chối duyệt thất bại.';
+            if (msg) msg.textContent = api.data?.message || 'Không thể trả phiếu về chỉnh sửa.';
             return;
         }
 
         if (rejectModalInstance) rejectModalInstance.hide();
 
-        alert(api.data?.message || 'Đã từ chối duyệt.');
+        alert(api.data?.message || 'Đã trả phiếu về chỉnh sửa.');
         window.location.href = api.data?.redirectUrl || '/admin/stock-documents';
     };
 }
@@ -2970,7 +2970,8 @@ function bindRevisionRequestActions() {
                     },
                     body: JSON.stringify({
                         returnToEdit: true,
-                        note: note
+                        note: note,
+                        rowVersion: window.stockDocumentPage.rowVersion
                     })
                 });
 
@@ -3004,7 +3005,8 @@ function bindRevisionRequestActions() {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        returnToEdit: false
+                        returnToEdit: false,
+                        rowVersion: window.stockDocumentPage.rowVersion
                     })
                 });
 
