@@ -15,6 +15,21 @@ public sealed class InventoryPostingMigrationTests
         "20260801110856_AddInventoryPostingIdempotency";
 
     [Fact]
+    public async Task Inventory_connections_should_pool_and_bound_login_retries()
+    {
+        await using var database = new InventoryPostingLocalDb();
+        var settings = new SqlConnectionStringBuilder(
+            database.ConnectionString);
+        using var connection = LocalDbSqlConnectionFactory.Create(
+            database.ConnectionString);
+
+        settings.Pooling.Should().BeTrue();
+        settings.ConnectTimeout.Should().Be(30);
+        connection.RetryLogicProvider.RetryLogic.NumberOfTries
+            .Should().Be(2);
+    }
+
+    [Fact]
     public async Task Fresh_database_should_apply_nullable_key_and_filtered_unique_index()
     {
         await using var database = new InventoryPostingLocalDb();
@@ -203,7 +218,7 @@ public sealed class InventoryPostingMigrationTests
         ReadLegacySignatureAsync(InventoryPostingLocalDb database)
     {
         await using var connection =
-            new SqlConnection(database.ConnectionString);
+            LocalDbSqlConnectionFactory.Create(database.ConnectionString);
         await connection.OpenAsync();
         await using var command = connection.CreateCommand();
         command.CommandTimeout = 30;
