@@ -45,11 +45,33 @@ public sealed class InventoryMovementFactory : IInventoryMovementFactory
         EnsurePositive(qtyBase, nameof(qtyBase));
         EnsurePositive(unitCost, nameof(unitCost));
 
-        // Phase 5.15:
-        // Adjustment hiện tại chưa có document riêng, nhưng bảng InventoryTransactions
-        // yêu cầu ReferenceId NOT NULL. Vì vậy phải sinh 1 mã tham chiếu tạm duy nhất
-        // để trace được transaction nguồn và không vi phạm ràng buộc DB.
-        var referenceId = GenerateManualAdjustmentReferenceId();
+        return BuildInbound(
+            warehouseId,
+            productVariantId,
+            qtyBase,
+            InventoryTransactionType.AdjustmentIncrease,
+            InventoryReferenceType.Adjustment,
+            GenerateManualAdjustmentReferenceId(),
+            null,
+            occurredAtUtc,
+            string.IsNullOrWhiteSpace(note) ? $"Điều chỉnh tăng tồn +{qtyBase}" : note,
+            unitCost);
+    }
+
+    public CreateInventoryMovementRequest CreateAdjustmentIncrease(
+        int warehouseId,
+        int productVariantId,
+        decimal qtyBase,
+        decimal unitCost,
+        string documentId,
+        int lineId,
+        string? note,
+        DateTime? occurredAtUtc = null)
+    {
+        EnsurePositive(qtyBase, nameof(qtyBase));
+        EnsurePositive(unitCost, nameof(unitCost));
+        EnsureRequired(documentId, nameof(documentId));
+        EnsurePositive(lineId, nameof(lineId));
 
         return BuildInbound(
             warehouseId,
@@ -57,8 +79,8 @@ public sealed class InventoryMovementFactory : IInventoryMovementFactory
             qtyBase,
             InventoryTransactionType.AdjustmentIncrease,
             InventoryReferenceType.Adjustment,
-            referenceId,
-            null,
+            documentId,
+            lineId,
             occurredAtUtc,
             string.IsNullOrWhiteSpace(note) ? $"Điều chỉnh tăng tồn +{qtyBase}" : note,
             unitCost);
@@ -74,9 +96,32 @@ public sealed class InventoryMovementFactory : IInventoryMovementFactory
     {
         EnsurePositive(qtyBase, nameof(qtyBase));
 
-        // Cùng nguyên tắc với adjustment increase:
-        // ReferenceId không được null để audit / trace / query pending ổn định.
-        var referenceId = GenerateManualAdjustmentReferenceId();
+        return BuildOutbound(
+            warehouseId,
+            productVariantId,
+            qtyBase,
+            InventoryTransactionType.AdjustmentDecrease,
+            InventoryReferenceType.Adjustment,
+            GenerateManualAdjustmentReferenceId(),
+            null,
+            occurredAtUtc,
+            string.IsNullOrWhiteSpace(note) ? $"Điều chỉnh giảm tồn -{qtyBase}" : note,
+            provisionalUnitCost);
+    }
+
+    public CreateInventoryMovementRequest CreateAdjustmentDecrease(
+        int warehouseId,
+        int productVariantId,
+        decimal qtyBase,
+        decimal? provisionalUnitCost,
+        string documentId,
+        int lineId,
+        string? note,
+        DateTime? occurredAtUtc = null)
+    {
+        EnsurePositive(qtyBase, nameof(qtyBase));
+        EnsureRequired(documentId, nameof(documentId));
+        EnsurePositive(lineId, nameof(lineId));
 
         return BuildOutbound(
             warehouseId,
@@ -84,8 +129,8 @@ public sealed class InventoryMovementFactory : IInventoryMovementFactory
             qtyBase,
             InventoryTransactionType.AdjustmentDecrease,
             InventoryReferenceType.Adjustment,
-            referenceId,
-            null,
+            documentId,
+            lineId,
             occurredAtUtc,
             string.IsNullOrWhiteSpace(note) ? $"Điều chỉnh giảm tồn -{qtyBase}" : note,
             provisionalUnitCost);

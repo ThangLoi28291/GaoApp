@@ -42,6 +42,11 @@ public interface IInventoryValuationEntryRepository
         int inventoryTransactionId,
         CancellationToken ct = default);
 
+    Task<List<InventoryValuationEntry>> GetByInventoryTransactionIdAsync(
+        int storeId,
+        int inventoryTransactionId,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Lấy các outbound valuation entry gốc của 1 order line.
     ///

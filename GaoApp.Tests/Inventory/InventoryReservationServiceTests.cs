@@ -2,6 +2,8 @@ using FluentAssertions;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Application.Services.Orders;
 using GaoApp.Domain.Entities;
@@ -25,9 +27,16 @@ public sealed class InventoryReservationServiceTests
         await SeedMultiLegalEntityAsync(context, firstOnHand: 2m, secondOnHand: 3m);
         var order = MultiLegalEntityOrder(quantity: 4m);
 
-        var service = CreateService(context);
+        var movements = new RecordingInventoryMovementService(context);
+        var service = CreateService(context, movements);
         await service.ReserveForOrderAsync(order);
 
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(1, 11, 27764),
+                new InventoryPostingLockKey(1, 22, 27764));
+        movements.ReservedSnapshots.Single().Values
+            .Should().OnlyContain(x => x == 0m);
         var reservations = await context.InventoryReservations
             .Where(x => x.ReferenceId == order.Id.ToString())
             .OrderBy(x => x.WarehouseId)
@@ -101,9 +110,14 @@ public sealed class InventoryReservationServiceTests
         context.InventoryReservations.Add(reservation);
         await context.SaveChangesAsync();
 
-        var service = CreateService(context);
+        var movements = new RecordingInventoryMovementService(context);
+        var service = CreateService(context, movements);
         await service.ReleaseForOrderAsync(order, "Hủy giỏ sau khi mở lại đơn giữ.");
 
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(1, 7, 27764));
+        movements.ReservedSnapshots.Single()[(7, 27764)].Should().Be(1m);
         balance.ReservedQty.Should().Be(0m);
         reservation.Status.Should().Be(InventoryReservationStatus.Released);
         reservation.ReleasedAtUtc.Should().NotBeNull();
@@ -127,9 +141,14 @@ public sealed class InventoryReservationServiceTests
         context.InventoryReservations.Add(reservation);
         await context.SaveChangesAsync();
 
-        var service = CreateService(context);
+        var movements = new RecordingInventoryMovementService(context);
+        var service = CreateService(context, movements);
         await service.ConsumeForOrderAsync(order);
 
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(1, 7, 27764));
+        movements.ReservedSnapshots.Single()[(7, 27764)].Should().Be(2m);
         balance.ReservedQty.Should().Be(0m);
         reservation.Status.Should().Be(InventoryReservationStatus.Consumed);
         reservation.ReleasedAtUtc.Should().NotBeNull();
@@ -146,21 +165,165 @@ public sealed class InventoryReservationServiceTests
             hasReservation: true,
             reservedAt: DateTime.UtcNow.AddMinutes(-5));
 
-        var service = CreateService(context);
+        var movements = new RecordingInventoryMovementService(context);
+        var service = CreateService(context, movements);
         await service.ReleaseForOrderAsync(order, "Không còn reservation active.");
 
+        movements.PreLockBatches.Should().BeEmpty();
         order.HasReservation.Should().BeFalse();
         order.ReservedAtUtc.Should().BeNull();
     }
 
-    private static InventoryReservationService CreateService(InMemoryAppDbContext context)
+    [Fact]
+    public async Task ReserveForOrder_Legacy_ShouldPreLockExactKeysBeforeMutation()
+    {
+        await using var context = CreateContext();
+        await SeedLegacyReservationAsync(context, variantId: 7001, onHand: 5m);
+        var order = LegacyOrder(7001, quantity: 2m);
+        var movements = new RecordingInventoryMovementService(context);
+
+        await CreateService(context, movements).ReserveForOrderAsync(order);
+
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(1, 7, 7001));
+        movements.ReservedSnapshots.Single()[(7, 7001)].Should().Be(0m);
+        (await context.InventoryBalances.SingleAsync(
+            x => x.WarehouseId == 7 && x.ProductVariantId == 7001))
+            .ReservedQty.Should().Be(2m);
+    }
+
+    [Fact]
+    public async Task ReserveForOrder_WithoutActiveTransaction_ShouldRejectBeforeMutation()
+    {
+        await using var context = CreateContext();
+        await SeedLegacyReservationAsync(context, variantId: 7002, onHand: 5m);
+        var order = LegacyOrder(7002, quantity: 2m);
+        var movements = new RecordingInventoryMovementService(context)
+        {
+            HasActiveTransaction = false
+        };
+
+        var action = () => CreateService(context, movements)
+            .ReserveForOrderAsync(order);
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*active transaction*");
+        (await context.InventoryBalances.SingleAsync(
+            x => x.WarehouseId == 7 && x.ProductVariantId == 7002))
+            .ReservedQty.Should().Be(0m);
+        (await context.InventoryReservations.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RebuildForOrder_ShouldPreLockOldAndNewUnionOnceBeforeReleaseAndReserve()
+    {
+        await using var context = CreateContext();
+        await SeedLegacyReservationAsync(context, variantId: 8002, onHand: 10m);
+        var oldBalance = new InventoryBalance
+        {
+            StoreId = 1,
+            WarehouseId = 8,
+            ProductVariantId = 8001,
+            OnHandQty = 10m,
+            ReservedQty = 3m,
+            RowVersion = new byte[8]
+        };
+        var oldReservation = new InventoryReservation
+        {
+            StoreId = 1,
+            WarehouseId = 8,
+            ProductVariantId = 8001,
+            ReferenceType = InventoryReferenceType.Order,
+            ReferenceId = "601",
+            ReferenceLineId = 9001,
+            ReservedQty = 3m,
+            Status = InventoryReservationStatus.Active,
+            ReservedAtUtc = DateTime.UtcNow.AddMinutes(-10),
+            RowVersion = new byte[8]
+        };
+        context.AddRange(oldBalance, oldReservation);
+        await context.SaveChangesAsync();
+        var order = LegacyOrder(8002, quantity: 4m);
+        order.HasReservation = true;
+        order.ReservedAtUtc = oldReservation.ReservedAtUtc;
+        var movements = new RecordingInventoryMovementService(context);
+
+        await CreateService(context, movements).RebuildForOrderAsync(order);
+
+        movements.PreLockBatches.Should().ContainSingle();
+        movements.PreLockBatches.Single().Should().HaveCount(2);
+        movements.PreLockBatches.Single().Should().BeEquivalentTo(
+        [
+            new InventoryPostingLockKey(1, 8, 8001),
+            new InventoryPostingLockKey(1, 7, 8002)
+        ]);
+        movements.ReservedSnapshots.Single()[(8, 8001)].Should().Be(3m);
+        movements.ReservedSnapshots.Single()[(7, 8002)].Should().Be(0m);
+        oldReservation.Status.Should().Be(InventoryReservationStatus.Released);
+        oldBalance.ReservedQty.Should().Be(0m);
+        (await context.InventoryBalances.SingleAsync(
+            x => x.WarehouseId == 7 && x.ProductVariantId == 8002))
+            .ReservedQty.Should().Be(4m);
+        order.HasReservation.Should().BeTrue();
+    }
+
+    private static InventoryReservationService CreateService(
+        InMemoryAppDbContext context,
+        RecordingInventoryMovementService? movements = null)
         => new(
             new InventoryReservationRepository(context),
             new InventoryBalanceRepository(context),
+            movements ?? new RecordingInventoryMovementService(context),
             new POSShiftRepository(context),
             new WarehouseRepository(context),
             new OrderLegalEntityAllocationRepository(context),
             new OrderLegalEntityAllocationService());
+
+    private sealed class RecordingInventoryMovementService
+        : IInventoryMovementService
+    {
+        private readonly InMemoryAppDbContext _context;
+
+        public RecordingInventoryMovementService(InMemoryAppDbContext context)
+            => _context = context;
+
+        public bool HasActiveTransaction { get; set; } = true;
+        public List<List<InventoryPostingLockKey>> PreLockBatches { get; } = [];
+        public List<Dictionary<(int WarehouseId, int VariantId), decimal>>
+            ReservedSnapshots { get; } = [];
+
+        public Task PreLockBalancesAsync(
+            IEnumerable<InventoryPostingLockKey> keys,
+            CancellationToken ct = default)
+        {
+            var batch = keys.ToList();
+            if (batch.Count > 0 && !HasActiveTransaction)
+            {
+                throw new InvalidOperationException(
+                    "Inventory balance batch pre-locking requires an active transaction.");
+            }
+
+            PreLockBatches.Add(batch);
+            ReservedSnapshots.Add(_context.InventoryBalances.Local
+                .ToDictionary(
+                    x => (x.WarehouseId, x.ProductVariantId),
+                    x => x.ReservedQty));
+            return Task.CompletedTask;
+        }
+
+        public Task<InventoryMovementResultDto> CreateAsync(
+            CreateInventoryMovementRequest request,
+            CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<decimal> PeekOutboundUnitCostAsync(
+            int warehouseId,
+            int productVariantId,
+            decimal quantity,
+            CancellationToken ct = default)
+            => Task.FromResult(0m);
+    }
 
     private static Order Order(int id, bool hasReservation, DateTime? reservedAt)
         => new()
@@ -170,6 +333,31 @@ public sealed class InventoryReservationServiceTests
             Status = OrderStatus.Draft,
             HasReservation = hasReservation,
             ReservedAtUtc = reservedAt,
+            RowVersion = new byte[8]
+        };
+
+    private static Order LegacyOrder(int variantId, decimal quantity)
+        => new()
+        {
+            Id = 601,
+            StoreId = 1,
+            POSShiftId = 71,
+            Status = OrderStatus.Draft,
+            Lines =
+            [
+                new OrderLine
+                {
+                    Id = 9002,
+                    StoreId = 1,
+                    OrderId = 601,
+                    ProductId = 20,
+                    VariantId = variantId,
+                    ItemName = $"Legacy variant {variantId}",
+                    Quantity = quantity,
+                    Multiplier = 1m,
+                    BaseQuantity = quantity
+                }
+            ],
             RowVersion = new byte[8]
         };
 
@@ -280,6 +468,78 @@ public sealed class InventoryReservationServiceTests
                 OnHandQty = secondOnHand,
                 RowVersion = new byte[8]
             });
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task SeedLegacyReservationAsync(
+        InMemoryAppDbContext context,
+        int variantId,
+        decimal onHand)
+    {
+        context.Stores.Add(new Store
+        {
+            Id = 1,
+            Name = "Legacy reservation store",
+            SubDomain = "store-one",
+            SubDomainNormalized = "STORE-ONE",
+            IsActive = true,
+            IsMultiLegalEntityEnabled = false,
+            RowVersion = new byte[8]
+        });
+        var legalEntity = new LegalEntity
+        {
+            Id = 1,
+            StoreId = 1,
+            Code = "LEGACY-LE",
+            Name = "Legacy legal entity",
+            LegalName = "Legacy legal entity",
+            IsActive = true,
+            RowVersion = new byte[8]
+        };
+        var warehouse = new Warehouse
+        {
+            Id = 7,
+            StoreId = 1,
+            LegalEntityId = 1,
+            Code = "LEGACY-WH",
+            Name = "Legacy warehouse",
+            IsActive = true,
+            AllowNegativeInventory = false,
+            LegalEntity = legalEntity,
+            RowVersion = new byte[8]
+        };
+        var terminal = new POSTerminal
+        {
+            Id = 1,
+            StoreId = 1,
+            Code = "POS-1",
+            Name = "POS 1",
+            IsActive = true,
+            Status = POSTerminalStatus.Active,
+            RowVersion = new byte[8]
+        };
+        context.AddRange(legalEntity, warehouse, terminal);
+        context.POSShifts.Add(new POSShift
+        {
+            Id = 71,
+            StoreId = 1,
+            TerminalId = 1,
+            OpenedByUserId = 99,
+            WarehouseId = 7,
+            Warehouse = warehouse,
+            Terminal = terminal,
+            Status = POSShiftStatus.Open,
+            RowVersion = new byte[8]
+        });
+        context.InventoryBalances.Add(new InventoryBalance
+        {
+            StoreId = 1,
+            WarehouseId = 7,
+            ProductVariantId = variantId,
+            OnHandQty = onHand,
+            ReservedQty = 0m,
+            RowVersion = new byte[8]
+        });
         await context.SaveChangesAsync();
     }
 

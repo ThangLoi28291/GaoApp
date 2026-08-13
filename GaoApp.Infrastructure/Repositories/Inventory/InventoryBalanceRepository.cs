@@ -1,8 +1,12 @@
 ﻿using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using System.Data;
 
 namespace GaoApp.Infrastructure.Repositories.Inventory;
 
@@ -48,6 +52,92 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
         };
 
         await _db.InventoryBalances.AddAsync(entity, ct);
+        return entity;
+    }
+
+    public async Task<InventoryBalance> LockAndGetOrCreateAsync(
+        int storeId,
+        int warehouseId,
+        int productVariantId,
+        CancellationToken ct = default)
+    {
+        if (storeId <= 0 || warehouseId <= 0 || productVariantId <= 0)
+        {
+            throw new BusinessRuleException(
+                "Inventory balance identity values must be greater than zero.");
+        }
+
+        if (!_db.Database.IsSqlServer())
+        {
+            throw new InvalidOperationException(
+                "Durable inventory balance locking requires SQL Server.");
+        }
+
+        var currentTransaction = _db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException(
+                "Inventory balance locking requires an active database transaction.");
+
+        var connection = _db.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+        {
+            await connection.OpenAsync(ct);
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = currentTransaction.GetDbTransaction();
+            command.CommandTimeout = 15;
+            command.CommandText =
+                """
+                SELECT TOP (1) Id
+                FROM InventoryBalances WITH (UPDLOCK,HOLDLOCK,ROWLOCK)
+                WHERE StoreId = @storeId
+                  AND WarehouseId = @warehouseId
+                  AND ProductVariantId = @productVariantId
+                """;
+
+            AddInt32Parameter(command, "@storeId", storeId);
+            AddInt32Parameter(command, "@warehouseId", warehouseId);
+            AddInt32Parameter(
+                command,
+                "@productVariantId",
+                productVariantId);
+
+            _ = await command.ExecuteScalarAsync(ct);
+        }
+
+        var entity = await _db.InventoryBalances
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(x =>
+                x.StoreId == storeId
+                && x.WarehouseId == warehouseId
+                && x.ProductVariantId == productVariantId,
+                ct);
+
+        if (entity is not null)
+        {
+            if (entity.IsDeleted)
+            {
+                throw new ConcurrencyException(
+                    "The inventory balance identity is occupied by a soft-deleted row.");
+            }
+
+            return entity;
+        }
+
+        entity = new InventoryBalance
+        {
+            StoreId = storeId,
+            WarehouseId = warehouseId,
+            ProductVariantId = productVariantId,
+            OnHandQty = 0,
+            ReservedQty = 0,
+            InventoryValue = 0,
+            AverageUnitCost = 0
+        };
+
+        await _db.InventoryBalances.AddAsync(entity, ct);
+        await _db.SaveChangesAsync(ct);
         return entity;
     }
 
@@ -274,5 +364,17 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
                     ? query.OrderBy(x => x.ProductVariant.Product!.Name).ThenBy(x => x.ProductVariant.Sku)
                     : query.OrderByDescending(x => x.ProductVariant.Product!.Name).ThenByDescending(x => x.ProductVariant.Sku);
         }
+    }
+
+    private static void AddInt32Parameter(
+        System.Data.Common.DbCommand command,
+        string name,
+        int value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.DbType = DbType.Int32;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
     }
 }

@@ -1,6 +1,7 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Application.Common.Exceptions.Pos;
@@ -34,8 +35,26 @@ namespace GaoApp.Application.Services.Inventory;
 /// </summary>
 public class InventoryReservationService : IInventoryReservationService
 {
+    private sealed class ReservationPlan
+    {
+        public required IReadOnlyList<InventoryPostingLockKey> LockKeys { get; init; }
+        public Warehouse? LegacyWarehouse { get; init; }
+        public IReadOnlyList<OrderLine> LegacyLines { get; init; } = [];
+        public OrderLegalEntityAllocationResult? MultiLegalEntityPreview { get; init; }
+        public IReadOnlyDictionary<(int WarehouseId, int ProductVariantId), InventoryBalance>
+            MultiLegalEntityBalances { get; init; } =
+                new Dictionary<(int, int), InventoryBalance>();
+        public IReadOnlyDictionary<int, LegalEntityAllocationSourceInput>
+            SourcesByWarehouse { get; init; } =
+                new Dictionary<int, LegalEntityAllocationSourceInput>();
+        public IReadOnlyDictionary<int, OrderLine> LinesById { get; init; } =
+            new Dictionary<int, OrderLine>();
+        public DateTime ReservedAtUtc { get; init; }
+    }
+
     private readonly IInventoryReservationRepository _inventoryReservationRepository;
     private readonly IInventoryBalanceRepository _inventoryBalanceRepository;
+    private readonly IInventoryMovementService _inventoryMovementService;
     private readonly IPOSShiftRepository _shiftRepository;
     private readonly IWarehouseRepository _warehouseRepository;
     private readonly IOrderLegalEntityAllocationRepository _legalEntityRepository;
@@ -44,6 +63,7 @@ public class InventoryReservationService : IInventoryReservationService
     public InventoryReservationService(
         IInventoryReservationRepository inventoryReservationRepository,
         IInventoryBalanceRepository inventoryBalanceRepository,
+        IInventoryMovementService inventoryMovementService,
         IPOSShiftRepository shiftRepository,
         IWarehouseRepository warehouseRepository,
         IOrderLegalEntityAllocationRepository legalEntityRepository,
@@ -51,6 +71,7 @@ public class InventoryReservationService : IInventoryReservationService
     {
         _inventoryReservationRepository = inventoryReservationRepository;
         _inventoryBalanceRepository = inventoryBalanceRepository;
+        _inventoryMovementService = inventoryMovementService;
         _shiftRepository = shiftRepository;
         _warehouseRepository = warehouseRepository;
         _legalEntityRepository = legalEntityRepository;
@@ -76,12 +97,38 @@ public class InventoryReservationService : IInventoryReservationService
             return;
         }
 
-        var store = await _legalEntityRepository.GetStoreFeatureStateAsync(order.StoreId, ct);
+        var plan = await PrepareReservationPlanAsync(
+            order,
+            excludedReservations: [],
+            checkExistingLegacyRows: true,
+            ct);
+        if (plan.LockKeys.Count > 0)
+        {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                plan.LockKeys,
+                ct);
+        }
+
+        await ApplyReservationPlanAsync(order, plan, ct);
+    }
+
+    private async Task<ReservationPlan> PrepareReservationPlanAsync(
+        Order order,
+        IReadOnlyCollection<InventoryReservation> excludedReservations,
+        bool checkExistingLegacyRows,
+        CancellationToken ct)
+    {
+        var store = await _legalEntityRepository
+            .GetStoreFeatureStateAsync(order.StoreId, ct);
         var now = DateTime.UtcNow;
         if (store != null && ShouldUseMultiLegalEntity(order, store, now))
         {
-            await ReserveForMultiLegalEntityOrderAsync(order, store, now, ct);
-            return;
+            return await PrepareMultiLegalEntityReservationPlanAsync(
+                order,
+                store,
+                now,
+                excludedReservations,
+                ct);
         }
 
         var shift = await _shiftRepository.GetByIdAsync(order.POSShiftId, ct);
@@ -101,7 +148,6 @@ public class InventoryReservationService : IInventoryReservationService
             throw new InvalidOperationException("Kho xuất bán đã ngưng hoạt động.");
 
         var warehouseId = warehouse.Id;
-        var allowNegativeInventory = warehouse.AllowNegativeInventory;
 
         var activeLines = order.Lines
             .Where(x => !x.IsDeleted)
@@ -111,63 +157,46 @@ public class InventoryReservationService : IInventoryReservationService
         if (!activeLines.Any())
             throw new InvalidOperationException("Order chưa có dòng hàng hợp lệ để giữ.");
 
+        var reservableLines = new List<OrderLine>();
         foreach (var line in activeLines)
         {
-            var reserveQty = GetReserveQty(line);
-
-            var existed = await _inventoryReservationRepository.ExistsActiveAsync(
-                InventoryReferenceType.Order,
-                order.Id.ToString(),
-                line.Id,
-                warehouseId,
-                line.VariantId,
-                ct);
-
-            if (existed)
-                continue;
-
-            var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
-                warehouseId,
-                line.VariantId,
-                ct);
-
-            // Rule policy:
-            // - Kho không cho âm => reservation phải đủ AvailableQty
-            // - Kho cho âm      => cho phép reserve vượt AvailableQty
-            if (!allowNegativeInventory && balance.AvailableQty < reserveQty)
+            if (checkExistingLegacyRows)
             {
-                throw new InvalidOperationException(
-                    $"Không đủ tồn khả dụng để giữ hàng. SP: {line.ItemName}, khả dụng: {balance.AvailableQty:0.###}, cần giữ: {reserveQty:0.###}.");
+                var existed = await _inventoryReservationRepository
+                    .ExistsActiveAsync(
+                        InventoryReferenceType.Order,
+                        order.Id.ToString(),
+                        line.Id,
+                        warehouseId,
+                        line.VariantId,
+                        ct);
+                if (existed)
+                    continue;
             }
 
-            balance.ReservedQty += reserveQty;
-
-            var reservation = new InventoryReservation
-            {
-                WarehouseId = warehouseId,
-                ProductVariantId = line.VariantId,
-                ReferenceType = InventoryReferenceType.Order,
-                ReferenceId = order.Id.ToString(),
-                ReferenceLineId = line.Id,
-                ReservedQty = reserveQty,
-                Status = InventoryReservationStatus.Active,
-                Note = BuildReserveNote(order, line, reserveQty, allowNegativeInventory),
-                ReservedAtUtc = DateTime.UtcNow
-            };
-
-            await _inventoryReservationRepository.AddAsync(reservation, ct);
+            reservableLines.Add(line);
         }
 
-        order.HasReservation = true;
-        order.ReservedAtUtc = DateTime.UtcNow;
-
-        await _inventoryReservationRepository.SaveChangesAsync(ct);
+        return new ReservationPlan
+        {
+            LegacyWarehouse = warehouse,
+            LegacyLines = reservableLines,
+            ReservedAtUtc = now,
+            LockKeys = reservableLines
+                .Select(x => new InventoryPostingLockKey(
+                    order.StoreId,
+                    warehouseId,
+                    x.VariantId))
+                .Distinct()
+                .ToList()
+        };
     }
 
-    private async Task ReserveForMultiLegalEntityOrderAsync(
+    private async Task<ReservationPlan> PrepareMultiLegalEntityReservationPlanAsync(
         Order order,
         Store store,
         DateTime now,
+        IReadOnlyCollection<InventoryReservation> excludedReservations,
         CancellationToken ct)
     {
         var activationAt = ResolveActivationAt(order, store);
@@ -194,6 +223,9 @@ public class InventoryReservationService : IInventoryReservationService
             warehouseIds,
             variantIds,
             ct);
+        var excludedByKey = excludedReservations
+            .GroupBy(x => (x.WarehouseId, x.ProductVariantId))
+            .ToDictionary(x => x.Key, x => x.Sum(y => y.ReservedQty));
 
         var preview = _allocationEngine.Preview(new OrderLegalEntityAllocationRequest
         {
@@ -214,7 +246,10 @@ public class InventoryReservationService : IInventoryReservationService
                 WarehouseId = x.WarehouseId,
                 ProductVariantId = x.ProductVariantId,
                 OnHandBaseQuantity = x.OnHandQty,
-                ReservedBaseQuantity = x.ReservedQty
+                ReservedBaseQuantity = Math.Max(
+                    0m,
+                    x.ReservedQty - excludedByKey.GetValueOrDefault(
+                        (x.WarehouseId, x.ProductVariantId)))
             }).ToList()
         });
 
@@ -234,42 +269,108 @@ public class InventoryReservationService : IInventoryReservationService
                 });
         }
 
-        var balanceByKey = balances.ToDictionary(
-            x => (x.WarehouseId, x.ProductVariantId));
-        var sourceByWarehouse = sources.ToDictionary(x => x.WarehouseId);
-        var lineById = lines.ToDictionary(x => x.Id);
-
-        foreach (var allocation in preview.Allocations)
+        return new ReservationPlan
         {
-            if (!balanceByKey.TryGetValue(
-                    (allocation.WarehouseId, allocation.ProductVariantId),
-                    out var balance))
-            {
-                throw new InvalidOperationException(
-                    $"Thiếu InventoryBalance đã khóa cho kho #{allocation.WarehouseId}, variant #{allocation.ProductVariantId}.");
-            }
+            MultiLegalEntityPreview = preview,
+            MultiLegalEntityBalances = balances.ToDictionary(
+                x => (x.WarehouseId, x.ProductVariantId)),
+            SourcesByWarehouse = sources.ToDictionary(x => x.WarehouseId),
+            LinesById = lines.ToDictionary(x => x.Id),
+            ReservedAtUtc = now,
+            LockKeys = preview.Allocations
+                .Select(x => new InventoryPostingLockKey(
+                    order.StoreId,
+                    x.WarehouseId,
+                    x.ProductVariantId))
+                .Distinct()
+                .ToList()
+        };
+    }
 
-            balance.ReservedQty += allocation.BaseQuantity;
-            var line = lineById[allocation.OrderLineId];
-            var source = sourceByWarehouse[allocation.WarehouseId];
-            await _inventoryReservationRepository.AddAsync(new InventoryReservation
+    private async Task ApplyReservationPlanAsync(
+        Order order,
+        ReservationPlan plan,
+        CancellationToken ct)
+    {
+        if (plan.MultiLegalEntityPreview is not null)
+        {
+            foreach (var allocation in plan.MultiLegalEntityPreview.Allocations)
             {
-                StoreId = order.StoreId,
-                WarehouseId = allocation.WarehouseId,
-                ProductVariantId = allocation.ProductVariantId,
-                ReferenceType = InventoryReferenceType.Order,
-                ReferenceId = order.Id.ToString(),
-                ReferenceLineId = allocation.OrderLineId,
-                ReservedQty = allocation.BaseQuantity,
-                Status = InventoryReservationStatus.Active,
-                Note = $"Giữ hàng đa HKD cho đơn POS #{order.Id}, dòng {line.Id}. " +
-                       $"HKD #{source.LegalEntityId}, ưu tiên {source.SalePriority}, SL gốc {allocation.BaseQuantity:0.###}.",
-                ReservedAtUtc = now
-            }, ct);
+                if (!plan.MultiLegalEntityBalances.TryGetValue(
+                        (allocation.WarehouseId, allocation.ProductVariantId),
+                        out var balance))
+                {
+                    throw new InvalidOperationException(
+                        $"Thiếu InventoryBalance đã khóa cho kho #{allocation.WarehouseId}, variant #{allocation.ProductVariantId}.");
+                }
+
+                balance.ReservedQty += allocation.BaseQuantity;
+                var line = plan.LinesById[allocation.OrderLineId];
+                var source = plan.SourcesByWarehouse[allocation.WarehouseId];
+                await _inventoryReservationRepository.AddAsync(
+                    new InventoryReservation
+                    {
+                        StoreId = order.StoreId,
+                        WarehouseId = allocation.WarehouseId,
+                        ProductVariantId = allocation.ProductVariantId,
+                        ReferenceType = InventoryReferenceType.Order,
+                        ReferenceId = order.Id.ToString(),
+                        ReferenceLineId = allocation.OrderLineId,
+                        ReservedQty = allocation.BaseQuantity,
+                        Status = InventoryReservationStatus.Active,
+                        Note =
+                            $"Giữ hàng đa HKD cho đơn POS #{order.Id}, dòng {line.Id}. " +
+                            $"HKD #{source.LegalEntityId}, ưu tiên {source.SalePriority}, SL gốc {allocation.BaseQuantity:0.###}.",
+                        ReservedAtUtc = plan.ReservedAtUtc
+                    },
+                    ct);
+            }
+        }
+        else
+        {
+            var warehouse = plan.LegacyWarehouse
+                ?? throw new InvalidOperationException(
+                    "Thiếu kho legacy trong reservation plan.");
+
+            foreach (var line in plan.LegacyLines)
+            {
+                var reserveQty = GetReserveQty(line);
+                var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
+                    warehouse.Id,
+                    line.VariantId,
+                    ct);
+                if (!warehouse.AllowNegativeInventory &&
+                    balance.AvailableQty < reserveQty)
+                {
+                    throw new InvalidOperationException(
+                        $"Không đủ tồn khả dụng để giữ hàng. SP: {line.ItemName}, khả dụng: {balance.AvailableQty:0.###}, cần giữ: {reserveQty:0.###}.");
+                }
+
+                balance.ReservedQty += reserveQty;
+                await _inventoryReservationRepository.AddAsync(
+                    new InventoryReservation
+                    {
+                        StoreId = order.StoreId,
+                        WarehouseId = warehouse.Id,
+                        ProductVariantId = line.VariantId,
+                        ReferenceType = InventoryReferenceType.Order,
+                        ReferenceId = order.Id.ToString(),
+                        ReferenceLineId = line.Id,
+                        ReservedQty = reserveQty,
+                        Status = InventoryReservationStatus.Active,
+                        Note = BuildReserveNote(
+                            order,
+                            line,
+                            reserveQty,
+                            warehouse.AllowNegativeInventory),
+                        ReservedAtUtc = plan.ReservedAtUtc
+                    },
+                    ct);
+            }
         }
 
         order.HasReservation = true;
-        order.ReservedAtUtc = now;
+        order.ReservedAtUtc = plan.ReservedAtUtc;
         await _inventoryReservationRepository.SaveChangesAsync(ct);
     }
 
@@ -359,6 +460,16 @@ public class InventoryReservationService : IInventoryReservationService
         }
 
         var releaseReason = CleanText(reason, "Nhả giữ hàng.");
+        var balanceKeys = activeReservations
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId))
+            .Distinct()
+            .ToList();
+        await _inventoryMovementService.PreLockBalancesAsync(
+            balanceKeys,
+            ct);
 
         foreach (var reservation in activeReservations)
         {
@@ -398,6 +509,17 @@ public class InventoryReservationService : IInventoryReservationService
             await _inventoryReservationRepository.SaveChangesAsync(ct);
             return;
         }
+
+        var balanceKeys = activeReservations
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId))
+            .Distinct()
+            .ToList();
+        await _inventoryMovementService.PreLockBalancesAsync(
+            balanceKeys,
+            ct);
 
         foreach (var reservation in activeReservations)
         {
@@ -470,13 +592,52 @@ public class InventoryReservationService : IInventoryReservationService
     {
         ValidateOrder(order);
 
-        // Nếu đang có reservation active cũ thì nhả hết trước
-        if (await HasActiveReservationForOrderAsync(order, ct))
+        var oldReservations = await _inventoryReservationRepository
+            .GetActiveByReferenceAsync(
+                InventoryReferenceType.Order,
+                order.Id.ToString(),
+                ct);
+        var newPlan = await PrepareReservationPlanAsync(
+            order,
+            oldReservations,
+            checkExistingLegacyRows: false,
+            ct);
+
+        var unionKeys = oldReservations
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.WarehouseId,
+                x.ProductVariantId))
+            .Concat(newPlan.LockKeys)
+            .Distinct()
+            .ToList();
+        if (unionKeys.Count > 0)
         {
-            await ReleaseForOrderAsync(order, "Nhả giữ hàng cũ để cập nhật lại theo giỏ hàng hiện tại.", ct);
+            await _inventoryMovementService.PreLockBalancesAsync(
+                unionKeys,
+                ct);
         }
 
-        // Sau đó reserve lại theo line hiện tại
-        await ReserveForOrderAsync(order, ct);
+        // Release old first, then reserve new, while holding the one canonical
+        // old+new union batch acquired above.
+        foreach (var reservation in oldReservations)
+        {
+            var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
+                reservation.WarehouseId,
+                reservation.ProductVariantId,
+                ct);
+            balance.ReservedQty -= reservation.ReservedQty;
+            if (balance.ReservedQty < 0)
+                balance.ReservedQty = 0;
+
+            reservation.Status = InventoryReservationStatus.Released;
+            reservation.ReleasedAtUtc = DateTime.UtcNow;
+            reservation.ReleaseNote =
+                "Nhả giữ hàng cũ để cập nhật lại theo giỏ hàng hiện tại.";
+        }
+
+        order.HasReservation = false;
+        order.ReservedAtUtc = null;
+        await ApplyReservationPlanAsync(order, newPlan, ct);
     }
 }

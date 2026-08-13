@@ -13,19 +13,22 @@ public class InventoryRevaluationService : IInventoryRevaluationService
     private readonly IInventoryValuationEntryRepository _valuationRepository;
     private readonly IInventoryTransactionRepository _transactionRepository;
     private readonly IInventoryBalanceRepository _balanceRepository;
+    private readonly IInventoryMovementService _inventoryMovementService;
 
     public InventoryRevaluationService(
         IInventoryCostLayerRepository layerRepository,
         IInventoryCostLayerAllocationRepository allocationRepository,
         IInventoryValuationEntryRepository valuationRepository,
         IInventoryTransactionRepository transactionRepository,
-        IInventoryBalanceRepository balanceRepository)
+        IInventoryBalanceRepository balanceRepository,
+        IInventoryMovementService inventoryMovementService)
     {
         _layerRepository = layerRepository;
         _allocationRepository = allocationRepository;
         _valuationRepository = valuationRepository;
         _transactionRepository = transactionRepository;
         _balanceRepository = balanceRepository;
+        _inventoryMovementService = inventoryMovementService;
     }
 
     public async Task<List<ProvisionalRevaluationPlanDto>> ResolveByInboundLayerAsync(
@@ -39,6 +42,15 @@ public class InventoryRevaluationService : IInventoryRevaluationService
 
         if (inboundLayer.RemainingQuantity <= 0)
             return new List<ProvisionalRevaluationPlanDto>();
+
+        await _inventoryMovementService.PreLockBalancesAsync(
+            [
+                new InventoryPostingLockKey(
+                    inboundLayer.StoreId,
+                    inboundLayer.WarehouseId,
+                    inboundLayer.ProductVariantId)
+            ],
+            ct);
 
         var balance = await _balanceRepository.GetOrCreateAsync(
             inboundLayer.WarehouseId,

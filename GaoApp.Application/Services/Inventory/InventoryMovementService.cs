@@ -1,9 +1,11 @@
 ﻿using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Inventory;
@@ -33,6 +35,7 @@ public class InventoryMovementService : IInventoryMovementService
     private readonly IWarehouseRepository _warehouseRepository;
     private readonly IInventoryCostLayerRepository _costLayerRepository;
     private readonly IInventoryCostLayerAllocationRepository _allocationRepository;
+    private readonly IInventoryPostingTransactionCoordinator _postingCoordinator;
 
     public InventoryMovementService(
         IInventoryBalanceRepository balanceRepository,
@@ -40,7 +43,8 @@ public class InventoryMovementService : IInventoryMovementService
         IInventoryValuationEntryRepository valuationRepository,
         IInventoryCostLayerRepository costLayerRepository,
         IInventoryCostLayerAllocationRepository allocationRepository,
-        IWarehouseRepository warehouseRepository)
+        IWarehouseRepository warehouseRepository,
+        IInventoryPostingTransactionCoordinator postingCoordinator)
     {
         _balanceRepository = balanceRepository;
         _transactionRepository = transactionRepository;
@@ -48,6 +52,86 @@ public class InventoryMovementService : IInventoryMovementService
         _costLayerRepository = costLayerRepository;
         _allocationRepository = allocationRepository;
         _warehouseRepository = warehouseRepository;
+        _postingCoordinator = postingCoordinator;
+    }
+
+    public async Task PreLockBalancesAsync(
+        IEnumerable<InventoryPostingLockKey> keys,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var materializedKeys = keys.ToList();
+        foreach (var key in materializedKeys)
+        {
+            if (key is null)
+            {
+                throw new ArgumentException(
+                    "Inventory posting lock keys cannot contain null values.",
+                    nameof(keys));
+            }
+
+            if (key.StoreId <= 0
+                || key.WarehouseId <= 0
+                || key.ProductVariantId <= 0)
+            {
+                throw new BusinessRuleException(
+                    "Inventory posting lock identity values must be greater than zero.");
+            }
+        }
+
+        var orderedKeys = materializedKeys
+            .Distinct()
+            .OrderBy(x => x.StoreId)
+            .ThenBy(x => x.WarehouseId)
+            .ThenBy(x => x.ProductVariantId)
+            .ToList();
+
+        if (orderedKeys.Count == 0)
+        {
+            return;
+        }
+
+        if (!_postingCoordinator.HasActiveTransaction)
+        {
+            throw new InvalidOperationException(
+                "Inventory balance batch pre-locking requires an active database transaction.");
+        }
+
+        var warehouseStores = new Dictionary<int, int>();
+        foreach (var warehouseId in orderedKeys
+                     .Select(x => x.WarehouseId)
+                     .Distinct()
+                     .OrderBy(x => x))
+        {
+            var warehouse = await _warehouseRepository
+                .GetByIdAsync(warehouseId, ct);
+            if (warehouse is null)
+            {
+                throw new BusinessRuleException(
+                    $"Inventory posting warehouse {warehouseId} does not exist.");
+            }
+
+            warehouseStores.Add(warehouseId, warehouse.StoreId);
+        }
+
+        foreach (var key in orderedKeys)
+        {
+            if (warehouseStores[key.WarehouseId] != key.StoreId)
+            {
+                throw new BusinessRuleException(
+                    $"Inventory posting warehouse {key.WarehouseId} does not belong to store {key.StoreId}.");
+            }
+        }
+
+        foreach (var key in orderedKeys)
+        {
+            await _balanceRepository.LockAndGetOrCreateAsync(
+                key.StoreId,
+                key.WarehouseId,
+                key.ProductVariantId,
+                ct);
+        }
     }
 
     public async Task<InventoryMovementResultDto> CreateAsync(
@@ -69,43 +153,77 @@ public class InventoryMovementService : IInventoryMovementService
         var warehouse = await _warehouseRepository.GetByIdAsync(request.WarehouseId, ct)
             ?? throw new BusinessRuleException("Kho không tồn tại.");
 
+        if (warehouse.StoreId <= 0)
+            throw new BusinessRuleException("StoreId của kho không hợp lệ.");
+
+        return await _postingCoordinator.ExecuteAsync(
+            operationCt => CreateWithinTransactionAsync(
+                request,
+                warehouse,
+                warehouse.StoreId,
+                operationCt),
+            ct);
+    }
+
+    private async Task<InventoryMovementResultDto> CreateWithinTransactionAsync(
+        CreateInventoryMovementRequest request,
+        Warehouse warehouse,
+        int storeId,
+        CancellationToken ct)
+    {
+        var balance = await _balanceRepository.LockAndGetOrCreateAsync(
+            storeId,
+            request.WarehouseId,
+            request.ProductVariantId,
+            ct);
+
+        byte[]? idempotencyKey = null;
         if (request.SkipIfExists)
         {
-            var exists = await _transactionRepository.ExistsAsync(
-                request.WarehouseId,
-                request.ProductVariantId,
-                request.TransactionType,
-                request.ReferenceType,
-                request.ReferenceId,
-                request.ReferenceLineId,
-                request.ReferenceSubKey,
-                ct);
+            idempotencyKey = InventoryIdempotencyKeyFactory.Create(
+                storeId,
+                request);
 
-            if (exists)
+            var existing = await _transactionRepository
+                .GetByIdempotencyKeyAsync(
+                    storeId,
+                    idempotencyKey,
+                    ct);
+
+            if (existing is not null)
             {
-                return new InventoryMovementResultDto
-                {
-                    WarehouseId = request.WarehouseId,
-                    ProductVariantId = request.ProductVariantId,
-                    QuantityChange = request.QuantityChange,
-                    IsCreated = false,
-                    IsSkipped = true,
-                    HasProvisionalValuation = false,
-                    ProvisionalQuantity = 0m,
-                    ProvisionalUnitCost = 0m,
-                    ProvisionalValueChange = 0m,
-                    ActualQuantity = 0m,
-                    ActualValueChange = 0m
-                };
+                await VerifyIdempotentPayloadAsync(
+                    existing,
+                    storeId,
+                    request,
+                    ct);
+                return BuildSkippedResult(existing, request);
+            }
+
+            var legacy = await _transactionRepository
+                .GetByLegacyIdentityAsync(
+                    storeId,
+                    request.WarehouseId,
+                    request.ProductVariantId,
+                    request.TransactionType,
+                    request.ReferenceType,
+                    request.ReferenceId!,
+                    request.ReferenceLineId,
+                    request.ReferenceSubKey,
+                    ct);
+
+            if (legacy is not null)
+            {
+                await VerifyIdempotentPayloadAsync(
+                    legacy,
+                    storeId,
+                    request,
+                    ct);
+                return BuildSkippedResult(legacy, request);
             }
         }
 
         var occurredAtUtc = request.OccurredAtUtc ?? DateTime.UtcNow;
-
-        var balance = await _balanceRepository.GetOrCreateAsync(
-            request.WarehouseId,
-            request.ProductVariantId,
-            ct);
 
         var beforeQty = RoundQty(balance.OnHandQty);
         var beforeValue = RoundValue(balance.InventoryValue);
@@ -124,8 +242,10 @@ public class InventoryMovementService : IInventoryMovementService
 
         var transaction = new InventoryTransaction
         {
+            StoreId = storeId,
             WarehouseId = request.WarehouseId,
             ProductVariantId = request.ProductVariantId,
+            IdempotencyKey = idempotencyKey,
             TransactionType = request.TransactionType,
             ReferenceType = request.ReferenceType,
             ReferenceId = request.ReferenceId,
@@ -134,6 +254,9 @@ public class InventoryMovementService : IInventoryMovementService
             QuantityChange = request.QuantityChange,
             BeforeQty = beforeQty,
             AfterQty = afterQtyByTransaction,
+            UnitCostSnapshot = request.UnitCost.HasValue
+                ? RoundCost(request.UnitCost.Value)
+                : 0m,
             OccurredAtUtc = occurredAtUtc,
             Note = request.Note
         };
@@ -404,6 +527,27 @@ public class InventoryMovementService : IInventoryMovementService
         balance.AverageUnitCost = lastEntry.RunningAverageUnitCostAfter;
         balance.LastValuationAtUtc = lastEntry.OccurredAtUtc;
 
+        var transactionValueChange = RoundValue(
+            valuationEntries.Sum(x => x.Amount));
+        if (!request.UnitCost.HasValue && request.QuantityChange != 0)
+        {
+            transaction.UnitCostSnapshot = RoundCost(
+                Math.Abs(transactionValueChange / request.QuantityChange));
+        }
+
+        transaction.TotalCost = transactionValueChange;
+        transaction.BeforeInventoryValue = beforeValue;
+        transaction.AfterInventoryValue = lastEntry.RunningValueAfter;
+        transaction.RunningAverageUnitCostAfter =
+            lastEntry.RunningAverageUnitCostAfter;
+        transaction.CostSourceType = lastEntry.CostSourceType;
+        transaction.IsProvisionalCost =
+            valuationEntries.Any(x => x.IsProvisional);
+        transaction.CostFinalizedAtUtc =
+            transaction.IsProvisionalCost
+                ? null
+                : lastEntry.CostFinalizedAtUtc;
+
         if (request.QuantityChange > 0 && !InboundLikeLastEntryIsProvisional(valuationEntries))
         {
             var inboundEntry = valuationEntries.FirstOrDefault(x => x.EntryType == InventoryValuationEntryType.Inbound);
@@ -464,6 +608,104 @@ public class InventoryMovementService : IInventoryMovementService
             IsNegativeAfterTransaction = lastEntry.RunningQtyAfter < 0,
             IsCreated = true,
             IsSkipped = false
+        };
+    }
+
+    private async Task VerifyIdempotentPayloadAsync(
+        InventoryTransaction existing,
+        int storeId,
+        CreateInventoryMovementRequest request,
+        CancellationToken ct)
+    {
+        if (!InventoryIdempotencyKeyFactory.HasSameCanonicalIdentity(
+                existing,
+                storeId,
+                request)
+            || RoundQty(existing.QuantityChange)
+                != RoundQty(request.QuantityChange))
+        {
+            throw new ConcurrencyException(
+                "The durable inventory posting identity already exists with a different payload.");
+        }
+
+        if (!request.UnitCost.HasValue)
+        {
+            return;
+        }
+
+        var persistedUnitCost = existing.IdempotencyKey is not null
+            || existing.UnitCostSnapshot != 0m
+            || request.UnitCost.Value == 0m
+                ? existing.UnitCostSnapshot
+                : await ResolveLegacyUnitCostAsync(
+                    existing,
+                    storeId,
+                    ct);
+
+        if (!persistedUnitCost.HasValue
+            || RoundCost(persistedUnitCost.Value)
+                != RoundCost(request.UnitCost.Value))
+        {
+            throw new ConcurrencyException(
+                "The durable inventory posting identity already exists with a different unit cost.");
+        }
+    }
+
+    private async Task<decimal?> ResolveLegacyUnitCostAsync(
+        InventoryTransaction transaction,
+        int storeId,
+        CancellationToken ct)
+    {
+        var entries = await _valuationRepository
+            .GetByInventoryTransactionIdAsync(
+                storeId,
+                transaction.Id,
+                ct);
+
+        var inbound = entries.FirstOrDefault(
+            x => x.EntryType == InventoryValuationEntryType.Inbound
+                && x.Quantity != 0m);
+        if (inbound is not null)
+        {
+            return inbound.UnitCost;
+        }
+
+        var quantityEntries = entries
+            .Where(x => x.Quantity != 0m)
+            .ToList();
+        var totalQuantity = quantityEntries.Sum(
+            x => Math.Abs(x.Quantity));
+        if (totalQuantity == 0m)
+        {
+            return null;
+        }
+
+        return Math.Abs(quantityEntries.Sum(x => x.Amount))
+            / totalQuantity;
+    }
+
+    private static InventoryMovementResultDto BuildSkippedResult(
+        InventoryTransaction existing,
+        CreateInventoryMovementRequest request)
+    {
+        return new InventoryMovementResultDto
+        {
+            WarehouseId = existing.WarehouseId,
+            ProductVariantId = existing.ProductVariantId,
+            BeforeQty = existing.BeforeQty,
+            QuantityChange = request.QuantityChange,
+            AfterQty = existing.AfterQty,
+            IsNegativeAfterTransaction = existing.AfterQty < 0,
+            IsCreated = false,
+            IsSkipped = true,
+            BeforeValue = existing.BeforeInventoryValue,
+            ValueChange = existing.TotalCost,
+            AfterValue = existing.AfterInventoryValue,
+            AfterAverageCost = existing.RunningAverageUnitCostAfter,
+            HasProvisionalValuation = existing.IsProvisionalCost,
+            ProvisionalUnitCost = existing.IsProvisionalCost
+                ? existing.UnitCostSnapshot
+                : 0m
         };
     }
 

@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Audit;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Returns;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
@@ -29,6 +30,12 @@ namespace GaoApp.Application.Services.Orders;
 /// </summary>
 public sealed class SalesReturnService : ISalesReturnService
 {
+    private sealed class LegacyRestockPlan
+    {
+        public required SalesReturnLine Line { get; init; }
+        public required IReadOnlyList<ReturnCostAllocationDto> Allocations { get; init; }
+    }
+
     private readonly IUnitOfWork _uow;
     private readonly IOrderRepository _orders;
     private readonly ISalesReturnRepository _salesReturns;
@@ -315,36 +322,47 @@ public sealed class SalesReturnService : ISalesReturnService
             //    - KHÔNG nhập kho
             //    - KHÔNG mirror valuation
             // =====================================================
-            foreach (var line in entity.Lines)
+            var persistedLines = entity.Lines.ToList();
+            if (_legalEntityReversalService is not
+                IOrderLegalEntitySalesReturnBatchService legalEntityBatchService)
             {
-                // Đơn đã allocation nhiều HKD phải reverse theo đúng source warehouse/HKD.
-                // NoRestock vẫn ghi reversal ledger để fragment đó không bị dùng lại ở lần sau.
-                var handledByLegalEntity = await _legalEntityReversalService
-                    .ReverseSalesReturnLineIfAllocatedAsync(order, entity, line, ct);
-                if (handledByLegalEntity)
-                    continue;
+                throw new InvalidOperationException(
+                    "Sales return LegalEntity reversal implementation does not support operation-wide batch planning.");
+            }
 
-                // Luồng legacy giữ nguyên: NoRestock không tạo movement/valuation.
-                if (line.Action != SalesReturnLineAction.Restock)
-                    continue;
-
-                // 8.1. Lấy source valuation fragments còn outstanding của order line gốc
-                var fragments = await _returnableValuationFragmentService.GetForOrderLineAsync(
-                    order.Id,
-                    line.OrderLineId,
+            var legalEntityBatch =
+                await legalEntityBatchService.PrepareSalesReturnBatchAsync(
+                    order,
+                    entity,
+                    persistedLines,
                     ct);
+            var legacyPlansByLineId =
+                new Dictionary<int, LegacyRestockPlan>();
 
+            // Complete every unhandled legacy Restock plan before the
+            // operation-wide union is locked.
+            foreach (var line in persistedLines)
+            {
+                if (line.Action != SalesReturnLineAction.Restock ||
+                    legalEntityBatch.HandledLineIds.Contains(line.Id))
+                {
+                    continue;
+                }
+
+                var fragments = await _returnableValuationFragmentService
+                    .GetForOrderLineAsync(
+                        order.Id,
+                        line.OrderLineId,
+                        ct);
                 if (fragments.Count == 0)
                 {
                     throw new InvalidOperationException(
                         $"OrderLine #{line.OrderLineId} không còn source valuation fragment nào để reverse.");
                 }
 
-                // 8.2. Allocate qty trả hàng vào từng fragment theo thứ tự source gốc
                 var allocations = _returnCostAllocator.Allocate(
                     fragments,
                     line.ReturnBaseQuantity);
-
                 if (allocations.Count == 0)
                 {
                     throw new InvalidOperationException(
@@ -359,42 +377,84 @@ public sealed class SalesReturnService : ISalesReturnService
                         $"Expected={line.ReturnBaseQuantity}, Actual={allocatedTotalQty}");
                 }
 
-                // 8.3. Tổng hợp snapshot cost ngược lại lên SalesReturnLine
-                //      để giữ chứng từ dễ đọc và hỗ trợ báo cáo
-                line.LineCostTotal = allocations.Sum(x => x.Quantity * x.UnitCost);
+                legacyPlansByLineId.Add(
+                    line.Id,
+                    new LegacyRestockPlan
+                    {
+                        Line = line,
+                        Allocations = allocations
+                    });
+            }
 
+            var balanceKeys = legalEntityBatch.LockKeys
+                .Concat(legacyPlansByLineId.Values.Select(x =>
+                    new InventoryPostingLockKey(
+                        order.StoreId,
+                        warehouse.Id,
+                        x.Line.VariantId)))
+                .Distinct()
+                .ToList();
+            if (balanceKeys.Count > 0)
+            {
+                await _inventoryMovementService.PreLockBalancesAsync(
+                    balanceKeys,
+                    ct);
+            }
+
+            // Apply in the persisted SalesReturnLine order after the one
+            // operation-wide pre-lock.
+            foreach (var line in persistedLines)
+            {
+                if (legalEntityBatch.HandledLineIds.Contains(line.Id))
+                {
+                    await legalEntityBatchService
+                        .ApplyPreparedSalesReturnLineAsync(
+                            legalEntityBatch,
+                            line.Id,
+                            ct);
+                    continue;
+                }
+
+                if (!legacyPlansByLineId.TryGetValue(
+                        line.Id,
+                        out var legacyPlan))
+                {
+                    // Legacy NoRestock: persisted return line only.
+                    continue;
+                }
+
+                var allocations = legacyPlan.Allocations;
+                line.LineCostTotal = allocations
+                    .Sum(x => x.Quantity * x.UnitCost);
                 line.UnitCostSnapshot = line.ReturnBaseQuantity > 0
-                    ? Math.Round(line.LineCostTotal / line.ReturnBaseQuantity, 6)
+                    ? Math.Round(
+                        line.LineCostTotal / line.ReturnBaseQuantity,
+                        6)
                     : 0m;
+                line.IsProvisionalCost = allocations
+                    .Any(x => x.IsProvisional);
 
-                line.IsProvisionalCost = allocations.Any(x => x.IsProvisional);
-
-                // 8.4. Tạo 1 movement cho mỗi allocation fragment
-                // MovementFactory/MovementService bên dưới sẽ tiếp tục mirror từ source fragment,
-                // không dùng average cost hiện tại.
                 for (var i = 0; i < allocations.Count; i++)
                 {
                     var allocation = allocations[i];
-
-                    // SubKey riêng cho từng allocation để:
-                    // - dedupe khi retry
-                    // - trace rõ allocation nào reverse source nào
-                    var referenceSubKey = $"RET:{line.Id}:ALLOC:{i + 1}:SRC:{allocation.SourceValuationEntryId}";
-
+                    var referenceSubKey =
+                        $"RET:{line.Id}:ALLOC:{i + 1}:SRC:{allocation.SourceValuationEntryId}";
                     var movement = _inventoryMovementFactory.CreateSaleRefund(
                         warehouse.Id,
                         line.VariantId,
-                        entity.Id,                   // reference phải là SalesReturn
-                        line.Id,                     // reference line phải là SalesReturnLine
-                        allocation.Quantity,         // qty allocation
-                        allocation.UnitCost,         // mirror unit cost từ source fragment
+                        entity.Id,
+                        line.Id,
+                        allocation.Quantity,
+                        allocation.UnitCost,
                         entity.Reason,
                         DateTime.UtcNow,
                         referenceSubKey,
                         allocation.SourceValuationEntryId,
                         allocation.SourceReferenceSubKey);
 
-                    await _inventoryMovementService.CreateAsync(movement, ct);
+                    await _inventoryMovementService.CreateAsync(
+                        movement,
+                        ct);
                 }
             }
 

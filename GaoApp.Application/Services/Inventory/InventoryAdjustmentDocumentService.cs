@@ -6,6 +6,7 @@ using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Globalization;
 
 
 namespace GaoApp.Application.Services.Inventory;
@@ -294,11 +295,23 @@ IInventoryCostSuggestionService costSuggestionService)
         if (document == null)
             throw new InvalidOperationException("Phiếu điều chỉnh không tồn tại.");
 
+        if (document.Status == InventoryAdjustmentDocumentStatus.Approved)
+        {
+            return await _repository.GetDetailDtoAsync(document.Id, ct)
+                ?? throw new InvalidOperationException(
+                    "Không tải được phiếu điều chỉnh đã duyệt.");
+        }
+
         if (document.Status != InventoryAdjustmentDocumentStatus.PendingApproval)
             throw new InvalidOperationException("Chỉ phiếu đang chờ duyệt mới được duyệt.");
 
         if (document.Lines == null || document.Lines.Count == 0)
             throw new InvalidOperationException("Phiếu điều chỉnh phải có ít nhất 1 dòng sản phẩm.");
+
+        var documentReferenceId =
+            document.Id.ToString(CultureInfo.InvariantCulture);
+        var occurredAtUtc = DateTime.UtcNow;
+        var movementRequests = new List<CreateInventoryMovementRequest>();
 
         foreach (var line in document.Lines)
         {
@@ -340,8 +353,10 @@ IInventoryCostSuggestionService costSuggestionService)
                     line.ProductVariantId,
                     line.BaseQuantity,
                     finalUnitCost.Value,
+                    documentReferenceId,
+                    line.Id,
                     note,
-                    DateTime.UtcNow);
+                    occurredAtUtc);
             }
             else if (document.AdjustmentType == InventoryTransactionType.AdjustmentDecrease)
             {
@@ -350,24 +365,52 @@ IInventoryCostSuggestionService costSuggestionService)
                     line.ProductVariantId,
                     line.BaseQuantity,
                     line.ProvisionalUnitCost,
+                    documentReferenceId,
+                    line.Id,
                     note,
-                    DateTime.UtcNow);
+                    occurredAtUtc);
             }
             else
             {
                 throw new InvalidOperationException("Loại điều chỉnh không hợp lệ.");
             }
 
-            await _inventoryMovementService.CreateAsync(movementRequest, ct);
+            movementRequests.Add(movementRequest);
         }
 
-        document.Status = InventoryAdjustmentDocumentStatus.Approved;
-        document.ApprovedAtUtc = DateTime.UtcNow;
-        document.ApprovalNote = NormalizeText(request.ApprovalNote);
+        await _unitOfWork.BeginTransactionAsync(ct);
 
-        _repository.Update(document);
+        try
+        {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                movementRequests.Select(movement => new InventoryPostingLockKey(
+                    document.StoreId,
+                    movement.WarehouseId,
+                    movement.ProductVariantId)),
+                ct);
 
-        await _unitOfWork.SaveChangesAsync(ct);
+            foreach (var movementRequest in movementRequests)
+            {
+                await _inventoryMovementService.CreateAsync(
+                    movementRequest,
+                    ct);
+            }
+
+            document.Status = InventoryAdjustmentDocumentStatus.Approved;
+            document.ApprovedAtUtc = occurredAtUtc;
+            document.ApprovalNote = NormalizeText(request.ApprovalNote);
+
+            _repository.Update(document);
+
+            await _unitOfWork.SaveChangesAsync(ct);
+            await _unitOfWork.CommitTransactionAsync(ct);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync(
+                CancellationToken.None);
+            throw;
+        }
 
         var detail = await _repository.GetDetailDtoAsync(document.Id, ct);
         if (detail == null)

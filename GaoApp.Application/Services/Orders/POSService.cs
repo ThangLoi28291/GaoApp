@@ -1,6 +1,7 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.Audit;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Application.DTOs.POSShifts;
 using GaoApp.Application.DTOs.Products;
@@ -165,6 +166,20 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         public bool HasProvisionalCost { get; set; }
 
         public List<FinalizeInventoryIssueLine> IssueLines { get; set; } = new();
+    }
+
+    private sealed class FinalizeInventoryMovementPlan
+    {
+        public required OrderLine Line { get; init; }
+        public decimal Quantity { get; init; }
+        public decimal? ProvisionalUnitCost { get; init; }
+    }
+
+    private sealed class VoidInventoryMovementPlan
+    {
+        public required OrderLine Line { get; init; }
+        public required InventoryValuationEntry SourceEntry { get; init; }
+        public decimal Quantity { get; init; }
     }
     /// <summary>
     /// Tự sinh hóa đơn bán ra sau khi POS finalize thành công.
@@ -919,8 +934,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     private async Task<FinalizeInventorySummary> ApplyInventoryForFinalizeAsync(Order order, CancellationToken ct)
     {
         var warehouse = await ResolveWarehouseForOrderAsync(order, ct);
-
         var summary = new FinalizeInventorySummary();
+        var plans = new List<FinalizeInventoryMovementPlan>();
 
         foreach (var line in order.Lines.Where(x => !x.IsDeleted))
         {
@@ -956,6 +971,35 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 provisionalUnitCost = variant.CostPrice;
             }
 
+            plans.Add(new FinalizeInventoryMovementPlan
+            {
+                Line = line,
+                Quantity = qtyToDeduct,
+                ProvisionalUnitCost = provisionalUnitCost
+            });
+        }
+
+        var balanceKeys = plans
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                warehouse.Id,
+                x.Line.VariantId))
+            .Distinct()
+            .ToList();
+        if (balanceKeys.Count > 0)
+        {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                balanceKeys,
+                ct);
+        }
+
+        // Preserve the original order.Lines iteration after the canonical
+        // balance batch has been locked.
+        foreach (var plan in plans)
+        {
+            var line = plan.Line;
+            var qtyToDeduct = plan.Quantity;
+            var provisionalUnitCost = plan.ProvisionalUnitCost;
             var movementRequest = _inventoryMovementFactory.CreateSaleFinalize(
                 warehouse.Id,
                 line.VariantId,
@@ -1388,6 +1432,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     }
     private async Task ApplyInventoryForVoidAsync(Order order, string reason, CancellationToken ct)
     {
+        var plans = new List<VoidInventoryMovementPlan>();
+
         foreach (var line in order.Lines.Where(x => !x.IsDeleted))
         {
             // Lấy valuation gốc của line bán
@@ -1430,6 +1476,35 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                         "Outbound valuation entry has an invalid unit cost.");
                 }
 
+                plans.Add(new VoidInventoryMovementPlan
+                {
+                    Line = line,
+                    SourceEntry = entry,
+                    Quantity = qtyToAddBack
+                });
+            }
+        }
+
+        var balanceKeys = plans
+            .Select(x => new InventoryPostingLockKey(
+                order.StoreId,
+                x.SourceEntry.WarehouseId,
+                x.Line.VariantId))
+            .Distinct()
+            .ToList();
+        if (balanceKeys.Count > 0)
+        {
+            await _inventoryMovementService.PreLockBalancesAsync(
+                balanceKeys,
+                ct);
+        }
+
+        // Plans retain order-line order and valuation-entry Id descending.
+        foreach (var plan in plans)
+        {
+            var line = plan.Line;
+            var entry = plan.SourceEntry;
+            var qtyToAddBack = plan.Quantity;
                 var movementRequest = _inventoryMovementFactory.CreateSaleVoid(
       entry.WarehouseId,
       line.VariantId,
@@ -1451,7 +1526,6 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 movementRequest.ForceProvisionalWhenNegative = entry.IsProvisional;
 
                 await _inventoryMovementService.CreateAsync(movementRequest, ct);
-            }
         }
     }
 

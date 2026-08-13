@@ -411,15 +411,24 @@ public class StockCountService : IStockCountService
         if (!document.Lines.Any())
             throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
 
+        var movementLines = document.Lines
+            .Where(x => x.DifferenceQtyBase != 0)
+            .OrderBy(x => x.LineNo)
+            .ToList();
+
         await _stockCountRepository.BeginTransactionAsync(ct);
 
         try
         {
-            foreach (var line in document.Lines.OrderBy(x => x.LineNo))
-            {
-                if (line.DifferenceQtyBase == 0)
-                    continue;
+            await _inventoryMovementService.PreLockBalancesAsync(
+                movementLines.Select(line => new InventoryPostingLockKey(
+                    document.StoreId,
+                    document.WarehouseId,
+                    line.ProductVariantId)),
+                ct);
 
+            foreach (var line in movementLines)
+            {
                 CreateInventoryMovementRequest movementRequest;
 
                 if (line.DifferenceQtyBase > 0)

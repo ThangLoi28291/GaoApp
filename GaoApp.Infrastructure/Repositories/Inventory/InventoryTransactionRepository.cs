@@ -1,9 +1,11 @@
 ﻿using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Common;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
 
 namespace GaoApp.Infrastructure.Repositories.Inventory;
 
@@ -30,26 +32,64 @@ public sealed class InventoryTransactionRepository : IInventoryTransactionReposi
             .ToListAsync(ct);
     }
 
-    public Task<bool> ExistsAsync(
-      int warehouseId,
-      int productVariantId,
-      InventoryTransactionType transactionType,
-      InventoryReferenceType referenceType,
-      string? referenceId,
-      int? referenceLineId,
-      string? referenceSubKey,
-      CancellationToken ct = default)
+    public Task<InventoryTransaction?> GetByIdempotencyKeyAsync(
+        int storeId,
+        byte[] idempotencyKey,
+        CancellationToken ct = default)
     {
-        return _db.InventoryTransactions.AnyAsync(x =>
-            !x.IsDeleted &&
-            x.WarehouseId == warehouseId &&
-            x.ProductVariantId == productVariantId &&
-            x.TransactionType == transactionType &&
-            x.ReferenceType == referenceType &&
-            x.ReferenceId == referenceId &&
-            x.ReferenceLineId == referenceLineId &&
-            x.ReferenceSubKey == referenceSubKey,
-            ct);
+        ArgumentNullException.ThrowIfNull(idempotencyKey);
+
+        return _db.InventoryTransactions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x =>
+                x.StoreId == storeId
+                && !x.IsDeleted
+                && x.IdempotencyKey != null
+                && x.IdempotencyKey.SequenceEqual(idempotencyKey),
+                ct);
+    }
+
+    public async Task<InventoryTransaction?> GetByLegacyIdentityAsync(
+        int storeId,
+        int warehouseId,
+        int productVariantId,
+        InventoryTransactionType transactionType,
+        InventoryReferenceType referenceType,
+        string referenceId,
+        int? referenceLineId,
+        string? referenceSubKey,
+        CancellationToken ct = default)
+    {
+        var candidates = await _db.InventoryTransactions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x =>
+                x.StoreId == storeId
+                && !x.IsDeleted
+                && x.IdempotencyKey == null
+                && x.WarehouseId == warehouseId
+                && x.ProductVariantId == productVariantId
+                && x.TransactionType == transactionType
+                && x.ReferenceType == referenceType
+                && x.ReferenceLineId == referenceLineId)
+            .ToListAsync(ct);
+
+        var exactMatches = candidates
+            .Where(x => CanonicalEquals(x.ReferenceId, referenceId)
+                && NullableCanonicalEquals(
+                    x.ReferenceSubKey,
+                    referenceSubKey))
+            .Take(2)
+            .ToList();
+
+        if (exactMatches.Count > 1)
+        {
+            throw new ConcurrencyException(
+                "Legacy inventory posting identity is not unique.");
+        }
+
+        return exactMatches.SingleOrDefault();
     }
 
     public Task SaveChangesAsync(CancellationToken ct = default)
@@ -268,5 +308,24 @@ public sealed class InventoryTransactionRepository : IInventoryTransactionReposi
                     ? query.OrderBy(x => x.OccurredAtUtc).ThenBy(x => x.Id)
                     : query.OrderByDescending(x => x.OccurredAtUtc).ThenByDescending(x => x.Id);
         }
+    }
+
+    private static bool CanonicalEquals(string? left, string right)
+        => left is not null
+            && string.Equals(
+                left.Normalize(NormalizationForm.FormC),
+                right.Normalize(NormalizationForm.FormC),
+                StringComparison.Ordinal);
+
+    private static bool NullableCanonicalEquals(
+        string? left,
+        string? right)
+    {
+        if (left is null || right is null)
+        {
+            return left is null && right is null;
+        }
+
+        return CanonicalEquals(left, right);
     }
 }

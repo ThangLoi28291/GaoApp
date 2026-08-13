@@ -26,6 +26,7 @@ public sealed class OrderLegalEntityFinalizeServiceTests
         result.IsFeatureEnabled.Should().BeFalse();
         repository.LockCallCount.Should().Be(0);
         repository.Added.Should().BeEmpty();
+        movements.PreLockBatches.Should().BeEmpty();
         movements.Requests.Should().BeEmpty();
         order.LegalEntityCount.Should().Be(0);
         order.LegalEntityAllocatedAtUtc.Should().BeNull();
@@ -51,6 +52,9 @@ public sealed class OrderLegalEntityFinalizeServiceTests
             x.QuantityChange == -8m &&
             x.AllowNegativeBalance == true &&
             x.ReferenceSubKey == "LE:1:WH:11");
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(7, 11, 101));
         repository.Added.Should().ContainSingle(x =>
             x.LegalEntityId == 1 &&
             x.WarehouseId == 11 &&
@@ -102,7 +106,16 @@ public sealed class OrderLegalEntityFinalizeServiceTests
         repository.Added.Should().OnlyContain(x => x.InventoryTransactionId.HasValue);
         order.Lines.Single().LineCostTotal.Should().Be(110m);
         order.Lines.Single().UnitCostSnapshot.Should().Be(13.75m);
-        repository.Events.Should().Equal("lock", "movement:11", "movement:22", "add");
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(7, 11, 101),
+                new InventoryPostingLockKey(7, 22, 101));
+        repository.Events.Should().Equal(
+            "lock",
+            "prelock",
+            "movement:11",
+            "movement:22",
+            "add");
     }
 
     [Fact]
@@ -421,7 +434,17 @@ public sealed class OrderLegalEntityFinalizeServiceTests
             => _repository = repository;
 
         public List<CreateInventoryMovementRequest> Requests { get; } = [];
+        public List<List<InventoryPostingLockKey>> PreLockBatches { get; } = [];
         public bool ReturnConflict { get; init; }
+
+        public Task PreLockBalancesAsync(
+            IEnumerable<InventoryPostingLockKey> keys,
+            CancellationToken ct = default)
+        {
+            PreLockBatches.Add(keys.ToList());
+            _repository.Events.Add("prelock");
+            return Task.CompletedTask;
+        }
 
         public Task<InventoryMovementResultDto> CreateAsync(
             CreateInventoryMovementRequest request,

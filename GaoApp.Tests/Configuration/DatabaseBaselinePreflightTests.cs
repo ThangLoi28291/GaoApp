@@ -11,6 +11,8 @@ using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -20,6 +22,12 @@ namespace GaoApp.Tests.Configuration;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class DatabaseBaselinePreflightTests
 {
+    private const string BaselineMigrationId =
+        "20260726073029_InitialProductionBaseline";
+
+    private const string InventoryPostingMigrationId =
+        "20260801110856_AddInventoryPostingIdempotency";
+
     [Fact]
     public async Task Missing_database_should_be_allowed_and_migrate_successfully()
     {
@@ -161,12 +169,70 @@ public sealed class DatabaseBaselinePreflightTests
     }
 
     [Fact]
+    public async Task Exact_baseline_target_should_not_apply_inventory_posting_migration()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        var baselineMatches = db.Database.GetMigrations()
+            .Where(x => string.Equals(
+                x,
+                BaselineMigrationId,
+                StringComparison.Ordinal))
+            .ToList();
+        baselineMatches.Should().ContainSingle(
+            $"migration {BaselineMigrationId} must exist exactly once");
+        var baselineId = baselineMatches.Single();
+
+        await db.GetService<IMigrator>()
+            .MigrateAsync(baselineId);
+
+        var applied = await database.ReadMigrationHistoryAsync();
+        applied.Should().Equal(BaselineMigrationId);
+        applied.Should().NotContain(InventoryPostingMigrationId);
+        (await database.ReadScalarAsync<int>(
+            """
+            SELECT COUNT(*)
+            FROM [sys].[columns]
+            WHERE [object_id] =
+                OBJECT_ID(N'[dbo].[InventoryTransactions]')
+              AND [name] = N'IdempotencyKey';
+            """)).Should().Be(0);
+        (await database.ReadScalarAsync<int>(
+            """
+            SELECT COUNT(*)
+            FROM [sys].[indexes]
+            WHERE [object_id] =
+                OBJECT_ID(N'[dbo].[InventoryTransactions]')
+              AND [name] =
+                N'UX_InventoryTransactions_StoreId_IdempotencyKey_Active';
+            """)).Should().Be(0);
+
+        var preflight = await CreatePreflight(db).InspectAsync();
+        preflight.IsAllowed.Should().BeTrue();
+        preflight.State.Should().Be(
+            DatabaseCompatibilityState.SupportedPendingUpgrade);
+        preflight.SafeReasonCode.Should().Be(
+            "SupportedMigrationPrefix");
+        preflight.SourceMigrationCount.Should().Be(2);
+        preflight.AppliedMigrationCount.Should().Be(1);
+        preflight.SchemaMismatchCategoryCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Applied_baseline_with_missing_core_table_should_be_rejected()
     {
         await using var database = new PreflightAcceptanceDatabase();
         await database.CreateDatabaseAsync();
         await using var db = database.CreateContext();
-        var baselineId = db.Database.GetMigrations().Single();
+        var baselineMatches = db.Database.GetMigrations()
+            .Where(x => string.Equals(
+                x,
+                BaselineMigrationId,
+                StringComparison.Ordinal))
+            .ToList();
+        baselineMatches.Should().ContainSingle(
+            $"migration {BaselineMigrationId} must exist exactly once");
+        var baselineId = baselineMatches.Single();
         await database.CreateMigrationHistoryAsync(baselineId);
 
         var result = await CreatePreflight(db).InspectAsync();
@@ -195,7 +261,11 @@ public sealed class DatabaseBaselinePreflightTests
             DatabaseCompatibilityState.CurrentBaseline);
         preflight.IsAllowed.Should().BeTrue();
         after.Should().Equal(before);
-        after.Should().ContainSingle();
+        after.Should().BeEquivalentTo(
+            [
+                BaselineMigrationId,
+                InventoryPostingMigrationId
+            ]);
     }
 
     [Fact]

@@ -20,14 +20,20 @@ Severity dùng `Critical`, `High`, `Medium`, `Low`. Classification dùng taxonom
 
 ## 2. Priority order before R2 feature expansion
 
-Các blocker phải được xử lý theo thứ tự dependency:
+Closed foundation findings, không còn nằm trong active blocker order:
 
-1. `SD1-F02` — tenant/link validation của XML detail.
-2. `SD1-F03` — durable movement idempotency.
-3. `SD1-F12` — InventoryBalance get-or-create race.
-4. `SD1-F01` — Pending receipt immutability.
+- `SD1-DOC-01` — governance documents, closed by R2.0-A2.
+- `SD1-F02` — tenant-safe XML detail mapping, closed by R2.0-C1.
+- `SD1-F03` — durable movement idempotency, closed by R2.0-C2.
+- `SD1-F12` — deterministic balance locking/get-or-create, closed by R2.0-C2.
 
-F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 phải xong trước khi mở rộng employee/manager workflow. `SD1-F13` phải được thực hiện sau F02 và trước khi mở rộng XML reconciliation/linking theo legal owner.
+Remaining active dependency notes:
+
+1. `SD1-F01` vẫn là blocker trước khi mở rộng employee/manager receipt workflow.
+2. `SD1-F13` vẫn Open sau C1 và phải hoàn tất trước khi mở rộng XML reconciliation/linking theo legal owner.
+3. Các finding Open khác gồm `SD1-F04` đến `SD1-F10`; giữ nguyên severity, target task và scope decision của từng finding bên dưới.
+
+Việc đóng foundation findings không có nghĩa R2 feature expansion đã hoàn tất.
 
 ## 3. Findings
 
@@ -41,8 +47,9 @@ F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 ph�
 - **Evidence:** `docs/development` không tồn tại tại expected parent `6f909420092ce0f7d2a7100b8eb94fb964727c0c`.
 - **Impact:** Knowledge/decisions nằm rải rác; task dễ sai base, scope và source call chain.
 - **Target task:** R2.0-A2
-- **Status:** In progress
+- **Status:** Closed
 - **Scope decision:** Chỉ đóng sau khi Coordinator review và merge đủ bốn tài liệu; việc file đã được tạo trên working branch chưa tự đóng finding.
+- **Resolution evidence:** R2.0-A2 final implementation `3086b86daf7c8ae5bfc2868c6badb3da3542f339`, merged through `ae7bf491f2e75fa1b8009a600d064eac2b4883b9`; bốn governance documents `GAOAPP-SOURCE-MAP.md`, `GAOAPP-DEVELOPMENT-WORKFLOW.md`, `DECISION-LOG.md` và `BACKLOG-FINDINGS.md` hiện tồn tại trong `docs/development`.
 
 ### SD1-F01 — Pending receipt remains editable
 
@@ -67,8 +74,9 @@ F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 ph�
 - **Evidence:** `InputInvoiceXmlService.UpdateLineMapAsync` gọi `InputInvoiceRepository.GetInputInvoiceDetailAsync(id)`; repository query `InputInvoiceDetails.FirstOrDefaultAsync(x => x.Id == id)`. Receipt line được store-checked nhưng XML detail relation và same-LegalEntity invariant không được chứng minh. `StockDocument` không có `LegalEntityId`; legal owner hiện đi qua `Warehouse.LegalEntityId`.
 - **Impact:** Có khả năng cross-tenant/cross-invoice/cross-legal-entity data association và sai legal owner của dữ liệu đối chiếu.
 - **Target task:** R2.0-C1 — Tenant-safe XML detail mapping guard.
-- **Status:** Open — immediate security/data blocker
+- **Status:** Closed — resolved by R2.0-C1
 - **Scope decision:** Task đầu tiên sau docs; không chờ XML feature expansion. Guard phải không cho tạo cross-LegalEntity map; buyer-tax-code resolution đầy đủ được theo dõi tiếp ở F13.
+- **Resolution evidence:** C1 thay lookup detail bằng guarded query chứng minh tenant/Store, receipt link, receipt line và LegalEntity ownership; service trả generic safe failure và không mutate map khi mapping bị từ chối. Final reviewed commit `f0ebd2b4a864d18605806fb85b833dc547fa9f76`, merged through `d9b4b06c2a8f35bc0021c8f41a88361307e1d634`. Buyer-tax-code LegalEntity resolution không thuộc C1 và vẫn Open riêng tại `SD1-F13`.
 
 ### SD1-F03 — Inventory movement idempotency is application-only/non-unique
 
@@ -80,8 +88,9 @@ F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 ph�
 - **Evidence:** `InventoryMovementService.CreateAsync`; `InventoryTransactionRepository.ExistsAsync`; `InventoryTransactionConfiguration` tạo non-unique index trên store/reference/reference-line/type. `git blame` cho thấy code có trước expected parent.
 - **Impact:** Duplicate quantity movement, valuation entry, FIFO layer và inventory value khi double submit/concurrent Confirm.
 - **Target task:** R2.0-C2 — Durable receipt posting idempotency and concurrent Confirm.
-- **Status:** Open — blocker
+- **Status:** Closed — resolved by R2.0-C2
 - **Scope decision:** Phải sửa trước mở rộng Confirm; cần migration, unique identity và real relational concurrency test.
+- **Resolution evidence:** R2.0-C2 thêm deterministic `IdempotencyKey`, filtered unique index `StoreId + IdempotencyKey` cho keyed active/non-deleted rows, atomic `InventoryPostingTransactionCoordinator` và migration `20260801110856_AddInventoryPostingIdempotency`. C2A final reviewed commit `d1b06dce5343808493ebb7d1b599e01a06ae5113`; C2B1 final reviewed commit `3c99f19131a8c1af0bbfeeba94eb286c0081686c`; C2B2 final reviewed commit `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`. Coordinator confirmed C2B2 Independent Review PASS and GitHub required checks 2/2 Success on PR #8 head `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`; PR #8 remained open/unmerged at documentation time.
 
 ### SD1-F04 — Invoice hash and business identity are not database-unique
 
@@ -197,8 +206,9 @@ F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 ph�
 - **Evidence:** `InventoryBalanceRepository.GetOrCreateAsync`; unique index trong `InventoryBalanceConfiguration`; `InventoryMovementService.CreateAsync` call site. `git blame` cho thấy implementation có trước expected parent.
 - **Impact:** Một hoặc cả hai Confirm có thể fail; transaction/retry behavior chưa được contract-test, có nguy cơ partial operational failure dù DB rollback.
 - **Target task:** R2.0-C2 — Durable receipt posting idempotency and inventory concurrency (same task as SD1-F03).
-- **Status:** Open — blocker
+- **Status:** Closed — resolved by R2.0-C2
 - **Scope decision:** Xử lý sau durable movement idempotency, trước receipt feature expansion; test trên relational provider.
+- **Resolution evidence:** R2.0-C2 thêm SQL Server transaction-scoped `LockAndGetOrCreateAsync` với `UPDLOCK/HOLDLOCK/ROWLOCK`, canonical multi-key pre-lock theo exact `StoreId → WarehouseId → ProductVariantId`, validation trước balance lock đầu tiên và caller adoption cho C2B1/C2B2 paths. `InventoryMovementSqlServerConcurrencyTests` dùng hai DbContext LocalDB thật cho initially-missing balance/concurrent posting và inverse-order batches. C2A `d1b06dce5343808493ebb7d1b599e01a06ae5113`; C2B1 `3c99f19131a8c1af0bbfeeba94eb286c0081686c`; C2B2 `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`; Coordinator-confirmed Independent Review PASS và GitHub checks 2/2 Success trên PR #8 head này, PR vẫn open/unmerged.
 
 ### SD1-F13 — XML buyer LegalEntity resolution is missing
 
@@ -212,6 +222,7 @@ F02 là security/data blocker. F03/F12 bảo vệ inventory correctness. F01 ph�
 - **Target task:** R2.4-C2 — XML buyer LegalEntity resolution and invoice/receipt legal-owner guard.
 - **Status:** Open — dependency after SD1-F02
 - **Scope decision:** Không sửa trong task tài liệu. Thực hiện sau security blocker F02; lookup phải same-Store/exactly-one, seller/buyer identities tách biệt, mismatch không được reason override, thay đổi trước Confirm phải audit và không đổi confirmed receipt.
+- **Current note (2026-08-03):** C1 đã thêm Store/receipt/line/LegalEntity ownership guard cho explicit detail mapping, nhưng không resolve `BuyerTaxCode` sang invoice LegalEntity. Evidence phía trên là historical baseline của finding; phần buyer identity/invoice-owner invariant vẫn chưa được triển khai.
 
 ## 4. Maintenance
 

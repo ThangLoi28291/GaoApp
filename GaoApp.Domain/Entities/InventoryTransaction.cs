@@ -26,6 +26,12 @@ public class InventoryTransaction : BaseStoreEntity
     public int ProductVariantId { get; set; }
 
     /// <summary>
+    /// SHA-256 key for the canonical durable posting identity.
+    /// Null is reserved for legacy or explicitly non-idempotent movements.
+    /// </summary>
+    public byte[]? IdempotencyKey { get; set; }
+
+    /// <summary>
     /// Loại biến động kho.
     /// Ví dụ: nhập mua, bán hàng, trả hàng, kiểm kê tăng/giảm, chuyển kho...
     /// </summary>

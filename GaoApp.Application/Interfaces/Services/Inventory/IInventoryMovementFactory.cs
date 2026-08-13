@@ -24,11 +24,31 @@ public interface IInventoryMovementFactory
         string? note,
         DateTime? occurredAtUtc = null);
 
+    CreateInventoryMovementRequest CreateAdjustmentIncrease(
+        int warehouseId,
+        int productVariantId,
+        decimal qtyBase,
+        decimal unitCost,
+        string documentId,
+        int lineId,
+        string? note,
+        DateTime? occurredAtUtc = null);
+
     CreateInventoryMovementRequest CreateAdjustmentDecrease(
         int warehouseId,
         int productVariantId,
         decimal qtyBase,
         decimal? provisionalUnitCost,
+        string? note,
+        DateTime? occurredAtUtc = null);
+
+    CreateInventoryMovementRequest CreateAdjustmentDecrease(
+        int warehouseId,
+        int productVariantId,
+        decimal qtyBase,
+        decimal? provisionalUnitCost,
+        string documentId,
+        int lineId,
         string? note,
         DateTime? occurredAtUtc = null);
 
