@@ -41,6 +41,11 @@
     var hasViewCostPermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
     var canViewCost = hasApprovePermission || hasViewCostPermission;
+    var canViewAudit = (await AuthorizationService
+        .AuthorizeAsync(
+            User,
+            resource: null,
+            policyName: PermissionCodes.System.AuditLog.View)).Succeeded;
     var showCommercialReview = hasApprovePermission &&
         Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed;
     ViewData["CanEditReceiptPhysical"] = canEditLines;
@@ -948,6 +953,23 @@
         </div>
     </div>
 </div>
+@if (canViewAudit)
+{
+    <div class="container-xxl flex-grow-1">
+        <div class="card sd-card mb-3" id="purchaseReceiptAuditCard">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">Lịch sử kiểm toán phiếu nhập</h5>
+                <span class="text-muted small">Chỉ đọc</span>
+            </div>
+            <div class="card-body">
+                <div id="purchaseReceiptAuditStatus" class="text-muted small">
+                    Đang tải lịch sử...
+                </div>
+                <div id="purchaseReceiptAuditTimeline" class="d-grid gap-3"></div>
+            </div>
+        </div>
+    </div>
+}
 <!-- Popup xác nhận xóa đẹp -->
 <div class="modal fade" id="deleteLineModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -1003,6 +1025,7 @@
         canSubmitApproval: @canSubmitApproval.ToString().ToLower(),
         canApproveCommercial: @canApprove.ToString().ToLower(),
         canViewCost: @canViewCost.ToString().ToLower(),
+        canViewAudit: @canViewAudit.ToString().ToLower(),
         receiptSource: @((int)Model.ReceiptSource)
         };
     </script>

@@ -246,6 +246,24 @@ public class StockDocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("{id:int}/audit-events")]
+    [Authorize(Policy = PermissionCodes.System.AuditLog.View)]
+    public async Task<IActionResult> GetAuditTimeline(
+        int id,
+        CancellationToken ct)
+    {
+        var result = await _stockDocumentService.GetAuditTimelineAsync(id, ct);
+        if (result is null)
+        {
+            return NotFound(new
+            {
+                message = "Không tìm thấy phiếu nhập kho."
+            });
+        }
+
+        return Ok(result);
+    }
+
     /// <summary>
     /// Thêm dòng chứng từ.
     /// Cần quyền tạo/sửa chứng từ kho.

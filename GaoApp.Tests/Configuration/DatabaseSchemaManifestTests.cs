@@ -4,6 +4,9 @@ using GaoApp.Infrastructure.Data.Migrations;
 using GaoApp.Infrastructure.Data.Seed;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -18,6 +21,30 @@ public sealed class DatabaseSchemaManifestTests
 
     private const string InventoryPostingMigrationId =
         "20260801110856_AddInventoryPostingIdempotency";
+
+    private const string PurchaseReceiptAuditMigrationId =
+        "20260814090000_AddPurchaseReceiptAuditEvents";
+
+    [Fact]
+    public async Task Current_model_and_migration_snapshot_have_no_differences()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        var currentModel = db.GetService<IDesignTimeModel>()
+            .Model.GetRelationalModel();
+        var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot!;
+        var snapshotModel = db.GetService<IModelRuntimeInitializer>()
+            .Initialize(
+                snapshot.Model,
+                designTime: true,
+                validationLogger: null)
+            .GetRelationalModel();
+
+        var differences = db.GetService<IMigrationsModelDiffer>()
+            .GetDifferences(snapshotModel, currentModel);
+        differences.Should().BeEmpty(
+            string.Join(", ", differences.Select(x => x.GetType().Name)));
+    }
 
     [Fact]
     public Task Current_history_missing_required_column_should_be_rejected()
@@ -345,7 +372,8 @@ public sealed class DatabaseSchemaManifestTests
         var sourceIds = db.Database.GetMigrations().ToList();
         sourceIds.Should().Equal(
             BaselineMigrationId,
-            InventoryPostingMigrationId);
+            InventoryPostingMigrationId,
+            PurchaseReceiptAuditMigrationId);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(
@@ -393,6 +421,26 @@ public sealed class DatabaseSchemaManifestTests
             .Should().Equal("storeid", "idempotencykey");
         currentIndex.Filter.Should()
             .Be("idempotencykeyisnotnullandisdeleted=0");
+
+        var receiptAudit = currentManifest.Tables
+            .Should().ContainSingle(
+                table => table.Identity.Name
+                    == "purchasereceiptauditevents")
+            .Which;
+        receiptAudit.Columns.Should().Contain(
+            column => column.Name == "storeid" && !column.IsNullable);
+        receiptAudit.Columns.Should().Contain(
+            column => column.Name == "stockdocumentlineid" && column.IsNullable);
+        receiptAudit.Columns.Should().Contain(
+            column => column.Name == "occurredatutc" && !column.IsNullable);
+        receiptAudit.Indexes.Should().ContainSingle(index =>
+            index.Name ==
+                "ix_purchasereceiptauditevents_store_document_occurred_id" &&
+            index.KeyColumns.Select(column => column.Name).SequenceEqual(
+                new[] { "storeid", "stockdocumentid", "occurredatutc", "id" }));
+        receiptAudit.ForeignKeys.Should().HaveCount(3);
+        receiptAudit.ForeignKeys.Should().OnlyContain(
+            foreignKey => foreignKey.DeleteAction == "no_action");
     }
 
     [Fact]

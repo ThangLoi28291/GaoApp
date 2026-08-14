@@ -28,6 +28,9 @@ public sealed class DatabaseBaselinePreflightTests
     private const string InventoryPostingMigrationId =
         "20260801110856_AddInventoryPostingIdempotency";
 
+    private const string PurchaseReceiptAuditMigrationId =
+        "20260814090000_AddPurchaseReceiptAuditEvents";
+
     [Fact]
     public async Task Acceptance_connections_should_pool_and_bound_login_retries()
     {
@@ -231,7 +234,7 @@ public sealed class DatabaseBaselinePreflightTests
             DatabaseCompatibilityState.SupportedPendingUpgrade);
         preflight.SafeReasonCode.Should().Be(
             "SupportedMigrationPrefix");
-        preflight.SourceMigrationCount.Should().Be(2);
+        preflight.SourceMigrationCount.Should().Be(3);
         preflight.AppliedMigrationCount.Should().Be(1);
         preflight.SchemaMismatchCategoryCount.Should().Be(0);
     }
@@ -282,7 +285,8 @@ public sealed class DatabaseBaselinePreflightTests
         after.Should().BeEquivalentTo(
             [
                 BaselineMigrationId,
-                InventoryPostingMigrationId
+                InventoryPostingMigrationId,
+                PurchaseReceiptAuditMigrationId
             ]);
     }
 

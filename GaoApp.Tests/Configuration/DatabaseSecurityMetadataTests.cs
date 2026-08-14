@@ -19,6 +19,9 @@ public sealed class DatabaseSecurityMetadataTests
     private const string InventoryPostingMigrationId =
         "20260801110856_AddInventoryPostingIdempotency";
 
+    private const string PurchaseReceiptAuditMigrationId =
+        "20260814090000_AddPurchaseReceiptAuditEvents";
+
     [Fact]
     public Task Current_baseline_with_application_database_user_should_be_allowed()
         => AssertCurrentBaselineSecurityMetadataAllowedAsync(
@@ -361,7 +364,8 @@ public sealed class DatabaseSecurityMetadataTests
         migrationIds.Should().BeEquivalentTo(
             [
                 BaselineMigrationId,
-                InventoryPostingMigrationId
+                InventoryPostingMigrationId,
+                PurchaseReceiptAuditMigrationId
             ]);
     }
 

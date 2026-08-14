@@ -13,6 +13,12 @@ public interface IStockDocumentRepository
 
     Task<StockDocument?> GetForConfirmAsync(int id, CancellationToken ct = default);
 
+    Task<IReadOnlyList<PurchaseReceiptAuditEvent>?>
+        GetPurchaseReceiptAuditEventsAsync(
+            int stockDocumentId,
+            CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyList<PurchaseReceiptAuditEvent>?>(null);
+
     Task<StockDocumentLine?> GetLineByIdAsync(int lineId, CancellationToken ct = default);
 
     Task<int> GetNextLineNoAsync(int stockDocumentId, CancellationToken ct = default);

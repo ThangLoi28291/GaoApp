@@ -19,6 +19,9 @@ public sealed class ProductionBootstrapTests
     private const string InventoryPostingMigrationId =
         "20260801110856_AddInventoryPostingIdempotency";
 
+    private const string PurchaseReceiptAuditMigrationId =
+        "20260814090000_AddPurchaseReceiptAuditEvents";
+
     [Fact]
     public void Disabled_configuration_is_valid_without_bootstrap_values()
     {
@@ -167,7 +170,8 @@ public sealed class ProductionBootstrapTests
         migrations.Should().BeEquivalentTo(
             [
                 BaselineMigrationId,
-                InventoryPostingMigrationId
+                InventoryPostingMigrationId,
+                PurchaseReceiptAuditMigrationId
             ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }
