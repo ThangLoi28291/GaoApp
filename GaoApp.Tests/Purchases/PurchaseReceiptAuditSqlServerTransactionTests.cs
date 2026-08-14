@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
@@ -14,6 +15,59 @@ namespace GaoApp.Tests.Purchases;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class PurchaseReceiptAuditSqlServerTransactionTests
 {
+    [Fact]
+    public async Task Sql_server_utc_timestamp_preserves_clock_value_in_audit_evidence()
+    {
+        var originalSubmittedAtUtc = new DateTime(
+            2026,
+            8,
+            14,
+            10,
+            0,
+            0,
+            DateTimeKind.Utc);
+        var updatedSubmittedAtUtc = originalSubmittedAtUtc.AddMinutes(30);
+        await using var database = new InventoryPostingLocalDb();
+        await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        var receiptId = await SeedReceiptAsync(
+            database,
+            seed,
+            submittedAtUtc: originalSubmittedAtUtc);
+
+        await using (var update = CreateContext(database, seed.StoreId))
+        {
+            var document = await update.StockDocuments
+                .SingleAsync(x => x.Id == receiptId);
+            document.SubmittedAtUtc.Should().NotBeNull();
+            document.SubmittedAtUtc!.Value.Kind
+                .Should().Be(DateTimeKind.Unspecified);
+
+            document.Status = StockDocumentStatus.PendingApproval;
+            document.SubmittedAtUtc = updatedSubmittedAtUtc;
+            document.SubmittedByUserId = 501;
+            PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+                document,
+                PurchaseReceiptAuditEventType.SubmittedForApproval);
+            await new StockDocumentRepository(update).SaveChangesAsync();
+        }
+
+        await using var verify = CreateContext(database, seed.StoreId);
+        var auditEvent = await verify.PurchaseReceiptAuditEvents
+            .AsNoTracking()
+            .SingleAsync();
+        using var oldValues = JsonDocument.Parse(auditEvent.OldValuesJson);
+        using var newValues = JsonDocument.Parse(auditEvent.NewValuesJson);
+        oldValues.RootElement
+            .GetProperty(nameof(StockDocument.SubmittedAtUtc))
+            .GetString()
+            .Should().Be("2026-08-14T10:00:00Z");
+        newValues.RootElement
+            .GetProperty(nameof(StockDocument.SubmittedAtUtc))
+            .GetString()
+            .Should().Be("2026-08-14T10:30:00Z");
+    }
+
     [Fact]
     public async Task Receipt_mutation_and_event_rollback_or_commit_together()
     {
@@ -134,7 +188,8 @@ public sealed class PurchaseReceiptAuditSqlServerTransactionTests
     private static async Task<int> SeedReceiptAsync(
         InventoryPostingLocalDb database,
         InventoryPostingSeed seed,
-        StockDocumentStatus status = StockDocumentStatus.Draft)
+        StockDocumentStatus status = StockDocumentStatus.Draft,
+        DateTime? submittedAtUtc = null)
     {
         await using var db = CreateContext(database, seed.StoreId);
         var document = new StockDocument
@@ -144,6 +199,7 @@ public sealed class PurchaseReceiptAuditSqlServerTransactionTests
             Status = status,
             WarehouseId = seed.WarehouseId,
             DocumentDate = DateTime.UtcNow,
+            SubmittedAtUtc = submittedAtUtc,
             ReceiptSource = PurchaseReceiptSource.Direct,
             DirectReceiptReason = "Mua gấp"
         };

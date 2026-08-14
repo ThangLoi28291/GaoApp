@@ -123,21 +123,47 @@ public static class PurchaseReceiptAuditEvidence
             values.OrderBy(static item => item.Key, StringComparer.Ordinal)
                 .ToDictionary(
                     static item => item.Key,
-                    static item => NormalizeValue(item.Value),
+                    static item => NormalizeValue(item.Key, item.Value),
                     StringComparer.Ordinal),
             JsonOptions);
 
-    public static bool ValuesEqual(object? left, object? right)
-        => Equals(NormalizeValue(left), NormalizeValue(right));
+    public static bool ValuesEqual(
+        string fieldName,
+        object? left,
+        object? right)
+        => Equals(
+            NormalizeValue(fieldName, left),
+            NormalizeValue(fieldName, right));
 
-    private static object? NormalizeValue(object? value)
+    private static object? NormalizeValue(string fieldName, object? value)
         => value is Enum enumValue
             ? enumValue.ToString()
             : value is DateTime dateTime
-                ? dateTime.Kind == DateTimeKind.Utc
-                    ? dateTime
-                    : dateTime.ToUniversalTime()
+                ? NormalizeDateTime(fieldName, dateTime)
                 : value;
+
+    private static DateTime NormalizeDateTime(
+        string fieldName,
+        DateTime value)
+    {
+        // SQL Server datetime2 does not retain DateTime.Kind. Fields whose
+        // names declare UTC semantics therefore need their kind restored
+        // without shifting the stored clock value.
+        if (fieldName.EndsWith("Utc", StringComparison.Ordinal))
+        {
+            return DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        }
+
+        // DocumentDate is a receipt calendar value, not an instant. Preserve
+        // its date/time components without applying the server time zone.
+        if (fieldName == nameof(StockDocument.DocumentDate))
+        {
+            return DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+        }
+
+        throw new InvalidOperationException(
+            $"Audit DateTime semantics are not defined for {fieldName}.");
+    }
 
     private static string? NormalizeText(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

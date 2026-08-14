@@ -506,6 +506,7 @@ public class StockDocumentRepository : IStockDocumentRepository
             .Where(field =>
                 entry.Property(field).IsModified &&
                 !PurchaseReceiptAuditEvidence.ValuesEqual(
+                    field,
                     entry.Property(field).OriginalValue,
                     entry.Property(field).CurrentValue))
             .OrderBy(static field => field, StringComparer.Ordinal)

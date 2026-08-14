@@ -63,6 +63,56 @@ public sealed class PurchaseReceiptAuditEventTests
     }
 
     [Fact]
+    public void Json_evidence_restores_utc_kind_without_shifting_database_clock_value()
+    {
+        var databaseUtcValue = new DateTime(
+            2026,
+            8,
+            14,
+            10,
+            0,
+            0,
+            DateTimeKind.Unspecified);
+
+        using var values = JsonDocument.Parse(
+            PurchaseReceiptAuditEvidence.SerializeValues(
+                new Dictionary<string, object?>
+                {
+                    [nameof(StockDocument.SubmittedAtUtc)] = databaseUtcValue
+                }));
+
+        values.RootElement
+            .GetProperty(nameof(StockDocument.SubmittedAtUtc))
+            .GetString()
+            .Should().Be("2026-08-14T10:00:00Z");
+    }
+
+    [Fact]
+    public void Json_evidence_preserves_document_date_as_timezone_free_calendar_value()
+    {
+        var documentDate = new DateTime(
+            2026,
+            8,
+            14,
+            10,
+            0,
+            0,
+            DateTimeKind.Local);
+
+        using var values = JsonDocument.Parse(
+            PurchaseReceiptAuditEvidence.SerializeValues(
+                new Dictionary<string, object?>
+                {
+                    [nameof(StockDocument.DocumentDate)] = documentDate
+                }));
+
+        values.RootElement
+            .GetProperty(nameof(StockDocument.DocumentDate))
+            .GetString()
+            .Should().Be("2026-08-14T10:00:00");
+    }
+
+    [Fact]
     public void Model_requires_canonical_authority_and_evidence_fields()
     {
         using var db = CreateContext();
