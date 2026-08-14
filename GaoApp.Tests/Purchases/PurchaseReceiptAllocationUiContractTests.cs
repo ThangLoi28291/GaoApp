@@ -14,6 +14,10 @@ public sealed class PurchaseReceiptAllocationUiContractTests
         Assert.Contains("line.AvailableToAllocateQuantity", view);
         Assert.Contains("if(!unavailable){ri++;}", view);
         Assert.DoesNotContain("</tr>ri++;", view);
+        Assert.Contains("class=\"receipt-input receipt-index\" name=\"Lines.Index\" value=\"@ri\" disabled=\"@(unavailable)\"", view);
+        var script = File.ReadAllText(Path.Combine(root, "GaoApp.Web", "wwwroot", "Admin", "js", "purchase-order-details.js"));
+        Assert.Contains("querySelectorAll('.receipt-input')", script);
+        Assert.Contains("input.disabled = !checkbox.checked", script);
         Assert.Contains("Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất.", view);
         Assert.DoesNotContain("overdelivery", view, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("alternate unit", view, StringComparison.OrdinalIgnoreCase);
