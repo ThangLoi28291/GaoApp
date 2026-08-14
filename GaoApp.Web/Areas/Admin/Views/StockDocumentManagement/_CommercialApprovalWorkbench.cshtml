@@ -57,7 +57,7 @@
                             <option value="@Model.SupplierId" selected>@Model.SupplierName</option>
                         }
                     </select>
-                    <div class="form-text">Bắt buộc khi còn nợ tiền hàng.</div>
+                    <div class="form-text">Nhà cung cấp bắt buộc trước khi duyệt, kể cả phiếu đã trả tiền.</div>
                 </div>
                 <div class="col-12 col-md-2">
                     <label class="form-label d-block">Thanh toán tiền hàng</label>
@@ -71,7 +71,7 @@
                     <label class="form-label" for="commercialPayeeName">Người/đơn vị nhận tiền</label>
                     <input class="form-control" id="commercialPayeeName" maxlength="250"
                            value="@Model.MerchandisePayeeName" disabled="@readOnly"
-                           placeholder="Dùng khi trả ngay và chưa có NCC" />
+                           placeholder="Thông tin thanh toán/hiển thị (không thay thế nhà cung cấp)" />
                 </div>
             </div>
         </div>
