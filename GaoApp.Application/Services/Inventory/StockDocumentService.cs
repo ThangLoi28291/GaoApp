@@ -169,6 +169,10 @@ public class StockDocumentService : IStockDocumentService
         };
 
         await _stockDocumentRepository.AddAsync(document, ct);
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            PurchaseReceiptAuditEventType.ReceiptCreated,
+            note: document.Note);
         await _stockDocumentRepository.SaveChangesAsync(ct);
 
         return document.Id;
@@ -291,6 +295,10 @@ public class StockDocumentService : IStockDocumentService
             Note = $"Tạo phiếu nhập {document.DocumentNo}."
         });
         await _stockDocumentRepository.AddAsync(document, ct);
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            PurchaseReceiptAuditEventType.ReceiptCreated,
+            note: document.Note);
         await _stockDocumentRepository.SaveChangesAsync(ct);
         order.Actions.Last().StockDocumentId = document.Id;
         await _stockDocumentRepository.SaveChangesAsync(ct);
@@ -427,6 +435,40 @@ public class StockDocumentService : IStockDocumentService
                     };
                 })
                 .ToList()
+        };
+    }
+
+    public async Task<PurchaseReceiptAuditTimelineDto?> GetAuditTimelineAsync(
+        int id,
+        CancellationToken ct = default)
+    {
+        var events = await _stockDocumentRepository
+            .GetPurchaseReceiptAuditEventsAsync(id, ct);
+        if (events is null)
+        {
+            return null;
+        }
+
+        return new PurchaseReceiptAuditTimelineDto
+        {
+            StockDocumentId = id,
+            Events = events.Select(x => new PurchaseReceiptAuditEventDto
+            {
+                Id = x.Id,
+                StockDocumentId = x.StockDocumentId,
+                StockDocumentLineId = x.StockDocumentLineId,
+                EventType = x.EventType,
+                ActorUserId = x.ActorUserId,
+                ActorUserName = x.ActorUserName,
+                OccurredAtUtc = x.OccurredAtUtc,
+                Reason = x.Reason,
+                Note = x.Note,
+                ChangedFieldsJson = x.ChangedFieldsJson,
+                OldValuesJson = x.OldValuesJson,
+                NewValuesJson = x.NewValuesJson,
+                TraceId = x.TraceId,
+                IsSuccess = x.IsSuccess
+            }).ToArray()
         };
     }
     private static string? BuildProductImageUrl(string? storagePath)
@@ -874,6 +916,10 @@ public class StockDocumentService : IStockDocumentService
         document.RevisionResolvedAtUtc = null;
         document.RevisionResolvedByUserId = null;
 
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            PurchaseReceiptAuditEventType.SubmittedForApproval,
+            note: approvalNote);
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 
@@ -1067,7 +1113,12 @@ public class StockDocumentService : IStockDocumentService
         document.IsFreightPaid = request.HasFreight && request.IsFreightPaid;
         RecalculateDocumentTotals(document);
 
-        await ApproveTrackedAsync(document, request.ApprovalNote, request.RowVersion, ct);
+        await ApproveTrackedAsync(
+            document,
+            request.ApprovalNote,
+            request.RowVersion,
+            PurchaseReceiptAuditEventType.CommercialApprovalConfirmed,
+            ct);
     }
 
     public async Task ApproveAsync(
@@ -1080,13 +1131,19 @@ public class StockDocumentService : IStockDocumentService
         if (document == null)
             throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
 
-        await ApproveTrackedAsync(document, approvalNote, rowVersion, ct);
+        await ApproveTrackedAsync(
+            document,
+            approvalNote,
+            rowVersion,
+            PurchaseReceiptAuditEventType.GenericReceiptConfirmed,
+            ct);
     }
 
     private async Task ApproveTrackedAsync(
         StockDocument document,
         string? approvalNote,
         string? rowVersion,
+        PurchaseReceiptAuditEventType confirmationEventType,
         CancellationToken ct)
     {
 
@@ -1307,6 +1364,10 @@ public class StockDocumentService : IStockDocumentService
             document.ConfirmedByUserId = _currentUser.UserId;
             document.ApprovalNote = approvalNote?.Trim();
 
+            PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+                document,
+                confirmationEventType,
+                note: document.ApprovalNote);
             await _stockDocumentRepository.SaveChangesAsync(ct);
             await _stockDocumentRepository.CommitTransactionAsync(ct);
         }
@@ -1343,6 +1404,10 @@ public class StockDocumentService : IStockDocumentService
         document.RevisionResolvedAtUtc = DateTime.UtcNow;
         document.RevisionResolvedByUserId = _currentUser.UserId;
 
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            PurchaseReceiptAuditEventType.ReceiptRejected,
+            reason: returnReason);
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 
@@ -1747,6 +1812,10 @@ public class StockDocumentService : IStockDocumentService
         document.RevisionResolvedAtUtc = null;
         document.RevisionResolvedByUserId = null;
 
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            PurchaseReceiptAuditEventType.RevisionRequested,
+            reason: note);
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 
@@ -1784,6 +1853,13 @@ public class StockDocumentService : IStockDocumentService
                 : approvalNote.Trim();
         }
 
+        PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
+            document,
+            returnToEdit
+                ? PurchaseReceiptAuditEventType.RevisionReturnedForEditing
+                : PurchaseReceiptAuditEventType.RevisionRequestDismissed,
+            reason: returnToEdit ? document.ApprovalNote : null,
+            note: returnToEdit ? null : approvalNote);
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 

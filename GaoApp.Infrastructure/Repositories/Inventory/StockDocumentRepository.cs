@@ -1,9 +1,12 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.Inventory;
+using GaoApp.Application.Interfaces.Services.Audit;
+using GaoApp.Application.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GaoApp.Infrastructure.Repositories.Inventory;
@@ -11,11 +14,16 @@ namespace GaoApp.Infrastructure.Repositories.Inventory;
 public class StockDocumentRepository : IStockDocumentRepository
 {
     private readonly AppDbContext _context;
+    private readonly IAuditExecutionContextAccessor?
+        _auditExecutionContextAccessor;
     private IDbContextTransaction? _transaction;
 
-    public StockDocumentRepository(AppDbContext context)
+    public StockDocumentRepository(
+        AppDbContext context,
+        IAuditExecutionContextAccessor? auditExecutionContextAccessor = null)
     {
         _context = context;
+        _auditExecutionContextAccessor = auditExecutionContextAccessor;
     }
 
     public async Task AddAsync(StockDocument entity, CancellationToken ct = default)
@@ -88,6 +96,40 @@ public class StockDocumentRepository : IStockDocumentRepository
                 (!currentStoreId.HasValue ||
                  x.StockDocument.StoreId == currentStoreId.Value),
                 ct);
+    }
+
+    public async Task<IReadOnlyList<PurchaseReceiptAuditEvent>?>
+        GetPurchaseReceiptAuditEventsAsync(
+            int stockDocumentId,
+            CancellationToken ct = default)
+    {
+        var currentStoreId = _context.CurrentStoreId;
+        if (!currentStoreId.HasValue || currentStoreId.Value <= 0)
+        {
+            return null;
+        }
+
+        var receiptExists = await _context.StockDocuments
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.Id == stockDocumentId &&
+                x.StoreId == currentStoreId.Value &&
+                x.Type == StockDocumentType.Receipt,
+                ct);
+        if (!receiptExists)
+        {
+            return null;
+        }
+
+        return await _context.PurchaseReceiptAuditEvents
+            .AsNoTracking()
+            .Where(x =>
+                x.StoreId == currentStoreId.Value &&
+                x.StockDocumentId == stockDocumentId &&
+                x.StockDocument.StoreId == currentStoreId.Value)
+            .OrderBy(x => x.OccurredAtUtc)
+            .ThenBy(x => x.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<int> GetNextLineNoAsync(int stockDocumentId, CancellationToken ct = default)
@@ -293,8 +335,193 @@ public class StockDocumentRepository : IStockDocumentRepository
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
-        await _context.SaveChangesAsync(ct);
+        _context.ChangeTracker.DetectChanges();
+        var trackedDocuments = _context.ChangeTracker
+            .Entries<StockDocument>()
+            .Select(x => x.Entity)
+            .ToArray();
+        var stagedEvents = StagePurchaseReceiptAuditEvents();
+
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+            foreach (var document in trackedDocuments)
+            {
+                PurchaseReceiptAuditEvidence.ClearWorkflowIntent(document);
+            }
+        }
+        catch
+        {
+            foreach (var auditEvent in stagedEvents)
+            {
+                _context.Entry(auditEvent).State = EntityState.Detached;
+            }
+
+            foreach (var document in trackedDocuments)
+            {
+                PurchaseReceiptAuditEvidence.ClearWorkflowIntent(document);
+            }
+
+            throw;
+        }
     }
+
+    private IReadOnlyList<PurchaseReceiptAuditEvent>
+        StagePurchaseReceiptAuditEvents()
+    {
+        var result = new List<PurchaseReceiptAuditEvent>();
+        var traceId = _auditExecutionContextAccessor
+            ?.GetCurrent()
+            .TraceId;
+
+        var documentEntries = _context.ChangeTracker
+            .Entries<StockDocument>()
+            .Where(x =>
+                x.Entity.Type == StockDocumentType.Receipt &&
+                x.State is EntityState.Added or EntityState.Modified)
+            .ToArray();
+
+        foreach (var entry in documentEntries)
+        {
+            var intent = PurchaseReceiptAuditEvidence.GetWorkflowIntent(
+                entry.Entity);
+            IReadOnlyList<string> changedFields = GetChangedFields(
+                entry,
+                PurchaseReceiptAuditEvidence.HeaderFields);
+
+            if (entry.State == EntityState.Added)
+            {
+                changedFields = PurchaseReceiptAuditEvidence.HeaderFields;
+            }
+            else if (intent is null && changedFields.Count == 0)
+            {
+                continue;
+            }
+
+            var eventType = intent?.EventType ??
+                (entry.State == EntityState.Added
+                    ? PurchaseReceiptAuditEventType.ReceiptCreated
+                    : PurchaseReceiptAuditEventType.PhysicalHeaderChanged);
+            result.Add(CreateEvent(
+                entry.Entity,
+                line: null,
+                eventType,
+                intent?.Reason,
+                intent?.Note,
+                changedFields,
+                entry.State == EntityState.Added
+                    ? Array.Empty<KeyValuePair<string, object?>>()
+                    : ReadValues(entry, changedFields, original: true),
+                ReadValues(entry, changedFields, original: false),
+                traceId));
+        }
+
+        var lineEntries = _context.ChangeTracker
+            .Entries<StockDocumentLine>()
+            .Where(x =>
+                x.Entity.StockDocument?.Type == StockDocumentType.Receipt &&
+                x.State is EntityState.Added or EntityState.Modified or
+                    EntityState.Deleted)
+            .ToArray();
+
+        foreach (var entry in lineEntries)
+        {
+            IReadOnlyList<string> changedFields =
+                entry.State is EntityState.Added or EntityState.Deleted
+                    ? PurchaseReceiptAuditEvidence.LineFields
+                    : GetChangedFields(
+                        entry,
+                        PurchaseReceiptAuditEvidence.LineFields);
+            if (changedFields.Count == 0)
+            {
+                continue;
+            }
+
+            var eventType = entry.State switch
+            {
+                EntityState.Added =>
+                    PurchaseReceiptAuditEventType.PhysicalLineAdded,
+                EntityState.Deleted =>
+                    PurchaseReceiptAuditEventType.PhysicalLineDeleted,
+                _ => PurchaseReceiptAuditEventType.PhysicalLineChanged
+            };
+            result.Add(CreateEvent(
+                entry.Entity.StockDocument,
+                entry.Entity,
+                eventType,
+                reason: null,
+                note: entry.Entity.Note,
+                changedFields,
+                entry.State == EntityState.Added
+                    ? Array.Empty<KeyValuePair<string, object?>>()
+                    : ReadValues(entry, changedFields, original: true),
+                entry.State == EntityState.Deleted
+                    ? Array.Empty<KeyValuePair<string, object?>>()
+                    : ReadValues(entry, changedFields, original: false),
+                traceId));
+        }
+
+        _context.PurchaseReceiptAuditEvents.AddRange(result);
+        return result;
+    }
+
+    private static PurchaseReceiptAuditEvent CreateEvent(
+        StockDocument document,
+        StockDocumentLine? line,
+        PurchaseReceiptAuditEventType eventType,
+        string? reason,
+        string? note,
+        IReadOnlyList<string> changedFields,
+        IEnumerable<KeyValuePair<string, object?>> oldValues,
+        IEnumerable<KeyValuePair<string, object?>> newValues,
+        string? traceId)
+        => new()
+        {
+            StoreId = document.StoreId,
+            StockDocumentId = document.Id,
+            StockDocumentLineId = line?.Id,
+            StockDocument = document,
+            StockDocumentLine = line,
+            EventType = eventType,
+            Reason = reason,
+            Note = note,
+            ChangedFieldsJson =
+                PurchaseReceiptAuditEvidence.SerializeChangedFields(
+                    changedFields),
+            OldValuesJson =
+                PurchaseReceiptAuditEvidence.SerializeValues(oldValues),
+            NewValuesJson =
+                PurchaseReceiptAuditEvidence.SerializeValues(newValues),
+            TraceId = string.IsNullOrWhiteSpace(traceId)
+                ? null
+                : traceId.Trim().Length > 100
+                    ? traceId.Trim()[..100]
+                    : traceId.Trim()
+        };
+
+    private static IReadOnlyList<string> GetChangedFields(
+        EntityEntry entry,
+        IReadOnlyList<string> allowlist)
+        => allowlist
+            .Where(field =>
+                entry.Property(field).IsModified &&
+                !PurchaseReceiptAuditEvidence.ValuesEqual(
+                    field,
+                    entry.Property(field).OriginalValue,
+                    entry.Property(field).CurrentValue))
+            .OrderBy(static field => field, StringComparer.Ordinal)
+            .ToArray();
+
+    private static IEnumerable<KeyValuePair<string, object?>> ReadValues(
+        EntityEntry entry,
+        IEnumerable<string> fields,
+        bool original)
+        => fields.Select(field => new KeyValuePair<string, object?>(
+            field,
+            original
+                ? entry.Property(field).OriginalValue
+                : entry.Property(field).CurrentValue));
+
     public async Task MarkVariantsHasInputInvoiceAsync(
     IEnumerable<int> productVariantIds,
     int? userId,

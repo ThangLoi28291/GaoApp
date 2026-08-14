@@ -22,6 +22,10 @@ public interface IStockDocumentService
 
     Task<StockDocumentDto?> GetDetailAsync(int id, CancellationToken ct = default);
 
+    Task<PurchaseReceiptAuditTimelineDto?> GetAuditTimelineAsync(
+        int id,
+        CancellationToken ct = default);
+
   
 
     Task<int> AddLineAsync(int documentId, AddStockDocumentLineRequest request, CancellationToken ct = default);

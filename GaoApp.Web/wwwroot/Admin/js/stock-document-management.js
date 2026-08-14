@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (window.stockDocumentPage.mode === 'edit') {
+        loadPurchaseReceiptAuditTimeline();
         bindOpenApprovalModals();
         bindSubmitApproval();
         bindApprove();
@@ -693,6 +694,106 @@ async function loadWarehouseOptionsForCreate() {
         legalEntitySelect.innerHTML = `<option value="">Không tải được HKD</option>`;
         select.innerHTML = `<option value="">Không tải được kho</option>`;
     }
+}
+
+async function loadPurchaseReceiptAuditTimeline() {
+    const page = window.stockDocumentPage;
+    const timeline = document.getElementById('purchaseReceiptAuditTimeline');
+    const status = document.getElementById('purchaseReceiptAuditStatus');
+    if (!page?.canViewAudit || !timeline || !status) return;
+
+    const response = await fetch(
+        `/admin/api/stock-documents/${page.documentId}/audit-events`,
+        { headers: { Accept: 'application/json' } });
+    const api = await readApiResponse(response);
+    if (!api.ok) {
+        status.textContent = api.data?.message ||
+            'Không thể tải lịch sử kiểm toán.';
+        return;
+    }
+
+    const events = Array.isArray(api.data?.events) ? api.data.events : [];
+    timeline.replaceChildren();
+    status.textContent = events.length === 0
+        ? 'Chưa có sự kiện kiểm toán cho phiếu này.'
+        : `${events.length} sự kiện, sắp xếp theo thời gian.`;
+
+    for (const item of events) {
+        timeline.appendChild(buildPurchaseReceiptAuditItem(item));
+    }
+}
+
+function buildPurchaseReceiptAuditItem(item) {
+    const eventNames = {
+        1: 'Tạo phiếu nhập',
+        2: 'Thay đổi thông tin phiếu',
+        3: 'Thêm dòng hàng',
+        4: 'Thay đổi dòng hàng',
+        5: 'Xóa dòng hàng',
+        6: 'Gửi duyệt',
+        7: 'Đề nghị sửa phiếu',
+        8: 'Trả phiếu về chỉnh sửa',
+        9: 'Bỏ qua đề nghị sửa',
+        10: 'Từ chối phiếu',
+        11: 'Chốt thương mại và xác nhận',
+        12: 'Xác nhận phiếu nhập'
+    };
+    const container = document.createElement('article');
+    container.className = 'border rounded-3 p-3';
+
+    const title = document.createElement('div');
+    title.className = 'fw-semibold';
+    title.textContent = eventNames[item.eventType] ||
+        `Sự kiện ${String(item.eventType ?? '')}`;
+    container.appendChild(title);
+
+    const metadata = document.createElement('div');
+    metadata.className = 'small text-muted mt-1';
+    const actor = item.actorUserName || `User #${item.actorUserId}`;
+    const occurred = item.occurredAtUtc
+        ? new Date(item.occurredAtUtc).toLocaleString('vi-VN')
+        : '';
+    const line = item.stockDocumentLineId
+        ? ` · Dòng #${item.stockDocumentLineId}`
+        : '';
+    metadata.textContent = `${actor} · ${occurred}${line}`;
+    container.appendChild(metadata);
+
+    if (item.reason || item.note) {
+        const explanation = document.createElement('div');
+        explanation.className = 'mt-2';
+        explanation.textContent = item.reason || item.note;
+        container.appendChild(explanation);
+    }
+
+    const evidence = document.createElement('details');
+    evidence.className = 'mt-2';
+    const summary = document.createElement('summary');
+    summary.className = 'small text-primary';
+    summary.textContent = 'Xem bằng chứng trường thay đổi';
+    evidence.appendChild(summary);
+
+    const pre = document.createElement('pre');
+    pre.className = 'small bg-light border rounded p-2 mt-2 mb-0 text-wrap';
+    pre.textContent = formatPurchaseReceiptAuditJson(item);
+    evidence.appendChild(pre);
+    container.appendChild(evidence);
+    return container;
+}
+
+function formatPurchaseReceiptAuditJson(item) {
+    const parse = (value, fallback) => {
+        try {
+            return JSON.parse(value || fallback);
+        } catch {
+            return fallback === '[]' ? [] : {};
+        }
+    };
+    return JSON.stringify({
+        changedFields: parse(item.changedFieldsJson, '[]'),
+        oldValues: parse(item.oldValuesJson, '{}'),
+        newValues: parse(item.newValuesJson, '{}')
+    }, null, 2);
 }
 
 async function loadReceiptFormOptions() {

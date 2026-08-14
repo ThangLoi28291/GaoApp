@@ -43,6 +43,10 @@ public class AppDbContext : DbContext
     /// </summary>
     public int? CurrentStoreId => _tenant?.StoreId;
 
+    public int? CurrentUserId => _currentUser.UserId;
+    public string? CurrentUserName => _currentUser.UserName;
+    public bool IsCurrentUserAuthenticated => _currentUser.IsAuthenticated;
+
     /// <summary>
     /// Lấy UserId hiện tại phục vụ audit fields.
     /// </summary>
@@ -88,6 +92,8 @@ public class AppDbContext : DbContext
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<StockDocument> StockDocuments => Set<StockDocument>();
     public DbSet<StockDocumentLine> StockDocumentLines => Set<StockDocumentLine>();
+    public DbSet<PurchaseReceiptAuditEvent> PurchaseReceiptAuditEvents =>
+        Set<PurchaseReceiptAuditEvent>();
     public DbSet<ProductUnitConversion> ProductUnitConversions => Set<ProductUnitConversion>();
     public DbSet<ProductVariantUnitBarcode> ProductVariantUnitBarcodes => Set<ProductVariantUnitBarcode>();
     public DbSet<NegativeInventoryLog> NegativeInventoryLogs => Set<NegativeInventoryLog>();
@@ -159,6 +165,10 @@ public class AppDbContext : DbContext
 
         // Tự apply toàn bộ IEntityTypeConfiguration trong assembly Infrastructure
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        builder.Entity<PurchaseReceiptAuditEvent>()
+            .HasQueryFilter(x =>
+                CurrentStoreId == null || x.StoreId == CurrentStoreId);
 
         // Cấu hình nền tối thiểu còn để tại DbContext cho an toàn
         builder.Entity<Store>(e =>
@@ -241,6 +251,7 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        ProtectPurchaseReceiptAuditEvents(pendingChanges);
         ValidateTenantOwnership(pendingChanges);
         ApplyAuditAndTenantRules(pendingChanges);
 
@@ -260,6 +271,7 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        ProtectPurchaseReceiptAuditEvents(pendingChanges);
         await ValidateTenantOwnershipAsync(
             pendingChanges,
             cancellationToken);
@@ -280,6 +292,71 @@ public class AppDbContext : DbContext
                     EntityState.Deleted)
             .Select(static entry => new PendingChange(entry))
             .ToList();
+    }
+
+    private void ProtectPurchaseReceiptAuditEvents(
+        IReadOnlyList<PendingChange> pendingChanges)
+    {
+        foreach (var pendingChange in pendingChanges)
+        {
+            if (pendingChange.Entry.Entity is not PurchaseReceiptAuditEvent
+                auditEvent)
+            {
+                continue;
+            }
+
+            if (pendingChange.StateBeforeAudit is EntityState.Modified or
+                EntityState.Deleted)
+            {
+                throw new InvalidOperationException(
+                    "Purchase receipt audit events are append-only.");
+            }
+
+            if (pendingChange.StateBeforeAudit != EntityState.Added)
+            {
+                continue;
+            }
+
+            var storeId = CurrentStoreId;
+            if (!storeId.HasValue || storeId.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    "A current store is required to append receipt audit evidence.");
+            }
+
+            if (!IsCurrentUserAuthenticated ||
+                !CurrentUserId.HasValue ||
+                CurrentUserId.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    "An authenticated actor is required to append receipt audit evidence.");
+            }
+
+            if (auditEvent.StockDocument is not null &&
+                auditEvent.StockDocument.StoreId > 0 &&
+                auditEvent.StockDocument.StoreId != storeId.Value)
+            {
+                throw new InvalidOperationException(
+                    "Receipt audit evidence does not belong to the current store.");
+            }
+
+            if (!Enum.IsDefined(auditEvent.EventType))
+            {
+                throw new InvalidOperationException(
+                    "Receipt audit event type is invalid.");
+            }
+
+            auditEvent.StoreId = storeId.Value;
+            auditEvent.ActorUserId = CurrentUserId.Value;
+            var actorUserName = string.IsNullOrWhiteSpace(CurrentUserName)
+                ? null
+                : CurrentUserName.Trim();
+            auditEvent.ActorUserName = actorUserName?.Length > 200
+                ? actorUserName[..200]
+                : actorUserName;
+            auditEvent.OccurredAtUtc = DateTime.UtcNow;
+            auditEvent.IsSuccess = true;
+        }
     }
 
     /// <summary>
