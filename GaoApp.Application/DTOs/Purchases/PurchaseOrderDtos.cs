@@ -114,6 +114,9 @@ public sealed class PurchaseOrderLineDto
     public decimal LineTotalBeforeVat { get; set; }
     public decimal LineTotalAfterVat { get; set; }
     public decimal ReceivedQuantity { get; set; }
+    public decimal ConfirmedReceivedQuantity { get; set; }
+    public decimal InFlightQuantity { get; set; }
+    public decimal AvailableToAllocateQuantity { get; set; }
     public decimal PendingQuantity { get; set; }
     public decimal ShortClosedQuantity { get; set; }
     public PurchaseOrderLineReceiptStatus ReceiptStatus { get; set; }

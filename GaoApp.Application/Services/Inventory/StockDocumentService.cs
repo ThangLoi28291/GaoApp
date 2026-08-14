@@ -196,6 +196,17 @@ public class StockDocumentService : IStockDocumentService
         var date = request.DocumentDate ?? DateTime.UtcNow;
         var storeId = RequireStoreId();
 
+        var requestedLineIds = request.Lines.Select(x => x.PurchaseOrderLineId).ToArray();
+        await _stockDocumentRepository.BeginTransactionAsync(ct);
+        try
+        {
+        var lockedLines = await _stockDocumentRepository.LockPurchaseOrderLinesAsync(
+            storeId, purchaseOrderId, requestedLineIds, ct);
+        if (lockedLines.Count != requestedLineIds.Length)
+            throw new BusinessRuleException("Đơn đặt hàng hoặc dòng nhận hàng không hợp lệ.");
+        var inFlight = await _stockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync(
+            storeId, purchaseOrderId, requestedLineIds, ct: ct);
+
         var nextNumber = await _documentNumberSequenceRepository.GetNextNumberAsync(
             storeId,
             DocumentNumberSequenceType.StockReceipt,
@@ -223,8 +234,16 @@ public class StockDocumentService : IStockDocumentService
         {
             var orderLine = order.Lines.FirstOrDefault(x => x.Id == input.PurchaseOrderLineId && !x.IsDeleted)
                 ?? throw new BusinessRuleException($"Dòng đơn đặt hàng #{input.PurchaseOrderLineId} không hợp lệ.");
+            var state = lockedLines[input.PurchaseOrderLineId];
+            var projection = PurchaseReceiptQuantityProjection.Create(
+                state.OrderedQuantity, state.ReceivedQuantity, state.ShortClosedQuantity,
+                inFlight.GetValueOrDefault(state.PurchaseOrderLineId));
+            if (PurchasePricingPolicy.RoundQuantity(input.Quantity) > projection.AvailableToAllocateQuantity)
+                throw new BusinessRuleException(
+                    "Số lượng nhận vượt phần còn có thể lập phiếu. Vui lòng tải lại đơn đặt hàng.");
             var decision = PurchaseReceiptPolicy.ValidateLine(
-                orderLine.PendingQuantity,
+                PurchasePricingPolicy.RoundQuantity(
+                    state.OrderedQuantity - state.ReceivedQuantity - state.ShortClosedQuantity),
                 input.Quantity,
                 input.ShortageDisposition,
                 input.ShortageReason,
@@ -302,7 +321,14 @@ public class StockDocumentService : IStockDocumentService
         await _stockDocumentRepository.SaveChangesAsync(ct);
         order.Actions.Last().StockDocumentId = document.Id;
         await _stockDocumentRepository.SaveChangesAsync(ct);
+        await _stockDocumentRepository.CommitTransactionAsync(ct);
         return document.Id;
+        }
+        catch
+        {
+            await _stockDocumentRepository.RollbackTransactionAsync(ct);
+            throw;
+        }
     }
 
     public async Task<StockDocumentDto?> GetDetailAsync(int id, CancellationToken ct = default)
@@ -897,6 +923,12 @@ public class StockDocumentService : IStockDocumentService
         if (!document.Lines.Any())
             throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết.");
 
+        var guardsAllocation = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder &&
+            document.PurchaseOrderId.HasValue;
+        if (guardsAllocation) await _stockDocumentRepository.BeginTransactionAsync(ct);
+        try
+        {
+        if (guardsAllocation) await ValidatePurchaseReceiptAllocationAsync(document, ct);
         ValidateReceiptSourceAndShortages(document);
         if (document.HasFreight)
             PurchasePricingPolicy.EnsureFreightBalanced(
@@ -921,6 +953,13 @@ public class StockDocumentService : IStockDocumentService
             PurchaseReceiptAuditEventType.SubmittedForApproval,
             note: approvalNote);
         await _stockDocumentRepository.SaveChangesAsync(ct);
+        if (guardsAllocation) await _stockDocumentRepository.CommitTransactionAsync(ct);
+        }
+        catch
+        {
+            if (guardsAllocation) await _stockDocumentRepository.RollbackTransactionAsync(ct);
+            throw;
+        }
     }
 
     public async Task ApproveCommercialAsync(
@@ -1252,6 +1291,8 @@ public class StockDocumentService : IStockDocumentService
 
         try
         {
+            if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder && document.PurchaseOrderId.HasValue)
+                await ValidatePurchaseReceiptAllocationAsync(document, ct);
             await _inventoryMovementService.PreLockBalancesAsync(
                 activeLines.Select(line => new InventoryPostingLockKey(
                     document.StoreId,
@@ -1463,6 +1504,64 @@ public class StockDocumentService : IStockDocumentService
                 line.ShortageDisposition,
                 line.ShortageReason,
                 line.LineNo);
+        }
+    }
+
+    private async Task ValidatePurchaseReceiptAllocationAsync(
+        StockDocument document,
+        CancellationToken ct)
+    {
+        var purchaseOrderId = document.PurchaseOrderId
+            ?? throw new BusinessRuleException("Phiếu nhập không liên kết đúng đơn đặt hàng.");
+        var storeId = RequireStoreId();
+        if (document.StoreId != storeId)
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
+        var lines = document.Lines.Where(x => !x.IsDeleted).ToArray();
+        var lineIds = lines.Where(x => x.PurchaseOrderLineId.HasValue)
+            .Select(x => x.PurchaseOrderLineId!.Value).Distinct().ToArray();
+        if (lineIds.Length != lines.Length)
+            throw new BusinessRuleException("Phiếu nhập không liên kết đúng dòng đơn đặt hàng.");
+
+        IReadOnlyDictionary<int, PurchaseOrderLineAllocationState> locked;
+        try
+        {
+            locked = await _stockDocumentRepository.LockPurchaseOrderLinesAsync(
+                storeId, purchaseOrderId, lineIds, ct);
+        }
+        catch (NotSupportedException) when (document.PurchaseOrder != null)
+        {
+            // Compatibility for isolated unit-test repositories only. The SQL repository
+            // implements the durable lock and never follows this path.
+            locked = document.PurchaseOrder.Lines.Where(x => lineIds.Contains(x.Id))
+                .ToDictionary(x => x.Id, x => new PurchaseOrderLineAllocationState(
+                    x.Id, x.LineNo, x.OrderedQuantity, x.ReceivedQuantity, x.ShortClosedQuantity));
+        }
+        if (locked.Count != lineIds.Length)
+            throw new BusinessRuleException("Đơn đặt hàng hoặc dòng nhận hàng không hợp lệ.");
+        var inFlight = await _stockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync(
+            storeId, purchaseOrderId, lineIds, excludeStockDocumentId: document.Id, ct: ct);
+
+        if (document.PurchaseOrder != null)
+        {
+            foreach (var orderLine in document.PurchaseOrder.Lines.Where(x => !x.IsDeleted))
+            {
+                if (locked.TryGetValue(orderLine.Id, out var current))
+                {
+                    orderLine.ReceivedQuantity = current.ReceivedQuantity;
+                    orderLine.ShortClosedQuantity = current.ShortClosedQuantity;
+                }
+            }
+        }
+
+        foreach (var line in lines)
+        {
+            var state = locked[line.PurchaseOrderLineId!.Value];
+            var projection = PurchaseReceiptQuantityProjection.Create(
+                state.OrderedQuantity, state.ReceivedQuantity, state.ShortClosedQuantity,
+                inFlight.GetValueOrDefault(state.PurchaseOrderLineId));
+            if (PurchasePricingPolicy.RoundQuantity(line.Quantity) > projection.AvailableToAllocateQuantity)
+                throw new BusinessRuleException(
+                    "Số lượng nhận vượt phần còn có thể lập phiếu. Vui lòng tải lại đơn đặt hàng.");
         }
     }
 

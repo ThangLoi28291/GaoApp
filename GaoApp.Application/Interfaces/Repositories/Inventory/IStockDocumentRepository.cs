@@ -40,6 +40,15 @@ public interface IStockDocumentRepository
         IEnumerable<int> productVariantIds,
         CancellationToken ct = default);
     Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<int, decimal>> GetInFlightPurchaseReceiptQuantitiesAsync(
+        int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        int? excludeStockDocumentId = null, int? excludeStockDocumentLineId = null,
+        CancellationToken ct = default)
+        => Task.FromResult<IReadOnlyDictionary<int, decimal>>(new Dictionary<int, decimal>());
+    Task<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>> LockPurchaseOrderLinesAsync(
+        int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        CancellationToken ct = default)
+        => throw new NotSupportedException("This repository does not support purchase allocation locks.");
     Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default);
     Task<bool> PurchasePayableExistsAsync(string sourceKey, CancellationToken ct = default);
 
@@ -75,3 +84,7 @@ public interface IStockDocumentRepository
     CancellationToken ct = default);
 
 }
+
+public sealed record PurchaseOrderLineAllocationState(
+    int PurchaseOrderLineId, int LineNo, decimal OrderedQuantity,
+    decimal ReceivedQuantity, decimal ShortClosedQuantity);

@@ -106,7 +106,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                 order.SentToSupplierByUserId, order.CancelledByUserId
             }.Where(x => x.HasValue).Select(x => x!.Value));
         var names = await _repository.GetUserDisplayNamesAsync(actorIds, ct);
-        return MapDetail(order, names, includeCost);
+        var lineIds = order.Lines.Where(x => !x.IsDeleted).Select(x => x.Id).ToArray();
+        var inFlight = await _repository.GetInFlightReceiptQuantitiesAsync(order.Id, lineIds, ct);
+        return MapDetail(order, names, includeCost, inFlight);
     }
 
     public async Task<PurchaseOrderFormOptionsDto> GetFormOptionsAsync(CancellationToken ct = default)
@@ -858,7 +860,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
     private static PurchaseOrderDetailDto MapDetail(
         PurchaseOrder x,
         IReadOnlyDictionary<int, string> names,
-        bool includeCost) => new()
+        bool includeCost,
+        IReadOnlyDictionary<int, decimal> inFlight) => new()
     {
         Id = x.Id,
         OrderNumber = x.OrderNumber,
@@ -929,6 +932,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             LineTotalBeforeVat = includeCost ? l.LineTotalBeforeVat : 0m,
             LineTotalAfterVat = includeCost ? l.LineTotalAfterVat : 0m,
             ReceivedQuantity = l.ReceivedQuantity,
+            ConfirmedReceivedQuantity = l.ReceivedQuantity,
+            InFlightQuantity = PurchaseReceiptQuantityProjection.Create(
+                l.OrderedQuantity, l.ReceivedQuantity, l.ShortClosedQuantity,
+                inFlight.GetValueOrDefault(l.Id)).InFlightQuantity,
+            AvailableToAllocateQuantity = PurchaseReceiptQuantityProjection.Create(
+                l.OrderedQuantity, l.ReceivedQuantity, l.ShortClosedQuantity,
+                inFlight.GetValueOrDefault(l.Id)).AvailableToAllocateQuantity,
             PendingQuantity = l.PendingQuantity, ShortClosedQuantity = l.ShortClosedQuantity,
             ReceiptStatus = l.ReceiptStatus, ShortCloseReason = l.ShortCloseReason,
             ResolvedAtUtc = l.ResolvedAtUtc, ResolvedByUserId = l.ResolvedByUserId,

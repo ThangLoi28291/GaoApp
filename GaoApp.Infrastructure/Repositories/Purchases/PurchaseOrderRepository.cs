@@ -90,6 +90,25 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
             .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
+    public async Task<IReadOnlyDictionary<int, decimal>> GetInFlightReceiptQuantitiesAsync(
+        int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        CancellationToken ct = default)
+    {
+        if (purchaseOrderLineIds.Count == 0) return new Dictionary<int, decimal>();
+        var storeId = _db.CurrentStoreId;
+        if (!storeId.HasValue || storeId.Value <= 0) return new Dictionary<int, decimal>();
+        return await _db.StockDocumentLines.AsNoTracking()
+            .Where(x => x.PurchaseOrderLineId.HasValue && purchaseOrderLineIds.Contains(x.PurchaseOrderLineId.Value) &&
+                !x.IsDeleted && !x.StockDocument.IsDeleted && x.StockDocument.StoreId == storeId.Value &&
+                x.StockDocument.PurchaseOrderId == purchaseOrderId &&
+                (x.StockDocument.Status == StockDocumentStatus.Draft ||
+                 x.StockDocument.Status == StockDocumentStatus.PendingApproval ||
+                 x.StockDocument.Status == StockDocumentStatus.Rejected))
+            .GroupBy(x => x.PurchaseOrderLineId!.Value)
+            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.Quantity) })
+            .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
+    }
+
     public async Task<Dictionary<int, string>> GetUserDisplayNamesAsync(
         IEnumerable<int> userIds,
         CancellationToken ct = default)
