@@ -252,6 +252,49 @@ public class StockDocumentRepository : IStockDocumentRepository
             .Include(x => x.Actions)
             .FirstOrDefaultAsync(x => x.Id == purchaseOrderId, ct);
 
+    public async Task<IReadOnlyDictionary<int, decimal>> GetInFlightPurchaseReceiptQuantitiesAsync(
+        int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        int? excludeStockDocumentId = null, int? excludeStockDocumentLineId = null,
+        CancellationToken ct = default)
+    {
+        if (purchaseOrderLineIds.Count == 0) return new Dictionary<int, decimal>();
+        return await _context.StockDocumentLines.AsNoTracking()
+            .Where(x => x.PurchaseOrderLineId.HasValue && purchaseOrderLineIds.Contains(x.PurchaseOrderLineId.Value) &&
+                !x.IsDeleted && !x.StockDocument.IsDeleted && x.StockDocument.StoreId == storeId &&
+                x.StockDocument.PurchaseOrderId == purchaseOrderId &&
+                (!excludeStockDocumentId.HasValue || x.StockDocumentId != excludeStockDocumentId.Value) &&
+                (!excludeStockDocumentLineId.HasValue || x.Id != excludeStockDocumentLineId.Value) &&
+                (x.StockDocument.Status == StockDocumentStatus.Draft ||
+                 x.StockDocument.Status == StockDocumentStatus.PendingApproval ||
+                 x.StockDocument.Status == StockDocumentStatus.Rejected))
+            .GroupBy(x => x.PurchaseOrderLineId!.Value)
+            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.Quantity) })
+            .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
+    }
+
+    public async Task<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>> LockPurchaseOrderLinesAsync(
+        int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        CancellationToken ct = default)
+    {
+        if (_transaction == null)
+            throw new InvalidOperationException("Purchase-order allocation lock requires an active transaction.");
+        var result = new Dictionary<int, PurchaseOrderLineAllocationState>();
+        foreach (var id in purchaseOrderLineIds.Where(x => x > 0).Distinct().OrderBy(x => x))
+        {
+            var line = await _context.PurchaseOrderLines
+                .FromSqlInterpolated($@"SELECT pol.* FROM [PurchaseOrderLines] pol WITH (UPDLOCK,HOLDLOCK,ROWLOCK)
+                    INNER JOIN [PurchaseOrders] po ON po.[Id] = pol.[PurchaseOrderId]
+                    WHERE pol.[Id] = {id} AND pol.[PurchaseOrderId] = {purchaseOrderId}
+                      AND pol.[StoreId] = {storeId} AND po.[StoreId] = {storeId}
+                      AND pol.[IsDeleted] = 0 AND po.[IsDeleted] = 0")
+                .AsNoTracking().SingleOrDefaultAsync(ct);
+            if (line != null)
+                result[id] = new(line.Id, line.LineNo, line.OrderedQuantity,
+                    line.ReceivedQuantity, line.ShortClosedQuantity);
+        }
+        return result;
+    }
+
     public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)
         => _context.PurchasePayables.AddAsync(payable, ct).AsTask();
 
