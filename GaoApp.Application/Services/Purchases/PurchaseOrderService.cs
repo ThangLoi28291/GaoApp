@@ -918,41 +918,9 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         CancelledByUserId = x.CancelledByUserId,
         CancelledByName = UserNameOrNull(x.CancelledByUserId, names),
         RowVersion = Convert.ToBase64String(x.RowVersion ?? Array.Empty<byte>()),
-        Lines = x.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.LineNo).Select(l => new PurchaseOrderLineDto
-        {
-            Id = l.Id, SourcePurchaseRequestLineId = l.SourcePurchaseRequestLineId,
-            LineNo = l.LineNo, ItemKind = l.ItemKind, ProductVariantId = l.ProductVariantId,
-            ProductUnitConversionId = l.ProductUnitConversionId, UnitId = l.UnitId, TaxId = l.TaxId,
-            ProductName = l.ProductNameSnapshot, Sku = l.SkuSnapshot, UnitName = l.UnitNameSnapshot,
-            ConversionFactor = l.ConversionFactor, OrderedQuantity = l.OrderedQuantity,
-            UnitPriceBeforeVat = includeCost ? l.UnitPriceBeforeVat : 0m,
-            TaxRate = includeCost ? l.TaxRate : 0m,
-            VatAmount = includeCost ? l.VatAmount : 0m,
-            UnitPriceAfterVat = includeCost ? l.UnitPriceAfterVat : 0m,
-            LineTotalBeforeVat = includeCost ? l.LineTotalBeforeVat : 0m,
-            LineTotalAfterVat = includeCost ? l.LineTotalAfterVat : 0m,
-            ReceivedQuantity = l.ReceivedQuantity,
-            ConfirmedReceivedQuantity = l.ReceivedQuantity,
-            InFlightQuantity = PurchaseReceiptQuantityProjection.Create(
-                l.OrderedQuantity, l.ReceivedQuantity, l.ShortClosedQuantity,
-                inFlight.GetValueOrDefault(l.Id)).InFlightQuantity,
-            AvailableToAllocateQuantity = PurchaseReceiptQuantityProjection.Create(
-                l.OrderedQuantity, l.ReceivedQuantity, l.ShortClosedQuantity,
-                inFlight.GetValueOrDefault(l.Id)).AvailableToAllocateQuantity,
-            PendingQuantity = l.PendingQuantity, ShortClosedQuantity = l.ShortClosedQuantity,
-            ReceiptStatus = l.ReceiptStatus, ShortCloseReason = l.ShortCloseReason,
-            ResolvedAtUtc = l.ResolvedAtUtc, ResolvedByUserId = l.ResolvedByUserId,
-            ResolutionNote = l.ResolutionNote,
-            ResolvedProductName = l.ProductVariant == null
-                ? null
-                : string.IsNullOrWhiteSpace(l.ProductVariant.ProductVariantName)
-                    ? l.ProductVariant.Product.Name
-                    : l.ProductVariant.ProductVariantName,
-            ResolvedSku = l.ProductVariant == null ? null : l.ProductVariant.Sku,
-            ResolvedUnitName = l.ProductUnitConversion == null
-                ? null
-                : l.ProductUnitConversion.Unit.Name
-        }).ToList(),
+        Lines = x.Lines.Where(l => !l.IsDeleted).OrderBy(l => l.LineNo)
+            .Select(l => MapDetailLine(l, includeCost, inFlight.GetValueOrDefault(l.Id)))
+            .ToList(),
         Actions = x.Actions.Where(a => !a.IsDeleted).OrderByDescending(a => a.OccurredAtUtc).Select(a => new PurchaseOrderActionDto
         {
             ActionType = a.ActionType, FromStatus = a.FromStatus, ToStatus = a.ToStatus,
@@ -966,6 +934,103 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             DocumentDate = r.DocumentDate, TotalAmount = includeCost ? r.TotalAmount : 0m
         }).ToList()
     };
+
+    private static PurchaseOrderLineDto MapDetailLine(
+        PurchaseOrderLine line,
+        bool includeCost,
+        decimal inFlightCanonicalQuantity)
+    {
+        var orderedFactor = PurchaseReceiptQuantityConversionPolicy.ValidateFactor(line.ConversionFactor);
+        var canonicalOrdered = PurchaseReceiptQuantityConversionPolicy.ToCanonical(line.OrderedQuantity, orderedFactor);
+        var canonicalConfirmed = line.ReceivedQuantity <= 0m
+            ? 0m
+            : PurchaseReceiptQuantityConversionPolicy.ToCanonical(line.ReceivedQuantity, orderedFactor);
+        var canonicalShortClosed = line.ShortClosedQuantity <= 0m
+            ? 0m
+            : PurchaseReceiptQuantityConversionPolicy.ToCanonical(line.ShortClosedQuantity, orderedFactor);
+        var projection = PurchaseReceiptQuantityProjection.Create(
+            canonicalOrdered, canonicalConfirmed, canonicalShortClosed, inFlightCanonicalQuantity);
+
+        var options = line.ProductVariant?.UnitConversions
+            .Where(x => !x.IsDeleted && x.IsActive && x.Unit != null && !x.Unit.IsDeleted && x.Unit.IsActive &&
+                        x.StoreId == line.StoreId && x.ProductVariantId == line.ProductVariantId && x.Factor > 0m)
+            .OrderByDescending(x => x.UnitId == line.UnitId)
+            .ThenByDescending(x => x.IsBaseUnit)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .Select(x => new PurchaseReceiptUnitOptionDto
+            {
+                UnitId = x.UnitId,
+                ProductUnitConversionId = x.UnitId == line.UnitId ? line.ProductUnitConversionId : x.Id,
+                UnitName = x.Unit.Name,
+                ConversionFactor = x.UnitId == line.UnitId
+                    ? orderedFactor
+                    : PurchaseReceiptQuantityConversionPolicy.ValidateFactor(x.Factor),
+                MaximumReceiptQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumReceiptQuantity(
+                    projection.AvailableToAllocateQuantity,
+                    x.UnitId == line.UnitId ? orderedFactor : x.Factor,
+                    orderedFactor) is var calculatedMaximum && x.UnitId == line.UnitId
+                        ? Math.Min(line.PendingQuantity, calculatedMaximum)
+                        : calculatedMaximum,
+                IsOrderedUnit = x.UnitId == line.UnitId,
+                IsBaseUnit = x.IsBaseUnit
+            })
+            .ToList() ?? new List<PurchaseReceiptUnitOptionDto>();
+
+        // The ordered-unit snapshot remains the compatibility default even if
+        // the conversion master changed after the PO was saved.
+        if (line.UnitId.HasValue && options.All(x => x.UnitId != line.UnitId.Value))
+        {
+            options.Insert(0, new PurchaseReceiptUnitOptionDto
+            {
+                UnitId = line.UnitId.Value,
+                ProductUnitConversionId = line.ProductUnitConversionId,
+                UnitName = line.UnitNameSnapshot,
+                ConversionFactor = orderedFactor,
+                MaximumReceiptQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumReceiptQuantity(
+                    projection.AvailableToAllocateQuantity, orderedFactor, orderedFactor) is var calculatedMaximum
+                        ? Math.Min(line.PendingQuantity, calculatedMaximum)
+                        : calculatedMaximum,
+                IsOrderedUnit = true,
+                IsBaseUnit = line.ProductVariant?.Product.BaseUnitId == line.UnitId.Value
+            });
+        }
+
+        return new PurchaseOrderLineDto
+        {
+            Id = line.Id, SourcePurchaseRequestLineId = line.SourcePurchaseRequestLineId,
+            LineNo = line.LineNo, ItemKind = line.ItemKind, ProductVariantId = line.ProductVariantId,
+            ProductUnitConversionId = line.ProductUnitConversionId, UnitId = line.UnitId, TaxId = line.TaxId,
+            ProductName = line.ProductNameSnapshot, Sku = line.SkuSnapshot, UnitName = line.UnitNameSnapshot,
+            ConversionFactor = orderedFactor, OrderedQuantity = line.OrderedQuantity,
+            UnitPriceBeforeVat = includeCost ? line.UnitPriceBeforeVat : 0m,
+            TaxRate = includeCost ? line.TaxRate : 0m,
+            VatAmount = includeCost ? line.VatAmount : 0m,
+            UnitPriceAfterVat = includeCost ? line.UnitPriceAfterVat : 0m,
+            LineTotalBeforeVat = includeCost ? line.LineTotalBeforeVat : 0m,
+            LineTotalAfterVat = includeCost ? line.LineTotalAfterVat : 0m,
+            ReceivedQuantity = line.ReceivedQuantity,
+            ConfirmedReceivedQuantity = line.ReceivedQuantity,
+            BaseUnitId = line.ProductVariant?.Product.BaseUnitId,
+            BaseUnitName = line.ProductVariant?.Product.BaseUnit?.Name ?? string.Empty,
+            CanonicalOrderedQuantity = canonicalOrdered,
+            CanonicalConfirmedReceivedQuantity = canonicalConfirmed,
+            InFlightQuantity = projection.InFlightQuantity,
+            AvailableToAllocateQuantity = projection.AvailableToAllocateQuantity,
+            AllowedReceiptUnits = options,
+            PendingQuantity = line.PendingQuantity, ShortClosedQuantity = line.ShortClosedQuantity,
+            ReceiptStatus = line.ReceiptStatus, ShortCloseReason = line.ShortCloseReason,
+            ResolvedAtUtc = line.ResolvedAtUtc, ResolvedByUserId = line.ResolvedByUserId,
+            ResolutionNote = line.ResolutionNote,
+            ResolvedProductName = line.ProductVariant == null
+                ? null
+                : string.IsNullOrWhiteSpace(line.ProductVariant.ProductVariantName)
+                    ? line.ProductVariant.Product.Name
+                    : line.ProductVariant.ProductVariantName,
+            ResolvedSku = line.ProductVariant?.Sku,
+            ResolvedUnitName = line.ProductUnitConversion?.Unit.Name
+        };
+    }
 
     private static string UserName(int? userId, IReadOnlyDictionary<int, string> names)
         => userId.HasValue && names.TryGetValue(userId.Value, out var name) && !string.IsNullOrWhiteSpace(name)

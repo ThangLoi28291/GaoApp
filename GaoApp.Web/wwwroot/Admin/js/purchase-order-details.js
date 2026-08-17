@@ -9,14 +9,43 @@
     });
 
     function bindReceiptRows() {
-        document.querySelectorAll('.receive-enabled').forEach(function (checkbox) {
+        document.querySelectorAll('.receipt-row').forEach(function (row) {
+            const checkbox = row.querySelector('.receive-enabled');
+            const unitSelect = row.querySelector('.receipt-unit');
+            const quantityInput = row.querySelector('.receipt-quantity');
+            const conversionText = row.querySelector('.receipt-conversion');
+            if (!checkbox) return;
             if (checkbox.dataset.bound === '1') return;
             checkbox.dataset.bound = '1';
             checkbox.addEventListener('change', function () {
-                checkbox.closest('tr')?.querySelectorAll('.receipt-input').forEach(function (input) {
+                row.querySelectorAll('.receipt-input').forEach(function (input) {
                     input.disabled = !checkbox.checked;
                 });
             });
+
+            function updateConversion(resetToMaximum) {
+                const option = unitSelect?.selectedOptions[0];
+                const factor = Number(option?.dataset.factor || 0);
+                const maximum = Number(option?.dataset.max || 0);
+                if (quantityInput && Number.isFinite(maximum)) {
+                    quantityInput.max = maximum.toFixed(3);
+                    const current = Number(quantityInput.value || 0);
+                    if (resetToMaximum || !Number.isFinite(current) || current <= 0 || current > maximum) {
+                        quantityInput.value = maximum > 0 ? maximum.toFixed(3) : '';
+                    }
+                }
+                const quantity = Number(quantityInput?.value || 0);
+                const canonical = quantity * factor;
+                if (conversionText) {
+                    conversionText.textContent = Number.isFinite(canonical) && canonical > 0
+                        ? `Tương đương: ${canonical.toFixed(3)} ${row.dataset.baseUnit || 'đơn vị gốc'}`
+                        : 'Tương đương: —';
+                }
+            }
+
+            unitSelect?.addEventListener('change', function () { updateConversion(true); });
+            quantityInput?.addEventListener('input', function () { updateConversion(false); });
+            updateConversion(false);
         });
     }
 

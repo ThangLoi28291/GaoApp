@@ -115,8 +115,13 @@ public sealed class PurchaseOrderLineDto
     public decimal LineTotalAfterVat { get; set; }
     public decimal ReceivedQuantity { get; set; }
     public decimal ConfirmedReceivedQuantity { get; set; }
+    public int? BaseUnitId { get; set; }
+    public string BaseUnitName { get; set; } = string.Empty;
+    public decimal CanonicalOrderedQuantity { get; set; }
+    public decimal CanonicalConfirmedReceivedQuantity { get; set; }
     public decimal InFlightQuantity { get; set; }
     public decimal AvailableToAllocateQuantity { get; set; }
+    public List<PurchaseReceiptUnitOptionDto> AllowedReceiptUnits { get; set; } = new();
     public decimal PendingQuantity { get; set; }
     public decimal ShortClosedQuantity { get; set; }
     public PurchaseOrderLineReceiptStatus ReceiptStatus { get; set; }
@@ -127,6 +132,17 @@ public sealed class PurchaseOrderLineDto
     public string? ResolvedProductName { get; set; }
     public string? ResolvedSku { get; set; }
     public string? ResolvedUnitName { get; set; }
+}
+
+public sealed class PurchaseReceiptUnitOptionDto
+{
+    public int UnitId { get; set; }
+    public int? ProductUnitConversionId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public decimal ConversionFactor { get; set; }
+    public decimal MaximumReceiptQuantity { get; set; }
+    public bool IsOrderedUnit { get; set; }
+    public bool IsBaseUnit { get; set; }
 }
 
 public sealed class PurchaseOrderActionDto
@@ -300,6 +316,7 @@ public sealed class PurchaseWorkflowRequest
 public sealed class CreatePurchaseReceiptLineRequest
 {
     [Range(1, int.MaxValue)] public int PurchaseOrderLineId { get; set; }
+    [Range(1, int.MaxValue)] public int? ReceiptUnitId { get; set; }
     [Range(typeof(decimal), "0.001", "999999999999")] public decimal Quantity { get; set; }
     public PurchaseShortageDisposition ShortageDisposition { get; set; }
     [StringLength(500)] public string? ShortageReason { get; set; }

@@ -12,8 +12,8 @@ public static class PurchaseReceiptPolicy
         string? shortageReason,
         int lineNo)
     {
-        var pending = PurchasePricingPolicy.RoundQuantity(pendingQuantity);
-        var received = PurchasePricingPolicy.RoundQuantity(receivedQuantity);
+        var pending = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(pendingQuantity);
+        var received = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(receivedQuantity);
         if (pending <= 0)
             throw new InvalidOperationException($"Dòng {lineNo}: không còn số lượng chờ nhận.");
         if (received <= 0)
@@ -51,14 +51,14 @@ public static class PurchaseReceiptPolicy
             shortageReason,
             orderLine.LineNo);
 
-        orderLine.ReceivedQuantity = PurchasePricingPolicy.RoundQuantity(
+        orderLine.ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
             orderLine.ReceivedQuantity + decision.ReceivedQuantity);
 
         if (decision.ShortageDisposition == PurchaseShortageDisposition.ShortClose)
         {
-            var shortQuantity = PurchasePricingPolicy.RoundQuantity(
+            var shortQuantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
                 decision.PendingBefore - decision.ReceivedQuantity);
-            orderLine.ShortClosedQuantity = PurchasePricingPolicy.RoundQuantity(
+            orderLine.ShortClosedQuantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
                 orderLine.ShortClosedQuantity + shortQuantity);
             orderLine.ShortCloseReason = decision.ShortageReason;
             orderLine.ShortClosedAtUtc = occurredAtUtc;
@@ -77,7 +77,7 @@ public static class PurchaseReceiptPolicy
         PurchaseOrderStatus currentStatus)
     {
         if (activeLines.Count == 0) return currentStatus;
-        if (activeLines.All(x => PurchasePricingPolicy.RoundQuantity(x.PendingQuantity) == 0m))
+        if (activeLines.All(x => PurchaseReceiptQuantityConversionPolicy.RoundQuantity(x.PendingQuantity) == 0m))
             return activeLines.Any(x => x.ShortClosedQuantity > 0m)
                 ? PurchaseOrderStatus.ShortClosed
                 : PurchaseOrderStatus.FullyReceived;

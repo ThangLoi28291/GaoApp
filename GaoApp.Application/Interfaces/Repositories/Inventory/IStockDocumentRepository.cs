@@ -45,10 +45,17 @@ public interface IStockDocumentRepository
         int? excludeStockDocumentId = null, int? excludeStockDocumentLineId = null,
         CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<int, decimal>>(new Dictionary<int, decimal>());
+    Task<PurchaseOrderReceiptState?> LockPurchaseOrderForReceiptAsync(
+        int storeId, int purchaseOrderId, CancellationToken ct = default)
+        => throw new NotSupportedException("This repository does not support purchase-order locks.");
     Task<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>> LockPurchaseOrderLinesAsync(
         int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
         CancellationToken ct = default)
         => throw new NotSupportedException("This repository does not support purchase allocation locks.");
+    Task<bool> PurchaseReceiptLineSnapshotsBelongToStoreAsync(
+        int storeId, int stockDocumentId, IReadOnlyCollection<int> stockDocumentLineIds,
+        CancellationToken ct = default)
+        => Task.FromResult(true);
     Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default);
     Task<bool> PurchasePayableExistsAsync(string sourceKey, CancellationToken ct = default);
 
@@ -87,4 +94,9 @@ public interface IStockDocumentRepository
 
 public sealed record PurchaseOrderLineAllocationState(
     int PurchaseOrderLineId, int LineNo, decimal OrderedQuantity,
-    decimal ReceivedQuantity, decimal ShortClosedQuantity);
+    decimal ReceivedQuantity, decimal ShortClosedQuantity,
+    decimal ConversionFactor);
+
+public sealed record PurchaseOrderReceiptState(
+    int PurchaseOrderId, int StoreId, PurchaseOrderStatus Status,
+    int SupplierId, int ExpectedWarehouseId, int LegalEntityId);

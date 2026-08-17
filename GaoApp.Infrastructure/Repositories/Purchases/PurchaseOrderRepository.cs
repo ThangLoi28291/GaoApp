@@ -84,6 +84,8 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
         return query.Include(x => x.Supplier).Include(x => x.ExpectedWarehouse).Include(x => x.LegalEntity)
             .Include(x => x.Lines).ThenInclude(x => x.SourcePurchaseRequestLine)
             .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.Product)
+            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.Product).ThenInclude(x => x.BaseUnit)
+            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.UnitConversions).ThenInclude(x => x.Unit)
             .Include(x => x.Lines).ThenInclude(x => x.ProductUnitConversion).ThenInclude(x => x!.Unit)
             .Include(x => x.SourcePurchaseRequest).ThenInclude(x => x!.Lines)
             .Include(x => x.Actions).Include(x => x.Receipts)
@@ -105,7 +107,7 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
                  x.StockDocument.Status == StockDocumentStatus.PendingApproval ||
                  x.StockDocument.Status == StockDocumentStatus.Rejected))
             .GroupBy(x => x.PurchaseOrderLineId!.Value)
-            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.Quantity) })
+            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.BaseQuantity) })
             .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
     }
 
