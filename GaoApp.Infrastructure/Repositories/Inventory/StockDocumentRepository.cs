@@ -247,7 +247,8 @@ public class StockDocumentRepository : IStockDocumentRepository
             .Include(x => x.Supplier)
             .Include(x => x.ExpectedWarehouse)
             .Include(x => x.LegalEntity)
-            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.Product)
+            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.Product).ThenInclude(x => x.BaseUnit)
+            .Include(x => x.Lines).ThenInclude(x => x.ProductVariant).ThenInclude(x => x!.UnitConversions).ThenInclude(x => x.Unit)
             .Include(x => x.Lines).ThenInclude(x => x.ProductUnitConversion).ThenInclude(x => x!.Unit)
             .Include(x => x.Actions)
             .FirstOrDefaultAsync(x => x.Id == purchaseOrderId, ct);
@@ -268,7 +269,7 @@ public class StockDocumentRepository : IStockDocumentRepository
                  x.StockDocument.Status == StockDocumentStatus.PendingApproval ||
                  x.StockDocument.Status == StockDocumentStatus.Rejected))
             .GroupBy(x => x.PurchaseOrderLineId!.Value)
-            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.Quantity) })
+            .Select(x => new { Id = x.Key, Quantity = x.Sum(y => y.BaseQuantity) })
             .ToDictionaryAsync(x => x.Id, x => x.Quantity, ct);
     }
 
@@ -290,9 +291,52 @@ public class StockDocumentRepository : IStockDocumentRepository
                 .AsNoTracking().SingleOrDefaultAsync(ct);
             if (line != null)
                 result[id] = new(line.Id, line.LineNo, line.OrderedQuantity,
-                    line.ReceivedQuantity, line.ShortClosedQuantity);
+                    line.ReceivedQuantity, line.ShortClosedQuantity, line.ConversionFactor);
         }
         return result;
+    }
+
+    public async Task<PurchaseOrderReceiptState?> LockPurchaseOrderForReceiptAsync(
+        int storeId,
+        int purchaseOrderId,
+        CancellationToken ct = default)
+    {
+        if (_transaction == null)
+            throw new InvalidOperationException("Purchase-order lock requires an active transaction.");
+
+        var order = await _context.PurchaseOrders
+            .FromSqlInterpolated($@"SELECT po.* FROM [PurchaseOrders] po WITH (UPDLOCK,HOLDLOCK,ROWLOCK)
+                WHERE po.[Id] = {purchaseOrderId} AND po.[StoreId] = {storeId} AND po.[IsDeleted] = 0")
+            .AsNoTracking()
+            .SingleOrDefaultAsync(ct);
+        return order == null
+            ? null
+            : new PurchaseOrderReceiptState(
+                order.Id, order.StoreId, order.Status, order.SupplierId,
+                order.ExpectedWarehouseId, order.LegalEntityId);
+    }
+
+    public async Task<bool> PurchaseReceiptLineSnapshotsBelongToStoreAsync(
+        int storeId,
+        int stockDocumentId,
+        IReadOnlyCollection<int> stockDocumentLineIds,
+        CancellationToken ct = default)
+    {
+        var ids = stockDocumentLineIds.Where(x => x > 0).Distinct().ToArray();
+        if (ids.Length != stockDocumentLineIds.Count || ids.Length == 0) return false;
+
+        var validCount = await _context.StockDocumentLines
+            .IgnoreQueryFilters()
+            .CountAsync(x => ids.Contains(x.Id) && x.StockDocumentId == stockDocumentId &&
+                !x.IsDeleted && !x.StockDocument.IsDeleted && x.StockDocument.StoreId == storeId &&
+                x.ProductVariant.StoreId == storeId && !x.ProductVariant.IsDeleted &&
+                x.UnitId.HasValue && x.Unit!.StoreId == storeId &&
+                x.ProductUnitConversionId.HasValue &&
+                x.ProductUnitConversion!.StoreId == storeId &&
+                x.ProductUnitConversion.ProductVariantId == x.ProductVariantId &&
+                x.ProductUnitConversion.UnitId == x.UnitId.Value,
+                ct);
+        return validCount == ids.Length;
     }
 
     public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)

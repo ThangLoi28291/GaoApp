@@ -36,4 +36,17 @@ public sealed class PurchaseReceiptQuantityProjectionTests
         decimal ordered, decimal confirmed, decimal shortClosed, decimal inFlight)
         => Assert.Throws<InvalidOperationException>(() =>
             PurchaseReceiptQuantityProjection.Create(ordered, confirmed, shortClosed, inFlight));
+
+    [Fact]
+    public void Different_receipt_units_share_one_canonical_allocation_pool()
+    {
+        var orderedCanonical = PurchaseReceiptQuantityConversionPolicy.ToCanonical(10m, 12m);
+        var threeBoxes = PurchaseReceiptQuantityConversionPolicy.ToCanonical(3m, 12m);
+        var thirtySixBottles = PurchaseReceiptQuantityConversionPolicy.ToCanonical(36m, 1m);
+
+        Assert.Equal(threeBoxes, thirtySixBottles);
+        var result = PurchaseReceiptQuantityProjection.Create(
+            orderedCanonical, 0m, 0m, threeBoxes + thirtySixBottles);
+        Assert.Equal(48m, result.AvailableToAllocateQuantity);
+    }
 }
