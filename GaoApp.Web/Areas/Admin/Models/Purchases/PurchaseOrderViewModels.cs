@@ -21,6 +21,8 @@ public sealed class PurchaseOrderDetailsViewModel
     public bool IsCreatedByCurrentUser { get; set; }
     public bool CanMarkSent { get; set; }
     public bool CanCancel { get; set; }
+    public bool CanCloseOutstanding { get; set; }
+    public bool CanReopenOutstanding { get; set; }
     public bool CanCreateReceipt { get; set; }
     public bool CanPrint { get; set; }
     public bool CanResolveItems { get; set; }

@@ -18,7 +18,6 @@ public sealed class PurchaseReceiptAlternateUnitUiContractTests
         Assert.Contains("receipt-quantity", script);
         Assert.DoesNotContain("name=\"ConversionFactor\"", view);
         Assert.Contains("data-entry-max", view);
-        Assert.DoesNotContain("reopen", view, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepositoryRoot()

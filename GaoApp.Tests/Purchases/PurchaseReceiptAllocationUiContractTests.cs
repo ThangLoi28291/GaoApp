@@ -21,7 +21,6 @@ public sealed class PurchaseReceiptAllocationUiContractTests
         Assert.Contains("Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất.", view);
         Assert.Contains("projectedOverdelivery", script);
         Assert.DoesNotContain("alternate unit", view, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("reopen", view, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepositoryRoot()

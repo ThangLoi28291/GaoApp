@@ -12,5 +12,6 @@ public enum PurchaseOrderActionType
     ReceiptCreated = 8,
     ReceiptApproved = 9,
     ShortClosed = 10,
-    Cancelled = 11
+    Cancelled = 11,
+    ShortReopened = 12
 }

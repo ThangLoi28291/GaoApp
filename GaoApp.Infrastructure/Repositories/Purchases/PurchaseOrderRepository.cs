@@ -92,6 +92,41 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
             .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
+    public async Task<bool> LockForOutstandingManagementAsync(
+        int storeId,
+        int purchaseOrderId,
+        CancellationToken ct = default)
+    {
+        if (_db.Database.CurrentTransaction == null)
+            throw new InvalidOperationException(
+                "Purchase-order outstanding management requires an active transaction.");
+
+        var lockedId = await _db.PurchaseOrders
+            .FromSqlInterpolated($@"SELECT po.* FROM [PurchaseOrders] po WITH (UPDLOCK,HOLDLOCK,ROWLOCK)
+                WHERE po.[Id] = {purchaseOrderId} AND po.[StoreId] = {storeId} AND po.[IsDeleted] = 0")
+            .AsNoTracking()
+            .Select(x => (int?)x.Id)
+            .SingleOrDefaultAsync(ct);
+        return lockedId.HasValue;
+    }
+
+    public Task<bool> HasActiveReceiptLinesAsync(
+        int storeId,
+        int purchaseOrderId,
+        IReadOnlyCollection<int> purchaseOrderLineIds,
+        CancellationToken ct = default)
+    {
+        if (purchaseOrderLineIds.Count == 0) return Task.FromResult(false);
+        return _db.StockDocumentLines.AsNoTracking().AnyAsync(x =>
+            x.PurchaseOrderLineId.HasValue && purchaseOrderLineIds.Contains(x.PurchaseOrderLineId.Value) &&
+            !x.IsDeleted && !x.StockDocument.IsDeleted &&
+            x.StockDocument.StoreId == storeId &&
+            x.StockDocument.PurchaseOrderId == purchaseOrderId &&
+            (x.StockDocument.Status == StockDocumentStatus.Draft ||
+             x.StockDocument.Status == StockDocumentStatus.PendingApproval ||
+             x.StockDocument.Status == StockDocumentStatus.Rejected), ct);
+    }
+
     public async Task<IReadOnlyDictionary<int, decimal>> GetInFlightReceiptQuantitiesAsync(
         int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
         CancellationToken ct = default)
