@@ -19,6 +19,11 @@ public interface IPurchaseOrderRepository
     Task<Dictionary<PurchaseOrderStatus, int>> GetStatusCountsAsync(CancellationToken ct = default);
     Task<int> CountPendingApprovalAsync(CancellationToken ct = default);
     Task<PurchaseOrder?> GetDetailAsync(int id, bool tracking = false, CancellationToken ct = default);
+    Task<bool> LockForOutstandingManagementAsync(
+        int storeId, int purchaseOrderId, CancellationToken ct = default);
+    Task<bool> HasActiveReceiptLinesAsync(
+        int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
+        CancellationToken ct = default);
     Task<IReadOnlyDictionary<int, decimal>> GetInFlightReceiptQuantitiesAsync(
         int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,
         CancellationToken ct = default)

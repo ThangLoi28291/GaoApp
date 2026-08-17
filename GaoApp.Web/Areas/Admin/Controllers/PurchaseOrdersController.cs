@@ -283,6 +283,7 @@ public sealed class PurchaseOrdersController : Controller
         var editable = order.Status is PurchaseOrderStatus.Draft or PurchaseOrderStatus.ReturnedForRevision;
         var canUpdate = await HasPermissionAsync(PermissionCodes.Purchase.Order.Update);
         var hasReviewPermission = await HasPermissionAsync(PermissionCodes.Purchase.Order.Approve);
+        var hasClosePermission = await HasPermissionAsync(PermissionCodes.Purchase.Order.Close);
         var canCreateReceipt = order.Status is (PurchaseOrderStatus.Approved or
                                    PurchaseOrderStatus.SentToSupplier or PurchaseOrderStatus.PartiallyReceived) &&
                                await HasPermissionAsync(PermissionCodes.Purchase.Receipt.Create);
@@ -307,6 +308,15 @@ public sealed class PurchaseOrdersController : Controller
                             PurchaseOrderStatus.FullyReceived or PurchaseOrderStatus.ShortClosed) &&
                         order.Lines.All(x => x.ReceivedQuantity <= 0m) &&
                         await HasPermissionAsync(PermissionCodes.Purchase.Order.Cancel),
+            CanCloseOutstanding = hasClosePermission &&
+                order.Status is (PurchaseOrderStatus.Approved or PurchaseOrderStatus.SentToSupplier or
+                    PurchaseOrderStatus.PartiallyReceived) &&
+                order.Lines.Any(x => x.PendingQuantity > 0m),
+            CanReopenOutstanding = hasClosePermission &&
+                order.Status is not (PurchaseOrderStatus.Draft or PurchaseOrderStatus.PendingApproval or
+                    PurchaseOrderStatus.ReturnedForRevision or PurchaseOrderStatus.Rejected or
+                    PurchaseOrderStatus.FullyReceived or PurchaseOrderStatus.Cancelled) &&
+                order.Lines.Any(x => x.ShortClosedQuantity > 0m),
             CanCreateReceipt = canCreateReceipt,
             CanPrint = await HasPermissionAsync(PermissionCodes.Purchase.Order.Print),
             CanResolveItems = canResolveItems,
@@ -408,6 +418,34 @@ public sealed class PurchaseOrdersController : Controller
     [Authorize(Policy = PermissionCodes.Purchase.Order.Cancel)]
     public Task<IActionResult> Cancel(int id, [FromForm] PurchaseWorkflowRequest request, CancellationToken ct)
         => RunWorkflow(() => _service.CancelAsync(id, request, ct), id);
+
+    [HttpPost("{id:int}/lines/{lineId:int}/close-outstanding")]
+    [Authorize(Policy = PermissionCodes.Purchase.Order.Close)]
+    public Task<IActionResult> CloseOutstandingLine(
+        int id, int lineId, [FromForm] ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct)
+        => RunWorkflow(() => _service.CloseOutstandingLineAsync(id, lineId, request, ct), id);
+
+    [HttpPost("{id:int}/close-outstanding")]
+    [Authorize(Policy = PermissionCodes.Purchase.Order.Close)]
+    public Task<IActionResult> CloseAllOutstanding(
+        int id, [FromForm] ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct)
+        => RunWorkflow(() => _service.CloseAllOutstandingAsync(id, request, ct), id);
+
+    [HttpPost("{id:int}/lines/{lineId:int}/reopen-outstanding")]
+    [Authorize(Policy = PermissionCodes.Purchase.Order.Close)]
+    public Task<IActionResult> ReopenOutstandingLine(
+        int id, int lineId, [FromForm] ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct)
+        => RunWorkflow(() => _service.ReopenOutstandingLineAsync(id, lineId, request, ct), id);
+
+    [HttpPost("{id:int}/reopen-outstanding")]
+    [Authorize(Policy = PermissionCodes.Purchase.Order.Close)]
+    public Task<IActionResult> ReopenAllOutstanding(
+        int id, [FromForm] ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct)
+        => RunWorkflow(() => _service.ReopenAllOutstandingAsync(id, request, ct), id);
 
     [HttpPost("{id:int}/receipts")]
     [Authorize(Policy = PermissionCodes.Purchase.Receipt.Create)]

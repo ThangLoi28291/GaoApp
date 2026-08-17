@@ -565,6 +565,147 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         await tx.CommitAsync(ct);
     }
 
+    public Task CloseOutstandingLineAsync(
+        int id,
+        int lineId,
+        ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default)
+        => ManageOutstandingAsync(id, lineId, request, reopen: false, ct);
+
+    public Task CloseAllOutstandingAsync(
+        int id,
+        ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default)
+        => ManageOutstandingAsync(id, lineId: null, request, reopen: false, ct);
+
+    public Task ReopenOutstandingLineAsync(
+        int id,
+        int lineId,
+        ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default)
+        => ManageOutstandingAsync(id, lineId, request, reopen: true, ct);
+
+    public Task ReopenAllOutstandingAsync(
+        int id,
+        ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default)
+        => ManageOutstandingAsync(id, lineId: null, request, reopen: true, ct);
+
+    private async Task ManageOutstandingAsync(
+        int id,
+        int? lineId,
+        ManagePurchaseOrderOutstandingRequest request,
+        bool reopen,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var storeId = _tenant.StoreId
+            ?? throw new InvalidOperationException("Current store context is unavailable.");
+        var actorId = _currentUser.UserId
+            ?? throw new BusinessRuleException("Không xác định được người thực hiện thao tác.");
+        var reason = request.Reason?.Trim();
+        if (!reopen && string.IsNullOrWhiteSpace(reason))
+            throw new BusinessRuleException("Đóng phần thiếu bắt buộc phải có lý do.");
+        if (reason?.Length > 500)
+            throw new BusinessRuleException("Lý do hoặc ghi chú không được vượt quá 500 ký tự.");
+
+        await using var tx = await _unitOfWork.BeginTransactionAsync(ct);
+        if (!await _repository.LockForOutstandingManagementAsync(storeId, id, ct))
+            throw new BusinessRuleException("Đơn đặt hàng không tồn tại.");
+
+        var order = await _repository.GetDetailAsync(id, true, ct)
+            ?? throw new BusinessRuleException("Đơn đặt hàng không tồn tại.");
+        EnsureRowVersion(order.RowVersion, request.RowVersion);
+        if (reopen && !PurchaseOrderWorkflowPolicy.CanReopenOutstanding(order.Status))
+            throw new BusinessRuleException("Trạng thái đơn không cho phép mở lại phần đã đóng.");
+        if (!reopen && !PurchaseOrderWorkflowPolicy.CanCloseOutstanding(order.Status))
+            throw new BusinessRuleException(
+                "Chỉ đơn đã duyệt, đã gửi nhà cung cấp hoặc đang nhận hàng mới được đóng phần thiếu.");
+
+        var activeLines = order.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.Id).ToList();
+        var targets = lineId.HasValue
+            ? activeLines.Where(x => x.Id == lineId.Value).ToList()
+            : activeLines;
+        if (targets.Count == 0)
+            throw new BusinessRuleException("Dòng đơn đặt hàng không hợp lệ.");
+
+        targets = reopen
+            ? targets.Where(x => x.ShortClosedQuantity > 0m).ToList()
+            : targets.Where(x => PurchaseReceiptQuantityConversionPolicy.RoundQuantity(x.PendingQuantity) > 0m).ToList();
+        if (targets.Count == 0)
+            throw new BusinessRuleException(reopen
+                ? "Không có phần đã đóng để mở lại."
+                : "Không có phần còn thiếu để đóng.");
+
+        if (!reopen && await _repository.HasActiveReceiptLinesAsync(
+                storeId, order.Id, targets.Select(x => x.Id).ToArray(), ct))
+            throw new BusinessRuleException(
+                "Không thể đóng phần thiếu khi dòng hàng đang có phiếu nhập chưa hoàn tất.");
+
+        var now = DateTime.UtcNow;
+        var fromStatus = order.Status;
+        foreach (var line in targets)
+        {
+            if (reopen)
+            {
+                line.ShortClosedQuantity = 0m;
+                line.ShortCloseReason = null;
+                line.ShortClosedAtUtc = null;
+                line.ShortClosedByUserId = null;
+                line.ReceiptStatus = line.PendingQuantity > 0m
+                    ? line.ReceivedQuantity > 0m
+                        ? PurchaseOrderLineReceiptStatus.PartiallyReceived
+                        : PurchaseOrderLineReceiptStatus.NotReceived
+                    : PurchaseOrderLineReceiptStatus.FullyReceived;
+            }
+            else
+            {
+                var quantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(line.PendingQuantity);
+                line.ShortClosedQuantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+                    checked(line.ShortClosedQuantity + quantity));
+                line.ShortCloseReason = reason;
+                line.ShortClosedAtUtc = now;
+                line.ShortClosedByUserId = actorId;
+                line.ReceiptStatus = PurchaseOrderLineReceiptStatus.ShortClosed;
+            }
+        }
+
+        order.Status = reopen
+            ? ResolveStatusAfterReopen(order, activeLines)
+            : PurchaseReceiptPolicy.ResolveOrderStatus(activeLines, order.Status);
+        order.UpdatedAtUtc = now;
+        var targetDescription = lineId.HasValue
+            ? $"dòng {targets[0].LineNo}"
+            : $"{targets.Count} dòng";
+        var note = reopen
+            ? $"Mở lại phần đã đóng của {targetDescription}." +
+              (string.IsNullOrWhiteSpace(reason) ? string.Empty : $" Ghi chú: {reason}")
+            : $"Đóng phần còn thiếu của {targetDescription}. Lý do: {reason}";
+        AddAction(
+            order,
+            reopen ? PurchaseOrderActionType.ShortReopened : PurchaseOrderActionType.ShortClosed,
+            fromStatus,
+            order.Status,
+            note);
+
+        await _repository.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+    }
+
+    private static PurchaseOrderStatus ResolveStatusAfterReopen(
+        PurchaseOrder order,
+        IReadOnlyCollection<PurchaseOrderLine> activeLines)
+    {
+        var resolved = PurchaseReceiptPolicy.ResolveOrderStatus(activeLines, order.Status);
+        if (resolved != PurchaseOrderStatus.ShortClosed) return resolved;
+        if (activeLines.Any(x => x.ReceivedQuantity > 0m))
+            return PurchaseOrderStatus.PartiallyReceived;
+        return order.Actions.Any(x => !x.IsDeleted &&
+            x.ActionType == PurchaseOrderActionType.SentToSupplier)
+                ? PurchaseOrderStatus.SentToSupplier
+                : PurchaseOrderStatus.Approved;
+    }
+
     private async Task ReviewTransitionAsync(
         int id,
         PurchaseWorkflowRequest request,

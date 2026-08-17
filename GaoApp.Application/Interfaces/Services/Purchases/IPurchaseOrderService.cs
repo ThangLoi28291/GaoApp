@@ -33,4 +33,16 @@ public interface IPurchaseOrderService
     Task RejectAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
     Task MarkSentAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
     Task CancelAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
+    Task CloseOutstandingLineAsync(
+        int id, int lineId, ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default);
+    Task CloseAllOutstandingAsync(
+        int id, ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default);
+    Task ReopenOutstandingLineAsync(
+        int id, int lineId, ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default);
+    Task ReopenAllOutstandingAsync(
+        int id, ManagePurchaseOrderOutstandingRequest request,
+        CancellationToken ct = default);
 }

@@ -46,6 +46,7 @@ public static class PurchaseOrderPresentation
         PurchaseOrderActionType.ReceiptCreated => "Tạo phiếu nhập",
         PurchaseOrderActionType.ReceiptApproved => "Duyệt phiếu nhập",
         PurchaseOrderActionType.ShortClosed => "Đóng phần giao thiếu",
+        PurchaseOrderActionType.ShortReopened => "Mở lại phần đã đóng",
         PurchaseOrderActionType.Cancelled => "Hủy đơn",
         _ => action.ToString()
     };

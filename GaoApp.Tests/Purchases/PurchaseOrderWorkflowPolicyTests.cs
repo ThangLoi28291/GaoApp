@@ -73,6 +73,36 @@ public sealed class PurchaseOrderWorkflowPolicyTests
             .WithMessage("*đã phát sinh nhận hàng*");
     }
 
+    [Theory]
+    [InlineData(PurchaseOrderStatus.Approved)]
+    [InlineData(PurchaseOrderStatus.SentToSupplier)]
+    [InlineData(PurchaseOrderStatus.PartiallyReceived)]
+    public void Operational_orders_allow_manager_short_close(PurchaseOrderStatus status)
+        => FluentActions.Invoking(() =>
+                PurchaseOrderWorkflowPolicy.EnsureCanCloseOutstanding(status))
+            .Should().NotThrow();
+
+    [Theory]
+    [InlineData(PurchaseOrderStatus.Draft)]
+    [InlineData(PurchaseOrderStatus.PendingApproval)]
+    [InlineData(PurchaseOrderStatus.FullyReceived)]
+    [InlineData(PurchaseOrderStatus.ShortClosed)]
+    [InlineData(PurchaseOrderStatus.Cancelled)]
+    public void Non_operational_orders_reject_new_short_close(PurchaseOrderStatus status)
+        => FluentActions.Invoking(() =>
+                PurchaseOrderWorkflowPolicy.EnsureCanCloseOutstanding(status))
+            .Should().Throw<InvalidOperationException>();
+
+    [Theory]
+    [InlineData(PurchaseOrderStatus.Approved)]
+    [InlineData(PurchaseOrderStatus.SentToSupplier)]
+    [InlineData(PurchaseOrderStatus.PartiallyReceived)]
+    [InlineData(PurchaseOrderStatus.ShortClosed)]
+    public void Non_terminal_receiving_orders_allow_reopen(PurchaseOrderStatus status)
+        => FluentActions.Invoking(() =>
+                PurchaseOrderWorkflowPolicy.EnsureCanReopenOutstanding(status))
+            .Should().NotThrow();
+
     [Fact]
     public void Source_commercial_command_should_not_accept_product_unit_or_quantity()
     {

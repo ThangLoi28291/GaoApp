@@ -43,4 +43,27 @@ public static class PurchaseOrderWorkflowPolicy
             PurchaseOrderStatus.FullyReceived or PurchaseOrderStatus.ShortClosed)
             throw new InvalidOperationException("Trạng thái đơn không cho phép hủy.");
     }
+
+    public static void EnsureCanCloseOutstanding(PurchaseOrderStatus status)
+    {
+        if (!CanCloseOutstanding(status))
+            throw new InvalidOperationException(
+                "Chỉ đơn đã duyệt, đã gửi nhà cung cấp hoặc đang nhận hàng mới được đóng phần thiếu.");
+    }
+
+    public static bool CanCloseOutstanding(PurchaseOrderStatus status)
+        => status is PurchaseOrderStatus.Approved or
+            PurchaseOrderStatus.SentToSupplier or PurchaseOrderStatus.PartiallyReceived;
+
+    public static void EnsureCanReopenOutstanding(PurchaseOrderStatus status)
+    {
+        if (!CanReopenOutstanding(status))
+            throw new InvalidOperationException(
+                "Trạng thái đơn không cho phép mở lại phần đã đóng.");
+    }
+
+    public static bool CanReopenOutstanding(PurchaseOrderStatus status)
+        => status is not (PurchaseOrderStatus.Draft or PurchaseOrderStatus.PendingApproval or
+            PurchaseOrderStatus.ReturnedForRevision or PurchaseOrderStatus.Rejected or
+            PurchaseOrderStatus.FullyReceived or PurchaseOrderStatus.Cancelled);
 }

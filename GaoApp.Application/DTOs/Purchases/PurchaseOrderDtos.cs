@@ -316,6 +316,12 @@ public sealed class PurchaseWorkflowRequest
     public string? RowVersion { get; set; }
 }
 
+public sealed class ManagePurchaseOrderOutstandingRequest
+{
+    [Required] public string RowVersion { get; set; } = string.Empty;
+    [StringLength(500)] public string? Reason { get; set; }
+}
+
 public sealed class CreatePurchaseReceiptLineRequest
 {
     [Range(1, int.MaxValue)] public int PurchaseOrderLineId { get; set; }
