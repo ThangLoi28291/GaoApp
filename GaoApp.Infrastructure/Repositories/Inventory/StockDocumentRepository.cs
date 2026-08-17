@@ -242,6 +242,38 @@ public class StockDocumentRepository : IStockDocumentRepository
                     .First().BaseUnitPriceBeforeVat);
     }
 
+    public async Task<bool> LockPurchasePriceHistoryVariantsAsync(
+        int storeId,
+        IReadOnlyCollection<int> productVariantIds,
+        CancellationToken ct = default)
+    {
+        if (_transaction == null)
+            throw new InvalidOperationException(
+                "Purchase-price history lock requires an active transaction.");
+        if (storeId <= 0) return false;
+
+        var ids = productVariantIds
+            .Where(x => x > 0)
+            .Distinct()
+            .OrderBy(x => x)
+            .ToArray();
+        if (ids.Length == 0 || ids.Length != productVariantIds.Distinct().Count())
+            return false;
+
+        foreach (var id in ids)
+        {
+            var lockedId = await _context.ProductVariants
+                .FromSqlInterpolated($@"SELECT pv.* FROM [ProductVariant] pv WITH (UPDLOCK,HOLDLOCK,ROWLOCK)
+                    WHERE pv.[Id] = {id} AND pv.[StoreId] = {storeId} AND pv.[IsDeleted] = 0")
+                .AsNoTracking()
+                .Select(x => (int?)x.Id)
+                .SingleOrDefaultAsync(ct);
+            if (lockedId != id) return false;
+        }
+
+        return true;
+    }
+
     public Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default)
         => _context.PurchaseOrders
             .Include(x => x.Supplier)
@@ -489,17 +521,20 @@ public class StockDocumentRepository : IStockDocumentRepository
                 (entry.State == EntityState.Added
                     ? PurchaseReceiptAuditEventType.ReceiptCreated
                     : PurchaseReceiptAuditEventType.PhysicalHeaderChanged);
+            var evidenceValues = intent?.EvidenceValues ??
+                new Dictionary<string, object?>(StringComparer.Ordinal);
             result.Add(CreateEvent(
                 entry.Entity,
                 line: null,
                 eventType,
                 intent?.Reason,
                 intent?.Note,
-                changedFields,
+                changedFields.Concat(evidenceValues.Keys).ToArray(),
                 entry.State == EntityState.Added
                     ? Array.Empty<KeyValuePair<string, object?>>()
                     : ReadValues(entry, changedFields, original: true),
-                ReadValues(entry, changedFields, original: false),
+                ReadValues(entry, changedFields, original: false)
+                    .Concat(evidenceValues),
                 traceId));
         }
 

@@ -611,6 +611,11 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             IEnumerable<int> productVariantIds,
             CancellationToken ct = default)
             => throw new NotSupportedException();
+        public Task<bool> LockPurchasePriceHistoryVariantsAsync(
+            int storeId,
+            IReadOnlyCollection<int> productVariantIds,
+            CancellationToken ct = default)
+            => throw new NotSupportedException();
         public Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)

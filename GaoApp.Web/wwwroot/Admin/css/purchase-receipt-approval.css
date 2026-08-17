@@ -94,10 +94,12 @@
 
 .commercial-price-variance.is-up {
     color: #d92d20 !important;
+    font-weight: 700;
 }
 
 .commercial-price-variance.is-down {
     color: #039855 !important;
+    font-weight: 700;
 }
 
 .sd-allocation-status {

@@ -81,7 +81,8 @@ public static class PurchaseReceiptAuditEvidence
         StockDocument document,
         PurchaseReceiptAuditEventType eventType,
         string? reason = null,
-        string? note = null)
+        string? note = null,
+        IReadOnlyDictionary<string, object?>? evidenceValues = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         var normalizedReason = NormalizeText(reason);
@@ -100,7 +101,12 @@ public static class PurchaseReceiptAuditEvidence
             new WorkflowIntent(
                 eventType,
                 normalizedReason,
-                NormalizeText(note)));
+                NormalizeText(note),
+                evidenceValues is null
+                    ? new Dictionary<string, object?>(StringComparer.Ordinal)
+                    : new Dictionary<string, object?>(
+                        evidenceValues,
+                        StringComparer.Ordinal)));
     }
 
     public static WorkflowIntent? GetWorkflowIntent(StockDocument document)
@@ -171,5 +177,6 @@ public static class PurchaseReceiptAuditEvidence
     public sealed record WorkflowIntent(
         PurchaseReceiptAuditEventType EventType,
         string? Reason,
-        string? Note);
+        string? Note,
+        IReadOnlyDictionary<string, object?> EvidenceValues);
 }

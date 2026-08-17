@@ -468,7 +468,9 @@ public class StockDocumentService : IStockDocumentService
                         LastPurchaseUnitPriceBeforeVat = lastPurchaseBasePrices.TryGetValue(
                             x.ProductVariantId,
                             out var lastBaseUnitPrice)
-                                ? PurchasePricingPolicy.RoundMoney(lastBaseUnitPrice * x.Factor)
+                                ? TryCalculateComparableLastPurchaseUnitPrice(
+                                    lastBaseUnitPrice,
+                                    x.Factor)
                                 : null,
                         TaxRate = x.TaxRate,
                         VatAmount = x.VatAmount,
@@ -1070,6 +1072,18 @@ public class StockDocumentService : IStockDocumentService
         var taxCache = new Dictionary<int, Tax>();
         var lineAmounts = new Dictionary<int, PurchasePricingPolicy.LineAmounts>();
         var lineTaxes = new Dictionary<int, Tax?>();
+        var priceVarianceContext = activeLines
+            .Select(line =>
+            {
+                var input = financialInputs[line.Id];
+                return new PriceVarianceValidationLine(
+                    line.LineNo,
+                    line.ProductVariantId,
+                    line.Factor,
+                    input.UnitPriceBeforeVat,
+                    input.ExpectedLastPurchaseUnitPriceBeforeVat);
+            })
+            .ToArray();
 
         foreach (var line in activeLines)
         {
@@ -1116,6 +1130,11 @@ public class StockDocumentService : IStockDocumentService
                 throw new BusinessRuleException($"Giá hoặc thành tiền dòng {line.LineNo} vượt giới hạn cho phép.");
             }
         }
+
+        _ = await ValidatePriceVariancesAsync(
+            priceVarianceContext,
+            request.AcceptPriceVariance,
+            ct);
 
         IReadOnlyDictionary<int, decimal> freightAllocations;
         var freightTotal = 0m;
@@ -1198,6 +1217,8 @@ public class StockDocumentService : IStockDocumentService
             PurchaseReceiptAuditEventType.CommercialApprovalConfirmed,
             request.AcceptOverdelivery,
             request.OverdeliveryNote,
+            priceVarianceContext,
+            request.AcceptPriceVariance,
             ct);
     }
 
@@ -1218,6 +1239,8 @@ public class StockDocumentService : IStockDocumentService
             PurchaseReceiptAuditEventType.GenericReceiptConfirmed,
             acceptOverdelivery: false,
             overdeliveryNote: null,
+            priceVarianceContext: null,
+            acceptPriceVariance: false,
             ct);
     }
 
@@ -1240,6 +1263,8 @@ public class StockDocumentService : IStockDocumentService
             PurchaseReceiptAuditEventType.GenericReceiptConfirmed,
             acceptOverdelivery,
             overdeliveryNote,
+            priceVarianceContext: null,
+            acceptPriceVariance: false,
             ct);
     }
 
@@ -1250,6 +1275,8 @@ public class StockDocumentService : IStockDocumentService
         PurchaseReceiptAuditEventType confirmationEventType,
         bool acceptOverdelivery,
         string? overdeliveryNote,
+        IReadOnlyList<PriceVarianceValidationLine>? priceVarianceContext,
+        bool acceptPriceVariance,
         CancellationToken ct)
     {
 
@@ -1379,6 +1406,30 @@ public class StockDocumentService : IStockDocumentService
 
         try
         {
+            IReadOnlyList<PurchaseReceiptPriceVarianceDecision> priceVariances =
+                Array.Empty<PurchaseReceiptPriceVarianceDecision>();
+            if (priceVarianceContext is not null)
+            {
+                var variantIds = priceVarianceContext
+                    .Select(x => x.ProductVariantId)
+                    .Distinct()
+                    .OrderBy(x => x)
+                    .ToArray();
+                if (!await _stockDocumentRepository.LockPurchasePriceHistoryVariantsAsync(
+                        document.StoreId,
+                        variantIds,
+                        ct))
+                {
+                    throw new BusinessRuleException(
+                        "Không thể khóa lịch sử giá nhập của phiếu. Vui lòng tải lại và thử lại.");
+                }
+
+                priceVariances = await ValidatePriceVariancesAsync(
+                    priceVarianceContext,
+                    acceptPriceVariance,
+                    ct);
+            }
+
             IReadOnlyList<PurchaseReceiptOverdeliveryDecision> overdelivery =
                 Array.Empty<PurchaseReceiptOverdeliveryDecision>();
             if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder && document.PurchaseOrderId.HasValue)
@@ -1507,7 +1558,12 @@ public class StockDocumentService : IStockDocumentService
                 document,
                 confirmationEventType,
                 reason: overdelivery.Count > 0 ? overdeliveryNote : null,
-                note: BuildConfirmationAuditNote(document.ApprovalNote, overdelivery));
+                note: BuildConfirmationAuditNote(
+                    document.ApprovalNote,
+                    overdelivery,
+                    priceVariances),
+                evidenceValues: PurchaseReceiptPriceVariancePolicy
+                    .BuildAuditEvidence(priceVariances));
             await _stockDocumentRepository.SaveChangesAsync(ct);
             await _stockDocumentRepository.CommitTransactionAsync(ct);
         }
@@ -1740,31 +1796,140 @@ public class StockDocumentService : IStockDocumentService
         return overdelivery;
     }
 
+    private async Task<IReadOnlyList<PurchaseReceiptPriceVarianceDecision>>
+        ValidatePriceVariancesAsync(
+            IReadOnlyList<PriceVarianceValidationLine> lines,
+            bool acceptPriceVariance,
+            CancellationToken ct)
+    {
+        var lastPurchaseBasePrices = await _stockDocumentRepository
+            .GetLastPurchaseBaseUnitPricesBeforeVatAsync(
+                lines.Select(x => x.ProductVariantId),
+                ct);
+        var priceVariances = new List<PurchaseReceiptPriceVarianceDecision>();
+
+        foreach (var line in lines.OrderBy(x => x.LineNo))
+        {
+            var lastBaseUnitPrice = lastPurchaseBasePrices.TryGetValue(
+                line.ProductVariantId,
+                out var historicalBaseUnitPrice)
+                    ? historicalBaseUnitPrice
+                    : (decimal?)null;
+            decimal? authoritativeLastUnitPrice;
+            try
+            {
+                authoritativeLastUnitPrice = lastBaseUnitPrice.HasValue
+                    ? PurchaseReceiptPriceVariancePolicy.ToReceiptUnitPrice(
+                        line.Factor,
+                        lastBaseUnitPrice.Value)
+                    : null;
+                if (authoritativeLastUnitPrice.HasValue)
+                    EnsureStoredMoney(
+                        authoritativeLastUnitPrice.Value,
+                        $"Giá nhập gần nhất quy đổi của dòng {line.LineNo}");
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                throw new BusinessRuleException(
+                    $"Không thể quy đổi giá nhập gần nhất của dòng {line.LineNo}. " +
+                    "Vui lòng kiểm tra lại đơn vị và hệ số quy đổi.");
+            }
+            catch (OverflowException)
+            {
+                throw new BusinessRuleException(
+                    $"Không thể quy đổi giá nhập gần nhất của dòng {line.LineNo}. " +
+                    "Vui lòng kiểm tra lại đơn vị và hệ số quy đổi.");
+            }
+
+            var expectedLastUnitPrice = line.ExpectedLastUnitPriceBeforeVat.HasValue
+                ? PurchasePricingPolicy.RoundMoney(
+                    line.ExpectedLastUnitPriceBeforeVat.Value)
+                : (decimal?)null;
+            if (authoritativeLastUnitPrice != expectedLastUnitPrice)
+            {
+                throw new BusinessRuleException(
+                    $"Giá nhập gần nhất của dòng {line.LineNo} đã thay đổi. " +
+                    "Vui lòng tải lại phiếu để kiểm tra chênh lệch giá mới nhất.");
+            }
+
+            var variance = PurchaseReceiptPriceVariancePolicy.Evaluate(
+                line.LineNo,
+                line.CurrentUnitPriceBeforeVat,
+                line.Factor,
+                lastBaseUnitPrice);
+            if (variance is not null) priceVariances.Add(variance);
+        }
+
+        if (priceVariances.Count > 0 && !acceptPriceVariance)
+        {
+            var lineNumbers = string.Join(", ", priceVariances.Select(x => x.LineNo));
+            throw new BusinessRuleException(
+                $"Giá nhập thay đổi so với lần nhập đã duyệt gần nhất tại dòng {lineNumbers}. " +
+                "Manager/Admin phải xác nhận đã kiểm tra chênh lệch giá trước khi duyệt.");
+        }
+
+        return priceVariances;
+    }
+
     private static string? BuildConfirmationAuditNote(
         string? approvalNote,
-        IReadOnlyList<PurchaseReceiptOverdeliveryDecision> overdelivery)
+        IReadOnlyList<PurchaseReceiptOverdeliveryDecision> overdelivery,
+        IReadOnlyList<PurchaseReceiptPriceVarianceDecision> priceVariances)
     {
         var normalizedApprovalNote = string.IsNullOrWhiteSpace(approvalNote)
             ? null
             : approvalNote.Trim();
-        if (overdelivery.Count == 0) return normalizedApprovalNote;
+        var evidence = new List<string>();
+        if (overdelivery.Count > 0)
+        {
+            var incrementalTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+                overdelivery.Sum(x => x.IncrementalCanonicalQuantity));
+            var afterTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+                overdelivery.Sum(x => x.CanonicalQuantityAfterConfirmation));
+            var lineNumbers = string.Join(", ", overdelivery
+                .OrderBy(x => x.LineNo)
+                .Select(x => x.LineNo));
+            evidence.Add(
+                $"Đã xác nhận nhận vượt đơn đặt hàng; {overdelivery.Count} dòng [{lineNumbers}]; " +
+                $"lượng vượt tăng {incrementalTotal:0.###} base; " +
+                $"tổng lượng vượt sau duyệt {afterTotal:0.###} base.");
+        }
 
-        var incrementalTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
-            overdelivery.Sum(x => x.IncrementalCanonicalQuantity));
-        var afterTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
-            overdelivery.Sum(x => x.CanonicalQuantityAfterConfirmation));
-        var lineNumbers = string.Join(
-            ", ",
-            overdelivery.OrderBy(x => x.LineNo).Select(x => x.LineNo));
-        var evidence =
-            $"Đã xác nhận nhận vượt đơn đặt hàng; {overdelivery.Count} dòng [{lineNumbers}]; " +
-            $"lượng vượt tăng {incrementalTotal:0.###} base; " +
-            $"tổng lượng vượt sau duyệt {afterTotal:0.###} base.";
-        return evidence.Length <= 1000
-            ? evidence
-            : $"Đã xác nhận nhận vượt đơn đặt hàng; {overdelivery.Count} dòng; " +
-              $"lượng vượt tăng {incrementalTotal:0.###} base; " +
-              $"tổng lượng vượt sau duyệt {afterTotal:0.###} base.";
+        if (priceVariances.Count > 0)
+        {
+            var details = string.Join("; ", priceVariances
+                .OrderBy(x => x.LineNo)
+                .Select(x =>
+                    $"dòng {x.LineNo}: {x.PreviousUnitPriceBeforeVat:0.##} -> " +
+                    $"{x.CurrentUnitPriceBeforeVat:0.##}"));
+            evidence.Add(
+                $"Đã xác nhận chênh lệch giá nhập so với lần gần nhất ({details}).");
+        }
+
+        if (evidence.Count == 0) return normalizedApprovalNote;
+        var mandatoryEvidence = string.Join(" ", evidence);
+        if (mandatoryEvidence.Length <= 1000)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedApprovalNote))
+                return mandatoryEvidence;
+
+            var withApproval =
+                $"{mandatoryEvidence} Ghi chú duyệt: {normalizedApprovalNote}";
+            return withApproval.Length <= 1000
+                ? withApproval
+                : mandatoryEvidence;
+        }
+
+        var compact = string.Join(" ", new[]
+        {
+            overdelivery.Count > 0
+                ? $"Đã xác nhận nhận vượt đơn đặt hàng ({overdelivery.Count} dòng)."
+                : null,
+            priceVariances.Count > 0
+                ? $"Đã xác nhận chênh lệch giá nhập ({priceVariances.Count} dòng)."
+                : null
+        }.Where(x => x is not null));
+        return compact.Length <= 1000 ? compact : compact[..1000];
     }
 
     private void ApplyApprovedReceiptToPurchaseOrder(
@@ -2034,6 +2199,34 @@ public class StockDocumentService : IStockDocumentService
         if (value < 0m || value > MaximumStoredMoney)
             throw new BusinessRuleException($"{fieldName} vượt giới hạn lưu trữ cho phép.");
     }
+
+    private static decimal? TryCalculateComparableLastPurchaseUnitPrice(
+        decimal lastBaseUnitPrice,
+        decimal factor)
+    {
+        try
+        {
+            var value = PurchaseReceiptPriceVariancePolicy.ToReceiptUnitPrice(
+                factor,
+                lastBaseUnitPrice);
+            return value <= MaximumStoredMoney ? value : null;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record PriceVarianceValidationLine(
+        int LineNo,
+        int ProductVariantId,
+        decimal Factor,
+        decimal CurrentUnitPriceBeforeVat,
+        decimal? ExpectedLastUnitPriceBeforeVat);
 
     private static int TryParseSequence(string documentNo, string prefix)
     {

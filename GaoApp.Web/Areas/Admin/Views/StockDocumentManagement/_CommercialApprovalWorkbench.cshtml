@@ -114,6 +114,7 @@
                         var selectedTaxId = line.TaxId ?? (!readOnly ? line.SuggestedTaxId : null);
                         <tr class="commercial-line"
                             data-line-id="@line.Id"
+                            data-line-no="@line.LineNo"
                             data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
                             data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
                             <td>
@@ -157,7 +158,7 @@
                                 <span class="commercial-last-price" data-value="@(line.LastPurchaseUnitPriceBeforeVat?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)">
                                     @(line.LastPurchaseUnitPriceBeforeVat.HasValue ? line.LastPurchaseUnitPriceBeforeVat.Value.ToString("N0") + " đ" : "Chưa có")
                                 </span>
-                                <div class="small commercial-price-variance text-muted"></div>
+                                <div class="small commercial-price-variance text-muted" aria-live="polite"></div>
                             </td>
                             <td>
                                 <select class="form-select form-select-sm commercial-tax" disabled="@(readOnly || !Model.HasVat)">

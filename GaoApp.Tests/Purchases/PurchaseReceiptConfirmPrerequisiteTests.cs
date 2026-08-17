@@ -123,6 +123,184 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
     }
 
     [Fact]
+    public async Task Commercial_confirm_rejects_price_variance_without_explicit_acceptance()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 10m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 10m;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(
+            document.Id,
+            request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*phải xác nhận*chênh lệch giá*");
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        fixture.Repository.BeginTransactionCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_accepts_price_variance_without_requiring_reason_and_audits_values()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 10m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.AcceptPriceVariance = true;
+        request.ApprovalNote = null;
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 10m;
+
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        document.Status.Should().Be(StockDocumentStatus.Confirmed);
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.Reason.Should().BeNull();
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.Note.Should()
+            .Contain("dòng 1: 10 -> 12");
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.EvidenceValues.Should()
+            .Contain(new KeyValuePair<string, object?>(
+                "PriceVariance.Line.1.PreviousUnitPriceBeforeVat", 10m))
+            .And.Contain(new KeyValuePair<string, object?>(
+                "PriceVariance.Line.1.CurrentUnitPriceBeforeVat", 12m));
+        fixture.Repository.PriceHistoryLockCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_preserves_zero_snapshot_from_positive_fractional_history()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var line = document.Lines.Single();
+        line.Quantity = 10m;
+        line.Factor = 0.0001m;
+        line.BaseQuantity = 0.001m;
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 0.01m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.Lines.Single().UnitPriceBeforeVat = 0.01m;
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 0m;
+
+        var missingAcceptance = () => fixture.Service.ApproveCommercialAsync(
+            document.Id,
+            request);
+
+        await missingAcceptance.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*phải xác nhận*chênh lệch giá*");
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        fixture.Repository.BeginTransactionCalls.Should().Be(0);
+
+        request.AcceptPriceVariance = true;
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        document.Status.Should().Be(StockDocumentStatus.Confirmed);
+        var intent = PurchaseReceiptAuditEvidence.GetWorkflowIntent(document);
+        intent.Should().NotBeNull();
+        intent!.Note.Should().Contain("dòng 1: 0 ->");
+        intent.EvidenceValues.Should().Contain(
+            new KeyValuePair<string, object?>(
+                "PriceVariance.Line.1.PreviousUnitPriceBeforeVat", 0m))
+            .And.Contain(new KeyValuePair<string, object?>(
+                "PriceVariance.Line.1.CurrentUnitPriceBeforeVat", 0.01m));
+        fixture.Repository.PriceHistoryLockCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Locked_revalidation_rejects_history_committed_after_early_validation()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 10m;
+        fixture.Repository.OnPriceHistoryLock = () =>
+            fixture.Repository.LastPurchaseBasePrices[31] = 11m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.AcceptPriceVariance = true;
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 10m;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*đã thay đổi*tải lại phiếu*");
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.PriceHistoryLockCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+        fixture.Movements.PreLockCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Maximum_approval_note_yields_to_mandatory_price_and_overdelivery_evidence()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreatePurchaseOrderReceipt(supplier);
+        document.PurchaseOrder!.Lines.Single().OrderedQuantity = 1m;
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 10m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.AcceptPriceVariance = true;
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 10m;
+        request.AcceptOverdelivery = true;
+        request.ApprovalNote = new string('a', 1000);
+
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        var intent = PurchaseReceiptAuditEvidence.GetWorkflowIntent(document);
+        intent.Should().NotBeNull();
+        intent!.Note.Should().Contain("dòng 1: 10 -> 12");
+        intent.Note.Should().Contain("lượng vượt tăng 1 base");
+        intent.Note.Should().NotContain(new string('a', 1000));
+        intent.Note!.Length.Should().BeLessThanOrEqualTo(1000);
+        intent.EvidenceValues.Should().ContainKeys(
+            "PriceVariance.Line.1.PreviousUnitPriceBeforeVat",
+            "PriceVariance.Line.1.CurrentUnitPriceBeforeVat");
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_does_not_require_acceptance_when_converted_last_price_matches()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.Lines.Single().Factor = 3m;
+        document.Lines.Single().BaseQuantity = 6m;
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 4m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 12m;
+
+        await fixture.Service.ApproveCommercialAsync(
+            document.Id,
+            request);
+
+        document.Status.Should().Be(StockDocumentStatus.Confirmed);
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.Note.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_rejects_stale_last_price_snapshot_even_when_variance_is_accepted()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.LastPurchaseBasePrices[31] = 11m;
+        var request = ValidCommercialRequest(supplier.Id);
+        request.AcceptPriceVariance = true;
+        request.Lines.Single().ExpectedLastPurchaseUnitPriceBeforeVat = 10m;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*đã thay đổi*tải lại phiếu*");
+        fixture.Repository.BeginTransactionCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Purchase_order_receipt_missing_supplier_fails_before_mutation()
     {
         var supplier = CreateSupplier(51);
@@ -604,6 +782,9 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         public int GetSupplierCalls { get; private set; }
         public int SupplierExistsCalls { get; private set; }
         public List<PurchasePayable> AddedPayables { get; } = [];
+        public Dictionary<int, decimal> LastPurchaseBasePrices { get; } = [];
+        public int PriceHistoryLockCalls { get; private set; }
+        public Action? OnPriceHistoryLock { get; set; }
 
         public Task AddAsync(StockDocument entity, CancellationToken ct = default)
             => throw new NotSupportedException();
@@ -642,7 +823,19 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         public Task<Dictionary<int, decimal>> GetLastPurchaseBaseUnitPricesBeforeVatAsync(
             IEnumerable<int> productVariantIds,
             CancellationToken ct = default)
-            => throw new NotSupportedException();
+            => Task.FromResult(productVariantIds
+                .Distinct()
+                .Where(LastPurchaseBasePrices.ContainsKey)
+                .ToDictionary(x => x, x => LastPurchaseBasePrices[x]));
+        public Task<bool> LockPurchasePriceHistoryVariantsAsync(
+            int storeId,
+            IReadOnlyCollection<int> productVariantIds,
+            CancellationToken ct = default)
+        {
+            PriceHistoryLockCalls++;
+            OnPriceHistoryLock?.Invoke();
+            return Task.FromResult(storeId == 1 && productVariantIds.All(x => x > 0));
+        }
         public Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)
