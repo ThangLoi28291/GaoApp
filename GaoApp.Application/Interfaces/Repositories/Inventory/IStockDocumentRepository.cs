@@ -39,6 +39,10 @@ public interface IStockDocumentRepository
     Task<Dictionary<int, decimal>> GetLastPurchaseBaseUnitPricesBeforeVatAsync(
         IEnumerable<int> productVariantIds,
         CancellationToken ct = default);
+    Task<bool> LockPurchasePriceHistoryVariantsAsync(
+        int storeId,
+        IReadOnlyCollection<int> productVariantIds,
+        CancellationToken ct = default);
     Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<int, decimal>> GetInFlightPurchaseReceiptQuantitiesAsync(
         int storeId, int purchaseOrderId, IReadOnlyCollection<int> purchaseOrderLineIds,

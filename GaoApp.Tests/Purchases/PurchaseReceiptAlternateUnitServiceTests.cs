@@ -172,6 +172,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
             var line = order.Lines.Single();
             var repository = Proxy<IStockDocumentRepository>((method, args) => method.Name switch
             {
+                nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
                 nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
                 nameof(IStockDocumentRepository.CommitTransactionAsync) => Task.CompletedTask,
                 nameof(IStockDocumentRepository.RollbackTransactionAsync) => Rollback(() => rollbacks++),
@@ -300,6 +301,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         var order = CreateOrderWithAlternateCandidates(mode);
         var repository = Proxy<IStockDocumentRepository>((method, _) => method.Name switch
         {
+            nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
             nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.RollbackTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.LockPurchaseOrderForReceiptAsync) =>
@@ -354,6 +356,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         {
             nameof(IStockDocumentRepository.GetForConfirmAsync) => Task.FromResult<StockDocument?>(document),
             nameof(IStockDocumentRepository.GetSupplierAsync) => Task.FromResult<Supplier?>(document.Supplier),
+            nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
             nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.CommitTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.RollbackTransactionAsync) => Task.CompletedTask,
@@ -735,6 +738,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         {
             nameof(IStockDocumentRepository.GetForConfirmAsync) => Task.FromResult<StockDocument?>(document),
             nameof(IStockDocumentRepository.GetSupplierAsync) => Task.FromResult<Supplier?>(document.Supplier),
+            nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
             nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.RollbackTransactionAsync) => Rollback(rollback),
             nameof(IStockDocumentRepository.LockPurchaseOrderForReceiptAsync) =>
@@ -767,6 +771,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         {
             nameof(IStockDocumentRepository.GetForConfirmAsync) => Task.FromResult<StockDocument?>(document),
             nameof(IStockDocumentRepository.GetSupplierAsync) => Task.FromResult<Supplier?>(document.Supplier),
+            nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
             nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.CommitTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.RollbackTransactionAsync) => Task.CompletedTask,

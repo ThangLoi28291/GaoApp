@@ -148,7 +148,12 @@ public sealed class PurchaseReceiptAuditWorkflowTests
         PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
             document,
             PurchaseReceiptAuditEventType.CommercialApprovalConfirmed,
-            note: document.ApprovalNote);
+            note: document.ApprovalNote,
+            evidenceValues: new Dictionary<string, object?>
+            {
+                ["PriceVariance.Line.1.PreviousUnitPriceBeforeVat"] = 90m,
+                ["PriceVariance.Line.1.CurrentUnitPriceBeforeVat"] = 100m
+            });
 
         await repository.SaveChangesAsync();
 
@@ -161,6 +166,16 @@ public sealed class PurchaseReceiptAuditWorkflowTests
             nameof(StockDocument.FreightTotal),
             nameof(StockDocument.Status),
             nameof(StockDocument.ApprovalNote));
+        ReadFields(confirmation).Should().Contain(
+            "PriceVariance.Line.1.PreviousUnitPriceBeforeVat",
+            "PriceVariance.Line.1.CurrentUnitPriceBeforeVat");
+        var confirmationValues = ReadObject(confirmation.NewValuesJson);
+        confirmationValues.GetProperty(
+                "PriceVariance.Line.1.PreviousUnitPriceBeforeVat")
+            .GetDecimal().Should().Be(90m);
+        confirmationValues.GetProperty(
+                "PriceVariance.Line.1.CurrentUnitPriceBeforeVat")
+            .GetDecimal().Should().Be(100m);
         var lineChange = await SingleEventAsync(
             db,
             PurchaseReceiptAuditEventType.PhysicalLineChanged);

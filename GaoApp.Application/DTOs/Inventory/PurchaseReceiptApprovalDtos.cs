@@ -21,6 +21,13 @@ public sealed class PurchaseReceiptFinancialLineInputDto
 
     [Range(typeof(decimal), "0.01", "99999999999999.99")]
     public decimal UnitPriceBeforeVat { get; set; }
+
+    /// <summary>
+    /// Last confirmed price shown to the approver in this receipt unit. The
+    /// server rejects a stale snapshot and independently reads current history.
+    /// </summary>
+    [Range(typeof(decimal), "0", "99999999999999.99")]
+    public decimal? ExpectedLastPurchaseUnitPriceBeforeVat { get; set; }
     public int? TaxId { get; set; }
 }
 
@@ -45,6 +52,13 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
 
     [StringLength(1000)]
     public string? OverdeliveryNote { get; set; }
+
+    /// <summary>
+    /// Explicit manager/admin acknowledgement when at least one submitted
+    /// price differs from the latest confirmed purchase price. The server
+    /// independently recomputes the variance before confirmation.
+    /// </summary>
+    public bool AcceptPriceVariance { get; set; }
 
     public bool HasVat { get; set; }
     public int? SupplierId { get; set; }

@@ -181,6 +181,7 @@
 
     function openCommercialApprovalConfirmation() {
         if (!validateCommercialApproval(true, false)) return;
+        renderPriceVarianceAcceptance();
         updateApproveModalSummary();
         document.getElementById('btnOpenApproveModal')?.click();
     }
@@ -242,9 +243,11 @@
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
         const lines = getCommercialRows().map(function (row) {
             const tax = row.querySelector('.commercial-tax');
+            const lastPrice = readLastPurchasePrice(row);
             return {
                 stockDocumentLineId: Number(row.dataset.lineId),
                 unitPriceBeforeVat: roundMoney(readNumber(row.querySelector('.commercial-unit-price'))),
+                expectedLastPurchaseUnitPriceBeforeVat: lastPrice,
                 taxId: hasVat && tax?.value ? Number(tax.value) : null
             };
         });
@@ -254,6 +257,7 @@
             approvalNote: document.getElementById('approveNote')?.value?.trim() || null,
             acceptOverdelivery: document.getElementById('acceptOverdelivery')?.checked === true,
             overdeliveryNote: valueOrNull('overdeliveryNote'),
+            acceptPriceVariance: document.getElementById('acceptPriceVariance')?.checked === true,
             hasVat: hasVat,
             supplierId: nullablePositiveInt(document.getElementById('commercialSupplierId')?.value),
             isMerchandisePaid: document.getElementById('commercialMerchandisePaid')?.checked === true,
@@ -312,6 +316,17 @@
             return fail(
                 'Vui lòng xác nhận đã kiểm tra và chấp nhận số lượng nhận vượt đơn đặt hàng.',
                 overdeliveryAcceptance,
+                focusInvalid);
+        }
+
+        const priceVarianceAcceptance = document.getElementById('acceptPriceVariance');
+        if (requireOverdeliveryAcceptance &&
+            getPriceVariances().length > 0 &&
+            priceVarianceAcceptance &&
+            !priceVarianceAcceptance.checked) {
+            return fail(
+                'Vui lòng xác nhận đã kiểm tra và chấp nhận chênh lệch giá nhập.',
+                priceVarianceAcceptance,
                 focusInvalid);
         }
 
@@ -448,12 +463,17 @@
     }
 
     function renderPriceVariance(row, currentPrice) {
-        const previousElement = row.querySelector('.commercial-last-price');
         const varianceElement = row.querySelector('.commercial-price-variance');
-        const previous = Number(previousElement?.dataset.value || 0);
+        const previous = readLastPurchasePrice(row);
         varianceElement.classList.remove('is-up', 'is-down');
-        if (!(previous > 0) || !(currentPrice > 0)) {
+        if (previous === null || !(currentPrice > 0)) {
             varianceElement.textContent = '';
+            return;
+        }
+
+        if (previous === 0) {
+            varianceElement.textContent = `0 → ${formatMoney(currentPrice)}`;
+            varianceElement.classList.add('is-up');
             return;
         }
 
@@ -462,6 +482,36 @@
         varianceElement.textContent = `${sign}${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(percentage)}%`;
         if (percentage > 0) varianceElement.classList.add('is-up');
         if (percentage < 0) varianceElement.classList.add('is-down');
+    }
+
+    function getPriceVariances() {
+        return getCommercialRows().map(function (row) {
+            const previous = readLastPurchasePrice(row);
+            const current = roundMoney(readNumber(row.querySelector('.commercial-unit-price')));
+            if (previous === null || !(current > 0) || roundMoney(current - previous) === 0) return null;
+            return {
+                lineNo: Number(row.dataset.lineNo || 0),
+                previous: roundMoney(previous),
+                current: current
+            };
+        }).filter(Boolean);
+    }
+
+    function renderPriceVarianceAcceptance() {
+        const panel = document.getElementById('priceVarianceAcceptancePanel');
+        const details = document.getElementById('priceVarianceAcceptanceDetails');
+        const checkbox = document.getElementById('acceptPriceVariance');
+        if (!panel || !details || !checkbox) return;
+
+        const variances = getPriceVariances();
+        checkbox.checked = false;
+        panel.classList.toggle('d-none', variances.length === 0);
+        details.replaceChildren();
+        variances.forEach(function (variance) {
+            const line = document.createElement('div');
+            line.textContent = `Dòng ${variance.lineNo}: ${formatMoney(variance.previous)} → ${formatMoney(variance.current)}`;
+            details.appendChild(line);
+        });
     }
 
     function autoAllocateFreight() {
@@ -578,6 +628,13 @@
         if (!element) return 0;
         const value = Number(String(element.value ?? '').replace(',', '.'));
         return Number.isFinite(value) ? value : 0;
+    }
+
+    function readLastPurchasePrice(row) {
+        const raw = row.querySelector('.commercial-last-price')?.dataset.value;
+        if (raw === undefined || raw === null || raw.trim() === '') return null;
+        const value = Number(raw);
+        return Number.isFinite(value) && value >= 0 ? roundMoney(value) : null;
     }
 
     function nullablePositiveInt(value) {
