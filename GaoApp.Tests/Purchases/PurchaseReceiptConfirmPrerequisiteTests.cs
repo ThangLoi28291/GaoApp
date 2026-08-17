@@ -96,6 +96,27 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         fixture.AssertNoMutationOrPosting();
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Commercial_confirmation_rejects_cost_choice_without_its_source(
+        bool includeVatWithoutVat,
+        bool capitalizeFreightWithoutFreight)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        var request = ValidCommercialRequest(supplier.Id);
+        request.IncludeVatInInventoryCost = includeVatWithoutVat;
+        request.CapitalizeFreightInInventoryCost = capitalizeFreightWithoutFreight;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*Chỉ có thể*");
+        fixture.AssertNoMutationOrPosting();
+    }
+
     [Fact]
     public async Task Valid_direct_supplier_is_accepted_and_existing_posting_flow_is_preserved()
     {
@@ -120,6 +141,147 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         fixture.Repository.RollbackTransactionCalls.Should().Be(0);
         fixture.Repository.AddedPayables.Should().ContainSingle()
             .Which.SupplierId.Should().Be(supplier.Id);
+    }
+
+    [Theory]
+    [InlineData(false, false, 10)]
+    [InlineData(true, false, 11)]
+    [InlineData(false, true, 12)]
+    [InlineData(true, true, 13)]
+    public async Task Confirmation_posts_exact_selected_inventory_cost_without_changing_payables(
+        bool includeVat,
+        bool capitalizeFreight,
+        decimal expectedBaseUnitCost)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var line = document.Lines.Single();
+        document.HasVat = true;
+        document.IncludeVatInInventoryCost = includeVat;
+        document.HasFreight = true;
+        document.CapitalizeFreightInInventoryCost = capitalizeFreight;
+        document.FreightTotal = 4m;
+        document.FreightPayeeName = "Nhà vận chuyển";
+        line.UnitPriceBeforeVat = 10m;
+        line.TaxRate = 10m;
+        line.VatAmount = 2m;
+        line.UnitPriceAfterVat = 11m;
+        line.UnitCost = 11m;
+        line.LineTotal = 22m;
+        line.FreightAllocation = capitalizeFreight ? 4m : 0m;
+        var fixture = CreateFixture(document, supplier);
+
+        await fixture.Service.ApproveAsync(document.Id, null, RowVersion(document));
+
+        fixture.Movements.LastRequest.Should().NotBeNull();
+        fixture.Movements.LastRequest!.UnitCost.Should().Be(expectedBaseUnitCost);
+        fixture.Repository.AddedPayables.Should().HaveCount(2);
+        fixture.Repository.AddedPayables.Select(x => x.Amount)
+            .Should().BeEquivalentTo([22m, 4m]);
+    }
+
+    [Fact]
+    public async Task Generic_confirmation_rejects_negative_balanced_freight_before_transaction()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.HasFreight = true;
+        document.CapitalizeFreightInInventoryCost = true;
+        document.FreightTotal = 20m;
+        document.FreightPayeeName = "Nhà vận chuyển";
+        document.Lines.Single().FreightAllocation = -10m;
+        var secondLine = CreateValidLine(document);
+        secondLine.Id = 22;
+        secondLine.LineNo = 2;
+        secondLine.ProductVariantId = 32;
+        secondLine.FreightAllocation = 30m;
+        document.Lines.Add(secondLine);
+        var fixture = CreateFixture(document, supplier);
+
+        var action = () => fixture.Service.ApproveAsync(document.Id, null, RowVersion(document));
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*không được âm*");
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task Submit_rejects_incomplete_persisted_cost_policy_before_status_or_audit_mutation(int scenario)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier, StockDocumentStatus.Draft);
+        switch (scenario)
+        {
+            case 1:
+                document.IncludeVatInInventoryCost = true;
+                break;
+            case 2:
+                document.CapitalizeFreightInInventoryCost = true;
+                break;
+            case 3:
+                document.HasFreight = true;
+                document.CapitalizeFreightInInventoryCost = true;
+                break;
+            case 4:
+                document.HasFreight = true;
+                document.CapitalizeFreightInInventoryCost = true;
+                document.FreightTotal = 20m;
+                document.Lines.Single().FreightAllocation = 20m;
+                break;
+        }
+        var fixture = CreateFixture(document, supplier);
+
+        var action = () => fixture.Service.SubmitForApprovalAsync(
+            document.Id,
+            null,
+            RowVersion(document));
+
+        await action.Should().ThrowAsync<BusinessRuleException>();
+        document.Status.Should().Be(StockDocumentStatus.Draft);
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document).Should().BeNull();
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Fact]
+    public async Task Freight_update_rejects_incomplete_manual_allocation_ids_before_mutation()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier, StockDocumentStatus.Draft);
+        var secondLine = CreateValidLine(document);
+        secondLine.Id = 22;
+        secondLine.LineNo = 2;
+        secondLine.ProductVariantId = 32;
+        document.Lines.Add(secondLine);
+        var fixture = CreateFixture(document, supplier);
+
+        var action = () => fixture.Service.UpdatePurchaseReceiptApprovalAsync(
+            document.Id,
+            new UpdatePurchaseReceiptApprovalRequest
+            {
+                RowVersion = RowVersion(document),
+                HasFreight = true,
+                CapitalizeFreightInInventoryCost = true,
+                FreightTotal = 20m,
+                FreightPayeeName = "Nhà vận chuyển",
+                Allocations =
+                [
+                    new FreightAllocationInputDto
+                    {
+                        StockDocumentLineId = 21,
+                        Amount = 20m
+                    }
+                ]
+            });
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*không đầy đủ*");
+        document.HasFreight.Should().BeFalse();
+        document.Lines.Should().OnlyContain(x => x.FreightAllocation == 0m);
+        fixture.AssertNoMutationOrPosting();
     }
 
     [Fact]
@@ -736,6 +898,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
     {
         public int PreLockCalls { get; private set; }
         public int CreateCalls { get; private set; }
+        public CreateInventoryMovementRequest? LastRequest { get; private set; }
 
         public Task PreLockBalancesAsync(
             IEnumerable<InventoryPostingLockKey> keys,
@@ -751,6 +914,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
             CancellationToken ct = default)
         {
             CreateCalls++;
+            LastRequest = request;
             return Task.FromResult(new InventoryMovementResultDto { IsCreated = true });
         }
 

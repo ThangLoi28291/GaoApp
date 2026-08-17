@@ -61,6 +61,7 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
     public bool AcceptPriceVariance { get; set; }
 
     public bool HasVat { get; set; }
+    public bool IncludeVatInInventoryCost { get; set; }
     public int? SupplierId { get; set; }
     public bool IsMerchandisePaid { get; set; }
     [StringLength(250)]
@@ -70,6 +71,7 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
     public List<PurchaseReceiptFinancialLineInputDto> Lines { get; set; } = new();
 
     public bool HasFreight { get; set; }
+    public bool CapitalizeFreightInInventoryCost { get; set; }
     [Range(typeof(decimal), "0", "99999999999999.99")]
     public decimal FreightTotal { get; set; }
 
@@ -88,6 +90,7 @@ public sealed class UpdatePurchaseReceiptApprovalRequest
     [Required]
     public string RowVersion { get; set; } = string.Empty;
     public bool HasFreight { get; set; }
+    public bool CapitalizeFreightInInventoryCost { get; set; }
 
     [Range(typeof(decimal), "0", "99999999999999.99")]
     public decimal FreightTotal { get; set; }

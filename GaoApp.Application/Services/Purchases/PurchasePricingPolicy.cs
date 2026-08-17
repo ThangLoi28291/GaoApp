@@ -115,7 +115,11 @@ public static class PurchasePricingPolicy
 
     public static void EnsureFreightBalanced(decimal freightTotal, IEnumerable<decimal> allocations)
     {
-        var difference = RoundMoney(allocations.Sum()) - RoundMoney(freightTotal);
+        var materialized = allocations.ToArray();
+        if (materialized.Any(x => x < 0m))
+            throw new InvalidOperationException("Phí vận chuyển phân bổ không được âm.");
+
+        var difference = RoundMoney(materialized.Sum()) - RoundMoney(freightTotal);
         if (difference != 0m)
         {
             throw new InvalidOperationException(
@@ -126,13 +130,27 @@ public static class PurchasePricingPolicy
     }
 
     public static decimal CalculateBaseUnitCost(
-        decimal merchandiseAmountAfterVat,
+        decimal merchandiseAmountBeforeVat,
+        decimal vatAmount,
         decimal freightAllocation,
-        decimal baseQuantity)
+        decimal baseQuantity,
+        bool includeVatInInventoryCost,
+        bool capitalizeFreightInInventoryCost)
     {
         if (baseQuantity <= 0) throw new InvalidOperationException("Số lượng quy đổi phải lớn hơn 0.");
+        if (merchandiseAmountBeforeVat < 0m)
+            throw new InvalidOperationException("Tiền hàng trước VAT không được âm.");
+        if (vatAmount < 0m)
+            throw new InvalidOperationException("Tiền VAT không được âm.");
+        if (freightAllocation < 0m)
+            throw new InvalidOperationException("Phí vận chuyển phân bổ không được âm.");
+
+        var inventoryValue = checked(
+            RoundMoney(merchandiseAmountBeforeVat) +
+            (includeVatInInventoryCost ? RoundMoney(vatAmount) : 0m) +
+            (capitalizeFreightInInventoryCost ? RoundMoney(freightAllocation) : 0m));
         return decimal.Round(
-            (RoundMoney(merchandiseAmountAfterVat) + RoundMoney(freightAllocation)) / baseQuantity,
+            inventoryValue / baseQuantity,
             6,
             MidpointRounding.AwayFromZero);
     }

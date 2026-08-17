@@ -62,6 +62,11 @@
                             <label class="form-check-label fw-semibold" for="commercialHasVat">Có VAT</label>
                         </div>
                         <small class="text-muted">Giá nhập là giá chưa VAT</small>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="includeVatInInventoryCost"
+                                   checked="@Model.IncludeVatInInventoryCost" disabled="@(readOnly || !Model.HasVat)" />
+                            <label class="form-check-label" for="includeVatInInventoryCost">Đưa VAT vào giá vốn</label>
+                        </div>
                     </div>
                 </div>
                 <div class="col-12 col-md-4">
@@ -177,7 +182,7 @@
                                     <input class="form-control text-end commercial-freight-allocation" type="number"
                                            min="0" step="0.01"
                                            value="@line.FreightAllocation.ToString("0.##", CultureInfo.InvariantCulture)"
-                                           disabled="@(readOnly || !Model.HasFreight)" aria-label="Phí vận chuyển phân bổ" />
+                                           disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)" aria-label="Phí vận chuyển phân bổ" />
                                     <span class="input-group-text">đ</span>
                                 </div>
                             </td>
@@ -191,9 +196,9 @@
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                 <div>
                     <h6 class="mb-1">Phí vận chuyển</h6>
-                    <div class="small text-muted">Mặc định phân bổ theo tiền hàng sau VAT; có thể sửa trực tiếp từng dòng.</div>
+                    <div class="small text-muted">Mặc định ghi nhận riêng. Khi vốn hóa, hệ thống phân bổ theo tiền hàng sau VAT và cho phép sửa từng dòng.</div>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="commercialAutoAllocate" disabled="@(readOnly || !Model.HasFreight)">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="commercialAutoAllocate" disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)">
                     <i class="bx bx-reset me-1"></i>Đặt lại phân bổ tự động
                 </button>
             </div>
@@ -203,6 +208,13 @@
                         <input class="form-check-input" type="checkbox" id="commercialHasFreight"
                                checked="@Model.HasFreight" disabled="@readOnly" />
                         <label class="form-check-label fw-semibold" for="commercialHasFreight">Có phí vận chuyển</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <div class="form-check form-switch sd-paid-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="capitalizeFreightInInventoryCost"
+                               checked="@Model.CapitalizeFreightInInventoryCost" disabled="@(readOnly || !Model.HasFreight)" />
+                        <label class="form-check-label fw-semibold" for="capitalizeFreightInInventoryCost">Vốn hóa vào giá vốn</label>
                     </div>
                 </div>
                 <div class="col-12 col-md-2">
@@ -241,7 +253,7 @@
             <div><span>Tiền VAT</span><strong id="commercialVatTotal">0 đ</strong></div>
             <div><span>Tiền hàng</span><strong id="commercialMerchandiseTotal">0 đ</strong></div>
             <div><span>Phí vận chuyển</span><strong id="commercialFreightSummary">0 đ</strong></div>
-            <div class="sd-commercial-grand-total"><span>Tổng giá vốn nhập</span><strong id="commercialLandedTotal">0 đ</strong></div>
+            <div class="sd-commercial-grand-total"><span>Giá trị nhập kho theo chính sách</span><strong id="commercialLandedTotal">0 đ</strong></div>
         </div>
 
         <div class="alert alert-danger d-none mt-3 mb-0" id="commercialValidationMessage" role="alert"></div>

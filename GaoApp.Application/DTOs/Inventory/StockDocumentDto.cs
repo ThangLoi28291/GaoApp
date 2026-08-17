@@ -30,9 +30,11 @@ public class StockDocumentDto
     public string? PurchaseOrderNumber { get; set; }
     public string? DirectReceiptReason { get; set; }
     public bool HasVat { get; set; }
+    public bool IncludeVatInInventoryCost { get; set; }
     public decimal SubtotalBeforeVat { get; set; }
     public decimal VatAmount { get; set; }
     public bool HasFreight { get; set; }
+    public bool CapitalizeFreightInInventoryCost { get; set; }
     public decimal FreightTotal { get; set; }
     public string? FreightPayeeName { get; set; }
     public string? FreightNote { get; set; }

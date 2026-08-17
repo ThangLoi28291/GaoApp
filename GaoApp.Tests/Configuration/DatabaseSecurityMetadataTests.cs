@@ -21,6 +21,8 @@ public sealed class DatabaseSecurityMetadataTests
 
     private const string PurchaseReceiptAuditMigrationId =
         "20260814090000_AddPurchaseReceiptAuditEvents";
+    private const string PurchaseReceiptCostPolicyMigrationId =
+        "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
 
     [Fact]
     public Task Current_baseline_with_application_database_user_should_be_allowed()
@@ -365,7 +367,8 @@ public sealed class DatabaseSecurityMetadataTests
             [
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
-                PurchaseReceiptAuditMigrationId
+                PurchaseReceiptAuditMigrationId,
+                PurchaseReceiptCostPolicyMigrationId
             ]);
     }
 

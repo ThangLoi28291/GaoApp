@@ -63,17 +63,57 @@ public sealed class PurchasePricingPolicyTests
     }
 
     [Fact]
+    public void Freight_balance_should_reject_negative_line_even_when_sum_is_exact()
+    {
+        var action = () => PurchasePricingPolicy.EnsureFreightBalanced(20m, new[] { -10m, 30m });
+        action.Should().Throw<InvalidOperationException>().WithMessage("*không được âm*");
+    }
+
+    [Fact]
     public void Freight_balance_should_accept_exact_allocations()
     {
         var action = () => PurchasePricingPolicy.EnsureFreightBalanced(100m, new[] { 33.33m, 66.67m });
         action.Should().NotThrow();
     }
 
-    [Fact]
-    public void Base_unit_cost_should_include_after_vat_merchandise_and_freight_after_conversion()
+    [Theory]
+    [InlineData(false, false, 8333.333333)]
+    [InlineData(true, false, 9166.666667)]
+    [InlineData(false, true, 9166.666667)]
+    [InlineData(true, true, 10000)]
+    public void Base_unit_cost_should_apply_only_selected_capitalization_components(
+        bool includeVat,
+        bool capitalizeFreight,
+        decimal expected)
     {
-        var cost = PurchasePricingPolicy.CalculateBaseUnitCost(220_000m, 20_000m, 24m);
-        cost.Should().Be(10_000m);
+        var cost = PurchasePricingPolicy.CalculateBaseUnitCost(
+            merchandiseAmountBeforeVat: 200_000m,
+            vatAmount: 20_000m,
+            freightAllocation: 20_000m,
+            baseQuantity: 24m,
+            includeVatInInventoryCost: includeVat,
+            capitalizeFreightInInventoryCost: capitalizeFreight);
+
+        cost.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Base_unit_cost_should_round_midpoint_away_from_zero_at_six_decimals()
+        => PurchasePricingPolicy.CalculateBaseUnitCost(1m, 0m, 0m, 128m, false, false)
+            .Should().Be(0.007813m);
+
+    [Fact]
+    public void Base_unit_cost_should_reject_non_positive_base_quantity()
+    {
+        var action = () => PurchasePricingPolicy.CalculateBaseUnitCost(1m, 0m, 0m, 0m, false, false);
+        action.Should().Throw<InvalidOperationException>().WithMessage("*lớn hơn 0*");
+    }
+
+    [Fact]
+    public void Base_unit_cost_should_reject_negative_freight_component()
+    {
+        var action = () => PurchasePricingPolicy.CalculateBaseUnitCost(100m, 0m, -10m, 10m, false, true);
+        action.Should().Throw<InvalidOperationException>().WithMessage("*không được âm*");
     }
 
     [Fact]

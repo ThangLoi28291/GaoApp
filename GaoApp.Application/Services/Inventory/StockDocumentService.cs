@@ -389,9 +389,11 @@ public class StockDocumentService : IStockDocumentService
             PurchaseOrderNumber = document.PurchaseOrder?.OrderNumber,
             DirectReceiptReason = document.DirectReceiptReason,
             HasVat = document.HasVat,
+            IncludeVatInInventoryCost = document.IncludeVatInInventoryCost,
             SubtotalBeforeVat = document.SubtotalBeforeVat,
             VatAmount = document.VatAmount,
             HasFreight = document.HasFreight,
+            CapitalizeFreightInInventoryCost = document.CapitalizeFreightInInventoryCost,
             FreightTotal = document.FreightTotal,
             FreightPayeeName = document.FreightPayeeName,
             FreightNote = document.FreightNote,
@@ -899,7 +901,16 @@ public class StockDocumentService : IStockDocumentService
         var lines = document.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.LineNo).ToList();
         if (!request.HasFreight)
         {
+            ValidateCostCapitalizationPolicy(
+                document.HasVat,
+                document.IncludeVatInInventoryCost,
+                hasFreight: false,
+                request.CapitalizeFreightInInventoryCost,
+                freightTotal: 0m,
+                freightPayeeName: null,
+                lines.Select(_ => 0m));
             document.HasFreight = false;
+            document.CapitalizeFreightInInventoryCost = false;
             document.FreightTotal = 0m;
             document.FreightPayeeName = null;
             document.FreightNote = null;
@@ -915,7 +926,11 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
 
         IReadOnlyDictionary<int, decimal> allocations;
-        if (request.ResetAutomaticAllocation)
+        if (!request.CapitalizeFreightInInventoryCost)
+        {
+            allocations = lines.ToDictionary(x => x.Id, _ => 0m);
+        }
+        else if (request.ResetAutomaticAllocation)
         {
             allocations = PurchasePricingPolicy.AllocateFreight(
                 freightTotal,
@@ -923,19 +938,32 @@ public class StockDocumentService : IStockDocumentService
         }
         else
         {
-            if (request.Allocations.GroupBy(x => x.StockDocumentLineId).Any(x => x.Count() > 1))
+            var postedAllocations = request.Allocations ?? [];
+            if (postedAllocations.GroupBy(x => x.StockDocumentLineId).Any(x => x.Count() > 1))
                 throw new BusinessRuleException("Dòng phân bổ vận chuyển bị trùng.");
             var ids = lines.Select(x => x.Id).ToHashSet();
-            if (request.Allocations.Any(x => !ids.Contains(x.StockDocumentLineId) || x.Amount < 0))
+            if (postedAllocations.Any(x => !ids.Contains(x.StockDocumentLineId) || x.Amount < 0))
                 throw new BusinessRuleException("Phân bổ vận chuyển chứa dòng hoặc số tiền không hợp lệ.");
+            var allocationIds = postedAllocations.Select(x => x.StockDocumentLineId).ToHashSet();
+            if (!ids.SetEquals(allocationIds))
+                throw new BusinessRuleException(
+                    "Bảng phân bổ vận chuyển không đầy đủ. Vui lòng tải lại phiếu.");
             allocations = lines.ToDictionary(
                 x => x.Id,
                 x => PurchasePricingPolicy.RoundMoney(
-                    request.Allocations.FirstOrDefault(a => a.StockDocumentLineId == x.Id)?.Amount ?? 0m));
+                    postedAllocations.Single(a => a.StockDocumentLineId == x.Id).Amount));
         }
 
-        PurchasePricingPolicy.EnsureFreightBalanced(freightTotal, allocations.Values);
+        ValidateCostCapitalizationPolicy(
+            document.HasVat,
+            document.IncludeVatInInventoryCost,
+            hasFreight: true,
+            request.CapitalizeFreightInInventoryCost,
+            freightTotal,
+            request.FreightPayeeName,
+            allocations.Values);
         document.HasFreight = true;
+        document.CapitalizeFreightInInventoryCost = request.CapitalizeFreightInInventoryCost;
         document.FreightTotal = freightTotal;
         document.FreightPayeeName = request.FreightPayeeName.Trim();
         document.FreightNote = request.FreightNote?.Trim();
@@ -971,10 +999,7 @@ public class StockDocumentService : IStockDocumentService
         {
         if (guardsAllocation) await ValidatePurchaseReceiptAllocationAsync(document, ct);
         ValidateReceiptSourceAndShortages(document);
-        if (document.HasFreight)
-            PurchasePricingPolicy.EnsureFreightBalanced(
-                document.FreightTotal,
-                document.Lines.Where(x => !x.IsDeleted).Select(x => x.FreightAllocation));
+        ValidateCostCapitalizationPolicy(document, document.Lines.Where(x => !x.IsDeleted));
 
         RecalculateDocumentTotals(document);
 
@@ -1029,6 +1054,10 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Tên người/đơn vị nhận phí vận chuyển không được vượt quá 250 ký tự.");
         if (request.FreightNote?.Length > 1000)
             throw new BusinessRuleException("Ghi chú vận chuyển không được vượt quá 1.000 ký tự.");
+        if (request.IncludeVatInInventoryCost && !request.HasVat)
+            throw new BusinessRuleException("Chỉ có thể đưa VAT vào giá vốn khi phiếu có VAT.");
+        if (request.CapitalizeFreightInInventoryCost && !request.HasFreight)
+            throw new BusinessRuleException("Chỉ có thể vốn hóa phí vận chuyển khi phiếu có phí vận chuyển.");
 
         PurchaseReceiptConfirmPrerequisitePolicy.EnsureSupplierSelected(request.SupplierId);
         var supplier = await _stockDocumentRepository.GetSupplierAsync(request.SupplierId!.Value, ct)
@@ -1151,7 +1180,11 @@ public class StockDocumentService : IStockDocumentService
             if (string.IsNullOrWhiteSpace(request.FreightPayeeName))
                 throw new BusinessRuleException("Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.");
 
-            if (request.ResetAutomaticAllocation)
+            if (!request.CapitalizeFreightInInventoryCost)
+            {
+                freightAllocations = activeLines.ToDictionary(x => x.Id, _ => 0m);
+            }
+            else if (request.ResetAutomaticAllocation)
             {
                 freightAllocations = PurchasePricingPolicy.AllocateFreight(
                     freightTotal,
@@ -1176,13 +1209,15 @@ public class StockDocumentService : IStockDocumentService
                     x => PurchasePricingPolicy.RoundMoney(x.Amount));
             }
 
-            PurchasePricingPolicy.EnsureFreightBalanced(freightTotal, freightAllocations.Values);
+            if (request.CapitalizeFreightInInventoryCost)
+                PurchasePricingPolicy.EnsureFreightBalanced(freightTotal, freightAllocations.Values);
         }
 
         // Mutations remain only in EF's change tracker here. ApproveAsync starts
         // the single transaction that persists these values together with all
         // inventory/FIFO/payable postings.
         document.HasVat = request.HasVat;
+        document.IncludeVatInInventoryCost = request.IncludeVatInInventoryCost;
         document.SupplierId = request.SupplierId;
         document.Supplier = supplier;
         document.IsMerchandisePaid = request.IsMerchandisePaid;
@@ -1204,6 +1239,7 @@ public class StockDocumentService : IStockDocumentService
         }
 
         document.HasFreight = request.HasFreight;
+        document.CapitalizeFreightInInventoryCost = request.CapitalizeFreightInInventoryCost;
         document.FreightTotal = freightTotal;
         document.FreightPayeeName = request.HasFreight ? request.FreightPayeeName!.Trim() : null;
         document.FreightNote = request.HasFreight ? request.FreightNote?.Trim() : null;
@@ -1312,18 +1348,7 @@ public class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Phiếu nhập kho chưa có dòng chi tiết hợp lệ.");
 
         ValidateReceiptSourceAndShortages(document);
-        if (document.HasFreight)
-        {
-            if (document.FreightTotal <= 0)
-                throw new BusinessRuleException("Tổng phí vận chuyển phải lớn hơn 0.");
-            if (string.IsNullOrWhiteSpace(document.FreightPayeeName))
-                throw new BusinessRuleException("Thiếu người hoặc đơn vị nhận tiền vận chuyển.");
-            PurchasePricingPolicy.EnsureFreightBalanced(document.FreightTotal, activeLines.Select(x => x.FreightAllocation));
-        }
-        else if (activeLines.Any(x => x.FreightAllocation != 0m))
-        {
-            throw new BusinessRuleException("Phiếu không bật phí vận chuyển nhưng vẫn còn tiền phân bổ.");
-        }
+        ValidateCostCapitalizationPolicy(document, activeLines);
 
         foreach (var line in activeLines)
         {
@@ -1462,9 +1487,12 @@ public class StockDocumentService : IStockDocumentService
                 try
                 {
                     baseUnitCost = PurchasePricingPolicy.CalculateBaseUnitCost(
-                        line.LineTotal,
+                        line.LineTotal - line.VatAmount,
+                        line.VatAmount,
                         line.FreightAllocation,
-                        line.BaseQuantity);
+                        line.BaseQuantity,
+                        document.IncludeVatInInventoryCost,
+                        document.CapitalizeFreightInInventoryCost);
                 }
                 catch (OverflowException)
                 {
@@ -2101,6 +2129,57 @@ public class StockDocumentService : IStockDocumentService
     private sealed record PurchaseReceiptConversionSnapshot(
         ProductUnitConversion Entity,
         decimal Factor);
+
+    private static void ValidateCostCapitalizationPolicy(
+        StockDocument document,
+        IEnumerable<StockDocumentLine> activeLines)
+        => ValidateCostCapitalizationPolicy(
+            document.HasVat,
+            document.IncludeVatInInventoryCost,
+            document.HasFreight,
+            document.CapitalizeFreightInInventoryCost,
+            document.FreightTotal,
+            document.FreightPayeeName,
+            activeLines.Select(x => x.FreightAllocation));
+
+    private static void ValidateCostCapitalizationPolicy(
+        bool hasVat,
+        bool includeVatInInventoryCost,
+        bool hasFreight,
+        bool capitalizeFreightInInventoryCost,
+        decimal freightTotal,
+        string? freightPayeeName,
+        IEnumerable<decimal> freightAllocations)
+    {
+        if (includeVatInInventoryCost && !hasVat)
+            throw new BusinessRuleException("Chỉ có thể đưa VAT vào giá vốn khi phiếu có VAT.");
+        if (capitalizeFreightInInventoryCost && !hasFreight)
+            throw new BusinessRuleException("Chỉ có thể vốn hóa phí vận chuyển khi phiếu có phí vận chuyển.");
+
+        var allocations = freightAllocations.ToArray();
+        if (!hasFreight)
+        {
+            if (allocations.Any(x => x != 0m))
+                throw new BusinessRuleException("Phiếu không bật phí vận chuyển nhưng vẫn còn tiền phân bổ.");
+            return;
+        }
+
+        if (freightTotal <= 0m)
+            throw new BusinessRuleException("Tổng phí vận chuyển phải lớn hơn 0.");
+        if (string.IsNullOrWhiteSpace(freightPayeeName))
+            throw new BusinessRuleException("Thiếu người hoặc đơn vị nhận tiền vận chuyển.");
+
+        if (!capitalizeFreightInInventoryCost)
+        {
+            if (allocations.Any(x => x != 0m))
+                throw new BusinessRuleException("Phí vận chuyển không được phân bổ khi chưa bật vốn hóa vào giá vốn.");
+            return;
+        }
+
+        if (allocations.Any(x => x < 0m))
+            throw new BusinessRuleException("Phí vận chuyển phân bổ không được âm.");
+        PurchasePricingPolicy.EnsureFreightBalanced(freightTotal, allocations);
+    }
 
     private async Task CreatePayablesIfNeededAsync(StockDocument document, DateTime occurredAtUtc, CancellationToken ct)
     {

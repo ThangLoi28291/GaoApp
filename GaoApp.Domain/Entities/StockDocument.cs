@@ -40,6 +40,12 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
 
     public bool HasVat { get; set; }
 
+    /// <summary>
+    /// Whether input VAT is included in the inventory cost posted by this receipt.
+    /// The default is false: VAT remains a commercial amount only.
+    /// </summary>
+    public bool IncludeVatInInventoryCost { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal SubtotalBeforeVat { get; set; }
 
@@ -47,6 +53,12 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     public decimal VatAmount { get; set; }
 
     public bool HasFreight { get; set; }
+
+    /// <summary>
+    /// Whether freight is allocated to receipt lines and capitalized into inventory.
+    /// Freight settlement remains separate regardless of this choice.
+    /// </summary>
+    public bool CapitalizeFreightInInventoryCost { get; set; }
 
     [Column(TypeName = "decimal(18,2)")]
     public decimal FreightTotal { get; set; }
