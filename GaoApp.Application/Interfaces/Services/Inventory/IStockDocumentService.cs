@@ -39,6 +39,14 @@ public interface IStockDocumentService
 
     Task ApproveAsync(int documentId, string? approvalNote, string? rowVersion, CancellationToken ct = default);
 
+    Task ApproveAsync(
+        int documentId,
+        string? approvalNote,
+        string? rowVersion,
+        bool acceptOverdelivery,
+        string? overdeliveryNote,
+        CancellationToken ct = default);
+
     Task ApproveCommercialAsync(
         int documentId,
         ApprovePurchaseReceiptCommercialRequest request,

@@ -211,9 +211,6 @@ public class StockDocumentService : IStockDocumentService
                 "Đơn đặt hàng không còn ở trạng thái cho phép nhận hàng.");
         if (lockedOrder != null)
             ValidateLockedPurchaseOrderForReceipt(lockedOrder, order);
-        var inFlight = await _stockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync(
-            storeId, purchaseOrderId, requestedLineIds, ct: ct);
-
         var nextNumber = await _documentNumberSequenceRepository.GetNextNumberAsync(
             storeId,
             DocumentNumberSequenceType.StockReceipt,
@@ -243,15 +240,6 @@ public class StockDocumentService : IStockDocumentService
                 ?? throw new BusinessRuleException($"Dòng đơn đặt hàng #{input.PurchaseOrderLineId} không hợp lệ.");
             var state = lockedLines[input.PurchaseOrderLineId];
             var orderedFactor = PurchaseReceiptQuantityConversionPolicy.ValidateFactor(state.ConversionFactor);
-            var canonicalOrdered = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
-                state.OrderedQuantity, orderedFactor);
-            var canonicalConfirmed = state.ReceivedQuantity <= 0m ? 0m :
-                PurchaseReceiptQuantityConversionPolicy.ToCanonical(state.ReceivedQuantity, orderedFactor);
-            var canonicalShortClosed = state.ShortClosedQuantity <= 0m ? 0m :
-                PurchaseReceiptQuantityConversionPolicy.ToCanonical(state.ShortClosedQuantity, orderedFactor);
-            var projection = PurchaseReceiptQuantityProjection.Create(
-                canonicalOrdered, canonicalConfirmed, canonicalShortClosed,
-                inFlight.GetValueOrDefault(state.PurchaseOrderLineId));
             if (!orderLine.ProductVariantId.HasValue ||
                 !orderLine.ProductUnitConversionId.HasValue ||
                 !orderLine.UnitId.HasValue ||
@@ -289,9 +277,6 @@ public class StockDocumentService : IStockDocumentService
             {
                 throw new BusinessRuleException(ex.Message);
             }
-            if (canonicalQuantity > projection.AvailableToAllocateQuantity)
-                throw new BusinessRuleException(
-                    "Số lượng quy đổi vượt phần còn có thể lập phiếu. Vui lòng tải lại đơn đặt hàng.");
             var decision = PurchaseReceiptPolicy.ValidateLine(
                 PurchasePricingPolicy.RoundQuantity(
                     state.OrderedQuantity - state.ReceivedQuantity - state.ShortClosedQuantity),
@@ -434,6 +419,27 @@ public class StockDocumentService : IStockDocumentService
                 .Select(x =>
                 {
                     lineXmlMap.TryGetValue(x.Id, out var xmlMap);
+                    var orderLine = x.PurchaseOrderLine;
+                    var canonicalOrdered = 0m;
+                    var canonicalConfirmed = 0m;
+                    var projectedOverdelivery = 0m;
+                    if (orderLine != null)
+                    {
+                        var orderedFactor = PurchaseReceiptQuantityConversionPolicy.ValidateFactor(
+                            orderLine.ConversionFactor);
+                        canonicalOrdered = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                            orderLine.OrderedQuantity, orderedFactor);
+                        canonicalConfirmed = orderLine.ReceivedQuantity <= 0m
+                            ? 0m
+                            : PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                                orderLine.ReceivedQuantity, orderedFactor);
+                        var projectedConfirmed = document.Status == StockDocumentStatus.Confirmed
+                            ? canonicalConfirmed
+                            : PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+                                canonicalConfirmed + x.BaseQuantity);
+                        projectedOverdelivery = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+                            Math.Max(0m, projectedConfirmed - canonicalOrdered));
+                    }
 
                     return new StockDocumentLineDto
                     {
@@ -451,6 +457,9 @@ public class StockDocumentService : IStockDocumentService
                         UnitCost = x.UnitCost,
                         LineTotal = x.LineTotal,
                         PurchaseOrderLineId = x.PurchaseOrderLineId,
+                        PurchaseOrderCanonicalOrderedQuantity = canonicalOrdered,
+                        PurchaseOrderCanonicalConfirmedQuantity = canonicalConfirmed,
+                        ProjectedOverdeliveryQuantity = projectedOverdelivery,
                         ProductUnitConversionId = x.ProductUnitConversionId,
                         TaxId = x.TaxId,
                         SuggestedTaxId = x.ProductVariant?.Product?.TaxId,
@@ -1187,6 +1196,8 @@ public class StockDocumentService : IStockDocumentService
             request.ApprovalNote,
             request.RowVersion,
             PurchaseReceiptAuditEventType.CommercialApprovalConfirmed,
+            request.AcceptOverdelivery,
+            request.OverdeliveryNote,
             ct);
     }
 
@@ -1205,6 +1216,30 @@ public class StockDocumentService : IStockDocumentService
             approvalNote,
             rowVersion,
             PurchaseReceiptAuditEventType.GenericReceiptConfirmed,
+            acceptOverdelivery: false,
+            overdeliveryNote: null,
+            ct);
+    }
+
+    public async Task ApproveAsync(
+        int documentId,
+        string? approvalNote,
+        string? rowVersion,
+        bool acceptOverdelivery,
+        string? overdeliveryNote,
+        CancellationToken ct = default)
+    {
+        var document = await _stockDocumentRepository.GetForConfirmAsync(documentId, ct);
+        if (document == null)
+            throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
+
+        await ApproveTrackedAsync(
+            document,
+            approvalNote,
+            rowVersion,
+            PurchaseReceiptAuditEventType.GenericReceiptConfirmed,
+            acceptOverdelivery,
+            overdeliveryNote,
             ct);
     }
 
@@ -1213,6 +1248,8 @@ public class StockDocumentService : IStockDocumentService
         string? approvalNote,
         string? rowVersion,
         PurchaseReceiptAuditEventType confirmationEventType,
+        bool acceptOverdelivery,
+        string? overdeliveryNote,
         CancellationToken ct)
     {
 
@@ -1226,6 +1263,8 @@ public class StockDocumentService : IStockDocumentService
 
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được duyệt nhập kho.");
+        if (overdeliveryNote?.Length > 1000)
+            throw new BusinessRuleException("Ghi chú nhận vượt không được vượt quá 1.000 ký tự.");
 
         PurchaseReceiptConfirmPrerequisitePolicy.EnsureSupplierSelected(document.SupplierId);
         _ = await _stockDocumentRepository.GetSupplierAsync(document.SupplierId!.Value, ct)
@@ -1340,8 +1379,18 @@ public class StockDocumentService : IStockDocumentService
 
         try
         {
+            IReadOnlyList<PurchaseReceiptOverdeliveryDecision> overdelivery =
+                Array.Empty<PurchaseReceiptOverdeliveryDecision>();
             if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder && document.PurchaseOrderId.HasValue)
-                await ValidatePurchaseReceiptAllocationAsync(document, ct);
+            {
+                overdelivery = await ValidatePurchaseReceiptAllocationAsync(document, ct);
+                if (overdelivery.Count > 0 && !acceptOverdelivery)
+                {
+                    throw new BusinessRuleException(
+                        "Phiếu làm tăng số lượng nhận vượt đơn đặt hàng. " +
+                        "Manager/Admin phải xác nhận chấp nhận nhận vượt trước khi duyệt.");
+                }
+            }
             await _inventoryMovementService.PreLockBalancesAsync(
                 activeLines.Select(line => new InventoryPostingLockKey(
                     document.StoreId,
@@ -1457,7 +1506,8 @@ public class StockDocumentService : IStockDocumentService
             PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
                 document,
                 confirmationEventType,
-                note: document.ApprovalNote);
+                reason: overdelivery.Count > 0 ? overdeliveryNote : null,
+                note: BuildConfirmationAuditNote(document.ApprovalNote, overdelivery));
             await _stockDocumentRepository.SaveChangesAsync(ct);
             await _stockDocumentRepository.CommitTransactionAsync(ct);
         }
@@ -1529,7 +1579,10 @@ public class StockDocumentService : IStockDocumentService
         var order = document.PurchaseOrder
             ?? throw new InvalidOperationException(
                 "Purchase-order receipt is missing its purchase-order relation.");
-        if (order.Status is not (PurchaseOrderStatus.Approved or PurchaseOrderStatus.SentToSupplier or PurchaseOrderStatus.PartiallyReceived))
+        if (order.Status is not (PurchaseOrderStatus.Approved or
+                PurchaseOrderStatus.SentToSupplier or
+                PurchaseOrderStatus.PartiallyReceived or
+                PurchaseOrderStatus.FullyReceived))
             throw new BusinessRuleException("Trạng thái đơn đặt hàng không còn cho phép nhận hàng.");
         if (document.SupplierId != order.SupplierId || document.WarehouseId != order.ExpectedWarehouseId)
             throw new BusinessRuleException("Nhà cung cấp hoặc kho nhận không khớp đơn đặt hàng.");
@@ -1583,7 +1636,7 @@ public class StockDocumentService : IStockDocumentService
         }
     }
 
-    private async Task ValidatePurchaseReceiptAllocationAsync(
+    private async Task<IReadOnlyList<PurchaseReceiptOverdeliveryDecision>> ValidatePurchaseReceiptAllocationAsync(
         StockDocument document,
         CancellationToken ct)
     {
@@ -1626,8 +1679,6 @@ public class StockDocumentService : IStockDocumentService
         }
         if (locked.Count != lineIds.Length)
             throw new BusinessRuleException("Đơn đặt hàng hoặc dòng nhận hàng không hợp lệ.");
-        var inFlight = await _stockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync(
-            storeId, purchaseOrderId, lineIds, excludeStockDocumentId: document.Id, ct: ct);
         if (!await _stockDocumentRepository.PurchaseReceiptLineSnapshotsBelongToStoreAsync(
                 storeId, document.Id, lines.Select(x => x.Id).ToArray(), ct))
             throw new BusinessRuleException("Đơn vị nhận không hợp lệ cho mặt hàng này.");
@@ -1644,22 +1695,23 @@ public class StockDocumentService : IStockDocumentService
             }
         }
 
+        var overdelivery = new List<PurchaseReceiptOverdeliveryDecision>();
         foreach (var line in lines)
         {
             var state = locked[line.PurchaseOrderLineId!.Value];
             var orderLine = document.PurchaseOrder?.Lines.FirstOrDefault(x => x.Id == state.PurchaseOrderLineId)
                 ?? throw new BusinessRuleException("Phiếu nhập không liên kết đúng dòng đơn đặt hàng.");
             var orderedFactor = PurchaseReceiptQuantityConversionPolicy.ValidateFactor(state.ConversionFactor);
-            var projection = PurchaseReceiptQuantityProjection.Create(
-                PurchaseReceiptQuantityConversionPolicy.ToCanonical(state.OrderedQuantity, orderedFactor),
-                state.ReceivedQuantity <= 0m ? 0m : PurchaseReceiptQuantityConversionPolicy.ToCanonical(state.ReceivedQuantity, orderedFactor),
-                state.ShortClosedQuantity <= 0m ? 0m : PurchaseReceiptQuantityConversionPolicy.ToCanonical(state.ShortClosedQuantity, orderedFactor),
-                inFlight.GetValueOrDefault(state.PurchaseOrderLineId));
+            var canonicalOrdered = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                state.OrderedQuantity, orderedFactor);
+            var canonicalConfirmed = state.ReceivedQuantity <= 0m
+                ? 0m
+                : PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                    state.ReceivedQuantity, orderedFactor);
             var canonicalReceipt = PurchaseReceiptQuantityConversionPolicy.ToCanonical(line.Quantity, line.Factor);
-            if (canonicalReceipt != line.BaseQuantity ||
-                canonicalReceipt > projection.AvailableToAllocateQuantity)
+            if (canonicalReceipt != line.BaseQuantity)
                 throw new BusinessRuleException(
-                    "Số lượng quy đổi vượt phần còn có thể lập phiếu. Vui lòng tải lại đơn đặt hàng.");
+                    "Số lượng quy đổi không khớp snapshot phiếu nhập. Vui lòng tải lại phiếu.");
             try
             {
                 var orderedEquivalent = line.UnitId == orderLine.UnitId
@@ -1676,7 +1728,43 @@ public class StockDocumentService : IStockDocumentService
             {
                 throw new BusinessRuleException(ex.Message);
             }
+            var decision = PurchaseReceiptPolicy.EvaluateOverdelivery(
+                canonicalOrdered,
+                canonicalConfirmed,
+                canonicalReceipt,
+                line.LineNo);
+            if (decision.IncrementalCanonicalQuantity > 0m)
+                overdelivery.Add(decision);
         }
+
+        return overdelivery;
+    }
+
+    private static string? BuildConfirmationAuditNote(
+        string? approvalNote,
+        IReadOnlyList<PurchaseReceiptOverdeliveryDecision> overdelivery)
+    {
+        var normalizedApprovalNote = string.IsNullOrWhiteSpace(approvalNote)
+            ? null
+            : approvalNote.Trim();
+        if (overdelivery.Count == 0) return normalizedApprovalNote;
+
+        var incrementalTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            overdelivery.Sum(x => x.IncrementalCanonicalQuantity));
+        var afterTotal = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            overdelivery.Sum(x => x.CanonicalQuantityAfterConfirmation));
+        var lineNumbers = string.Join(
+            ", ",
+            overdelivery.OrderBy(x => x.LineNo).Select(x => x.LineNo));
+        var evidence =
+            $"Đã xác nhận nhận vượt đơn đặt hàng; {overdelivery.Count} dòng [{lineNumbers}]; " +
+            $"lượng vượt tăng {incrementalTotal:0.###} base; " +
+            $"tổng lượng vượt sau duyệt {afterTotal:0.###} base.";
+        return evidence.Length <= 1000
+            ? evidence
+            : $"Đã xác nhận nhận vượt đơn đặt hàng; {overdelivery.Count} dòng; " +
+              $"lượng vượt tăng {incrementalTotal:0.###} base; " +
+              $"tổng lượng vượt sau duyệt {afterTotal:0.###} base.";
     }
 
     private void ApplyApprovedReceiptToPurchaseOrder(
@@ -1770,7 +1858,19 @@ public class StockDocumentService : IStockDocumentService
     {
         var order = document.PurchaseOrder
             ?? throw new BusinessRuleException("Phiếu nhập không liên kết đúng đơn đặt hàng.");
-        ValidateLockedPurchaseOrderForReceipt(locked, order);
+        if (locked.PurchaseOrderId != order.Id ||
+            locked.StoreId != order.StoreId ||
+            locked.SupplierId != order.SupplierId ||
+            locked.ExpectedWarehouseId != order.ExpectedWarehouseId ||
+            locked.LegalEntityId != order.LegalEntityId ||
+            locked.Status is not (PurchaseOrderStatus.Approved or
+                PurchaseOrderStatus.SentToSupplier or
+                PurchaseOrderStatus.PartiallyReceived or
+                PurchaseOrderStatus.FullyReceived))
+        {
+            throw new BusinessRuleException(
+                "Đơn đặt hàng không còn ở trạng thái cho phép nhận hàng.");
+        }
         if (document.StoreId != locked.StoreId ||
             document.SupplierId != locked.SupplierId ||
             document.WarehouseId != locked.ExpectedWarehouseId ||

@@ -19,6 +19,9 @@ public class StockDocumentLineDto
     public decimal UnitCost { get; set; }
     public decimal LineTotal { get; set; }
     public int? PurchaseOrderLineId { get; set; }
+    public decimal PurchaseOrderCanonicalOrderedQuantity { get; set; }
+    public decimal PurchaseOrderCanonicalConfirmedQuantity { get; set; }
+    public decimal ProjectedOverdeliveryQuantity { get; set; }
     public int? ProductUnitConversionId { get; set; }
     public int? TaxId { get; set; }
     /// <summary>

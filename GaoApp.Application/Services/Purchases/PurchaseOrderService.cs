@@ -950,6 +950,10 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             : PurchaseReceiptQuantityConversionPolicy.ToCanonical(line.ShortClosedQuantity, orderedFactor);
         var projection = PurchaseReceiptQuantityProjection.Create(
             canonicalOrdered, canonicalConfirmed, canonicalShortClosed, inFlightCanonicalQuantity);
+        var canonicalStorageRemaining = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - canonicalConfirmed));
+        var orderedStorageRemaining = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - line.ReceivedQuantity));
 
         var options = line.ProductVariant?.UnitConversions
             .Where(x => !x.IsDeleted && x.IsActive && x.Unit != null && !x.Unit.IsDeleted && x.Unit.IsActive &&
@@ -972,6 +976,18 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                     orderedFactor) is var calculatedMaximum && x.UnitId == line.UnitId
                         ? Math.Min(line.PendingQuantity, calculatedMaximum)
                         : calculatedMaximum,
+                MaximumEntryQuantity = x.UnitId == line.UnitId
+                    ? PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeSameUnitReceiptQuantity(
+                        canonicalStorageRemaining,
+                        orderedFactor,
+                        line.ReceivedQuantity,
+                        orderedStorageRemaining)
+                    : PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeReceiptQuantity(
+                        canonicalStorageRemaining,
+                        x.Factor,
+                        orderedFactor,
+                        line.ReceivedQuantity,
+                        orderedStorageRemaining),
                 IsOrderedUnit = x.UnitId == line.UnitId,
                 IsBaseUnit = x.IsBaseUnit
             })
@@ -991,6 +1007,11 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                     projection.AvailableToAllocateQuantity, orderedFactor, orderedFactor) is var calculatedMaximum
                         ? Math.Min(line.PendingQuantity, calculatedMaximum)
                         : calculatedMaximum,
+                MaximumEntryQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeSameUnitReceiptQuantity(
+                    canonicalStorageRemaining,
+                    orderedFactor,
+                    line.ReceivedQuantity,
+                    orderedStorageRemaining),
                 IsOrderedUnit = true,
                 IsBaseUnit = line.ProductVariant?.Product.BaseUnitId == line.UnitId.Value
             });
@@ -1017,6 +1038,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             CanonicalConfirmedReceivedQuantity = canonicalConfirmed,
             InFlightQuantity = projection.InFlightQuantity,
             AvailableToAllocateQuantity = projection.AvailableToAllocateQuantity,
+            ConfirmedOverdeliveryQuantity = projection.ConfirmedOverdeliveryQuantity,
+            ProjectedOverdeliveryQuantity = projection.ProjectedOverdeliveryQuantity,
             AllowedReceiptUnits = options,
             PendingQuantity = line.PendingQuantity, ShortClosedQuantity = line.ShortClosedQuantity,
             ReceiptStatus = line.ReceiptStatus, ShortCloseReason = line.ShortCloseReason,

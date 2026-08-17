@@ -3,23 +3,23 @@ namespace GaoApp.Tests.Purchases;
 public sealed class PurchaseReceiptAllocationUiContractTests
 {
     [Fact]
-    public void Purchase_order_details_uses_server_projection_and_has_no_future_features()
+    public void Purchase_order_details_separates_planned_availability_from_managed_overdelivery()
     {
         var root = FindRepositoryRoot();
         var view = File.ReadAllText(Path.Combine(root, "GaoApp.Web", "Areas", "Admin", "Views", "PurchaseOrders", "Details.cshtml"));
         Assert.Contains("Số đặt", view);
         Assert.Contains("Đã nhập", view);
         Assert.Contains("Đang xử lý", view);
-        Assert.Contains("Còn có thể tạo phiếu", view);
+        Assert.Contains("Còn theo kế hoạch", view);
         Assert.Contains("line.AvailableToAllocateQuantity", view);
-        Assert.Contains("if(!unavailable){ri++;}", view);
-        Assert.DoesNotContain("</tr>ri++;", view);
-        Assert.Contains("class=\"receipt-input receipt-index\" name=\"Lines.Index\" value=\"@ri\" disabled=\"@(unavailable)\"", view);
+        Assert.Contains("line.ConfirmedOverdeliveryQuantity", view);
+        Assert.Contains("line.ProjectedOverdeliveryQuantity", view);
+        Assert.Contains("MaximumEntryQuantity", view);
         var script = File.ReadAllText(Path.Combine(root, "GaoApp.Web", "wwwroot", "Admin", "js", "purchase-order-details.js"));
         Assert.Contains("querySelectorAll('.receipt-input')", script);
         Assert.Contains("input.disabled = !checkbox.checked", script);
         Assert.Contains("Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất.", view);
-        Assert.DoesNotContain("overdelivery", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("projectedOverdelivery", script);
         Assert.DoesNotContain("alternate unit", view, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("reopen", view, StringComparison.OrdinalIgnoreCase);
     }

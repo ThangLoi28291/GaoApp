@@ -14,6 +14,7 @@
             const unitSelect = row.querySelector('.receipt-unit');
             const quantityInput = row.querySelector('.receipt-quantity');
             const conversionText = row.querySelector('.receipt-conversion');
+            const overdeliveryText = row.querySelector('.receipt-overdelivery');
             if (!checkbox) return;
             if (checkbox.dataset.bound === '1') return;
             checkbox.dataset.bound = '1';
@@ -21,17 +22,19 @@
                 row.querySelectorAll('.receipt-input').forEach(function (input) {
                     input.disabled = !checkbox.checked;
                 });
+                updateConversion(false);
             });
 
             function updateConversion(resetToMaximum) {
                 const option = unitSelect?.selectedOptions[0];
                 const factor = Number(option?.dataset.factor || 0);
-                const maximum = Number(option?.dataset.max || 0);
-                if (quantityInput && Number.isFinite(maximum)) {
-                    quantityInput.max = maximum.toFixed(3);
+                const plannedMaximum = Number(option?.dataset.plannedMax || 0);
+                const entryMaximum = Number(option?.dataset.entryMax || 0);
+                if (quantityInput && Number.isFinite(entryMaximum)) {
+                    quantityInput.max = entryMaximum.toFixed(3);
                     const current = Number(quantityInput.value || 0);
-                    if (resetToMaximum || !Number.isFinite(current) || current <= 0 || current > maximum) {
-                        quantityInput.value = maximum > 0 ? maximum.toFixed(3) : '';
+                    if (resetToMaximum || !Number.isFinite(current) || current <= 0 || current > entryMaximum) {
+                        quantityInput.value = plannedMaximum > 0 ? plannedMaximum.toFixed(3) : '';
                     }
                 }
                 const quantity = Number(quantityInput?.value || 0);
@@ -40,6 +43,14 @@
                     conversionText.textContent = Number.isFinite(canonical) && canonical > 0
                         ? `Tương đương: ${canonical.toFixed(3)} ${row.dataset.baseUnit || 'đơn vị gốc'}`
                         : 'Tương đương: —';
+                }
+                const canonicalOrdered = Number(row.dataset.canonicalOrdered || 0);
+                const canonicalConfirmed = Number(row.dataset.canonicalConfirmed || 0);
+                const projectedOverdelivery = Math.max(0, canonicalConfirmed + canonical - canonicalOrdered);
+                if (overdeliveryText) {
+                    overdeliveryText.textContent = checkbox.checked && projectedOverdelivery > 0
+                        ? `Dự kiến vượt ${projectedOverdelivery.toFixed(3)} ${row.dataset.baseUnit || 'đơn vị gốc'}; cần Manager/Admin xác nhận khi duyệt.`
+                        : '';
                 }
             }
 

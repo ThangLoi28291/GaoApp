@@ -47,11 +47,201 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         var service = File.ReadAllText(Path.Combine(root, "GaoApp.Application", "Services", "Inventory", "StockDocumentService.cs"));
         var repository = File.ReadAllText(Path.Combine(root, "GaoApp.Infrastructure", "Repositories", "Inventory", "StockDocumentRepository.cs"));
 
-        Assert.Contains("canonicalQuantity > projection.AvailableToAllocateQuantity", service);
+        Assert.DoesNotContain("canonicalQuantity > projection.AvailableToAllocateQuantity", service);
         Assert.Contains("canonicalReceipt != line.BaseQuantity", service);
+        Assert.Contains("EvaluateOverdelivery", service);
         Assert.Contains("receiptLine.BaseQuantity", service);
         Assert.Contains("qtyBase: line.BaseQuantity", service);
         Assert.Contains("x.Sum(y => y.BaseQuantity)", repository);
+    }
+
+    [Fact]
+    public void Purchase_order_dto_returns_zero_alternate_entry_maximum_at_ordered_storage_boundary()
+    {
+        var orderedUnit = new Unit
+        {
+            Id = 50, StoreId = 1, Code = "TINY", Name = "đơn vị nhỏ", IsActive = true
+        };
+        var baseUnit = new Unit
+        {
+            Id = 51, StoreId = 1, Code = "BASE", Name = "đơn vị gốc", IsActive = true
+        };
+        var product = new Product
+        {
+            Id = 80, StoreId = 1, Name = "Gạo", Alias = "gao",
+            BaseUnitId = baseUnit.Id, BaseUnit = baseUnit, IsActive = true
+        };
+        var variant = new ProductVariant
+        {
+            Id = 40, StoreId = 1, ProductId = product.Id, Product = product,
+            Sku = "SKU-C3-LIMIT", IsActive = true
+        };
+        var orderedConversion = new ProductUnitConversion
+        {
+            Id = 60, StoreId = 1, ProductVariantId = variant.Id, ProductVariant = variant,
+            UnitId = orderedUnit.Id, Unit = orderedUnit, Factor = 0.0001m, IsActive = true
+        };
+        var alternateConversion = new ProductUnitConversion
+        {
+            Id = 61, StoreId = 1, ProductVariantId = variant.Id, ProductVariant = variant,
+            UnitId = baseUnit.Id, Unit = baseUnit, Factor = 1m, IsBaseUnit = true, IsActive = true
+        };
+        variant.UnitConversions.Add(orderedConversion);
+        variant.UnitConversions.Add(alternateConversion);
+        var line = new PurchaseOrderLine
+        {
+            Id = 31, StoreId = 1, LineNo = 1,
+            ProductVariantId = variant.Id, ProductVariant = variant,
+            ProductUnitConversionId = orderedConversion.Id,
+            ProductUnitConversion = orderedConversion,
+            UnitId = orderedUnit.Id,
+            UnitNameSnapshot = orderedUnit.Name,
+            ProductNameSnapshot = product.Name,
+            ConversionFactor = 0.0001m,
+            OrderedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity,
+            ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m
+        };
+        var map = typeof(PurchaseOrderService).GetMethod(
+            "MapDetailLine",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("MapDetailLine not found.");
+
+        var dto = Assert.IsType<PurchaseOrderLineDto>(map.Invoke(null, [line, false, 0m]));
+
+        Assert.Equal(0m, dto.AllowedReceiptUnits.Single(x => x.UnitId == baseUnit.Id)
+            .MaximumEntryQuantity);
+    }
+
+    [Fact]
+    public void Purchase_order_dto_preserves_same_unit_fractional_entry_at_storage_boundary()
+    {
+        var orderedUnit = new Unit
+        {
+            Id = 50, StoreId = 1, Code = "HALF", Name = "nửa đơn vị gốc", IsActive = true
+        };
+        var product = new Product
+        {
+            Id = 80, StoreId = 1, Name = "Gạo", Alias = "gao",
+            BaseUnitId = orderedUnit.Id, BaseUnit = orderedUnit, IsActive = true
+        };
+        var variant = new ProductVariant
+        {
+            Id = 40, StoreId = 1, ProductId = product.Id, Product = product,
+            Sku = "SKU-C3-SAME-LIMIT", IsActive = true
+        };
+        var orderedConversion = new ProductUnitConversion
+        {
+            Id = 60, StoreId = 1, ProductVariantId = variant.Id, ProductVariant = variant,
+            UnitId = orderedUnit.Id, Unit = orderedUnit, Factor = 0.5m,
+            IsBaseUnit = true, IsActive = true
+        };
+        variant.UnitConversions.Add(orderedConversion);
+        var line = new PurchaseOrderLine
+        {
+            Id = 31, StoreId = 1, LineNo = 1,
+            ProductVariantId = variant.Id, ProductVariant = variant,
+            ProductUnitConversionId = orderedConversion.Id,
+            ProductUnitConversion = orderedConversion,
+            UnitId = orderedUnit.Id,
+            UnitNameSnapshot = orderedUnit.Name,
+            ProductNameSnapshot = product.Name,
+            ConversionFactor = 0.5m,
+            OrderedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity,
+            ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m
+        };
+        var map = typeof(PurchaseOrderService).GetMethod(
+            "MapDetailLine",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("MapDetailLine not found.");
+
+        var dto = Assert.IsType<PurchaseOrderLineDto>(map.Invoke(null, [line, false, 0m]));
+
+        Assert.Equal(0.001m, dto.AllowedReceiptUnits.Single(x => x.UnitId == orderedUnit.Id)
+            .MaximumEntryQuantity);
+    }
+
+    [Fact]
+    public async Task Create_accepts_same_unit_fractional_boundary_and_rejects_next_quantity_step()
+    {
+        static (StockDocumentService Service, Func<StockDocument?> AddedDocument, Func<int> Rollbacks)
+            CreateBoundaryService()
+        {
+            var order = CreateSameUnitBoundaryOrder();
+            StockDocument? addedDocument = null;
+            var rollbacks = 0;
+            var line = order.Lines.Single();
+            var repository = Proxy<IStockDocumentRepository>((method, args) => method.Name switch
+            {
+                nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
+                nameof(IStockDocumentRepository.CommitTransactionAsync) => Task.CompletedTask,
+                nameof(IStockDocumentRepository.RollbackTransactionAsync) => Rollback(() => rollbacks++),
+                nameof(IStockDocumentRepository.LockPurchaseOrderForReceiptAsync) =>
+                    Task.FromResult<PurchaseOrderReceiptState?>(new(
+                        order.Id, order.StoreId, order.Status, order.SupplierId,
+                        order.ExpectedWarehouseId, order.LegalEntityId)),
+                nameof(IStockDocumentRepository.LockPurchaseOrderLinesAsync) =>
+                    Task.FromResult<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>>(
+                        new Dictionary<int, PurchaseOrderLineAllocationState>
+                        {
+                            [line.Id] = new(
+                                line.Id,
+                                order.StoreId,
+                                line.OrderedQuantity,
+                                line.ReceivedQuantity,
+                                line.ShortClosedQuantity,
+                                line.ConversionFactor)
+                        }),
+                nameof(IStockDocumentRepository.GetPurchaseOrderForReceiptAsync) =>
+                    Task.FromResult<PurchaseOrder?>(order),
+                nameof(IStockDocumentRepository.AddAsync) =>
+                    CaptureAdded((StockDocument)args![0]!),
+                nameof(IStockDocumentRepository.SaveChangesAsync) => Task.CompletedTask,
+                _ => throw new NotSupportedException(method.Name)
+            });
+            var sequence = Proxy<IDocumentNumberSequenceRepository>((method, _) =>
+                method.Name == nameof(IDocumentNumberSequenceRepository.GetNextNumberAsync)
+                    ? Task.FromResult(1)
+                    : throw new NotSupportedException(method.Name));
+            return (
+                CreateServiceForOrder(repository, new RecordingMovementService(), sequence),
+                () => addedDocument,
+                () => rollbacks);
+
+            Task CaptureAdded(StockDocument document)
+            {
+                addedDocument = document;
+                return Task.CompletedTask;
+            }
+        }
+
+        static CreatePurchaseReceiptRequest Request(decimal quantity) => new()
+        {
+            Lines =
+            [
+                new CreatePurchaseReceiptLineRequest
+                {
+                    PurchaseOrderLineId = 31,
+                    ReceiptUnitId = 50,
+                    Quantity = quantity
+                }
+            ]
+        };
+
+        var accepted = CreateBoundaryService();
+        await accepted.Service.CreateReceiptFromPurchaseOrderAsync(30, Request(0.001m));
+
+        var acceptedLine = Assert.Single(accepted.AddedDocument()!.Lines);
+        Assert.Equal(0.001m, acceptedLine.Quantity);
+        Assert.Equal(0.001m, acceptedLine.BaseQuantity);
+        Assert.Equal(0, accepted.Rollbacks());
+
+        var rejected = CreateBoundaryService();
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            rejected.Service.CreateReceiptFromPurchaseOrderAsync(30, Request(0.002m)));
+
+        Assert.Contains("vượt giới hạn", error.Message);
+        Assert.Null(rejected.AddedDocument());
+        Assert.Equal(1, rejected.Rollbacks());
     }
 
     [Fact]
@@ -220,6 +410,149 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         Assert.Equal(0.001m, movements.Requests.Single().QuantityChange);
     }
 
+    [Fact]
+    public async Task Confirm_rejects_overdelivery_without_explicit_manager_acceptance_before_posting()
+    {
+        var document = CreatePurchaseOrderReceipt(9m, 2m, 1m, 2m);
+        var movements = new RecordingMovementService();
+        var repository = CreateSuccessfulConfirmRepository(document);
+        var service = CreateService(document, repository, movements);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => service.ApproveAsync(
+            document.Id,
+            null,
+            Convert.ToBase64String(document.RowVersion)));
+
+        Assert.Contains("phải xác nhận chấp nhận nhận vượt", error.Message);
+        Assert.Equal(0, movements.PreLockCalls);
+        Assert.Equal(0, movements.CreateCalls);
+        Assert.Equal(9m, document.PurchaseOrder!.Lines.Single().ReceivedQuantity);
+        Assert.Equal(StockDocumentStatus.PendingApproval, document.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_posts_overdelivery_after_explicit_acceptance_and_records_exact_audit_evidence()
+    {
+        var document = CreatePurchaseOrderReceipt(9m, 2m, 1m, 2m);
+        var movements = new RecordingMovementService();
+        var repository = CreateSuccessfulConfirmRepository(document);
+        var valuation = Proxy<IInventoryValuationEntryRepository>((method, _) =>
+            method.Name == nameof(IInventoryValuationEntryRepository.GetByReferenceAsync)
+                ? Task.FromResult(new List<InventoryValuationEntry>())
+                : throw new NotSupportedException(method.Name));
+        var service = CreateService(document, repository, movements, valuation);
+
+        await service.ApproveAsync(
+            document.Id,
+            "Đã đối chiếu",
+            Convert.ToBase64String(document.RowVersion),
+            acceptOverdelivery: true,
+            overdeliveryNote: null);
+
+        Assert.Equal(StockDocumentStatus.Confirmed, document.Status);
+        Assert.Equal(11m, document.PurchaseOrder!.Lines.Single().ReceivedQuantity);
+        Assert.Single(movements.Requests);
+        Assert.Equal(2m, movements.Requests.Single().QuantityChange);
+        var audit = PurchaseReceiptAuditEvidence.GetWorkflowIntent(document);
+        Assert.NotNull(audit);
+        Assert.Null(audit.Reason);
+        Assert.Contains("lượng vượt tăng 1 base", audit.Note);
+        Assert.Contains("tổng lượng vượt sau duyệt 1 base", audit.Note);
+    }
+
+    [Fact]
+    public async Task Alternate_receipt_unit_overdelivery_updates_ordered_unit_equivalent_only_after_acceptance()
+    {
+        var document = CreateAlternateSnapshotReceipt();
+        var orderLine = document.PurchaseOrder!.Lines.Single();
+        orderLine.ReceivedQuantity = 9m;
+        var receiptLine = document.Lines.Single();
+        receiptLine.Quantity = 24m;
+        receiptLine.BaseQuantity = 24m;
+        receiptLine.LineTotal = 240m;
+        var movements = new RecordingMovementService();
+        var repository = CreateSuccessfulConfirmRepository(document);
+        var valuation = Proxy<IInventoryValuationEntryRepository>((method, _) =>
+            method.Name == nameof(IInventoryValuationEntryRepository.GetByReferenceAsync)
+                ? Task.FromResult(new List<InventoryValuationEntry>())
+                : throw new NotSupportedException(method.Name));
+        var service = CreateService(document, repository, movements, valuation);
+
+        await service.ApproveAsync(
+            document.Id,
+            null,
+            Convert.ToBase64String(document.RowVersion),
+            acceptOverdelivery: true,
+            overdeliveryNote: "NCC giao nguyên kiện");
+
+        Assert.Equal(11m, orderLine.ReceivedQuantity);
+        Assert.Equal(24m, movements.Requests.Single().QuantityChange);
+        var audit = PurchaseReceiptAuditEvidence.GetWorkflowIntent(document);
+        Assert.Equal("NCC giao nguyên kiện", audit?.Reason);
+        Assert.Contains("12 base", audit?.Note);
+    }
+
+    [Fact]
+    public async Task Existing_draft_can_be_confirmed_as_overdelivery_after_another_receipt_completed_the_order()
+    {
+        var document = CreatePurchaseOrderReceipt(10m, 1m, 1m, 1m);
+        document.PurchaseOrder!.Status = PurchaseOrderStatus.FullyReceived;
+        var movements = new RecordingMovementService();
+        var repository = CreateSuccessfulConfirmRepository(document);
+        var valuation = Proxy<IInventoryValuationEntryRepository>((method, _) =>
+            method.Name == nameof(IInventoryValuationEntryRepository.GetByReferenceAsync)
+                ? Task.FromResult(new List<InventoryValuationEntry>())
+                : throw new NotSupportedException(method.Name));
+        var service = CreateService(document, repository, movements, valuation);
+
+        await service.ApproveAsync(
+            document.Id,
+            null,
+            Convert.ToBase64String(document.RowVersion),
+            acceptOverdelivery: true,
+            overdeliveryNote: null);
+
+        Assert.Equal(11m, document.PurchaseOrder.Lines.Single().ReceivedQuantity);
+        Assert.Equal(PurchaseOrderStatus.FullyReceived, document.PurchaseOrder.Status);
+        Assert.Single(movements.Requests);
+    }
+
+    [Fact]
+    public async Task Confirm_recomputes_overdelivery_from_locked_state_instead_of_stale_tracked_quantity()
+    {
+        // The browser-loaded graph sees 9 + 1 = 10 (no overdelivery). Another
+        // confirmation commits first, so the durable lock now reports 10.
+        var document = CreatePurchaseOrderReceipt(9m, 1m, 1m, 1m);
+        var movements = new RecordingMovementService();
+        var repository = CreateSuccessfulConfirmRepository(
+            document,
+            lockedReceivedQuantity: 10m,
+            lockedStatus: PurchaseOrderStatus.FullyReceived);
+        var valuation = Proxy<IInventoryValuationEntryRepository>((method, _) =>
+            method.Name == nameof(IInventoryValuationEntryRepository.GetByReferenceAsync)
+                ? Task.FromResult(new List<InventoryValuationEntry>())
+                : throw new NotSupportedException(method.Name));
+        var service = CreateService(document, repository, movements, valuation);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() => service.ApproveAsync(
+            document.Id,
+            null,
+            Convert.ToBase64String(document.RowVersion)));
+
+        Assert.Contains("phải xác nhận chấp nhận nhận vượt", error.Message);
+        Assert.Empty(movements.Requests);
+
+        await service.ApproveAsync(
+            document.Id,
+            null,
+            Convert.ToBase64String(document.RowVersion),
+            acceptOverdelivery: true,
+            overdeliveryNote: null);
+
+        Assert.Equal(11m, document.PurchaseOrder!.Lines.Single().ReceivedQuantity);
+        Assert.Single(movements.Requests);
+    }
+
     private static StockDocument CreatePurchaseOrderReceipt(
         decimal receivedQuantity,
         decimal receiptQuantity,
@@ -320,6 +653,49 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         return order;
     }
 
+    private static PurchaseOrder CreateSameUnitBoundaryOrder()
+    {
+        var orderedUnit = new Unit
+        {
+            Id = 50, StoreId = 1, Code = "HALF", Name = "nửa đơn vị gốc", IsActive = true
+        };
+        var product = new Product
+        {
+            Id = 80, StoreId = 1, Name = "Gạo", Alias = "gao",
+            BaseUnitId = orderedUnit.Id, BaseUnit = orderedUnit, IsActive = true
+        };
+        var variant = new ProductVariant
+        {
+            Id = 40, StoreId = 1, ProductId = product.Id, Product = product,
+            Sku = "SKU-C3-SAME-CREATE", IsActive = true
+        };
+        var conversion = new ProductUnitConversion
+        {
+            Id = 60, StoreId = 1, ProductVariantId = variant.Id, ProductVariant = variant,
+            UnitId = orderedUnit.Id, Unit = orderedUnit, Factor = 0.5m,
+            IsBaseUnit = true, IsActive = true
+        };
+        variant.UnitConversions.Add(conversion);
+        var order = new PurchaseOrder
+        {
+            Id = 30, StoreId = 1, OrderNumber = "PO-C3-SAME-LIMIT",
+            Status = PurchaseOrderStatus.PartiallyReceived,
+            SupplierId = 20, ExpectedWarehouseId = 10, LegalEntityId = 5
+        };
+        order.Lines.Add(new PurchaseOrderLine
+        {
+            Id = 31, StoreId = 1, PurchaseOrderId = order.Id, PurchaseOrder = order,
+            LineNo = 1, ProductVariantId = variant.Id, ProductVariant = variant,
+            ProductUnitConversionId = conversion.Id, ProductUnitConversion = conversion,
+            UnitId = orderedUnit.Id, UnitNameSnapshot = orderedUnit.Name,
+            ConversionFactor = conversion.Factor,
+            OrderedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity,
+            ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m,
+            ProductNameSnapshot = product.Name
+        });
+        return order;
+    }
+
     private static StockDocument CreateAlternateSnapshotReceipt()
     {
         var document = CreatePurchaseOrderReceipt(0m, 36m, 1m, 36m);
@@ -380,7 +756,10 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         return proxy;
     }
 
-    private static IStockDocumentRepository CreateSuccessfulConfirmRepository(StockDocument document)
+    private static IStockDocumentRepository CreateSuccessfulConfirmRepository(
+        StockDocument document,
+        decimal? lockedReceivedQuantity = null,
+        PurchaseOrderStatus? lockedStatus = null)
     {
         var order = document.PurchaseOrder!;
         var orderLine = order.Lines.Single();
@@ -393,7 +772,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
             nameof(IStockDocumentRepository.RollbackTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.LockPurchaseOrderForReceiptAsync) =>
                 Task.FromResult<PurchaseOrderReceiptState?>(new(
-                    order.Id, order.StoreId, order.Status, order.SupplierId,
+                    order.Id, order.StoreId, lockedStatus ?? order.Status, order.SupplierId,
                     order.ExpectedWarehouseId, order.LegalEntityId)),
             nameof(IStockDocumentRepository.LockPurchaseOrderLinesAsync) =>
                 Task.FromResult<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>>(
@@ -401,7 +780,8 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
                     {
                         [orderLine.Id] = new(
                             orderLine.Id, orderLine.LineNo, orderLine.OrderedQuantity,
-                            orderLine.ReceivedQuantity, orderLine.ShortClosedQuantity,
+                            lockedReceivedQuantity ?? orderLine.ReceivedQuantity,
+                            orderLine.ShortClosedQuantity,
                             orderLine.ConversionFactor)
                     }),
             nameof(IStockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync) =>

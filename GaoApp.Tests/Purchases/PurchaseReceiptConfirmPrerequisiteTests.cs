@@ -9,6 +9,7 @@ using GaoApp.Application.Interfaces.Repositories.LegalEntities;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Services.Inventory;
+using GaoApp.Application.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
@@ -173,6 +174,47 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         document.PurchaseOrder!.Lines.Single().ReceivedQuantity.Should().Be(2m);
         fixture.Movements.CreateCalls.Should().Be(1);
         fixture.Repository.CommitTransactionCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_rejects_overdelivery_without_explicit_acceptance()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreatePurchaseOrderReceipt(supplier);
+        document.PurchaseOrder!.Lines.Single().OrderedQuantity = 1m;
+        var fixture = CreateFixture(document, supplier);
+        var request = ValidCommercialRequest(supplier.Id);
+
+        var action = () => fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*phải xác nhận chấp nhận nhận vượt*");
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        fixture.Movements.CreateCalls.Should().Be(0);
+        fixture.Repository.CommitTransactionCalls.Should().Be(0);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Commercial_confirm_accepts_overdelivery_without_requiring_a_reason()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreatePurchaseOrderReceipt(supplier);
+        document.PurchaseOrder!.Lines.Single().OrderedQuantity = 1m;
+        var fixture = CreateFixture(document, supplier);
+        var request = ValidCommercialRequest(supplier.Id);
+        request.AcceptOverdelivery = true;
+        request.OverdeliveryNote = null;
+
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        document.Status.Should().Be(StockDocumentStatus.Confirmed);
+        document.PurchaseOrder.Lines.Single().ReceivedQuantity.Should().Be(2m);
+        fixture.Movements.CreateCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(1);
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.Reason.Should().BeNull();
+        PurchaseReceiptAuditEvidence.GetWorkflowIntent(document)?.Note.Should()
+            .Contain("lượng vượt tăng 1 base");
     }
 
     [Fact]

@@ -37,6 +37,15 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
     [StringLength(1000)]
     public string? ApprovalNote { get; set; }
 
+    /// <summary>
+    /// Explicit manager/admin acceptance when the locked confirmation state
+    /// shows that this receipt increases purchase-order overdelivery.
+    /// </summary>
+    public bool AcceptOverdelivery { get; set; }
+
+    [StringLength(1000)]
+    public string? OverdeliveryNote { get; set; }
+
     public bool HasVat { get; set; }
     public int? SupplierId { get; set; }
     public bool IsMerchandisePaid { get; set; }

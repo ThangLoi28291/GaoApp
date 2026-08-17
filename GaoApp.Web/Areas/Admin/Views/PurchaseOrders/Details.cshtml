@@ -179,28 +179,29 @@
     @if(Model.CanCreateReceipt && !Model.CanResolveItems)
     {
         var receiptCandidateLines = order.Lines.Where(x => x.PendingQuantity > 0m).ToList();
-        <div class="card pod-card mb-4"><div class="card-header border-bottom"><h5 class="mb-1">Tạo phiếu nhập từ đơn</h5><small class="text-muted">Số có thể tạo phiếu đã trừ các phiếu Draft, chờ duyệt và bị trả về sửa.</small></div><div class="card-body">
+        <div class="card pod-card mb-4"><div class="card-header border-bottom"><h5 class="mb-1">Tạo phiếu nhập từ đơn</h5><small class="text-muted">Có thể lưu Draft vượt phần còn lại. Phần vượt chỉ được ghi kho khi Manager/Admin xác nhận lúc duyệt.</small></div><div class="card-body">
         @if (!receiptCandidateLines.Any(x => x.AvailableToAllocateQuantity > 0m) && receiptCandidateLines.Any(x => x.InFlightQuantity > 0m))
-        {<div class="alert alert-warning">Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất.</div>}
-        else
-        {
+        {<div class="alert alert-warning">Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất. Bạn vẫn có thể chủ động tạo Draft; phần vượt sẽ cần Manager/Admin xác nhận.</div>}
             <form method="post" asp-action="CreateReceipt" asp-route-id="@order.Id">
                 @Html.AntiForgeryToken()
                 <div class="table-responsive">
                     <table class="table align-middle">
-                        <thead><tr><th>Nhận</th><th>Dòng hàng</th><th>Số đặt</th><th>Đã nhập</th><th>Đang xử lý (đv gốc)</th><th>Còn có thể tạo phiếu (đv gốc)</th><th>Đơn vị nhận</th><th>Số nhận của phiếu mới</th><th>Xử lý phần thiếu</th><th>Lý do đóng thiếu</th></tr></thead>
+                        <thead><tr><th>Nhận</th><th>Dòng hàng</th><th>Số đặt</th><th>Đã nhập</th><th>Đang xử lý (đv gốc)</th><th>Còn theo kế hoạch (đv gốc)</th><th>Đã/Dự kiến vượt</th><th>Đơn vị nhận</th><th>Số nhận của phiếu mới</th><th>Xử lý phần thiếu</th><th>Lý do đóng thiếu</th></tr></thead>
                         <tbody>
                         @{var ri=0;}
                         @foreach(var line in receiptCandidateLines)
                         {
                             var defaultUnit = line.AllowedReceiptUnits.FirstOrDefault(x => x.IsOrderedUnit)
                                 ?? line.AllowedReceiptUnits.FirstOrDefault();
-                            var unavailable = line.AvailableToAllocateQuantity <= 0m || defaultUnit == null || defaultUnit.MaximumReceiptQuantity <= 0m;
-                            <tr class="receipt-row" data-base-unit="@line.BaseUnitName">
-                                <td><input class="form-check-input receive-enabled" type="checkbox" checked="@(!unavailable)" disabled="@(unavailable)" /></td>
+                            var unavailable = defaultUnit == null || defaultUnit.MaximumEntryQuantity <= 0m;
+                            var initiallyEnabled = !unavailable && line.AvailableToAllocateQuantity > 0m;
+                            <tr class="receipt-row" data-base-unit="@line.BaseUnitName"
+                                data-canonical-ordered="@PurchaseQuantityFormatter.Invariant(line.CanonicalOrderedQuantity)"
+                                data-canonical-confirmed="@PurchaseQuantityFormatter.Invariant(line.CanonicalConfirmedReceivedQuantity)">
+                                <td><input class="form-check-input receive-enabled" type="checkbox" checked="@initiallyEnabled" disabled="@(unavailable)" /></td>
                                 <td>
-                                    <input type="hidden" class="receipt-input receipt-index" name="Lines.Index" value="@ri" disabled="@(unavailable)"/>
-                                    <input type="hidden" class="receipt-input" name="Lines[@ri].PurchaseOrderLineId" value="@line.Id" disabled="@(unavailable)"/>
+                                    <input type="hidden" class="receipt-input receipt-index" name="Lines.Index" value="@ri" disabled="@(!initiallyEnabled)"/>
+                                    <input type="hidden" class="receipt-input" name="Lines[@ri].PurchaseOrderLineId" value="@line.Id" disabled="@(!initiallyEnabled)"/>
                                     <div class="fw-semibold">@line.ProductName</div>
                                     <small class="text-muted">Đơn vị đặt: @line.UnitName × @PurchaseQuantityFormatter.Display(line.ConversionFactor) @line.BaseUnitName</small>
                                 </td>
@@ -208,15 +209,16 @@
                                 <td>@PurchaseQuantityFormatter.Display(line.ConfirmedReceivedQuantity) @line.UnitName</td>
                                 <td>@PurchaseQuantityFormatter.Display(line.InFlightQuantity) @line.BaseUnitName</td>
                                 <td>@PurchaseQuantityFormatter.Display(line.AvailableToAllocateQuantity) @line.BaseUnitName</td>
+                                <td><span class="text-danger">@PurchaseQuantityFormatter.Display(line.ConfirmedOverdeliveryQuantity)</span> / <span class="text-warning">@PurchaseQuantityFormatter.Display(line.ProjectedOverdeliveryQuantity)</span> @line.BaseUnitName</td>
                                 <td>
-                                    <select class="form-select receipt-input receipt-unit" name="Lines[@ri].ReceiptUnitId" disabled="@(unavailable)" required>
+                                    <select class="form-select receipt-input receipt-unit" name="Lines[@ri].ReceiptUnitId" disabled="@(!initiallyEnabled)" required>
                                         @foreach (var unit in line.AllowedReceiptUnits)
                                         {
                                             <option value="@unit.UnitId"
                                                     selected="@(unit.UnitId == defaultUnit?.UnitId)"
-                                                    disabled="@(unit.MaximumReceiptQuantity <= 0m)"
                                                     data-factor="@PurchaseQuantityFormatter.Invariant(unit.ConversionFactor)"
-                                                    data-max="@PurchaseQuantityFormatter.Invariant(unit.MaximumReceiptQuantity)">
+                                                    data-planned-max="@PurchaseQuantityFormatter.Invariant(unit.MaximumReceiptQuantity)"
+                                                    data-entry-max="@PurchaseQuantityFormatter.Invariant(unit.MaximumEntryQuantity)">
                                                 @unit.UnitName (× @PurchaseQuantityFormatter.Display(unit.ConversionFactor))
                                             </option>
                                         }
@@ -224,23 +226,23 @@
                                 </td>
                                 <td>
                                     <input class="form-control receipt-input receipt-quantity" type="number" min="0.001"
-                                           max="@(defaultUnit == null ? "0" : PurchaseQuantityFormatter.Invariant(defaultUnit.MaximumReceiptQuantity))"
+                                           max="@(defaultUnit == null ? "0" : PurchaseQuantityFormatter.Invariant(defaultUnit.MaximumEntryQuantity))"
                                            step="0.001" name="Lines[@ri].Quantity"
                                            value="@(defaultUnit == null ? "" : PurchaseQuantityFormatter.Invariant(defaultUnit.MaximumReceiptQuantity))"
-                                           required disabled="@(unavailable)"/>
+                                           required disabled="@(!initiallyEnabled)"/>
                                     <small class="text-muted receipt-conversion">Tương đương: —</small>
+                                    <small class="text-warning receipt-overdelivery d-block"></small>
                                 </td>
-                                <td><select class="form-select receipt-input" name="Lines[@ri].ShortageDisposition" disabled="@(unavailable)"><option value="0">-- Không thiếu --</option><option value="1">Chờ giao bù</option><option value="2">Đóng phần thiếu</option></select></td>
-                                <td><input class="form-control receipt-input" name="Lines[@ri].ShortageReason" maxlength="500" placeholder="Bắt buộc khi đóng thiếu" disabled="@(unavailable)"/></td>
+                                <td><select class="form-select receipt-input" name="Lines[@ri].ShortageDisposition" disabled="@(!initiallyEnabled)"><option value="0">-- Không thiếu --</option><option value="1">Chờ giao bù</option><option value="2">Đóng phần thiếu</option></select></td>
+                                <td><input class="form-control receipt-input" name="Lines[@ri].ShortageReason" maxlength="500" placeholder="Bắt buộc khi đóng thiếu" disabled="@(!initiallyEnabled)"/></td>
                             </tr>
-                            if(!unavailable){ri++;}
+                            ri++;
                         }
                         </tbody>
                     </table>
                 </div>
                 <div class="row g-2"><div class="col-md-3"><input class="form-control" type="date" name="DocumentDate" value="@DateTime.Today.ToString("yyyy-MM-dd")"/></div><div class="col-md-7"><input class="form-control" name="Note" placeholder="Ghi chú phiếu nhập"/></div><div class="col-md-2"><button class="btn btn-primary w-100">Tạo phiếu nhập</button></div></div>
             </form>
-        }
         </div></div>
     }
 

@@ -9,6 +9,10 @@
     // Số lượng/đơn vị đã được nhân viên xác nhận trước khi gửi duyệt.
     // Workbench thương mại chỉ chốt giá, VAT và công nợ.
     var canEditPhysical = false;
+    var overdeliveryLines = Model.Lines
+        .Where(x => x.ProjectedOverdeliveryQuantity > 0m)
+        .OrderBy(x => x.LineNo)
+        .ToList();
 }
 
 <section class="card sd-card sd-commercial-workbench mb-3"
@@ -33,6 +37,20 @@
     </div>
 
     <div class="card-body">
+        @if (overdeliveryLines.Count > 0)
+        {
+            <div class="alert alert-warning border-0">
+                <strong>Phiếu có nhận vượt đơn đặt hàng.</strong>
+                @foreach (var line in overdeliveryLines)
+                {
+                    <div class="small">
+                        Dòng @line.LineNo · @line.ProductNameSnapshot: dự kiến vượt
+                        @line.ProjectedOverdeliveryQuantity.ToString("0.###") đơn vị gốc.
+                    </div>
+                }
+                <div class="small mt-1">Manager/Admin phải xác nhận rõ tại hộp thoại duyệt. Lý do là tùy chọn.</div>
+            </div>
+        }
         <div class="sd-commercial-settlement mb-4">
             <div class="row g-3 align-items-end">
                 <div class="col-12 col-md-3">

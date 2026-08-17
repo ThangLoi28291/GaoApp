@@ -503,6 +503,27 @@
                     Sau khi duyệt, phiếu sẽ được ghi nhận vào tồn kho và không nên chỉnh sửa thủ công.
                 </div>
 
+                @if (Model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder &&
+                     (Model.Lines?.Any(x => x.ProjectedOverdeliveryQuantity > 0m) ?? false))
+                {
+                    <div class="alert alert-warning border-0 rounded-3 mb-3" id="overdeliveryAcceptancePanel">
+                        <div class="fw-semibold mb-2">Xác nhận nhận vượt đơn đặt hàng</div>
+                        @foreach (var line in (Model.Lines ?? new()).Where(x => x.ProjectedOverdeliveryQuantity > 0m).OrderBy(x => x.LineNo))
+                        {
+                            <div class="small">Dòng @line.LineNo · @line.ProductNameSnapshot: vượt @line.ProjectedOverdeliveryQuantity.ToString("0.###") đơn vị gốc.</div>
+                        }
+                        <div class="form-check mt-3">
+                            <input class="form-check-input" type="checkbox" id="acceptOverdelivery" />
+                            <label class="form-check-label fw-semibold" for="acceptOverdelivery">
+                                Tôi đã kiểm tra và chấp nhận số lượng nhận vượt
+                            </label>
+                        </div>
+                        <label class="form-label small mt-2" for="overdeliveryNote">Lý do/ghi chú nhận vượt (không bắt buộc)</label>
+                        <textarea class="form-control" id="overdeliveryNote" rows="2" maxlength="1000"
+                                  placeholder="Có thể để trống"></textarea>
+                    </div>
+                }
+
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
                         <div class="sd-popup-info-box">

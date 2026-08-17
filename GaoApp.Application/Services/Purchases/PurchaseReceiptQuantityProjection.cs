@@ -5,7 +5,9 @@ public sealed record PurchaseReceiptQuantityProjection(
     decimal ConfirmedReceivedQuantity,
     decimal ShortClosedQuantity,
     decimal InFlightQuantity,
-    decimal AvailableToAllocateQuantity)
+    decimal AvailableToAllocateQuantity,
+    decimal ConfirmedOverdeliveryQuantity,
+    decimal ProjectedOverdeliveryQuantity)
 {
     public static PurchaseReceiptQuantityProjection Create(
         decimal orderedQuantity,
@@ -21,10 +23,24 @@ public sealed record PurchaseReceiptQuantityProjection(
         var shortClosed = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(shortClosedQuantity);
         var inFlight = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(inFlightQuantity);
         if (ordered < 0m || confirmed < 0m || shortClosed < 0m || inFlight < 0m ||
-            confirmed + shortClosed + inFlight > ordered)
+            shortClosed > ordered ||
+            (shortClosed > 0m && confirmed + shortClosed > ordered))
             throw new InvalidOperationException("Dữ liệu số lượng đơn đặt hàng không nhất quán.");
+        var officialRemaining = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, ordered - confirmed - shortClosed));
         var available = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
-            Math.Max(0m, ordered - confirmed - shortClosed - inFlight));
-        return new(ordered, confirmed, shortClosed, inFlight, available);
+            Math.Max(0m, officialRemaining - inFlight));
+        var confirmedOverdelivery = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, confirmed - ordered));
+        var projectedOverdelivery = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, confirmed + inFlight - ordered));
+        return new(
+            ordered,
+            confirmed,
+            shortClosed,
+            inFlight,
+            available,
+            confirmedOverdelivery,
+            projectedOverdelivery);
     }
 }

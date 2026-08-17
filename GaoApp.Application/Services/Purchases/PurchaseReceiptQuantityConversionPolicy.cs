@@ -171,8 +171,127 @@ public static class PurchaseReceiptQuantityConversionPolicy
             receiptFactorUnits,
             maximumOrderedUnits,
             orderedFactorUnits,
-            availableUnits);
+            availableUnits,
+            currentOrderedUnits: null);
         return FromQuantityUnits(maximum);
+    }
+
+    public static decimal MaximumCumulativeReceiptQuantity(
+        decimal availableCanonicalQuantity,
+        decimal receiptFactor,
+        decimal orderedFactor,
+        decimal currentOrderedQuantity,
+        decimal maximumOrderedEquivalentQuantity)
+    {
+        if (availableCanonicalQuantity <= 0m || maximumOrderedEquivalentQuantity <= 0m)
+            return 0m;
+
+        var available = NormalizeCanonicalQuantity(availableCanonicalQuantity);
+        var receipt = ValidateFactor(receiptFactor);
+        var ordered = ValidateFactor(orderedFactor);
+        var currentOrdered = NormalizeCanonicalQuantity(currentOrderedQuantity);
+        var orderedStorageRemaining = RoundQuantity(
+            Math.Max(0m, MaximumStoredQuantity - currentOrdered));
+        var orderedCapacity = Math.Min(
+            NormalizeCanonicalQuantity(maximumOrderedEquivalentQuantity),
+            orderedStorageRemaining);
+        if (orderedCapacity <= 0m) return 0m;
+
+        var availableUnits = ToQuantityUnits(available);
+        var receiptFactorUnits = ToFactorUnits(receipt);
+        var orderedFactorUnits = ToFactorUnits(ordered);
+        var orderedCapacityUnits = ToQuantityUnits(orderedCapacity);
+        var maximumCanonicalUnitsForOrderedCapacity = CeilingDivide(
+            (2 * orderedCapacityUnits + 1) * orderedFactorUnits,
+            2 * FactorStorageMultiplier) - 1;
+        availableUnits = BigInteger.Min(
+            availableUnits,
+            BigInteger.Max(BigInteger.Zero, maximumCanonicalUnitsForOrderedCapacity));
+        if (availableUnits <= 0) return 0m;
+        var maximumReceiptUnits = MaximumInputUnitsForCanonicalLimit(
+            availableUnits, receiptFactorUnits);
+        var uncappedMaximumOrderedUnits = MaximumInputUnitsForCanonicalLimit(
+            availableUnits, orderedFactorUnits);
+        var maximumOrderedUnits = BigInteger.Min(
+            uncappedMaximumOrderedUnits,
+            orderedCapacityUnits);
+        if (maximumReceiptUnits <= 0 || maximumOrderedUnits <= 0) return 0m;
+
+        var currentOrderedUnits = ToQuantityUnits(currentOrdered);
+        var currentRawResidue = PositiveModulo(
+            currentOrderedUnits * orderedFactorUnits,
+            FactorStorageMultiplier);
+        if (currentRawResidue == 0 &&
+            orderedCapacityUnits >= uncappedMaximumOrderedUnits &&
+            orderedFactorUnits <= FactorStorageMultiplier)
+        {
+            var directMaximum = BigInteger.Min(
+                maximumReceiptUnits,
+                MaximumInputUnitsForCanonicalLimit(availableUnits, receiptFactorUnits));
+            return directMaximum > 0 && RoundProductToQuantityUnits(
+                    directMaximum, receiptFactorUnits) > 0
+                ? FromQuantityUnits(directMaximum)
+                : 0m;
+        }
+
+        return FromQuantityUnits(MaximumCommonRoundedInput(
+            maximumReceiptUnits,
+            receiptFactorUnits,
+            maximumOrderedUnits,
+            orderedFactorUnits,
+            availableUnits,
+            currentOrderedUnits));
+    }
+
+    public static decimal MaximumCumulativeSameUnitReceiptQuantity(
+        decimal availableCanonicalQuantity,
+        decimal orderedFactor,
+        decimal currentOrderedQuantity,
+        decimal maximumOrderedQuantity)
+    {
+        if (availableCanonicalQuantity <= 0m || maximumOrderedQuantity <= 0m)
+            return 0m;
+
+        var available = NormalizeCanonicalQuantity(availableCanonicalQuantity);
+        var factor = ValidateFactor(orderedFactor);
+        var currentOrdered = NormalizeCanonicalQuantity(currentOrderedQuantity);
+        var orderedStorageRemaining = RoundQuantity(
+            Math.Max(0m, MaximumStoredQuantity - currentOrdered));
+        var orderedCapacity = Math.Min(
+            NormalizeCanonicalQuantity(maximumOrderedQuantity),
+            orderedStorageRemaining);
+        if (orderedCapacity <= 0m) return 0m;
+
+        var availableUnits = ToQuantityUnits(available);
+        var factorUnits = ToFactorUnits(factor);
+        var currentOrderedUnits = ToQuantityUnits(currentOrdered);
+        var maximumReceiptUnits = BigInteger.Min(
+            ToQuantityUnits(orderedCapacity),
+            MaximumInputUnitsForCanonicalLimit(availableUnits, factorUnits));
+        if (maximumReceiptUnits <= 0) return 0m;
+
+        // Same-unit receipts intentionally preserve the saved input quantity as
+        // the ordered increment. Cumulative exactness depends only on its raw
+        // product residue and repeats every D / gcd(factor, D) input units.
+        // Inspecting one fixed factor-scale period is therefore exact and does
+        // not depend on the persisted quantity magnitude.
+        var period = (int)(FactorStorageMultiplier /
+            BigInteger.GreatestCommonDivisor(factorUnits, FactorStorageMultiplier));
+        var currentCanonicalUnits = RoundProductToQuantityUnits(
+            currentOrderedUnits, factorUnits);
+        for (var offset = 0; offset < period; offset++)
+        {
+            var receiptUnits = maximumReceiptUnits - offset;
+            if (receiptUnits <= 0) break;
+            var receiptCanonicalUnits = RoundProductToQuantityUnits(receiptUnits, factorUnits);
+            if (receiptCanonicalUnits <= 0 || receiptCanonicalUnits > availableUnits) continue;
+            if (RoundProductToQuantityUnits(
+                    currentOrderedUnits + receiptUnits, factorUnits) ==
+                currentCanonicalUnits + receiptCanonicalUnits)
+                return FromQuantityUnits(receiptUnits);
+        }
+
+        return 0m;
     }
 
     public static decimal NormalizeCanonicalQuantity(decimal quantity)
@@ -213,7 +332,8 @@ public static class PurchaseReceiptQuantityConversionPolicy
         BigInteger receiptFactorUnits,
         BigInteger maximumOrderedUnits,
         BigInteger orderedFactorUnits,
-        BigInteger canonicalLimitUnits)
+        BigInteger canonicalLimitUnits,
+        BigInteger? currentOrderedUnits)
     {
         var gcd = BigInteger.GreatestCommonDivisor(receiptFactorUnits, orderedFactorUnits);
         var (bezoutReceipt, bezoutOrdered) = ExtendedGreatestCommonDivisor(
@@ -260,43 +380,144 @@ public static class PurchaseReceiptQuantityConversionPolicy
             var roundedRawBase = receiptBase * receiptFactorUnits +
                 FactorStorageMultiplier / 2;
             var residueClass = (int)PositiveModulo(roundedRawBase, residueDivisor);
-            var minimumNormalizedResidue = Math.Max(0,
-                CeilingDivideInt(minimumResidue - residueClass, (int)residueDivisor));
-            var maximumNormalizedResidue = Math.Min(roundingPeriod - 1,
-                FloorDivideInt(maximumResidue - residueClass, (int)residueDivisor));
-            if (minimumNormalizedResidue > maximumNormalizedResidue) continue;
-
             var normalizedBase = (int)(
                 PositiveModulo(roundedRawBase - residueClass, FactorStorageMultiplier) /
                 residueDivisor);
             var baseShift = (int)((long)inverseRawStep * normalizedBase % roundingPeriod);
             var parameterResidue = (int)PositiveModulo(maximumParameter, roundingPeriod);
             var predecessorTarget = (parameterResidue + baseShift) % roundingPeriod;
-            var predecessor = modularPredecessors.FindPredecessor(
-                minimumNormalizedResidue, maximumNormalizedResidue, predecessorTarget);
-            if (predecessor < 0)
-                predecessor = modularPredecessors.FindMaximum(
-                    minimumNormalizedResidue, maximumNormalizedResidue);
-            if (predecessor < 0) continue;
+            var allowedResidueIntervals = GetAllowedRoundedRawResidueIntervals(
+                minimumResidue,
+                maximumResidue,
+                rawDifference,
+                currentOrderedUnits,
+                orderedFactorUnits);
+            foreach (var (allowedMinimumResidue, allowedMaximumResidue) in allowedResidueIntervals)
+            {
+                var minimumNormalizedResidue = Math.Max(0,
+                    CeilingDivideInt(
+                        allowedMinimumResidue - residueClass,
+                        (int)residueDivisor));
+                var maximumNormalizedResidue = Math.Min(roundingPeriod - 1,
+                    FloorDivideInt(
+                        allowedMaximumResidue - residueClass,
+                        (int)residueDivisor));
+                if (minimumNormalizedResidue > maximumNormalizedResidue) continue;
 
-            var offset = predecessor <= predecessorTarget
-                ? predecessorTarget - predecessor
-                : predecessorTarget - predecessor + roundingPeriod;
-            var parameter = maximumParameter - offset;
-            if (parameter < minimumParameter) continue;
+                var predecessor = modularPredecessors.FindPredecessor(
+                    minimumNormalizedResidue, maximumNormalizedResidue, predecessorTarget);
+                if (predecessor < 0)
+                    predecessor = modularPredecessors.FindMaximum(
+                        minimumNormalizedResidue, maximumNormalizedResidue);
+                if (predecessor < 0) continue;
 
-            var receiptInput = receiptBase + receiptStep * parameter;
-            if (receiptInput <= bestReceipt) continue;
-            var receiptCanonical = RoundProductToQuantityUnits(
-                receiptInput, receiptFactorUnits);
-            if (receiptCanonical <= 0 || receiptCanonical > canonicalLimitUnits) continue;
-            var orderedInput = orderedBase + orderedStep * parameter;
-            if (receiptCanonical == RoundProductToQuantityUnits(
-                    orderedInput, orderedFactorUnits))
-                bestReceipt = receiptInput;
+                var offset = predecessor <= predecessorTarget
+                    ? predecessorTarget - predecessor
+                    : predecessorTarget - predecessor + roundingPeriod;
+                var parameter = maximumParameter - offset;
+                if (parameter < minimumParameter) continue;
+
+                var receiptInput = receiptBase + receiptStep * parameter;
+                if (receiptInput <= bestReceipt) continue;
+                var receiptCanonical = RoundProductToQuantityUnits(
+                    receiptInput, receiptFactorUnits);
+                if (receiptCanonical <= 0 || receiptCanonical > canonicalLimitUnits) continue;
+                var orderedInput = orderedBase + orderedStep * parameter;
+                if (receiptCanonical == RoundProductToQuantityUnits(
+                        orderedInput, orderedFactorUnits))
+                    bestReceipt = receiptInput;
+            }
         }
 
         return bestReceipt;
+    }
+
+    private static IReadOnlyList<(int Minimum, int Maximum)>
+        GetAllowedRoundedRawResidueIntervals(
+            int equalityMinimum,
+            int equalityMaximum,
+            int rawDifference,
+            BigInteger? currentOrderedUnits,
+            BigInteger orderedFactorUnits)
+    {
+        if (!currentOrderedUnits.HasValue)
+            return [(equalityMinimum, equalityMaximum)];
+
+        const int divisor = 10_000;
+        const int half = divisor / 2;
+        var currentResidue = (int)PositiveModulo(
+            currentOrderedUnits.Value * orderedFactorUnits,
+            FactorStorageMultiplier);
+        var cumulativeResidueIntervals = new List<(int Minimum, int Maximum)>(2);
+        if (currentResidue < half)
+        {
+            var firstMaximum = half - currentResidue - 1;
+            if (firstMaximum >= 0) cumulativeResidueIntervals.Add((0, firstMaximum));
+            cumulativeResidueIntervals.Add((half, divisor - 1));
+        }
+        else
+        {
+            cumulativeResidueIntervals.Add((0, half - 1));
+            var secondMinimum = divisor + half - currentResidue;
+            if (secondMinimum < divisor)
+                cumulativeResidueIntervals.Add((secondMinimum, divisor - 1));
+        }
+
+        var deterministicResidueIntervals = new List<(int Minimum, int Maximum)>(2);
+        if (orderedFactorUnits >= 2 * FactorStorageMultiplier)
+        {
+            deterministicResidueIntervals.Add((0, divisor - 1));
+        }
+        else
+        {
+            var factor = (int)orderedFactorUnits;
+            deterministicResidueIntervals.Add((0, Math.Min(half - 1, factor / 2)));
+            var highMinimum = Math.Max(half, (2 * divisor - factor) / 2 + 1);
+            if (highMinimum < divisor)
+                deterministicResidueIntervals.Add((highMinimum, divisor - 1));
+        }
+
+        var orderedResidueIntervals = new List<(int Minimum, int Maximum)>(4);
+        foreach (var cumulative in cumulativeResidueIntervals)
+        foreach (var deterministic in deterministicResidueIntervals)
+        {
+            var minimum = Math.Max(cumulative.Minimum, deterministic.Minimum);
+            var maximum = Math.Min(cumulative.Maximum, deterministic.Maximum);
+            if (minimum <= maximum)
+                orderedResidueIntervals.Add((minimum, maximum));
+        }
+
+        var shift = (int)PositiveModulo(
+            half + rawDifference,
+            FactorStorageMultiplier);
+        var result = new List<(int Minimum, int Maximum)>(4);
+        foreach (var (minimum, maximum) in orderedResidueIntervals)
+        {
+            var shiftedMinimum = minimum + shift;
+            var shiftedMaximum = maximum + shift;
+            if (shiftedMaximum < divisor)
+            {
+                AddIntersection(shiftedMinimum, shiftedMaximum);
+            }
+            else if (shiftedMinimum >= divisor)
+            {
+                AddIntersection(shiftedMinimum - divisor, shiftedMaximum - divisor);
+            }
+            else
+            {
+                AddIntersection(shiftedMinimum, divisor - 1);
+                AddIntersection(0, shiftedMaximum - divisor);
+            }
+        }
+        return result;
+
+        void AddIntersection(int minimum, int maximum)
+        {
+            var intersectionMinimum = Math.Max(equalityMinimum, minimum);
+            var intersectionMaximum = Math.Min(equalityMaximum, maximum);
+            if (intersectionMinimum <= intersectionMaximum)
+                result.Add((intersectionMinimum, intersectionMaximum));
+        }
     }
 
     private static (BigInteger Left, BigInteger Right) ExtendedGreatestCommonDivisor(
