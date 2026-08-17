@@ -21,7 +21,8 @@
         const isPurchaseOrderReceipt = Number(window.stockDocumentPage?.receiptSource) === 2;
         const supplier = document.getElementById('commercialSupplierId');
         const hasPersistedFreight = document.getElementById('commercialHasFreight')?.checked === true;
-        manualFreightAllocation = !readOnly && hasPersistedFreight &&
+        const hasPersistedCapitalization = document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
+        manualFreightAllocation = !readOnly && hasPersistedFreight && hasPersistedCapitalization &&
             Array.from(document.querySelectorAll('.commercial-freight-allocation'))
                 .some(function (input) { return readNumber(input) > 0; });
 
@@ -106,8 +107,15 @@
             }
         });
 
+        document.getElementById('includeVatInInventoryCost')?.addEventListener('change', recalculateCommercialTotals);
         document.getElementById('commercialMerchandisePaid')?.addEventListener('change', syncSettlementState);
         document.getElementById('commercialHasFreight')?.addEventListener('change', function () {
+            manualFreightAllocation = false;
+            syncFreightState(true);
+            autoAllocateFreight();
+            recalculateCommercialTotals();
+        });
+        document.getElementById('capitalizeFreightInInventoryCost')?.addEventListener('change', function () {
             manualFreightAllocation = false;
             syncFreightState(true);
             autoAllocateFreight();
@@ -241,6 +249,8 @@
     function buildCommercialPayload() {
         const hasVat = document.getElementById('commercialHasVat')?.checked === true;
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
+        const includeVatInInventoryCost = hasVat && document.getElementById('includeVatInInventoryCost')?.checked === true;
+        const capitalizeFreightInInventoryCost = hasFreight && document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
         const lines = getCommercialRows().map(function (row) {
             const tax = row.querySelector('.commercial-tax');
             const lastPrice = readLastPurchasePrice(row);
@@ -259,11 +269,13 @@
             overdeliveryNote: valueOrNull('overdeliveryNote'),
             acceptPriceVariance: document.getElementById('acceptPriceVariance')?.checked === true,
             hasVat: hasVat,
+            includeVatInInventoryCost: includeVatInInventoryCost,
             supplierId: nullablePositiveInt(document.getElementById('commercialSupplierId')?.value),
             isMerchandisePaid: document.getElementById('commercialMerchandisePaid')?.checked === true,
             merchandisePayeeName: valueOrNull('commercialPayeeName'),
             lines: lines,
             hasFreight: hasFreight,
+            capitalizeFreightInInventoryCost: capitalizeFreightInInventoryCost,
             freightTotal: hasFreight ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0,
             freightPayeeName: hasFreight ? valueOrNull('commercialFreightPayee') : null,
             freightNote: hasFreight ? valueOrNull('commercialFreightNote') : null,
@@ -273,7 +285,7 @@
                 const row = getCommercialRows()[index];
                 return {
                     stockDocumentLineId: line.stockDocumentLineId,
-                    amount: hasFreight
+                    amount: capitalizeFreightInInventoryCost
                         ? roundMoney(readNumber(row.querySelector('.commercial-freight-allocation')))
                         : 0
                 };
@@ -331,6 +343,7 @@
         }
 
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
+        const capitalizeFreight = hasFreight && document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
         if (hasFreight) {
             const freightTotal = readNumber(document.getElementById('commercialFreightTotal'));
             const freightPayee = valueOrNull('commercialFreightPayee');
@@ -341,11 +354,13 @@
                 return fail('Vui lòng nhập người hoặc đơn vị nhận tiền vận chuyển.', document.getElementById('commercialFreightPayee'), focusInvalid);
             }
 
-            const allocated = roundMoney(rows.reduce(function (sum, row) {
-                return sum + readNumber(row.querySelector('.commercial-freight-allocation'));
-            }, 0));
-            if (roundMoney(allocated - freightTotal) !== 0) {
-                return fail('Tổng phí phân bổ phải bằng đúng tổng phí vận chuyển.', document.querySelector('.commercial-freight-allocation'), focusInvalid);
+            if (capitalizeFreight) {
+                const allocated = roundMoney(rows.reduce(function (sum, row) {
+                    return sum + readNumber(row.querySelector('.commercial-freight-allocation'));
+                }, 0));
+                if (roundMoney(allocated - freightTotal) !== 0) {
+                    return fail('Tổng phí phân bổ phải bằng đúng tổng phí vận chuyển.', document.querySelector('.commercial-freight-allocation'), focusInvalid);
+                }
             }
         }
 
@@ -384,6 +399,11 @@
     function syncVatState() {
         const readOnly = document.getElementById('commercialApprovalWorkbench')?.dataset.readonly === 'true';
         const hasVat = document.getElementById('commercialHasVat')?.checked === true;
+        const includeVat = document.getElementById('includeVatInInventoryCost');
+        if (includeVat) {
+            if (!hasVat) includeVat.checked = false;
+            includeVat.disabled = readOnly || !hasVat;
+        }
         document.querySelectorAll('.commercial-tax').forEach(function (select) {
             if (!hasVat) {
                 if (select.value) select.dataset.previousTaxId = select.value;
@@ -408,14 +428,20 @@
     function syncFreightState(resetWhenDisabled) {
         const readOnly = document.getElementById('commercialApprovalWorkbench')?.dataset.readonly === 'true';
         const enabled = document.getElementById('commercialHasFreight')?.checked === true;
+        const capitalization = document.getElementById('capitalizeFreightInInventoryCost');
+        if (capitalization) {
+            if (!enabled) capitalization.checked = false;
+            capitalization.disabled = readOnly || !enabled;
+        }
+        const capitalized = enabled && capitalization?.checked === true;
         const ids = ['commercialFreightTotal', 'commercialFreightPayee', 'commercialFreightPaid', 'commercialFreightNote', 'commercialAutoAllocate'];
         ids.forEach(function (id) {
             const element = document.getElementById(id);
-            if (element) element.disabled = readOnly || !enabled;
+            if (element) element.disabled = readOnly || !enabled || (id === 'commercialAutoAllocate' && !capitalized);
         });
         document.querySelectorAll('.commercial-freight-allocation').forEach(function (input) {
-            input.disabled = readOnly || !enabled;
-            if (!enabled && resetWhenDisabled) input.value = '0';
+            input.disabled = readOnly || !capitalized;
+            if (!capitalized && resetWhenDisabled) input.value = '0';
         });
         if (!enabled && resetWhenDisabled) {
             const total = document.getElementById('commercialFreightTotal');
@@ -449,16 +475,19 @@
         });
 
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
+        const includeVatInInventoryCost = hasVat && document.getElementById('includeVatInInventoryCost')?.checked === true;
+        const capitalizeFreightInInventoryCost = hasFreight && document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
         const freight = hasFreight ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0;
         setText(document.getElementById('commercialSubtotal'), formatMoney(subtotal));
         setText(document.getElementById('commercialVatTotal'), formatMoney(vatTotal));
         setText(document.getElementById('commercialMerchandiseTotal'), formatMoney(merchandiseTotal));
         setText(document.getElementById('commercialFreightSummary'), formatMoney(freight));
-        setText(document.getElementById('commercialLandedTotal'), formatMoney(roundMoney(merchandiseTotal + freight)));
+        const inventoryValue = roundMoney(subtotal + (includeVatInInventoryCost ? vatTotal : 0) + (capitalizeFreightInInventoryCost ? freight : 0));
+        setText(document.getElementById('commercialLandedTotal'), formatMoney(inventoryValue));
         setText(document.getElementById('commercialApprovalModalMerchandiseTotal'), formatMoney(merchandiseTotal));
         const headerTotal = document.getElementById('txtTotalAmount');
         if (headerTotal) headerTotal.value = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(merchandiseTotal);
-        renderAllocationStatus(freight, hasFreight);
+        renderAllocationStatus(freight, hasFreight, capitalizeFreightInInventoryCost);
         clearCommercialError();
     }
 
@@ -517,7 +546,8 @@
     function autoAllocateFreight() {
         const rows = getCommercialRows();
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
-        const total = hasFreight ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0;
+        const capitalized = hasFreight && document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
+        const total = capitalized ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0;
         const weightTotal = roundMoney(rows.reduce(function (sum, row) {
             return sum + Number(row.dataset.lineAfterVat || 0);
         }, 0));
@@ -535,11 +565,15 @@
         });
     }
 
-    function renderAllocationStatus(freightTotal, hasFreight) {
+    function renderAllocationStatus(freightTotal, hasFreight, capitalized) {
         const status = document.getElementById('commercialAllocationStatus');
         if (!status) return;
         if (!hasFreight) {
             status.innerHTML = '<span class="sd-allocation-pill">Không có phí cần phân bổ</span>';
+            return;
+        }
+        if (!capitalized) {
+            status.innerHTML = '<span class="sd-allocation-pill">Phí được ghi nhận riêng, không vào giá vốn</span>';
             return;
         }
 

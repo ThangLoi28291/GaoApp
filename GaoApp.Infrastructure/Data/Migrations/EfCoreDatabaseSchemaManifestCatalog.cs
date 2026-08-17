@@ -10,6 +10,8 @@ namespace GaoApp.Infrastructure.Data.Migrations;
 public sealed class EfCoreDatabaseSchemaManifestCatalog
     : IDatabaseSchemaManifestCatalog
 {
+    private const string PurchaseReceiptCostPolicyMigrationId =
+        "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
     private const string SqlServerValueGenerationStrategy =
         "SqlServer:ValueGenerationStrategy";
     private const string SqlServerIdentity = "SqlServer:Identity";
@@ -90,6 +92,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
             foreach (var operation in migration.UpOperations)
             {
                 ApplyOperation(
+                    migrationId,
                     operation,
                     tables,
                     sequences,
@@ -108,6 +111,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
     }
 
     private static void ApplyOperation(
+        string migrationId,
         MigrationOperation operation,
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
         IDictionary<DatabaseObjectIdentity, DatabaseSequenceSchema>
@@ -152,9 +156,34 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                         createSequence.IsCyclic));
                 break;
 
+            case SqlOperation sqlOperation:
+                EnsureReviewedDataOnlySql(migrationId, sqlOperation.Sql);
+                break;
+
             default:
                 throw new InvalidOperationException(
                     $"Current schema manifest does not support migration operation {operation.GetType().Name}. Add an explicit, reviewed manifest handler before deployment.");
+        }
+    }
+
+    private static void EnsureReviewedDataOnlySql(string migrationId, string sql)
+    {
+        var normalized = string.Join(
+            ' ',
+            sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        var reviewedStatements = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "UPDATE [dbo].[StockDocument] SET [IncludeVatInInventoryCost] = CASE WHEN [HasVat] = 1 THEN 1 ELSE 0 END, [CapitalizeFreightInInventoryCost] = CASE WHEN [HasFreight] = 1 THEN 1 ELSE 0 END WHERE [Status] = 3;",
+            "UPDATE line SET line.[FreightAllocation] = 0 FROM [dbo].[StockDocumentLine] AS line INNER JOIN [dbo].[StockDocument] AS document ON document.[Id] = line.[StockDocumentId] WHERE document.[Status] <> 3 AND line.[FreightAllocation] <> 0;"
+        };
+        if (!string.Equals(
+                migrationId,
+                PurchaseReceiptCostPolicyMigrationId,
+                StringComparison.Ordinal) ||
+            !reviewedStatements.Contains(normalized))
+        {
+            throw new InvalidOperationException(
+                "The schema manifest encountered an unreviewed SQL migration operation.");
         }
     }
 

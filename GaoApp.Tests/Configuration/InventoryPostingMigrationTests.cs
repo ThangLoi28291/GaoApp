@@ -16,6 +16,8 @@ public sealed class InventoryPostingMigrationTests
 
     private const string PurchaseReceiptAuditMigrationId =
         "20260814090000_AddPurchaseReceiptAuditEvents";
+    private const string PurchaseReceiptCostPolicyMigrationId =
+        "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
 
     [Fact]
     public async Task Inventory_connections_should_pool_and_bound_login_retries()
@@ -44,7 +46,8 @@ public sealed class InventoryPostingMigrationTests
             .Should().Equal(
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
-                PurchaseReceiptAuditMigrationId);
+                PurchaseReceiptAuditMigrationId,
+                PurchaseReceiptCostPolicyMigrationId);
         db.Database.HasPendingModelChanges().Should().BeFalse();
         var manifest = new EfCoreDatabaseSchemaManifestCatalog(db)
             .GetCurrentManifest();
@@ -181,7 +184,8 @@ public sealed class InventoryPostingMigrationTests
             .Should().Equal(
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
-                PurchaseReceiptAuditMigrationId);
+                PurchaseReceiptAuditMigrationId,
+                PurchaseReceiptCostPolicyMigrationId);
         var afterRowCount = await ReadLegacyRowCountAsync(database);
         afterRowCount.Should().Be(beforeRowCount);
         var afterSignature = await ReadLegacySignatureAsync(database);
@@ -208,6 +212,73 @@ public sealed class InventoryPostingMigrationTests
             .ThrowAsync<SqlException>();
         duplicateException.Which.Number
             .Should().BeOneOf(2601, 2627);
+    }
+
+    [Fact]
+    public async Task Cost_policy_upgrade_should_preserve_confirmed_basis_and_reset_unconfirmed_allocations()
+    {
+        await using var database = new InventoryPostingLocalDb();
+        await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        await database.MigrateAsync(PurchaseReceiptAuditMigrationId);
+
+        await database.ExecuteAsync(
+            $"""
+            DECLARE @confirmedId int;
+            DECLARE @pendingId int;
+
+            INSERT INTO [dbo].[StockDocument]
+                ([DocumentNo], [Type], [Status], [DocumentDate], [WarehouseId], [ReceiptSource],
+                 [HasVat], [SubtotalBeforeVat], [VatAmount], [HasFreight], [FreightTotal],
+                 [IsFreightPaid], [IsMerchandisePaid], [TotalAmount], [HasRevisionRequest],
+                 [CreatedAtUtc], [IsDeleted], [StoreId])
+            VALUES
+                (N'C1-CONFIRMED', 1, 3, SYSUTCDATETIME(), {seed.WarehouseId}, 1,
+                 1, 100, 10, 1, 5, 0, 0, 110, 0, SYSUTCDATETIME(), 0, {seed.StoreId});
+            SET @confirmedId = SCOPE_IDENTITY();
+
+            INSERT INTO [dbo].[StockDocument]
+                ([DocumentNo], [Type], [Status], [DocumentDate], [WarehouseId], [ReceiptSource],
+                 [HasVat], [SubtotalBeforeVat], [VatAmount], [HasFreight], [FreightTotal],
+                 [IsFreightPaid], [IsMerchandisePaid], [TotalAmount], [HasRevisionRequest],
+                 [CreatedAtUtc], [IsDeleted], [StoreId])
+            VALUES
+                (N'C1-PENDING', 1, 2, SYSUTCDATETIME(), {seed.WarehouseId}, 1,
+                 1, 100, 10, 1, 5, 0, 0, 110, 0, SYSUTCDATETIME(), 0, {seed.StoreId});
+            SET @pendingId = SCOPE_IDENTITY();
+
+            INSERT INTO [dbo].[StockDocumentLine]
+                ([StockDocumentId], [LineNo], [ProductVariantId], [Factor], [Quantity], [BaseQuantity],
+                 [UnitCost], [LineTotal], [UnitPriceBeforeVat], [TaxRate], [VatAmount],
+                 [UnitPriceAfterVat], [FreightAllocation], [ShortageDisposition], [ProductNameSnapshot],
+                 [CreatedAtUtc], [IsDeleted])
+            VALUES
+                (@confirmedId, 1, {seed.ProductVariantId}, 1, 1, 1, 110, 110, 100, 10, 10, 110, 5, 0, N'Confirmed', SYSUTCDATETIME(), 0),
+                (@pendingId, 1, {seed.ProductVariantId}, 1, 1, 1, 110, 110, 100, 10, 10, 110, 5, 0, N'Pending', SYSUTCDATETIME(), 0);
+            """);
+
+        await database.MigrateAsync();
+
+        (await database.ExecuteScalarAsync<int>(
+            "SELECT CAST([IncludeVatInInventoryCost] AS int) FROM [dbo].[StockDocument] WHERE [DocumentNo] = N'C1-CONFIRMED';"))
+            .Should().Be(1);
+        (await database.ExecuteScalarAsync<int>(
+            "SELECT CAST([CapitalizeFreightInInventoryCost] AS int) FROM [dbo].[StockDocument] WHERE [DocumentNo] = N'C1-CONFIRMED';"))
+            .Should().Be(1);
+        (await database.ExecuteScalarAsync<int>(
+            "SELECT CAST([IncludeVatInInventoryCost] AS int) FROM [dbo].[StockDocument] WHERE [DocumentNo] = N'C1-PENDING';"))
+            .Should().Be(0);
+        (await database.ExecuteScalarAsync<decimal>(
+            "SELECT line.[FreightAllocation] FROM [dbo].[StockDocumentLine] line INNER JOIN [dbo].[StockDocument] document ON document.[Id] = line.[StockDocumentId] WHERE document.[DocumentNo] = N'C1-CONFIRMED';"))
+            .Should().Be(5m);
+        (await database.ExecuteScalarAsync<decimal>(
+            "SELECT line.[FreightAllocation] FROM [dbo].[StockDocumentLine] line INNER JOIN [dbo].[StockDocument] document ON document.[Id] = line.[StockDocumentId] WHERE document.[DocumentNo] = N'C1-PENDING';"))
+            .Should().Be(0m);
+
+        await database.MigrateAsync(PurchaseReceiptAuditMigrationId);
+        (await database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[StockDocument]') AND name IN (N'IncludeVatInInventoryCost', N'CapitalizeFreightInInventoryCost');"))
+            .Should().Be(0);
     }
 
     private static Task<int> ReadLegacyRowCountAsync(

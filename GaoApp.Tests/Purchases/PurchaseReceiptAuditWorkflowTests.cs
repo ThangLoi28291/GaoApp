@@ -134,7 +134,9 @@ public sealed class PurchaseReceiptAuditWorkflowTests
         document.Status = StockDocumentStatus.Confirmed;
         document.SupplierId = 31;
         document.HasVat = true;
+        document.IncludeVatInInventoryCost = true;
         document.HasFreight = true;
+        document.CapitalizeFreightInInventoryCost = true;
         document.FreightTotal = 8m;
         document.ApprovalNote = "approved";
         line.UnitPriceBeforeVat = 100m;
@@ -163,6 +165,8 @@ public sealed class PurchaseReceiptAuditWorkflowTests
         ReadFields(confirmation).Should().Contain(
             nameof(StockDocument.SupplierId),
             nameof(StockDocument.HasVat),
+            nameof(StockDocument.IncludeVatInInventoryCost),
+            nameof(StockDocument.CapitalizeFreightInInventoryCost),
             nameof(StockDocument.FreightTotal),
             nameof(StockDocument.Status),
             nameof(StockDocument.ApprovalNote));

@@ -8086,6 +8086,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<bool>("CapitalizeFreightInInventoryCost")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("ApprovedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -8145,6 +8148,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<bool>("HasVat")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeVatInInventoryCost")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
