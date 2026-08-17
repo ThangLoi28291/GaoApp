@@ -5,6 +5,28 @@ namespace GaoApp.Application.Services.Purchases;
 
 public static class PurchaseReceiptPolicy
 {
+    public static PurchaseReceiptOverdeliveryDecision EvaluateOverdelivery(
+        decimal canonicalOrderedQuantity,
+        decimal canonicalConfirmedQuantity,
+        decimal canonicalReceiptQuantity,
+        int lineNo)
+    {
+        var ordered = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(
+            canonicalOrderedQuantity);
+        var confirmed = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(
+            canonicalConfirmedQuantity);
+        var receipt = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(
+            canonicalReceiptQuantity);
+        var before = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, confirmed - ordered));
+        var after = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            Math.Max(0m, checked(confirmed + receipt) - ordered));
+        return new PurchaseReceiptOverdeliveryDecision(
+            lineNo,
+            PurchaseReceiptQuantityConversionPolicy.RoundQuantity(after - before),
+            after);
+    }
+
     public static PurchaseReceiptLineDecision ValidateLine(
         decimal pendingQuantity,
         decimal receivedQuantity,
@@ -14,14 +36,10 @@ public static class PurchaseReceiptPolicy
     {
         var pending = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(pendingQuantity);
         var received = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(receivedQuantity);
-        if (pending <= 0)
-            throw new InvalidOperationException($"Dòng {lineNo}: không còn số lượng chờ nhận.");
         if (received <= 0)
             throw new InvalidOperationException($"Dòng {lineNo}: số lượng nhận phải lớn hơn 0.");
-        if (received > pending)
-            throw new InvalidOperationException($"Dòng {lineNo}: số lượng nhận {received:N3} vượt số còn chờ {pending:N3}.");
 
-        var isShort = received < pending;
+        var isShort = pending > 0m && received < pending;
         if (isShort && shortageDisposition == PurchaseShortageDisposition.None)
             throw new InvalidOperationException($"Dòng {lineNo}: phải chọn chờ giao bù hoặc đóng phần thiếu.");
         if (isShort && shortageDisposition == PurchaseShortageDisposition.ShortClose && string.IsNullOrWhiteSpace(shortageReason))
@@ -29,7 +47,7 @@ public static class PurchaseReceiptPolicy
 
         return new PurchaseReceiptLineDecision(
             received,
-            pending,
+            Math.Max(0m, pending),
             isShort ? shortageDisposition : PurchaseShortageDisposition.None,
             isShort && shortageDisposition == PurchaseShortageDisposition.ShortClose
                 ? shortageReason?.Trim()
@@ -51,8 +69,8 @@ public static class PurchaseReceiptPolicy
             shortageReason,
             orderLine.LineNo);
 
-        orderLine.ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
-            orderLine.ReceivedQuantity + decision.ReceivedQuantity);
+        orderLine.ReceivedQuantity = PurchaseReceiptQuantityConversionPolicy.NormalizeCanonicalQuantity(
+            checked(orderLine.ReceivedQuantity + decision.ReceivedQuantity));
 
         if (decision.ShortageDisposition == PurchaseShortageDisposition.ShortClose)
         {
@@ -92,6 +110,11 @@ public sealed record PurchaseReceiptLineDecision(
     decimal PendingBefore,
     PurchaseShortageDisposition ShortageDisposition,
     string? ShortageReason);
+
+public sealed record PurchaseReceiptOverdeliveryDecision(
+    int LineNo,
+    decimal IncrementalCanonicalQuantity,
+    decimal CanonicalQuantityAfterConfirmation);
 
 public static class PurchasePostingIdentity
 {

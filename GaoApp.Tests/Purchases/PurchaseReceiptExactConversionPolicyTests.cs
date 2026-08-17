@@ -177,6 +177,201 @@ public sealed class PurchaseReceiptExactConversionPolicyTests
             PurchaseReceiptQuantityConversionPolicy.EnsureCumulativeOrderedInvariant(
                 1m, 2m, 24m, 12m));
 
+    [Fact]
+    public void Cumulative_maximum_is_zero_when_ordered_storage_cannot_hold_smallest_alternate_unit()
+    {
+        var currentOrdered = PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m;
+        var canonicalConfirmed = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+            currentOrdered, 0.0001m);
+        var canonicalCapacity = PurchaseReceiptQuantityConversionPolicy.RoundQuantity(
+            PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - canonicalConfirmed);
+
+        var maximum = PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeReceiptQuantity(
+            canonicalCapacity,
+            receiptFactor: 1m,
+            orderedFactor: 0.0001m,
+            currentOrderedQuantity: currentOrdered,
+            maximumOrderedEquivalentQuantity: 0.001m);
+
+        Assert.Equal(0m, maximum);
+    }
+
+    [Fact]
+    public void Same_unit_cumulative_maximum_preserves_fractional_saved_quantity_identity()
+    {
+        var maximum = PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeSameUnitReceiptQuantity(
+            PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity,
+            0.5m,
+            PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m,
+            0.001m);
+
+        Assert.Equal(0.001m, maximum);
+        Assert.Equal(
+            PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity,
+            PurchaseReceiptQuantityConversionPolicy.EnsureCumulativeOrderedInvariant(
+                PurchaseReceiptQuantityConversionPolicy.MaximumStoredQuantity - 0.001m,
+                maximum,
+                PurchaseReceiptQuantityConversionPolicy.ToCanonical(maximum, 0.5m),
+                0.5m));
+    }
+
+    [Fact]
+    public void Same_unit_cumulative_maximum_matches_exhaustive_cross_product()
+    {
+        decimal[] currentOrderedQuantities = [0m, 0.001m, 0.007m];
+        decimal[] orderedCapacities = [0.010m, 0.025m];
+        decimal[] canonicalCapacities = [0.025m, 0.075m];
+        decimal[] factors = [0.125m, 0.375m, 0.5m, 0.7m, 1m, 1.0001m, 1.5m, 2.5m, 12m];
+
+        foreach (var currentOrdered in currentOrderedQuantities)
+        foreach (var orderedCapacity in orderedCapacities)
+        foreach (var canonicalCapacity in canonicalCapacities)
+        foreach (var factor in factors)
+        {
+            try
+            {
+                if (currentOrdered > 0m)
+                    _ = PurchaseReceiptQuantityConversionPolicy.ToCanonical(currentOrdered, factor);
+            }
+            catch (PurchaseReceiptQuantityException)
+            {
+                continue;
+            }
+
+            var expected = 0m;
+            for (var units = 1; units <= (int)(orderedCapacity * 1000m); units++)
+            {
+                var candidate = units / 1000m;
+                try
+                {
+                    var canonical = PurchaseReceiptQuantityConversionPolicy.ToCanonical(candidate, factor);
+                    if (canonical > canonicalCapacity) continue;
+                    _ = PurchaseReceiptQuantityConversionPolicy.EnsureCumulativeOrderedInvariant(
+                        currentOrdered, candidate, canonical, factor);
+                    expected = candidate;
+                }
+                catch (PurchaseReceiptQuantityException)
+                {
+                    // Candidate is outside the exact same-unit cumulative lattice.
+                }
+            }
+
+            var actual = PurchaseReceiptQuantityConversionPolicy
+                .MaximumCumulativeSameUnitReceiptQuantity(
+                    canonicalCapacity, factor, currentOrdered, orderedCapacity);
+            Assert.True(expected == actual,
+                $"Expected {expected} but got {actual}; current={currentOrdered}; " +
+                $"orderedCapacity={orderedCapacity}; canonicalCapacity={canonicalCapacity}; factor={factor}.");
+        }
+    }
+
+    [Theory]
+    [InlineData(0.001, 0.025, 0.7, 1.3)]
+    [InlineData(0.003, 0.040, 1.5, 1.5)]
+    [InlineData(0.075, 0.250, 3.1415, 2.5)]
+    [InlineData(0.125, 0.500, 12, 7)]
+    public void Cumulative_maximum_matches_exhaustive_small_domain(
+        decimal currentOrdered,
+        decimal orderedCapacity,
+        decimal receiptFactor,
+        decimal orderedFactor)
+    {
+        const decimal canonicalCapacity = 0.500m;
+        var expected = 0m;
+        var upper = PurchaseReceiptQuantityConversionPolicy.MaximumReceiptQuantity(
+            canonicalCapacity, receiptFactor);
+        for (var units = 1; units <= (int)(upper * 1000m); units++)
+        {
+            var candidate = units / 1000m;
+            try
+            {
+                var canonical = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                    candidate, receiptFactor);
+                if (canonical > canonicalCapacity) continue;
+                var orderedEquivalent = PurchaseReceiptQuantityConversionPolicy.ToOrderedEquivalent(
+                    canonical, orderedFactor);
+                if (orderedEquivalent > orderedCapacity) continue;
+                _ = PurchaseReceiptQuantityConversionPolicy.EnsureCumulativeOrderedInvariant(
+                    currentOrdered, orderedEquivalent, canonical, orderedFactor);
+                expected = candidate;
+            }
+            catch (PurchaseReceiptQuantityException)
+            {
+                // Candidate is outside the exact cumulative lattice.
+            }
+        }
+
+        Assert.Equal(expected,
+            PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeReceiptQuantity(
+                canonicalCapacity,
+                receiptFactor,
+                orderedFactor,
+                currentOrdered,
+                orderedCapacity));
+    }
+
+    [Fact]
+    public void Cumulative_modular_maximum_matches_exhaustive_cross_product()
+    {
+        decimal[] currentOrderedQuantities = [0m, 0.001m, 0.007m];
+        decimal[] orderedCapacities = [0.010m, 0.025m];
+        decimal[] canonicalCapacities = [0.025m, 0.075m];
+        decimal[] factors = [0.125m, 0.375m, 0.7m, 1m, 1.0001m, 1.5m, 2.5m, 7m, 12m];
+
+        foreach (var currentOrdered in currentOrderedQuantities)
+        foreach (var orderedCapacity in orderedCapacities)
+        foreach (var canonicalCapacity in canonicalCapacities)
+        foreach (var receiptFactor in factors)
+        foreach (var orderedFactor in factors)
+        {
+            try
+            {
+                if (currentOrdered > 0m)
+                    _ = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                        currentOrdered, orderedFactor);
+            }
+            catch (PurchaseReceiptQuantityException)
+            {
+                continue;
+            }
+
+            var expected = 0m;
+            var upper = PurchaseReceiptQuantityConversionPolicy.MaximumReceiptQuantity(
+                canonicalCapacity, receiptFactor);
+            for (var units = 1; units <= (int)(upper * 1000m); units++)
+            {
+                var candidate = units / 1000m;
+                try
+                {
+                    var canonical = PurchaseReceiptQuantityConversionPolicy.ToCanonical(
+                        candidate, receiptFactor);
+                    if (canonical > canonicalCapacity) continue;
+                    var orderedEquivalent = PurchaseReceiptQuantityConversionPolicy.ToOrderedEquivalent(
+                        canonical, orderedFactor);
+                    if (orderedEquivalent > orderedCapacity) continue;
+                    _ = PurchaseReceiptQuantityConversionPolicy.EnsureCumulativeOrderedInvariant(
+                        currentOrdered, orderedEquivalent, canonical, orderedFactor);
+                    expected = candidate;
+                }
+                catch (PurchaseReceiptQuantityException)
+                {
+                    // Candidate is outside the exact cumulative lattice.
+                }
+            }
+
+            var actual = PurchaseReceiptQuantityConversionPolicy.MaximumCumulativeReceiptQuantity(
+                canonicalCapacity,
+                receiptFactor,
+                orderedFactor,
+                currentOrdered,
+                orderedCapacity);
+            Assert.True(expected == actual,
+                $"Expected {expected} but got {actual}; current={currentOrdered}; " +
+                $"orderedCapacity={orderedCapacity}; canonicalCapacity={canonicalCapacity}; " +
+                $"receiptFactor={receiptFactor}; orderedFactor={orderedFactor}.");
+        }
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

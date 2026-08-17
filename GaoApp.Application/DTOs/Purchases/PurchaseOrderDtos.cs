@@ -121,6 +121,8 @@ public sealed class PurchaseOrderLineDto
     public decimal CanonicalConfirmedReceivedQuantity { get; set; }
     public decimal InFlightQuantity { get; set; }
     public decimal AvailableToAllocateQuantity { get; set; }
+    public decimal ConfirmedOverdeliveryQuantity { get; set; }
+    public decimal ProjectedOverdeliveryQuantity { get; set; }
     public List<PurchaseReceiptUnitOptionDto> AllowedReceiptUnits { get; set; } = new();
     public decimal PendingQuantity { get; set; }
     public decimal ShortClosedQuantity { get; set; }
@@ -141,6 +143,7 @@ public sealed class PurchaseReceiptUnitOptionDto
     public string UnitName { get; set; } = string.Empty;
     public decimal ConversionFactor { get; set; }
     public decimal MaximumReceiptQuantity { get; set; }
+    public decimal MaximumEntryQuantity { get; set; }
     public bool IsOrderedUnit { get; set; }
     public bool IsBaseUnit { get; set; }
 }

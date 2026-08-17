@@ -31,11 +31,30 @@ public sealed class PurchaseReceiptQuantityProjectionTests
     [InlineData(10, 0, -1, 0)]
     [InlineData(10, 0, 0, -1)]
     [InlineData(10, 8, 3, 0)]
-    [InlineData(10, 4, 0, 7)]
     public void Create_fails_closed_for_inconsistent_values(
         decimal ordered, decimal confirmed, decimal shortClosed, decimal inFlight)
         => Assert.Throws<InvalidOperationException>(() =>
             PurchaseReceiptQuantityProjection.Create(ordered, confirmed, shortClosed, inFlight));
+
+    [Theory]
+    [InlineData(10, 11, 0, 0, 1, 1)]
+    [InlineData(10, 9, 0, 3, 0, 2)]
+    [InlineData(10, 4, 0, 7, 0, 1)]
+    public void Create_exposes_confirmed_and_projected_overdelivery_without_negative_availability(
+        decimal ordered,
+        decimal confirmed,
+        decimal shortClosed,
+        decimal inFlight,
+        decimal expectedConfirmedOverdelivery,
+        decimal expectedProjectedOverdelivery)
+    {
+        var result = PurchaseReceiptQuantityProjection.Create(
+            ordered, confirmed, shortClosed, inFlight);
+
+        Assert.Equal(0m, result.AvailableToAllocateQuantity);
+        Assert.Equal(expectedConfirmedOverdelivery, result.ConfirmedOverdeliveryQuantity);
+        Assert.Equal(expectedProjectedOverdelivery, result.ProjectedOverdeliveryQuantity);
+    }
 
     [Fact]
     public void Different_receipt_units_share_one_canonical_allocation_pool()

@@ -180,13 +180,13 @@
     }
 
     function openCommercialApprovalConfirmation() {
-        if (!validateCommercialApproval(true)) return;
+        if (!validateCommercialApproval(true, false)) return;
         updateApproveModalSummary();
         document.getElementById('btnOpenApproveModal')?.click();
     }
 
     async function submitCommercialApproval() {
-        if (!validateCommercialApproval(true)) {
+        if (!validateCommercialApproval(true, true)) {
             hideApproveModal();
             return;
         }
@@ -252,6 +252,8 @@
         return {
             rowVersion: String(window.stockDocumentPage?.rowVersion || ''),
             approvalNote: document.getElementById('approveNote')?.value?.trim() || null,
+            acceptOverdelivery: document.getElementById('acceptOverdelivery')?.checked === true,
+            overdeliveryNote: valueOrNull('overdeliveryNote'),
             hasVat: hasVat,
             supplierId: nullablePositiveInt(document.getElementById('commercialSupplierId')?.value),
             isMerchandisePaid: document.getElementById('commercialMerchandisePaid')?.checked === true,
@@ -275,7 +277,7 @@
         };
     }
 
-    function validateCommercialApproval(focusInvalid) {
+    function validateCommercialApproval(focusInvalid, requireOverdeliveryAcceptance) {
         clearCommercialError();
         const rows = getCommercialRows();
         if (!rows.length) return fail('Phiếu nhập chưa có dòng hàng.', null, focusInvalid);
@@ -303,6 +305,14 @@
         const supplierId = nullablePositiveInt(document.getElementById('commercialSupplierId')?.value);
         if (!supplierId) {
             return fail('Vui lòng chọn nhà cung cấp trước khi duyệt nhập kho.', document.getElementById('commercialSupplierId'), focusInvalid);
+        }
+
+        const overdeliveryAcceptance = document.getElementById('acceptOverdelivery');
+        if (requireOverdeliveryAcceptance && overdeliveryAcceptance && !overdeliveryAcceptance.checked) {
+            return fail(
+                'Vui lòng xác nhận đã kiểm tra và chấp nhận số lượng nhận vượt đơn đặt hàng.',
+                overdeliveryAcceptance,
+                focusInvalid);
         }
 
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;

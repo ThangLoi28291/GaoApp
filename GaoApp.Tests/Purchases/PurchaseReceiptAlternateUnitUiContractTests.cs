@@ -12,11 +12,12 @@ public sealed class PurchaseReceiptAlternateUnitUiContractTests
         Assert.Contains("line.AllowedReceiptUnits", view);
         Assert.Contains("Lines[@ri].ReceiptUnitId", view);
         Assert.Contains("unit.MaximumReceiptQuantity", view);
+        Assert.Contains("unit.MaximumEntryQuantity", view);
         Assert.Contains("line.AvailableToAllocateQuantity", view);
         Assert.Contains("Tương đương", view);
         Assert.Contains("receipt-quantity", script);
         Assert.DoesNotContain("name=\"ConversionFactor\"", view);
-        Assert.DoesNotContain("overdelivery", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("data-entry-max", view);
         Assert.DoesNotContain("reopen", view, StringComparison.OrdinalIgnoreCase);
     }
 

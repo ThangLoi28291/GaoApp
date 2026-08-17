@@ -86,21 +86,36 @@ public sealed class PurchaseReceiptPolicyTests
     }
 
     [Fact]
-    public void Over_receipt_should_be_blocked()
+    public void Over_receipt_is_valid_for_draft_and_normalizes_shortage_disposition()
     {
-        var action = () => PurchaseReceiptPolicy.ValidateLine(
-            10m, 10.001m, PurchaseShortageDisposition.None, null, 1);
+        var decision = PurchaseReceiptPolicy.ValidateLine(
+            10m, 10.001m, PurchaseShortageDisposition.ShortClose, "ignored", 1);
 
-        action.Should().Throw<InvalidOperationException>().WithMessage("*vượt số còn chờ*");
+        decision.ReceivedQuantity.Should().Be(10.001m);
+        decision.ShortageDisposition.Should().Be(PurchaseShortageDisposition.None);
+        decision.ShortageReason.Should().BeNull();
     }
 
     [Fact]
-    public void Completed_line_should_not_be_received_again()
+    public void Completed_line_quantity_can_be_prepared_for_managed_overdelivery()
     {
-        var action = () => PurchaseReceiptPolicy.ValidateLine(
+        var decision = PurchaseReceiptPolicy.ValidateLine(
             0m, 1m, PurchaseShortageDisposition.None, null, 1);
 
-        action.Should().Throw<InvalidOperationException>().WithMessage("*không còn số lượng*");
+        decision.PendingBefore.Should().Be(0m);
+        decision.ReceivedQuantity.Should().Be(1m);
+    }
+
+    [Fact]
+    public void Overdelivery_decision_reports_only_the_increment_added_by_this_confirmation()
+    {
+        var crossing = PurchaseReceiptPolicy.EvaluateOverdelivery(10m, 9m, 3m, 4);
+        var alreadyOver = PurchaseReceiptPolicy.EvaluateOverdelivery(10m, 12m, 1.5m, 4);
+
+        crossing.IncrementalCanonicalQuantity.Should().Be(2m);
+        crossing.CanonicalQuantityAfterConfirmation.Should().Be(2m);
+        alreadyOver.IncrementalCanonicalQuantity.Should().Be(1.5m);
+        alreadyOver.CanonicalQuantityAfterConfirmation.Should().Be(3.5m);
     }
 
     [Fact]
