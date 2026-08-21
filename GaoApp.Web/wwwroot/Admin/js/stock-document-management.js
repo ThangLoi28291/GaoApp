@@ -2236,6 +2236,7 @@ function openConfirmProductPopup(item) {
 function updatePopupPreview() {
     const qty = parseDecimalInput(document.getElementById('popupQuickQty')?.value || '0');
     const factor = normalizeFactor(document.getElementById('popupFactor')?.textContent || '1');
+    const unitCost = parseDecimalInput(document.getElementById('popupQuickUnitCost')?.value || '0');
 
     const baseQty = qty * factor;
 
