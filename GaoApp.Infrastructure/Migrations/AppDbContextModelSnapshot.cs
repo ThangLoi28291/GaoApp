@@ -981,6 +981,9 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<DateTime?>("InvoiceDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("InvoiceIdentityDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("InvoiceNumber")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -999,6 +1002,18 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<string>("Note")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("NormalizedInvoiceNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NormalizedInvoiceSeries")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NormalizedSellerTaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("OriginalFileName")
                         .HasMaxLength(260)
@@ -1054,7 +1069,17 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StoreId", "XmlHash");
+                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "IX_InputInvoiceHead_StoreId_XmlHash");
+
+                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "UX_InputInvoiceHead_StoreId_XmlHash_Active")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceHead_StoreId_XmlHash_Active")
+                        .HasFilter("[XmlHash] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.HasIndex("StoreId", "NormalizedSellerTaxCode", "NormalizedInvoiceSeries", "NormalizedInvoiceNumber", "InvoiceIdentityDate")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceHead_StoreId_BusinessIdentity_Active")
+                        .HasFilter("[NormalizedSellerTaxCode] IS NOT NULL AND [NormalizedInvoiceSeries] IS NOT NULL AND [NormalizedInvoiceNumber] IS NOT NULL AND [InvoiceIdentityDate] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.HasIndex("StoreId", "SellerTaxCode", "InvoiceTemplateCode", "InvoiceSeries", "InvoiceNumber");
 

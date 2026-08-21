@@ -32,6 +32,8 @@ public sealed class DatabaseBaselinePreflightTests
         "20260814090000_AddPurchaseReceiptAuditEvents";
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
 
     [Fact]
     public async Task Acceptance_connections_should_pool_and_bound_login_retries()
@@ -236,7 +238,7 @@ public sealed class DatabaseBaselinePreflightTests
             DatabaseCompatibilityState.SupportedPendingUpgrade);
         preflight.SafeReasonCode.Should().Be(
             "SupportedMigrationPrefix");
-        preflight.SourceMigrationCount.Should().Be(4);
+        preflight.SourceMigrationCount.Should().Be(5);
         preflight.AppliedMigrationCount.Should().Be(1);
         preflight.SchemaMismatchCategoryCount.Should().Be(0);
     }
@@ -289,7 +291,8 @@ public sealed class DatabaseBaselinePreflightTests
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
-                PurchaseReceiptCostPolicyMigrationId
+                PurchaseReceiptCostPolicyMigrationId,
+                InputInvoiceIdentityMigrationId
             ]);
     }
 

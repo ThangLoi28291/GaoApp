@@ -23,6 +23,8 @@ public sealed class ProductionBootstrapTests
         "20260814090000_AddPurchaseReceiptAuditEvents";
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
 
     [Fact]
     public void Disabled_configuration_is_valid_without_bootstrap_values()
@@ -174,7 +176,8 @@ public sealed class ProductionBootstrapTests
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
-                PurchaseReceiptCostPolicyMigrationId
+                PurchaseReceiptCostPolicyMigrationId,
+                InputInvoiceIdentityMigrationId
             ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }

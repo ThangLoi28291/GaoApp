@@ -26,6 +26,8 @@ public sealed class DatabaseSchemaManifestTests
         "20260814090000_AddPurchaseReceiptAuditEvents";
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
 
     [Fact]
     public async Task Current_model_and_migration_snapshot_have_no_differences()
@@ -376,7 +378,8 @@ public sealed class DatabaseSchemaManifestTests
             BaselineMigrationId,
             InventoryPostingMigrationId,
             PurchaseReceiptAuditMigrationId,
-            PurchaseReceiptCostPolicyMigrationId);
+            PurchaseReceiptCostPolicyMigrationId,
+            InputInvoiceIdentityMigrationId);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(

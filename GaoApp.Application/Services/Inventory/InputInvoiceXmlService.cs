@@ -43,44 +43,30 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         if (document == null)
             throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
 
+        var candidate = ParseXmlToEntity(request.FileBytes);
+        candidate.StoreId = storeId;
+        candidate.OriginalFileName = request.OriginalFileName;
+
         var xmlHash = ComputeSha256(request.FileBytes);
+        candidate.XmlHash = xmlHash;
 
-        var existed = await _repository.GetByXmlHashAsync(storeId, xmlHash, ct);
-        var isExisting = existed != null;
-
-        InputInvoiceHead head;
-
-        if (existed != null)
-        {
-            head = existed;
-        }
-        else
-        {
-            head = ParseXmlToEntity(request.FileBytes);
-            head.StoreId = storeId;
-            head.OriginalFileName = request.OriginalFileName;
-            head.XmlHash = xmlHash;
-
-            await _repository.AddInputInvoiceAsync(head, ct);
-            await _repository.SaveChangesAsync(ct);
-        }
-
-        var hasMap = await _repository.ExistsStockDocumentInvoiceMapAsync(
+        var resolution = await ResolveCandidateAsync(
             storeId,
-            request.StockDocumentId,
-            head.Id,
+            candidate,
+            xmlHash,
             ct);
 
-        if (!hasMap)
-        {
-            await _repository.AddStockDocumentInvoiceMapAsync(new StockDocumentInputInvoiceMap
+        var head = resolution.Invoice;
+
+        await _repository.EnsureStockDocumentInvoiceMapAsync(
+            new StockDocumentInputInvoiceMap
             {
                 StoreId = storeId,
                 StockDocumentId = request.StockDocumentId,
                 InputInvoiceHeadId = head.Id,
                 Note = $"Upload XML: {request.OriginalFileName}"
-            }, ct);
-        }
+            },
+            ct);
 
         // Seed map dòng nhập.
         // Mặc định UseInputInvoice=false để user tự chọn hoặc chọn all ở UI bước sau.
@@ -105,7 +91,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
             TotalTaxAmount = head.TotalTaxAmount,
             TotalPaymentAmount = head.TotalPaymentAmount,
             DetailCount = head.Details?.Count ?? 0,
-            IsExistingInvoice = isExisting
+            IsExistingInvoice = resolution.IsExisting
         };
     }
     public async Task<List<InputInvoiceHeadDto>> GetInvoicesByStockDocumentAsync(
@@ -327,7 +313,37 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         await _repository.SaveChangesAsync(ct);
     }
+    private async Task<InputInvoiceResolution> ResolveCandidateAsync(
+    int storeId,
+    InputInvoiceHead candidate,
+    string xmlHash,
+    CancellationToken ct)
+    {
+        try
+        {
+            InputInvoiceIdentityPolicy.ApplyRequiredIdentity(
+                candidate);
+        }
+        catch (BusinessRuleException)
+        {
+            var existingByHash =
+                await _repository.FindActiveByXmlHashAsync(
+                    storeId,
+                    xmlHash,
+                    ct);
 
+            if (existingByHash is null)
+                throw;
+
+            return new InputInvoiceResolution(
+                existingByHash,
+                IsExisting: true);
+        }
+
+        return await _repository.ResolveInputInvoiceAsync(
+            candidate,
+            ct);
+    }
     private static InputInvoiceMatchStatus ResolveMatchStatus(decimal quantityDiff, decimal amountDiff)
     {
         var qtyMismatch = Math.Abs(quantityDiff) > 0.0001m;

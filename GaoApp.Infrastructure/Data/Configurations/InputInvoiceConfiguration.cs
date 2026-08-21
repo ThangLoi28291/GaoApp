@@ -19,7 +19,35 @@ public sealed class InputInvoiceHeadConfiguration : IEntityTypeConfiguration<Inp
             x.InvoiceNumber
         });
 
-        builder.HasIndex(x => new { x.StoreId, x.XmlHash });
+        builder.HasIndex(
+            [nameof(InputInvoiceHead.StoreId), nameof(InputInvoiceHead.XmlHash)],
+            "IX_InputInvoiceHead_StoreId_XmlHash");
+
+        builder.HasIndex(
+                [nameof(InputInvoiceHead.StoreId), nameof(InputInvoiceHead.XmlHash)],
+                "UX_InputInvoiceHead_StoreId_XmlHash_Active")
+            .HasDatabaseName(
+                "UX_InputInvoiceHead_StoreId_XmlHash_Active")
+            .IsUnique()
+            .HasFilter("[XmlHash] IS NOT NULL AND [IsDeleted] = 0");
+
+        builder.HasIndex(x => new
+        {
+            x.StoreId,
+            x.NormalizedSellerTaxCode,
+            x.NormalizedInvoiceSeries,
+            x.NormalizedInvoiceNumber,
+            x.InvoiceIdentityDate
+        })
+            .HasDatabaseName(
+                "UX_InputInvoiceHead_StoreId_BusinessIdentity_Active")
+            .IsUnique()
+            .HasFilter(
+                "[NormalizedSellerTaxCode] IS NOT NULL " +
+                "AND [NormalizedInvoiceSeries] IS NOT NULL " +
+                "AND [NormalizedInvoiceNumber] IS NOT NULL " +
+                "AND [InvoiceIdentityDate] IS NOT NULL " +
+                "AND [IsDeleted] = 0");
 
         builder.HasMany(x => x.Details)
             .WithOne(x => x.InputInvoiceHead)

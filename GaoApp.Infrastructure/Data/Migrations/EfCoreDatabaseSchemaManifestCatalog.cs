@@ -12,6 +12,8 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
 {
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
     private const string SqlServerValueGenerationStrategy =
         "SqlServer:ValueGenerationStrategy";
     private const string SqlServerIdentity = "SqlServer:Identity";
@@ -171,16 +173,29 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         var normalized = string.Join(
             ' ',
             sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var reviewedStatements = new HashSet<string>(StringComparer.Ordinal)
+        var reviewedCostPolicyStatements = new HashSet<string>(StringComparer.Ordinal)
         {
             "UPDATE [dbo].[StockDocument] SET [IncludeVatInInventoryCost] = CASE WHEN [HasVat] = 1 THEN 1 ELSE 0 END, [CapitalizeFreightInInventoryCost] = CASE WHEN [HasFreight] = 1 THEN 1 ELSE 0 END WHERE [Status] = 3;",
             "UPDATE line SET line.[FreightAllocation] = 0 FROM [dbo].[StockDocumentLine] AS line INNER JOIN [dbo].[StockDocument] AS document ON document.[Id] = line.[StockDocumentId] WHERE document.[Status] <> 3 AND line.[FreightAllocation] <> 0;"
         };
-        if (!string.Equals(
+        var reviewedInputInvoiceIdentityStatements =
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "UPDATE [dbo].[InputInvoiceHead] SET [NormalizedSellerTaxCode] = NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([SellerTaxCode])), N' ', N''), N'.', N''), N'-', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''), [NormalizedInvoiceSeries] = NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([InvoiceSeries])), N' ', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''), [NormalizedInvoiceNumber] = NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([InvoiceNumber])), N' ', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''), [InvoiceIdentityDate] = CONVERT(date, [InvoiceDate]) WHERE [IsDeleted] = 0;",
+                "IF EXISTS ( SELECT 1 FROM [dbo].[InputInvoiceHead] WHERE [IsDeleted] = 0 AND [NormalizedSellerTaxCode] IS NOT NULL AND [NormalizedInvoiceSeries] IS NOT NULL AND [NormalizedInvoiceNumber] IS NOT NULL AND [InvoiceIdentityDate] IS NOT NULL GROUP BY [StoreId], [NormalizedSellerTaxCode], [NormalizedInvoiceSeries], [NormalizedInvoiceNumber], [InvoiceIdentityDate] HAVING COUNT_BIG(*) > 1 ) THROW 51001, 'Duplicate active input-invoice business identities must be resolved before migration.', 1; IF EXISTS ( SELECT 1 FROM [dbo].[InputInvoiceHead] WHERE [IsDeleted] = 0 AND [XmlHash] IS NOT NULL GROUP BY [StoreId], [XmlHash] HAVING COUNT_BIG(*) > 1 ) THROW 51002, 'Duplicate active input-invoice XML hashes must be resolved before migration.', 1;"
+            };
+        var isReviewedCostPolicySql = string.Equals(
                 migrationId,
                 PurchaseReceiptCostPolicyMigrationId,
-                StringComparison.Ordinal) ||
-            !reviewedStatements.Contains(normalized))
+                StringComparison.Ordinal)
+            && reviewedCostPolicyStatements.Contains(normalized);
+        var isReviewedInputInvoiceIdentitySql = string.Equals(
+                migrationId,
+                InputInvoiceIdentityMigrationId,
+                StringComparison.Ordinal)
+            && reviewedInputInvoiceIdentityStatements.Contains(normalized);
+        if (!isReviewedCostPolicySql
+            && !isReviewedInputInvoiceIdentitySql)
         {
             throw new InvalidOperationException(
                 "The schema manifest encountered an unreviewed SQL migration operation.");

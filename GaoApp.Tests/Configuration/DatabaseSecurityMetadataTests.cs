@@ -23,6 +23,8 @@ public sealed class DatabaseSecurityMetadataTests
         "20260814090000_AddPurchaseReceiptAuditEvents";
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
 
     [Fact]
     public Task Current_baseline_with_application_database_user_should_be_allowed()
@@ -368,7 +370,8 @@ public sealed class DatabaseSecurityMetadataTests
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
-                PurchaseReceiptCostPolicyMigrationId
+                PurchaseReceiptCostPolicyMigrationId,
+                InputInvoiceIdentityMigrationId
             ]);
     }
 

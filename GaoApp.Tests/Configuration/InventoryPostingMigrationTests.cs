@@ -18,6 +18,8 @@ public sealed class InventoryPostingMigrationTests
         "20260814090000_AddPurchaseReceiptAuditEvents";
     private const string PurchaseReceiptCostPolicyMigrationId =
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
+    private const string InputInvoiceIdentityMigrationId =
+        "20260817150000_AddInputInvoiceIdentityUniqueness";
 
     [Fact]
     public async Task Inventory_connections_should_pool_and_bound_login_retries()
@@ -47,7 +49,8 @@ public sealed class InventoryPostingMigrationTests
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
-                PurchaseReceiptCostPolicyMigrationId);
+                PurchaseReceiptCostPolicyMigrationId,
+                InputInvoiceIdentityMigrationId);
         db.Database.HasPendingModelChanges().Should().BeFalse();
         var manifest = new EfCoreDatabaseSchemaManifestCatalog(db)
             .GetCurrentManifest();
@@ -185,7 +188,8 @@ public sealed class InventoryPostingMigrationTests
                 BaselineMigrationId,
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
-                PurchaseReceiptCostPolicyMigrationId);
+                PurchaseReceiptCostPolicyMigrationId,
+                InputInvoiceIdentityMigrationId);
         var afterRowCount = await ReadLegacyRowCountAsync(database);
         afterRowCount.Should().Be(beforeRowCount);
         var afterSignature = await ReadLegacySignatureAsync(database);

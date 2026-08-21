@@ -4,22 +4,15 @@ namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 
 public interface IInputInvoiceRepository
 {
-    Task<InputInvoiceHead?> GetByXmlHashAsync(
-        int storeId,
-        string xmlHash,
-        CancellationToken ct = default);
-
-    Task AddInputInvoiceAsync(
+    Task<InputInvoiceResolution> ResolveInputInvoiceAsync(
         InputInvoiceHead entity,
         CancellationToken ct = default);
+    Task<InputInvoiceHead?> FindActiveByXmlHashAsync(
+    int storeId,
+    string xmlHash,
+    CancellationToken ct = default);
 
-    Task<bool> ExistsStockDocumentInvoiceMapAsync(
-        int storeId,
-        int stockDocumentId,
-        int inputInvoiceHeadId,
-        CancellationToken ct = default);
-
-    Task AddStockDocumentInvoiceMapAsync(
+    Task EnsureStockDocumentInvoiceMapAsync(
         StockDocumentInputInvoiceMap entity,
         CancellationToken ct = default);
 
@@ -61,3 +54,7 @@ public interface IInputInvoiceRepository
         int stockDocumentLineId,
         CancellationToken ct = default);
 }
+
+public sealed record InputInvoiceResolution(
+    InputInvoiceHead Invoice,
+    bool IsExisting);

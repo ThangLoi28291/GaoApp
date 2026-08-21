@@ -44,6 +44,31 @@ public class InputInvoiceHead : BaseStoreEntity, IAuditTrackedEntity
     [StringLength(50)]
     public string? SellerTaxCode { get; set; }
 
+    /// <summary>
+    /// Seller tax code normalized for durable invoice identity matching.
+    /// Null is reserved for legacy rows that predate identity enforcement.
+    /// </summary>
+    [StringLength(50)]
+    public string? NormalizedSellerTaxCode { get; set; }
+
+    /// <summary>
+    /// Invoice series normalized for durable invoice identity matching.
+    /// </summary>
+    [StringLength(50)]
+    public string? NormalizedInvoiceSeries { get; set; }
+
+    /// <summary>
+    /// Invoice number normalized for durable invoice identity matching.
+    /// </summary>
+    [StringLength(50)]
+    public string? NormalizedInvoiceNumber { get; set; }
+
+    /// <summary>
+    /// Date-only component used by the durable business identity.
+    /// </summary>
+    [Column(TypeName = "date")]
+    public DateTime? InvoiceIdentityDate { get; set; }
+
     [StringLength(300)]
     public string? SellerName { get; set; }
 
