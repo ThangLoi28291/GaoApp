@@ -69,6 +69,14 @@
         </div>
 
         <div class="mt-2 d-flex gap-2 flex-wrap">
+            @if (invoice.LegacySourceId.HasValue)
+            {
+                <div class="mt-2 small">Nguồn GaoStore: OrderID @invoice.LegacySourceId · Nhóm @invoice.LegacyOrderCategoryId
+                    @if (!string.IsNullOrWhiteSpace(invoice.LegacyMergeId)) { <span> · Nhóm gộp @invoice.LegacyMergeId</span> }
+                    @if (invoice.LegacyReadOnly) { <strong> · Chỉ tra cứu</strong> }
+                    @if (!invoice.OrderId.HasValue) { <span> · Chưa liên kết đơn hàng GaoApp</span> }
+                </div>
+            }
             @if (isHardLocked)
             {
                 <span class="badge bg-danger">LOCKED</span>
@@ -141,7 +149,7 @@
                 Đã khóa - không thể sửa
             </button>
 
-            @if (invoice.IsLocked && !isViettelIssued)
+            @if (invoice.IsLocked && !isViettelIssued && !invoice.LegacyReadOnly)
             {
                 <button type="button"
                         class="btn btn-outline-warning"
@@ -153,7 +161,7 @@
             }
         }
 
-        @if (isViettelIssued && !isCorrectionInvoice)
+        @if (isViettelIssued && !isCorrectionInvoice && !invoice.LegacyReadOnly)
         {
             <div class="btn-group">
                 <button type="button"

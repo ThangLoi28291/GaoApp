@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Rewards;
+using GaoApp.Application.DTOs.Rewards;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.DTOs.POS;
@@ -6,9 +6,16 @@ namespace GaoApp.Application.DTOs.POS;
 public sealed class OrderDraftDto
 {
     public int OrderId { get; set; }
+    public OrderStatus Status { get; set; }
     public string? OrderNumber { get; set; }
 
     public int? CustomerId { get; set; }
+    public bool CustomerCanBuyOnCredit { get; set; }
+    public decimal CustomerDebtBalance { get; set; }
+    public int? CustomerDepositId { get; set; }
+    public decimal DepositAmount { get; set; }
+    public List<GaoApp.Application.Interfaces.Services.Orders.DepositBalanceDto> AvailableDeposits { get; set; } = new();
+
     public string? CustomerName { get; set; }
     public string? CustomerPhone { get; set; }
     public string? CustomerPriceTier { get; set; }

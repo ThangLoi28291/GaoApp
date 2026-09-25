@@ -14,7 +14,7 @@ namespace GaoApp.Tests.Configuration;
 
 internal sealed class InventoryPostingLocalDb : IAsyncDisposable
 {
-    private const string DataSource = @"(localdb)\MSSQLLocalDB";
+    private static string DataSource => SqlTestDataSource.Current;
     private const string Prefix = "GaoApp_R2_InventoryPosting_";
     private const int ConnectionTimeoutSeconds = 30;
 
@@ -93,8 +93,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             SubDomainNormalized = subdomain.ToUpperInvariant(),
             IsActive = true
         };
-        host.Stores.Add(store);
-        await host.SaveChangesAsync(ct);
+        await LegacyStoreSeed.InsertAsync(host, store, ct);
 
         await using var tenant = CreateTenantContext(store.Id);
         var legalEntity = new LegalEntity
@@ -125,13 +124,6 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             Name = "R2 Category",
             IsActive = true
         };
-        var supplier = new Supplier
-        {
-            StoreId = store.Id,
-            Code = "R2-SUP",
-            Name = "R2 Supplier",
-            IsActive = true
-        };
         var unit = new Unit
         {
             StoreId = store.Id,
@@ -141,8 +133,18 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             IsBase = true
         };
 
-        tenant.AddRange(warehouse, category, supplier, unit);
+        tenant.AddRange(warehouse, category, unit);
         await tenant.SaveChangesAsync(ct);
+
+        // Seed baseline Supplier columns because schema-prefix tests intentionally
+        // run before newer optional fields (such as bank fields) exist.
+        await tenant.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [Suppliers] ([StoreId], [Code], [Name], [IsActive], [SortOrder], [CreatedAtUtc], [IsDeleted])
+            VALUES ({store.Id}, N'R2-SUP', N'R2 Supplier', 1, 0, SYSUTCDATETIME(), 0);
+            """, ct);
+        var supplierId = await tenant.Database.SqlQuery<int>($"""
+            SELECT [Id] AS [Value] FROM [Suppliers] WHERE [StoreId] = {store.Id} AND [Code] = N'R2-SUP'
+            """).SingleAsync(ct);
 
         var product = new Product
         {
@@ -150,7 +152,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
             Name = "R2 Product",
             Alias = "r2-product",
             CategoryId = category.Id,
-            SupplierId = supplier.Id,
+            SupplierId = supplierId,
             BaseUnitId = unit.Id,
             BasePrice = 20m,
             IsActive = true,

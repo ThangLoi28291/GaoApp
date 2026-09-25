@@ -278,6 +278,7 @@ public sealed class ProductionBootstrapper : IProductionBootstrapper
         // Mandatory seed ran before the Store existed. Seed the Store-scoped
         // mandatory fixtures now, inside the same outer transaction, so the
         // first successful bootstrap is complete and the next run is a no-op.
+        await AdminMenuSeeder.SeedAsync(_db, ct);
         await SecuritySeedData.SeedLegalEntityAdminMenusAsync(_db, ct);
         await SecuritySeedData.SeedPurchaseAdminMenusAsync(_db, ct);
         await SecuritySeedData.SeedDefaultRolesForStoreAsync(

@@ -8,6 +8,18 @@ public interface ITaxService
     Task<PagedResult<TaxListItemDto>> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default);
 
+    Task<PagedResult<TaxListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<TaxEditDto?> GetForEditAsync(int storeId, int id, CancellationToken ct = default);
 
     Task<int> CreateAsync(int storeId, CreateTaxRequest dto, int? userId, CancellationToken ct = default);

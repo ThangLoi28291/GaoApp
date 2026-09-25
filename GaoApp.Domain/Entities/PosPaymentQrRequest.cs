@@ -15,6 +15,9 @@ public class PosPaymentQrRequest : BaseStoreEntity
     public StoreBankAccount BankAccount { get; set; } = default!;
 
     public decimal Amount { get; set; }
+    public Guid? ClientRequestId { get; set; }
+    public int? PaymentId { get; set; }
+    public DateTime? PrintClaimedAtUtc { get; set; }
 
     [StringLength(300)]
     public string Content { get; set; } = string.Empty;

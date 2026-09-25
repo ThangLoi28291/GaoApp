@@ -1,4 +1,5 @@
 using GaoApp.Application.Common.Exceptions;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Inventory;
@@ -39,21 +40,7 @@ public static class InputInvoiceIdentityPolicy
     }
 
     public static string? NormalizeTaxCode(string? value)
-    {
-        var normalized = NormalizeText(value);
-        if (normalized.Length == 0)
-            return null;
-
-        normalized = normalized
-            .Replace(" ", string.Empty, StringComparison.Ordinal)
-            .Replace(".", string.Empty, StringComparison.Ordinal)
-            .Replace("-", string.Empty, StringComparison.Ordinal)
-            .Replace("\t", string.Empty, StringComparison.Ordinal)
-            .Replace("\r", string.Empty, StringComparison.Ordinal)
-            .Replace("\n", string.Empty, StringComparison.Ordinal)
-            .ToUpperInvariant();
-        return normalized.Length == 0 ? null : normalized;
-    }
+        => TaxCodeIdentityNormalizer.Normalize(value);
 
     public static string? NormalizeIdentityToken(string? value)
     {

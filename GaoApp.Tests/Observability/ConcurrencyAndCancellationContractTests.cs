@@ -287,6 +287,20 @@ public sealed class ConcurrencyAndCancellationContractTests
                 IReadOnlyList<Tax> Items,
                 int TotalItems)>(([], 0));
 
+        public Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
+            int storeId,
+            string? search,
+            bool? status,
+            int page,
+            int pageSize,
+            CancellationToken ct = default) =>
+            GetPagedAsync(storeId, search, page, pageSize, ct);
+
+        public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+            int storeId,
+            CancellationToken ct = default) =>
+            Task.FromResult((0, 0, 0));
+
         public Task<Tax?> GetByIdAsync(
             int storeId,
             int id,

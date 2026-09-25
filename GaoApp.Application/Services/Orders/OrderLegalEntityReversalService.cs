@@ -2,6 +2,7 @@ using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
@@ -67,6 +68,9 @@ public sealed class OrderLegalEntityReversalService
         if (persistedAllocations.Count == 0)
             return false;
 
+        if (_returnableFragments is not IReturnableValuationCostEvidence costEvidence)
+            throw new InvalidOperationException("Void requires durable cost closure validation.");
+
         var allocationByTransaction = BuildAllocationMap(order, persistedAllocations);
         var plans = new List<ReversalPlan>();
 
@@ -100,6 +104,18 @@ public sealed class OrderLegalEntityReversalService
         {
             await _movements.PreLockBalancesAsync(balanceKeys, ct);
         }
+
+        var refreshedPlans = new List<ReversalPlan>();
+        foreach (var line in order.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.Id))
+        {
+            var fragments = await _returnableFragments.GetForOrderLineAsync(order.Id, line.Id, ct);
+            var quantity = plans.Where(x => x.OrderLine.Id == line.Id).Sum(x => x.BaseQuantity);
+            refreshedPlans.AddRange(BuildPlans(line, fragments,
+                _returnCostAllocator.Allocate(fragments, quantity), allocationByTransaction));
+        }
+        EnsureSamePlanIdentity(plans, refreshedPlans);
+        plans = refreshedPlans;
+        AllocateVoidFinancialAmounts(plans);
 
         var reversalRows = new List<OrderLegalEntityAllocationReversal>();
         var occurredAtUtc = DateTime.UtcNow;
@@ -136,6 +152,8 @@ public sealed class OrderLegalEntityReversalService
         }
 
         await _reversals.AddRangeAsync(reversalRows, ct);
+        foreach (var line in order.Lines.Where(x => !x.IsDeleted))
+            await costEvidence.ValidateVoidClosureAsync(order.Id, line.Id, ct);
         return true;
     }
 
@@ -225,10 +243,10 @@ public sealed class OrderLegalEntityReversalService
 
             if (lineAllocations.Count == 0)
             {
-                var fragmentsWithoutAllocation = await _returnableFragments
-                    .GetForOrderLineAsync(
+                var fragmentsWithoutAllocation = await ReadFragmentsAsync(
                         order.Id,
                         salesReturnLine.OrderLineId,
+                        salesReturnLine.Action == SalesReturnLineAction.Restock,
                         ct);
                 if (fragmentsWithoutAllocation.Any(x =>
                         allocationByTransaction.ContainsKey(
@@ -241,9 +259,10 @@ public sealed class OrderLegalEntityReversalService
                 continue;
             }
 
-            var fragments = await _returnableFragments.GetForOrderLineAsync(
+            var fragments = await ReadFragmentsAsync(
                 order.Id,
                 salesReturnLine.OrderLineId,
+                salesReturnLine.Action == SalesReturnLineAction.Restock,
                 ct);
             var lineAllocationByTransaction = lineAllocations.ToDictionary(
                 x => x.InventoryTransactionId
@@ -354,6 +373,17 @@ public sealed class OrderLegalEntityReversalService
         CancellationToken ct)
     {
         var salesReturnLine = preparedLine.SalesReturnLine;
+        var freshFragments = await ReadFragmentsAsync(batch.Order.Id,
+            salesReturnLine.OrderLineId, preparedLine.IsRestock, ct);
+        var freshAllocations = _returnCostAllocator.Allocate(freshFragments, salesReturnLine.ReturnBaseQuantity);
+        var originalMap = BuildAllocationMap(batch.Order,
+            await _allocations.GetForOrderAsync(batch.Order.Id, ct));
+        var freshPlans = BuildPlans(preparedLine.Plans[0].OrderLine,
+            freshFragments, freshAllocations, originalMap);
+        EnsureSamePlanIdentity(preparedLine.Plans, freshPlans);
+        AllocateFinancialAmounts(freshPlans, salesReturnLine.RefundLineTotal);
+        preparedLine.Plans.Clear();
+        preparedLine.Plans.AddRange(freshPlans);
         if (preparedLine.IsRestock)
         {
             salesReturnLine.LineCostTotal = preparedLine.Plans
@@ -430,6 +460,22 @@ public sealed class OrderLegalEntityReversalService
         return allocations.ToDictionary(
             x => x.InventoryTransactionId!.Value,
             x => x);
+    }
+
+    private Task<List<ReturnableValuationFragmentDto>> ReadFragmentsAsync(
+        int orderId, int orderLineId, bool requireCost, CancellationToken ct)
+        => !requireCost && _returnableFragments is IReturnableValuationCostEvidence evidence
+            ? evidence.GetQuantityOnlyForOrderLineAsync(orderId, orderLineId, ct)
+            : _returnableFragments.GetForOrderLineAsync(orderId, orderLineId, ct);
+
+    private static void EnsureSamePlanIdentity(
+        IReadOnlyList<ReversalPlan> original, IReadOnlyList<ReversalPlan> current)
+    {
+        if (!original.Select(x => (x.OrderLine.Id, x.Allocation.Id, x.Source.SourceValuationEntryId,
+                    x.Source.WarehouseId, x.Source.ProductVariantId, x.BaseQuantity))
+                .SequenceEqual(current.Select(x => (x.OrderLine.Id, x.Allocation.Id, x.Source.SourceValuationEntryId,
+                    x.Source.WarehouseId, x.Source.ProductVariantId, x.BaseQuantity))))
+            throw new InvalidOperationException("Return/void source plan changed after locking; retry the operation.");
     }
 
     private static List<ReversalPlan> BuildPlans(

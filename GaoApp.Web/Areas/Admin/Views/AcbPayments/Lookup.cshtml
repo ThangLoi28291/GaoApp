@@ -1,0 +1,8 @@
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = "Tra cứu chuyển khoản ACB";
+}
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" /> }
+<a href="/admin/pos/order-detail/@ViewBag.OrderId" class="btn btn-outline-secondary mb-3">← Chi tiết hóa đơn</a>
+<partial name="_LookupContent" />
+@section PageScripts { <script src="~/Admin/js/pos/acb.lookup.js" asp-append-version="true"></script> }

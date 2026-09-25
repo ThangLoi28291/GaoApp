@@ -150,7 +150,7 @@ public sealed class PurchaseRequestOrderGroupRequest
     /// <summary>Khóa ổn định do client sinh để retry không tạo trùng đơn.</summary>
     [Required, StringLength(64)] public string ClientGroupKey { get; set; } = string.Empty;
     [StringLength(250)] public string? Title { get; set; }
-    [Range(1, int.MaxValue)] public int SupplierId { get; set; }
+    public int? SupplierId { get; set; }
     [Range(1, int.MaxValue)] public int ExpectedWarehouseId { get; set; }
     [Range(1, int.MaxValue)] public int LegalEntityId { get; set; }
     public DateTime OrderDate { get; set; } = DateTime.Today;
@@ -220,4 +220,21 @@ public sealed class PurchaseRequestProductLookupDto
     public decimal CurrentStockBaseQuantity { get; set; }
     public decimal IncomingBaseQuantity { get; set; }
     public bool HasOpenRequest { get; set; }
+    public int OpenRequestCount { get; set; }
+    public decimal OpenRequestBaseQuantity { get; set; }
+    public string? OpenRequestNumber { get; set; }
+    public List<PurchaseRequestProductUnitOptionDto> UnitOptions { get; set; } = new();
+}
+
+public sealed class PurchaseRequestProductUnitOptionDto
+{
+    public int ProductUnitConversionId { get; set; }
+    public int UnitId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public decimal Factor { get; set; }
+    public string? Barcode { get; set; }
+    public bool IsBaseUnit { get; set; }
+    public bool IsDefaultForSale { get; set; }
+    public bool IsBarcodeMatch { get; set; }
+    public bool IsHistoricalBarcodeMatch { get; set; }
 }

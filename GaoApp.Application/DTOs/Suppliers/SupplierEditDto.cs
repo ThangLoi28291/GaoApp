@@ -10,6 +10,9 @@ public sealed class SupplierEditDto
     public string? Address { get; set; }
     public string? ContactName { get; set; }
     public string? TaxCode { get; set; }
+    public string? BankAccountNumber { get; set; }
+    public string? BankAccountName { get; set; }
+    public string? BankName { get; set; }
     public string? Note { get; set; }
     public bool Status { get; set; }
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

@@ -8,6 +8,9 @@ namespace GaoApp.Infrastructure.Repositories.AttributeValues;
 
 public sealed class AttributeValueRepository : IAttributeValueRepository
 {
+    private const string AccentInsensitiveSearchCollation =
+        "Latin1_General_100_CI_AI";
+
     private readonly AppDbContext _db;
     public AttributeValueRepository(AppDbContext db) => _db = db;
 
@@ -37,11 +40,36 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            search = search.Trim();
-            q = q.Where(x =>
-                x.Code.Contains(search) ||
-                x.Name.Contains(search) ||
-                x.Attribute.Name.Contains(search));
+            var normalizedSearch = search.Trim();
+
+            if (_db.Database.IsRelational())
+            {
+                var accentInsensitiveSearch = normalizedSearch
+                    .Replace('Đ', 'D')
+                    .Replace('đ', 'd');
+
+                q = q.Where(x =>
+                    EF.Functions.Collate(
+                        x.Code,
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Attribute.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch));
+            }
+            else
+            {
+                q = q.Where(x =>
+                    x.Code.Contains(normalizedSearch) ||
+                    x.Name.Contains(normalizedSearch) ||
+                    x.Attribute.Name.Contains(normalizedSearch));
+            }
         }
 
         var total = await q.CountAsync(ct);
@@ -53,6 +81,34 @@ public sealed class AttributeValueRepository : IAttributeValueRepository
             .ToListAsync(ct);
 
         return (items, total);
+    }
+
+    public async Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        var counts = await _db.AttributeValues
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId && !x.IsDeleted)
+            .GroupBy(x => x.Status)
+            .Select(group => new
+            {
+                Status = group.Key,
+                Count = group.Count()
+            })
+            .ToListAsync(ct);
+
+        var activeItems = counts
+            .Where(x => x.Status)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        var inactiveItems = counts
+            .Where(x => !x.Status)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        return (activeItems + inactiveItems, activeItems, inactiveItems);
     }
 
     public Task<AttributeValue?> GetByIdAsync(int storeId, int id, CancellationToken ct = default)

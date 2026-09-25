@@ -68,6 +68,9 @@ public sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLine>
         b.Property(x => x.LineTotal)
             .HasPrecision(18, 2);
 
+        b.Property(x => x.RewardBaseUnitPrice).HasPrecision(18, 2);
+        b.Property(x => x.RewardableAmountSnapshot).HasPrecision(18, 2);
+
         // =========================================================
         // Cost snapshot fields
         // =========================================================

@@ -1,0 +1,63 @@
+/* Supplier Create/Edit only: deliberately independent of the list styles. */
+.supplier-editor { --se-ink:#24324b; --se-muted:#68758a; --se-accent:#5854d8; max-width:1180px; margin:0 auto; color:var(--se-ink); padding:8px 0 24px; }
+.supplier-editor .se-breadcrumb { display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:24px; color:var(--se-muted); }
+.supplier-editor .se-breadcrumb a { color:var(--se-muted); }
+.supplier-editor .se-header { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:28px; }
+.supplier-editor .se-eyebrow { display:block; color:var(--se-accent); font-size:11px; font-weight:700; letter-spacing:1.6px; margin-bottom:8px; }
+.supplier-editor h1 { font-size:30px; font-weight:750; letter-spacing:-.8px; margin:0 0 10px; color:var(--se-ink); }
+.supplier-editor p { color:var(--se-muted); font-size:13px; line-height:1.65; margin:0; }
+.supplier-editor .se-back { display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:13px; color:var(--se-muted); padding:10px 0; }
+.supplier-editor .se-back:hover,.supplier-editor .se-breadcrumb a:hover { color:var(--se-accent); }
+.supplier-editor .se-layout { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr); align-items:start; gap:24px; }
+.supplier-editor .se-main,.supplier-editor .se-side { display:grid; gap:22px; min-width:0; }
+.supplier-editor .se-card { background:#fff; border:1px solid #e6eaf1; border-radius:18px; padding:26px; box-shadow:0 4px 20px #23345104; min-width:0; }
+.supplier-editor .se-section-heading { display:flex; align-items:center; gap:12px; margin-bottom:25px; }
+.supplier-editor h2 { font-size:16px; font-weight:700; color:var(--se-ink); margin:0 0 5px; }
+.supplier-editor .se-icon { display:flex; flex-shrink:0; align-items:center; justify-content:center; width:44px; height:44px; border-radius:13px; background:#eeedff; color:var(--se-accent); font-size:24px; }
+.supplier-editor .se-icon-neutral { background:#f0f3f7; color:#67788c; }
+.supplier-editor .se-section-number { margin-left:auto; font-size:28px; color:#e1e5ef; font-weight:600; }
+.supplier-editor .se-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 18px; }
+.supplier-editor .se-full { grid-column:1/-1; }
+.supplier-editor .se-field { min-width:0; }
+.supplier-editor .se-field label { display:block; font-size:13px; font-weight:600; color:#3c4960; margin-bottom:8px; }
+.supplier-editor .se-required { color:#d44959; }
+.supplier-editor .form-control { border:1px solid #dce2eb; border-radius:9px; min-height:46px; padding:11px 13px; font-size:14px; color:var(--se-ink); background:#fff; box-shadow:none; transition:border-color .15s,box-shadow .15s; width:100%; }
+.supplier-editor .form-control::placeholder { color:#8a95a6; opacity:1; font-size:13px; }
+.supplier-editor .form-control:hover { border-color:#b9c1d3; }
+.supplier-editor .form-control:focus { border-color:var(--se-accent); box-shadow:0 0 0 3px #5854d81a; outline:none; }
+.supplier-editor .form-control[readonly] { background:#f3f5f9; color:#68758a; }
+.supplier-editor textarea.form-control { resize:vertical; min-height:98px; }
+.supplier-editor .text-danger { display:block; font-size:12px; margin-top:5px; }
+.supplier-editor .input-validation-error { border-color:#c9394a; }
+.supplier-editor .se-optional { font-size:11px; font-weight:500; color:#68758a; margin-left:auto; white-space:nowrap; }
+.supplier-editor .se-bank-card { padding:0; overflow:hidden; border-color:#dcdcf3; }
+.supplier-editor .se-bank-heading { padding:26px; background:linear-gradient(120deg,#eeedff,#f8f8ff); position:relative; border-bottom:1px solid #e7e5f7; }
+.supplier-editor .se-bank-heading .se-icon { background:#fff; box-shadow:0 3px 12px #5854d80a; margin-bottom:18px; }
+.supplier-editor .se-bank-heading .se-optional { position:absolute; top:28px; right:26px; padding:5px 9px; border:1px solid #deddf3; border-radius:20px; color:#67639a; }
+.supplier-editor .se-bank-heading h2 { font-size:19px; margin-bottom:7px; }
+.supplier-editor .se-bank-fields { padding:24px 26px; display:grid; gap:18px; }
+.supplier-editor .se-account { font-variant-numeric:tabular-nums; letter-spacing:.5px; }
+.supplier-editor .se-bank-help { display:flex; gap:8px; font-size:12px; padding-top:3px; }
+.supplier-editor .se-bank-help i { font-size:17px; margin-top:2px; color:#8581b6; flex-shrink:0; }
+.supplier-editor .se-status-card { padding:22px 26px; }
+.supplier-editor .se-status-top { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:9px; }
+.supplier-editor .se-status-top h2 { font-size:14px; margin:0; }
+.supplier-editor .form-switch { padding:0; margin:0; min-height:26px; flex-shrink:0; }
+.supplier-editor .form-switch .form-check-input { float:none; margin:0; width:44px; height:25px; cursor:pointer; }
+.supplier-editor .form-check-input:checked { background-color:var(--se-accent); border-color:var(--se-accent); }
+.supplier-editor .se-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:20px 24px; margin-top:24px; background:#fff; border:1px solid #e6eaf1; border-radius:14px; }
+.supplier-editor .se-actions>span { font-size:12px; color:var(--se-muted); }
+.supplier-editor .se-actions>div { display:flex; align-items:center; gap:12px; }
+.supplier-editor .se-actions .btn { min-height:44px; padding:11px 20px; border-radius:9px; font-size:13px; font-weight:600; }
+.supplier-editor .se-cancel { background:#fff; border:1px solid #dce2eb; color:#526078; }
+.supplier-editor .se-save { background:var(--se-accent); border:1px solid var(--se-accent); color:#fff; box-shadow:0 4px 10px #5854d825; display:inline-flex; align-items:center; gap:7px; }
+.supplier-editor .se-save i { font-size:20px; }
+.supplier-editor .se-save:hover { background:#4540bf; color:#fff; }
+.supplier-editor .se-cancel:hover { background:#f3f5f9; }
+.supplier-editor a:focus-visible,.supplier-editor button:focus-visible { outline:3px solid #9c98ee; outline-offset:3px; }
+@media(max-width:1100px) { .supplier-editor .se-layout { gap:18px; grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr); } .supplier-editor .se-card { padding:20px; } .supplier-editor .se-bank-card { padding:0; } .supplier-editor .se-note-card .se-optional { display:none; } }
+@media(max-width:800px) { .supplier-editor .se-layout { grid-template-columns:1fr; } .supplier-editor .se-header { align-items:flex-start; } .supplier-editor h1 { font-size:26px; } .supplier-editor .se-back { font-size:0; } .supplier-editor .se-back i { font-size:22px; } }
+@media(max-width:480px) { .supplier-editor { padding-top:0; } .supplier-editor .se-breadcrumb { margin-bottom:18px; } .supplier-editor .se-header { margin-bottom:22px; gap:12px; } .supplier-editor h1 { font-size:24px; } .supplier-editor .se-fields { grid-template-columns:1fr; gap:18px; } .supplier-editor .se-card { border-radius:14px; padding:20px 18px; } .supplier-editor .se-bank-card { padding:0; } .supplier-editor .se-bank-heading,.supplier-editor .se-bank-fields { padding:22px 18px; } .supplier-editor .se-section-heading p { font-size:12px; } .supplier-editor .se-section-number { display:none; } .supplier-editor .se-actions { flex-direction:column; align-items:stretch; padding:18px; gap:14px; } .supplier-editor .se-actions>div { display:grid; grid-template-columns:auto 1fr; gap:9px; } .supplier-editor .se-save { justify-content:center; } .supplier-editor .se-actions .btn { padding:11px 12px; } }
+@media(prefers-reduced-motion:reduce) { .supplier-editor .form-control { transition:none; } }
+/* The admin theme assigns fixed heading line-heights; scale them with this form. */
+.supplier-editor h1,.supplier-editor h2 { line-height:1.3; }

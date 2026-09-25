@@ -1,0 +1,94 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {chromium} = require('playwright');
+(async () => {
+    const info = JSON.parse(await new Promise(resolve => {let data='';process.stdin.on('data', x=>data+=x);process.stdin.on('end', ()=>resolve(data));}));
+    const output = path.resolve('TestResults/receipt-history/browser'); fs.mkdirSync(output, {recursive:true});
+    const browser = await chromium.launch({channel:'chrome', headless:true});
+    const context = await browser.newContext({viewport:{width:1440,height:1050},timezoneId:'Asia/Bangkok'});
+    const page = await context.newPage(), errors=[];
+    page.on('pageerror', error=>errors.push(error.message));
+    const url = info.baseUrl+`/admin/stock-documents/${info.receiptId}`;
+    const auditUrl = `**/admin/api/stock-documents/${info.receiptId}/audit-events`;
+    async function login(target, credentials) {
+        await target.goto(info.baseUrl+'/admin/account/login');
+        await target.locator('[name=UserName]').fill(credentials.user);
+        await target.locator('[name=Password]').fill(credentials.password);
+        const terminal=target.locator('[name=SelectedTerminalId]'); if(await terminal.count()) await terminal.selectOption(String(info.terminalId));
+        await Promise.all([target.waitForURL(url=>!url.pathname.endsWith('/login')),target.locator('button[type=submit]').click()]);
+    }
+    try {
+        await login(page, info); await page.goto(url);
+        const card=page.locator('#purchaseReceiptAuditCard'), entries=card.locator('.rh-event');
+        await card.locator('#receiptHistoryStats').filter({hasText:'45 thao tác'}).waitFor();
+        assert.equal(await entries.count(),12);
+        assert.equal(await entries.first().locator('.rh-title').innerText(),'Khôi phục hàng chờ duyệt');
+        assert.equal(await entries.first().locator('time').innerText(),'13:45:00','Unzoned SQL UTC must be rendered in local time.');
+        assert.equal(await entries.first().locator('.rh-product').innerText(),'Sữa tươi ít đường 180 ml');
+        assert.equal(await card.locator('pre:visible').count(),0,'Raw audit evidence must be collapsed by default.');
+        await card.locator('#receiptHistoryMore').click(); assert.equal(await entries.count(),24);
+        await card.locator('#receiptHistorySort').selectOption('oldest');
+        assert.equal(await entries.first().locator('.rh-title').innerText(),'Tạo phiếu nhập');
+        const changed=entries.filter({hasText:'Điều chỉnh hàng nhập'});
+        assert.match(await changed.locator('.rh-changes').innerText(),/Số lượng nhập\s+2\s+→\s+5/);
+        await changed.locator('.rh-details > summary').click();
+        const qtyRow=changed.locator('tbody tr').filter({hasText:'Số lượng nhập'});
+        assert.deepEqual(await qtyRow.locator('td').allTextContents(),['2','5']);
+        await changed.screenshot({path:path.join(output,'before-after.png')});
+        await card.locator('#receiptHistorySearch').fill('cap nhat hang cho duyet');
+        assert.equal(await entries.count(),1,'Vietnamese search must work without accents.');
+        await entries.first().locator('.rh-details > summary').click();
+        assert.match(await entries.first().locator('.rh-evidence-note').innerText(),/chỉ lưu thông tin sau/);
+        assert.equal(await entries.first().locator('tbody tr').filter({hasText:'Số lượng nhập'}).locator('td').first().innerText(),'Không được lưu');
+        await card.locator('#receiptHistorySearch').fill('');
+        await card.locator('#receiptHistoryFilter').selectOption('invoice');
+        assert.equal(await entries.count(),12);
+        assert.ok((await entries.locator('.rh-badge').allTextContents()).every(x=>x==='Hóa đơn'));
+        await card.locator('#receiptHistorySearch').fill('tran dung');
+        assert.ok((await entries.locator('.rh-actor').allTextContents()).every(x=>x==='Trần Dũng'));
+        await card.locator('#receiptHistorySearch').fill('khong co ket qua 123');
+        assert.equal(await entries.count(),0);
+        assert.match(await card.locator('#purchaseReceiptAuditStatus').innerText(),/Không tìm thấy/);
+        await card.locator('#receiptHistorySearch').fill('');await card.locator('#receiptHistoryFilter').selectOption('');
+        while(await card.locator('#receiptHistoryMore').isVisible()) await card.locator('#receiptHistoryMore').click();
+        assert.equal(await entries.count(),45);
+        assert.ok((await entries.locator('.rh-title').allTextContents()).every(x=>!x.includes('Sự kiện ')&&!x.includes('Thao tác khác')));
+        await card.locator('#receiptHistorySort').selectOption('newest');
+        await card.evaluate(node=>node.scrollIntoView({block:'start',behavior:'instant'}));
+        await page.waitForFunction(()=>{const node=document.getElementById('purchaseReceiptAuditCard');if(Math.abs(node.getBoundingClientRect().top)<3)return true;node.scrollIntoView({block:'start',behavior:'instant'});return false;});
+        await page.screenshot({path:path.join(output,'timeline-desktop.png')});
+        // Legacy/future evidence must remain readable, safely escaped and recoverable.
+        const fixture = {id:999,eventType:999,actorUserName:'<img src=x onerror="window.auditXss=1">',occurredAtUtc:'invalid',
+            changedFieldsJson:'[broken',oldValuesJson:'{malformed',newValuesJson:'{"Note":"<script>window.auditXss=2</script>"}',isSuccess:false};
+        await page.route(auditUrl, route=>route.fulfill({json:{events:[fixture]}}));
+        await card.locator('#receiptHistoryRefresh').click();await card.locator('[data-event-id="999"]').waitFor();
+        assert.equal(await entries.count(),1); assert.equal(await entries.locator('img,script').count(),0);
+        assert.equal(await page.evaluate(()=>window.auditXss),undefined);
+        await entries.locator('.rh-details > summary').click();await entries.locator('.rh-technical > summary').click();
+        assert.match(await entries.locator('.rh-technical').innerText(),/\{malformed/);
+        assert.equal(await entries.locator('.rh-failed').innerText(),'Không thành công');
+        await page.unroute(auditUrl);
+        await page.route(auditUrl, route=>route.fulfill({status:500,json:{message:'test failure'}}));
+        await card.locator('#receiptHistoryRefresh').click();
+        await card.locator('#purchaseReceiptAuditStatus').filter({hasText:'Không thể tải lịch sử'}).waitFor();
+        assert.equal(await card.locator('#receiptHistoryRefresh').isEnabled(),true);
+        await page.unroute(auditUrl);
+        await card.locator('#receiptHistoryRefresh').click();await card.locator('#receiptHistoryStats').filter({hasText:'45 thao tác'}).waitFor();
+        await card.locator('#receiptHistorySort').selectOption('newest');
+        await page.setViewportSize({width:390,height:844});await card.evaluate(node=>node.scrollIntoView({block:'start',behavior:'instant'}));
+        await page.waitForFunction(()=>{const node=document.getElementById('purchaseReceiptAuditCard');if(Math.abs(node.getBoundingClientRect().top)<3)return true;node.scrollIntoView({block:'start',behavior:'instant'});return false;});
+        assert.equal(await card.evaluate(node=>node.scrollWidth<=node.clientWidth+1),true,'History must not overflow at phone width.');
+        assert.equal(await card.evaluate(node=>node.getBoundingClientRect().right<=window.innerWidth),true);
+        await page.screenshot({path:path.join(output,'timeline-mobile.png')});
+        const employeeContext=await browser.newContext(),employee=await employeeContext.newPage();
+        await login(employee,info.employee);await employee.goto(url);
+        assert.equal(await employee.locator('#purchaseReceiptAuditCard').count(),0,'Employee without audit permission must not see history.');
+        const auditStatus=await employee.evaluate(async id=>(await fetch(`/admin/api/stock-documents/${id}/audit-events`)).status,info.receiptId);
+        assert.equal(auditStatus,403);
+        assert.deepEqual(errors,[]);
+        console.log('PASS: 45 event labels, UTC time, before/after evidence, missing prior values, search/filter/sort/load-more, safe legacy JSON, retry, mobile layout and audit access control.');
+    } catch(error) {await page.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
+    finally {await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -23,6 +23,20 @@ public interface IProductRepository
         int pageSize,
         CancellationToken ct = default);
 
+    Task<PagedResult<ProductListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        int? categoryId,
+        bool? isActive,
+        bool? isSellable,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int PosAllowedItems, int NotForPosItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<Product?> GetDetailAsync(
         int storeId,
         int id,

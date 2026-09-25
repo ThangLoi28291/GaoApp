@@ -6,9 +6,15 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace GaoApp.Domain.Entities;
 
-[Table("InvoiceHeads")]
+    [Table("InvoiceHeads")]
 public class InvoiceHead : BaseStoreEntity
 {
+    /// <summary>
+    /// Hóa đơn tổng hợp do hàng đợi phát hành tự động tạo. Đây không phải draft POS
+    /// mới và luôn có liên kết nguồn trong AutoInvoiceOperationSources.
+    /// </summary>
+    public bool IsAutoInvoiceGroup { get; set; }
+
     /// <summary>
     /// Chủ thể pháp lý phát hành hóa đơn. Null chỉ dành cho dữ liệu/luồng legacy
     /// khi store chưa bật Multi LegalEntity.
@@ -24,12 +30,21 @@ public class InvoiceHead : BaseStoreEntity
     public InvoiceProviderSetting? InvoiceProviderSetting { get; set; }
 
     /// <summary>
-    /// POS Order gốc tạo hóa đơn bán ra.
+    /// POS Order gốc tạo hóa đơn bán ra. Null chỉ cho bản ghi GaoStore chỉ tra cứu
+    /// chưa ánh xạ được Order (ràng buộc CK_InvoiceHeads_LegacyOrder).
     /// Một Order legacy sinh một InvoiceHead; đơn Multi LegalEntity sinh một
     /// InvoiceHead cho mỗi LegalEntity có allocation.
     /// </summary>
-    public int OrderId { get; set; }
-    public Order Order { get; set; } = default!;
+    public int? OrderId { get; set; }
+    public Order? Order { get; set; }
+
+    // GaoStore provenance is independent of the optional GaoApp Order relationship.
+    public long? LegacySourceId { get; set; }
+    public long? LegacyOrderCategoryId { get; set; }
+    public string? LegacyMergeId { get; set; }
+    public string? LegacySnapshotJson { get; set; }
+    public byte[]? LegacyImportedHash { get; set; }
+    public bool LegacyReadOnly { get; set; }
 
     [StringLength(50)]
     public string? InvoiceNumber { get; set; }

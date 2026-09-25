@@ -11,26 +11,47 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class RolesController : BaseAdminController
 {
     private readonly IRoleAdminService _roleAdminService;
+    private readonly IRoleIndexReadService _roleIndexReadService;
     private readonly ICurrentStorePermissionService _currentStorePermissionService;
 
     public RolesController(
         IRoleAdminService roleAdminService,
+        IRoleIndexReadService roleIndexReadService,
         ICurrentStorePermissionService currentStorePermissionService)
     {
         _roleAdminService = roleAdminService;
+        _roleIndexReadService = roleIndexReadService;
         _currentStorePermissionService = currentStorePermissionService;
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index([FromQuery] RoleIndexQueryDto query, CancellationToken ct)
+    public async Task<IActionResult> Index(CancellationToken ct)
     {
         var storeId = CurrentStoreId;
         var userId = CurrentUserId;
 
-        var vm = await _roleAdminService.GetPagedAsync(storeId, query, ct);
         await LoadPagePermissionsAsync(storeId, userId, ct);
 
-        return View(vm);
+        return View();
+    }
+
+    [HttpGet("/admin/roles/data")]
+    public async Task<IActionResult> GetRoleIndexData(
+        [FromQuery] RoleIndexQueryRequest request,
+        CancellationToken ct)
+    {
+        var storeId = CurrentStoreId;
+        var userId = CurrentUserId;
+        var result = await _roleIndexReadService.GetPageAsync(storeId, request, ct);
+
+        result.CanUpdate = await _currentStorePermissionService.HasPermissionAsync(
+            storeId, userId, PermissionCodes.Security.Role.Update, ct);
+        result.CanDelete = await _currentStorePermissionService.HasPermissionAsync(
+            storeId, userId, PermissionCodes.Security.Role.Delete, ct);
+        result.CanPermissions = await _currentStorePermissionService.HasPermissionAsync(
+            storeId, userId, PermissionCodes.Security.Role.Permissions, ct);
+
+        return Json(result);
     }
 
     [HttpGet]

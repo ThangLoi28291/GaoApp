@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Enums;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.DTOs.Returns;
 
@@ -14,6 +14,7 @@ public sealed class SalesReturnDto
     public string? Note { get; set; }
     public decimal ReturnSubtotal { get; set; }
     public decimal RefundTotal { get; set; }
+    public decimal DepositRestoredTotal { get; set; }
     public DateTime CreatedAtUtc { get; set; }
 
     public List<SalesReturnLineDto> Lines { get; set; } = new();

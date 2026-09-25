@@ -7,7 +7,7 @@ public class ResetPasswordRequest
     public int UserId { get; set; }
 
     [Required]
-    [MinLength(6)]
+    [StringLength(128, MinimumLength = 12, ErrorMessage = "Mật khẩu phải có từ 12 đến 128 ký tự.")]
     public string NewPassword { get; set; } = string.Empty;
 
     [Required]

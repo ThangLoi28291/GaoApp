@@ -31,6 +31,13 @@ public class UserRepository : IUserRepository
         await _context.Users.AddAsync(user, ct);
     }
 
+    public Task<bool> HasOtherStoreMembershipAsync(int userId, int storeId, CancellationToken ct = default)
+        // Deliberate cross-tenant boolean check, never expose other store records.
+        // Include disabled/deleted memberships: a store admin must not take over
+        // a global account which can later be restored in another store.
+        => _context.UserInStores.IgnoreQueryFilters()
+            .AnyAsync(x => x.UserId == userId && x.StoreId != storeId, ct);
+
     public Task SaveChangesAsync(CancellationToken ct = default)
     {
         return _context.SaveChangesAsync(ct);
@@ -40,7 +47,12 @@ public class UserRepository : IUserRepository
       int maxResults = 20,
       CancellationToken ct = default)
     {
-        var query = _context.Users.Where(x => !x.IsDeleted);
+        if (_context.CurrentStoreId is not > 0) return [];
+        var storeId = _context.CurrentStoreId.Value;
+        var isHostAdmin = _context.CurrentUserId.HasValue && await _context.Users.AsNoTracking()
+            .AnyAsync(x => x.Id == _context.CurrentUserId.Value && x.IsHostAdmin && x.IsActive && !x.IsDeleted, ct);
+        var query = _context.Users.Where(x => !x.IsDeleted && !x.IsHostAdmin &&
+            (isHostAdmin || x.UserInStores.Any(m => m.StoreId == storeId && !m.IsDeleted)));
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -53,7 +65,7 @@ public class UserRepository : IUserRepository
 
         return await query
             .OrderBy(x => x.UserName)
-            .Take(maxResults)
+            .Take(Math.Clamp(maxResults, 1, 50))
             .ToListAsync(ct);
     }
     public async Task<List<User>> GetByIdsAsync(List<int> ids, CancellationToken ct = default)

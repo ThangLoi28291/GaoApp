@@ -1,10 +1,11 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Application.DTOs.POSShifts;
 using GaoApp.Application.DTOs.Products;
+using GaoApp.Application.DTOs.Rewards;
 using GaoApp.Application.DTOs.Orders.LegalEntityAllocation;
 using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.Customers;
@@ -21,6 +22,7 @@ using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Interfaces.Services.Promotions;
 using GaoApp.Application.Interfaces.Services.Rewards;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -33,9 +35,15 @@ namespace GaoApp.Application.Services.Orders;
 
 public sealed class POSService : IPOSService
 {
+    private readonly ICustomerDepositService? _deposits;
+    private readonly ICustomerReceivableService? _receivables;
     private readonly IAppUnitOfWork _uow;
     private readonly IOrderRepository _orders;
     private readonly IProductVariantRepository _variants;
+    // Reuse the read model already fetched for pack pricing. Newly added lines
+    // have no EF Variant navigation until a later request; do not attach this
+    // untracked graph or reload the entire order just to render name and photo.
+    private readonly Dictionary<int, ProductVariant> _draftDisplayVariants = new();
     private readonly IOrderPaymentRepository _payments;
     private readonly IOrderNumberGenerator _orderNo;
     private readonly IPOSShiftRepository _shifts;
@@ -65,6 +73,7 @@ public sealed class POSService : IPOSService
     private readonly IPromotionRepository _promotionRepository;
     private readonly IOrderLegalEntityFinalizeService _legalEntityFinalizeService;
     private readonly IOrderLegalEntityReversalService _legalEntityReversalService;
+    private readonly IEnumerable<IOrderFinalizeGuard> _finalizeGuards;
     public POSService(
         IAppUnitOfWork uow,
         IOrderRepository orders,
@@ -96,8 +105,13 @@ ICustomerRewardVoucherRepository rewardVoucherRepository,
 IPromotionEngine promotionEngine,
 IPromotionRepository promotionRepository,
 IOrderLegalEntityFinalizeService legalEntityFinalizeService,
-IOrderLegalEntityReversalService legalEntityReversalService)
+IOrderLegalEntityReversalService legalEntityReversalService,
+IEnumerable<IOrderFinalizeGuard>? finalizeGuards = null,
+ICustomerReceivableService? receivables = null,
+ICustomerDepositService? deposits = null)
     {
+        _deposits = deposits;
+        _receivables = receivables;
         _uow = uow;
         _orders = orders;
         _variants = variants;
@@ -130,6 +144,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         _promotionRepository = promotionRepository;
         _legalEntityFinalizeService = legalEntityFinalizeService;
         _legalEntityReversalService = legalEntityReversalService;
+        _finalizeGuards = finalizeGuards ?? Array.Empty<IOrderFinalizeGuard>();
     }
     private sealed class FinalizeInventoryIssueLine
     {
@@ -1461,6 +1476,15 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                     "Completed order line is missing outbound valuation entries.");
             }
 
+            var soldBaseQuantity = line.BaseQuantity > 0
+                ? line.BaseQuantity
+                : line.Quantity * (line.Multiplier > 0 ? line.Multiplier : 1m);
+            if (outboundEntries.Sum(x => -x.Quantity) != soldBaseQuantity ||
+                outboundEntries.Select(x => x.Id).Distinct().Count() != outboundEntries.Count ||
+                outboundEntries.Any(x => x.StoreId != order.StoreId || x.Quantity >= 0 ||
+                    x.ProductVariantId != line.VariantId))
+                throw new InvalidOperationException("Void source fragments do not reconcile to the original sale line.");
+
             // GHI CHÚ:
             // Void mức 2 = mirror từng valuation entry gốc.
             // Nếu line bán split thành actual/provisional thì nhập lại cũng split tương ứng.
@@ -1469,12 +1493,6 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 var qtyToAddBack = Math.Abs(entry.Quantity);
                 if (qtyToAddBack <= 0)
                     continue;
-
-                if (entry.UnitCost <= 0)
-                {
-                    throw new InvalidOperationException(
-                        "Outbound valuation entry has an invalid unit cost.");
-                }
 
                 plans.Add(new VoidInventoryMovementPlan
                 {
@@ -1503,7 +1521,18 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         foreach (var plan in plans)
         {
             var line = plan.Line;
-            var entry = plan.SourceEntry;
+            var entry = await _inventoryValuationEntryRepository.GetByIdAsync(plan.SourceEntry.Id, ct)
+                ?? throw new InvalidOperationException("Void source disappeared after balance locking.");
+            if (entry.StoreId != order.StoreId || entry.WarehouseId != plan.SourceEntry.WarehouseId ||
+                entry.ProductVariantId != line.VariantId || entry.Quantity != -plan.Quantity ||
+                entry.ReferenceId != order.Id.ToString() || entry.ReferenceLineId != line.Id)
+                throw new InvalidOperationException("Void source changed after balance locking.");
+            var cost = SaleValuationCostPolicy.Evaluate(entry,
+                await _inventoryValuationEntryRepository.GetRevaluationEntriesBySourceIdAsync(entry.Id, ct),
+                await _inventoryValuationEntryRepository.GetReverseEntriesBySourceEntryIdAsync(entry.Id, ct));
+            if (cost.InventoryReversedQuantity != 0)
+                throw new InvalidOperationException("Void source has already been reversed.");
+            var finalUnitCost = cost.RequireFinalUnitCost();
             var qtyToAddBack = plan.Quantity;
                 var movementRequest = _inventoryMovementFactory.CreateSaleVoid(
       entry.WarehouseId,
@@ -1511,7 +1540,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
       order.Id,
       line.Id,
       qtyToAddBack,
-      entry.UnitCost,
+      finalUnitCost,
       reason,
       DateTime.UtcNow);
 
@@ -1523,9 +1552,21 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 // GHI CHÚ:
                 // Nếu inbound part này mirror từ provisional outbound,
                 // ta giữ cờ để movement service/valuation layer biết đây là reversal của provisional part.
-                movementRequest.ForceProvisionalWhenNegative = entry.IsProvisional;
+                movementRequest.ForceProvisionalWhenNegative = false;
 
                 await _inventoryMovementService.CreateAsync(movementRequest, ct);
+        }
+
+        foreach (var plan in plans)
+        {
+            var source = await _inventoryValuationEntryRepository.GetByIdAsync(plan.SourceEntry.Id, ct)
+                ?? throw new InvalidOperationException("Void source is missing at closure.");
+            var closure = SaleValuationCostPolicy.Evaluate(source,
+                await _inventoryValuationEntryRepository.GetRevaluationEntriesBySourceIdAsync(source.Id, ct),
+                await _inventoryValuationEntryRepository.GetReverseEntriesBySourceEntryIdAsync(source.Id, ct));
+            if (closure.State != SaleValuationCostPolicy.Quality.Finalized || closure.Cost != 0 ||
+                closure.InventoryReversedQuantity != -source.Quantity)
+                throw new InvalidOperationException($"Void did not close sale cost: {closure.Reason}");
         }
     }
 
@@ -1999,43 +2040,66 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
 
-    public async Task<OrderDraftDto> AddPaymentAsync(int orderId, UpsertPaymentRequest dto, CancellationToken ct = default)
+    public Task<OrderDraftDto> AddPaymentAsync(int orderId, UpsertPaymentRequest dto, CancellationToken ct = default)
+        => AddPaymentCoreAsync(orderId, dto, requireCurrentCart: false, ct);
+
+    private async Task<OrderDraftDto> AddPaymentCoreAsync(int orderId, UpsertPaymentRequest dto, bool requireCurrentCart, CancellationToken ct)
     {
-        if (dto.Amount <= 0)
-            throw new BusinessRuleException("Số tiền thanh toán phải > 0.");
+        if (orderId <= 0 || dto.ClientRequestId == Guid.Empty)
+            throw new BusinessRuleException("Thiếu mã đơn hoặc mã lần thu tiền. Vui lòng tải lại trang POS.");
+        if (dto.Amount <= 0 || decimal.Truncate(dto.Amount) != dto.Amount || dto.Amount >= 10000000000000000m)
+            throw new BusinessRuleException("Số tiền thanh toán phải > 0 và là số đồng nguyên.");
+        if (!Enum.IsDefined(dto.Method)) throw new BusinessRuleException("Phương thức thanh toán không hợp lệ.");
+        var reference = string.IsNullOrWhiteSpace(dto.ReferenceCode) ? null : dto.ReferenceCode.Trim();
+        var provider = string.IsNullOrWhiteSpace(dto.Provider) ? null : dto.Provider.Trim();
+        if (reference?.Length > 100 || provider?.Length > 50)
+            throw new BusinessRuleException("Thông tin tham chiếu thanh toán quá dài.");
 
-        var order = await RequireDraftAsync(orderId, ct);
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _payments.LockOrderAsync(orderId, dto.ClientRequestId, ct);
+        var order = await _orders.GetByIdAsync(orderId, ct)
+            ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
+        var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct)
+            ?? throw new BusinessRuleException("Không tìm thấy ca của đơn hàng.");
+        EnsureShiftOwnership(shift);
+        if (shift.TerminalId != _posContext.TerminalId)
+            throw new ForbiddenAppException("Đơn hàng thuộc terminal khác.");
 
+        var previous = await _payments.GetByClientRequestIdAsync(dto.ClientRequestId, ct);
+        if (previous is not null)
+        {
+            if (previous.OrderId != orderId || previous.Method != dto.Method || previous.Amount != dto.Amount ||
+                previous.ReferenceCode != reference || previous.Provider != provider)
+                throw new ConflictAppException("Mã lần thu tiền đã được dùng với nội dung khác. Vui lòng kiểm tra lịch sử thanh toán.");
+            if (previous.IsDeleted)
+                throw new ConflictAppException("Lần thu tiền này đã bị xóa. Không thể ghi nhận lại bằng yêu cầu cũ.");
+            // Read current state, including completion after a lost HTTP response. Never post again.
+            var replay = await MapAsync(order, ct);
+            await tx.CommitAsync(ct);
+            return replay;
+        }
+        if (order.Status != OrderStatus.Draft || shift.Status != POSShiftStatus.Open)
+            throw new ConflictAppException("Đơn hoặc ca đã đóng, không thể thêm thanh toán.");
+        if (requireCurrentCart && shift.CurrentOrderId != order.Id)
+            throw new ConflictAppException("Giỏ hàng đã thay đổi. Vui lòng kiểm tra đúng đơn trước khi thu tiền.");
         if (!order.Lines.Any(x => !x.IsDeleted))
             throw new BusinessRuleException("Không thể thanh toán: giỏ hiện tại chưa có sản phẩm.");
-
         Recalc(order);
-
         if (order.GrandTotal <= 0)
             throw new BusinessRuleException("Không thể thanh toán: tổng tiền đơn hàng không hợp lệ.");
-
-        var currentPaid = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount);
-        var willPaid = currentPaid + dto.Amount;
-
-        if (dto.Method != PaymentMethod.Cash && willPaid > order.GrandTotal)
+        var currentPaid = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount) + order.DepositAmount;
+        if (dto.Method != PaymentMethod.Cash && currentPaid + dto.Amount > order.GrandTotal)
             throw new BusinessRuleException("Phương thức này không cho phép thanh toán dư (overpay).");
-
-        order.Payments.Add(new OrderPayment
-        {
-            OrderId = order.Id,
-            Method = dto.Method,
-            Amount = dto.Amount,
-            ReferenceCode = dto.ReferenceCode,
-            Provider = dto.Provider,
-            PaidAtUtc = DateTime.UtcNow
+        order.Payments.Add(new OrderPayment {
+            StoreId = order.StoreId, OrderId = order.Id, ClientRequestId = dto.ClientRequestId,
+            Method = dto.Method, Amount = dto.Amount, ReferenceCode = reference, Provider = provider, PaidAtUtc = DateTime.UtcNow
         });
-
         Recalc(order);
         await _orders.SaveChangesAsync(ct);
-
-        return await MapAsync(order, ct);
+        var result = await MapAsync(order, ct);
+        await tx.CommitAsync(ct);
+        return result;
     }
-
     public async Task<OrderDraftDto> RemovePaymentAsync(int paymentId, CancellationToken ct = default)
     {
         var payment = await _payments.GetDraftPaymentAsync(paymentId, ct)
@@ -2051,7 +2115,11 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         return await MapAsync(order, ct);
     }
 
-    public async Task<OrderDraftDto> FinalizeAsync(int orderId, CancellationToken ct = default)
+    public Task<OrderDraftDto> FinalizeAsync(int orderId, CancellationToken ct = default) => FinalizeCoreAsync(orderId, null, ct);
+
+    public Task<OrderDraftDto> FinalizeCreditAsync(int orderId, FinalizeCreditRequest request, CancellationToken ct = default) => FinalizeCoreAsync(orderId, request, ct);
+
+    private async Task<OrderDraftDto> FinalizeCoreAsync(int orderId, FinalizeCreditRequest? credit, CancellationToken ct)
     {
         // Transaction ngoài cùng:
         // nếu bất kỳ bước nào lỗi thì rollback toàn bộ:
@@ -2064,6 +2132,19 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
         try
         {
+            if (_receivables != null) await _receivables.LockOrderAsync(orderId, ct);
+            if (credit != null)
+            {
+                var previous = await _orders.GetByIdAsync(orderId, ct);
+                if (previous is { Status: OrderStatus.Completed, IsCreditSale: true } && previous.CreditRequestId == credit.ClientRequestId)
+                {
+                    if (previous.CustomerId != credit.ExpectedCustomerId || previous.CreditInitialBalance != credit.ExpectedBalance || previous.CreditDueDate != credit.DueDate?.Date || previous.CreditNote != credit.Note?.Trim())
+                        throw new ConflictAppException("Mã chốt nợ đã dùng với nội dung khác.");
+                    var replay = await MapAsync(previous, ct);
+                    await tx.CommitAsync(ct);
+                    return replay;
+                }
+            }
             var order = await RequireDraftAsync(orderId, ct);
 
             // Lưu trạng thái cũ để ghi audit old/new values
@@ -2078,8 +2159,15 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             if (order.GrandTotal <= 0)
                 throw new BusinessRuleException("Không thể chốt đơn: tổng tiền không hợp lệ.");
 
-            if (order.BalanceDue > 0)
+            if (credit != null)
+                await (_receivables ?? throw new InvalidOperationException("Receivable service unavailable.")).ValidateCreditAsync(order, credit, ct);
+            else if (order.BalanceDue > 0)
                 throw new BusinessRuleException("Không thể chốt đơn: chưa thanh toán đủ.");
+
+            if (_deposits != null) await _deposits.ConsumeAsync(order, ct);
+
+            foreach (var guard in _finalizeGuards)
+                await guard.ValidateAsync(order, ct);
 
             var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
             if (shift == null)
@@ -2088,6 +2176,13 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             if (shift.Status != POSShiftStatus.Open)
                 throw new BusinessRuleException("Không thể chốt đơn: ca POS của đơn đã đóng.");
+
+            if (credit != null || order.DepositAmount > 0)
+            {
+                EnsureShiftOwnership(shift);
+                if (shift.TerminalId != _posContext.TerminalId || shift.CurrentOrderId != order.Id)
+                    throw new ConflictAppException("Chỉ ghi nợ cho giỏ hiện tại tại quầy đang sử dụng.");
+            }
 
             if (shift.WarehouseId <= 0)
                 throw new BusinessRuleException("Ca POS chưa cấu hình kho xuất bán.");
@@ -2112,7 +2207,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             // Bán hàng vẫn complete bình thường
             order.Status = OrderStatus.Completed;
-            order.PaymentStatus = PaymentStatus.Paid;
+            order.PaymentStatus = order.BalanceDue <= 0 ? PaymentStatus.Paid : (order.PaidTotal > 0 ? PaymentStatus.PartiallyPaid : PaymentStatus.Unpaid);
+            if (_receivables != null) await _receivables.PostSaleAsync(order, ct);
             order.CompletedAtUtc = DateTime.UtcNow;
 
             // Đánh dấu voucher đã dùng khi đơn chốt thành công
@@ -2126,6 +2222,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
             // Cộng tích điểm sau khi đơn đã Completed/Paid và đã có OrderNumber.
             // Chỉ Add ledger, SaveChanges sẽ dùng chung với transaction finalize bên dưới.
+            // The reward read model must see the final prices/status inside this transaction.
+            await _orders.SaveChangesAsync(ct);
             await ApplyRewardForFinalizedOrderAsync(order, ct);
 
             ApplyPaymentsToShift(shift, order);
@@ -2170,7 +2268,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             // Tự sinh Invoice sau khi POS finalize đã commit.
             // Không để lỗi Invoice làm fail POS.
             // =====================================================
-            await TryGenerateInvoiceAfterFinalizeAsync(order.Id, ct);
+            await tx.AfterCommitAsync(token => TryGenerateInvoiceAfterFinalizeAsync(order.Id, token), ct);
 
             return await MapAsync(order, ct);
         }
@@ -2311,6 +2409,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
             ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
+        var transferOrderIds = await _orders.GetBankTransferOrderIdsAsync(new[] { order.Id }, ct);
 
         var refundableRemaining = order.PaidTotal - refundedTotal;
         if (refundableRemaining < 0)
@@ -2321,6 +2420,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         return new OrderReceiptDto
         {
             OrderId = order.Id,
+            HasBankTransfer = transferOrderIds.Contains(order.Id),
             OrderNumber = order.OrderNumber,
             Status = order.Status.ToString(),
             PaymentStatus = order.PaymentStatus.ToString(),
@@ -2328,14 +2428,17 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             FinalizedAtUtc = order.CompletedAtUtc,
             CustomerId = order.CustomerId,
             CustomerName = order.Customer?.Name,
+            DepositAmount = order.DepositAmount,
+            IsCreditSale = order.IsCreditSale,
+            CreditDueDate = order.CreditDueDate,
             CustomerPhone = order.Customer?.Phone,
 
             CashierName = null,
             ShiftCode = order.POSShift?.ShiftCode,
             Note = order.Note,
-            StoreName = order.Store?.Name ?? "GaoApp POS",
-            StoreAddress = null,
-            StorePhone = null,
+            StoreName = order.Store?.ReceiptName ?? order.Store?.Name ?? "GaoApp POS",
+            StoreAddress = order.Store?.ReceiptAddress,
+            StorePhone = order.Store?.ReceiptPhone,
             Subtotal = order.Subtotal,
             DiscountTotal = order.DiscountTotal,
             GrandTotal = order.GrandTotal,
@@ -2442,6 +2545,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             .ToList();
 
         var afterSaleSummaries = await _salesReturns.GetAfterSaleSummaryByOrderIdsAsync(orderIds, ct);
+        var transferOrderIds = await _orders.GetBankTransferOrderIdsAsync(orderIds, ct);
 
         var afterSaleDict = afterSaleSummaries.ToDictionary(x => x.OrderId, x => x);
 
@@ -2452,6 +2556,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             return new OrderListItemDto
             {
                 OrderId = o.Id,
+                HasBankTransfer = transferOrderIds.Contains(o.Id),
                 OrderNumber = o.OrderNumber,
                 Status = o.Status.ToString(),
                 PaymentStatus = o.PaymentStatus.ToString(),
@@ -2680,7 +2785,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         // 7. THANH TOÁN
         // =========================
         order.PaidTotal = Math.Round(
-            order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount),
+            order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount) + order.DepositAmount,
             0,
             MidpointRounding.AwayFromZero);
 
@@ -2771,7 +2876,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             .ThenBy(p => p.Id)
             .ToList();
 
-        var remainingToApply = order.GrandTotal;
+        var remainingToApply = Math.Max(0, order.GrandTotal - order.DepositAmount);
 
         if (remainingToApply <= 0)
             return;
@@ -2796,18 +2901,25 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
     private async Task<OrderDraftDto> MapAsync(Order order, CancellationToken ct = default)
     {
+        var rewardSummary = await GetSafeRewardSummaryAsync(order.Id, order.CustomerId, ct);
+
         return new OrderDraftDto
         {
             OrderId = order.Id,
+            Status = order.Status,
             OrderNumber = order.OrderNumber,
             CustomerId = order.CustomerId,
             CustomerName = order.Customer?.Name,
             CustomerPhone = order.Customer?.Phone,
             CustomerPriceTier = order.Customer?.PriceTier,
+            CustomerCanBuyOnCredit = order.Customer is { IsActive: true, HaveDebt: true },
+            CustomerDepositId = order.CustomerDepositId,
+            DepositAmount = order.DepositAmount,
+            AvailableDeposits = _deposits != null && order.CustomerId.HasValue ? await _deposits.GetAvailableAsync(order.CustomerId.Value, ct) : new(),
+            CustomerDebtBalance = _receivables != null && order.CustomerId.HasValue
+                ? await _receivables.GetBalanceAsync(order.CustomerId.Value, ct) : 0,
             PromotionDiscountTotal = order.PromotionDiscountTotal,
-            RewardSummary = order.CustomerId.HasValue
-    ? await _customerRewardService.GetSummaryAsync(order.CustomerId.Value, ct)
-    : null,
+            RewardSummary = rewardSummary,
             Note = order.Note,
             Subtotal = order.Subtotal,
             OrderDiscount = order.OrderDiscount,
@@ -2846,14 +2958,15 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             Lines = BuildOrderedPosLines(order)
     .Select(x =>
     {
-        var img = ResolveVariantImage(x.Variant);
+        var displayVariant = x.Variant ?? _draftDisplayVariants.GetValueOrDefault(x.VariantId);
+        var img = ResolveVariantImage(displayVariant);
 
         return new OrderLineDto
         {
             LineId = x.Id,
             VariantId = x.VariantId,
             ItemName = x.ItemName,
-            ProductVariantName = x.Variant != null ? x.Variant.ProductVariantName : null,
+            ProductVariantName = displayVariant?.ProductVariantName,
             UnitName = x.UnitName,
             Sku = x.Sku ?? string.Empty,
             Barcode = x.Barcode,
@@ -2899,8 +3012,33 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             BarcodeSource = x.BarcodeSource
         };
     })
-    .ToList()
+        .ToList()
         };
+    }
+
+    private async Task<CustomerRewardSummaryDto?> GetSafeRewardSummaryAsync(
+        int orderId,
+        int? customerId,
+        CancellationToken ct = default)
+    {
+        if (!customerId.HasValue)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _customerRewardService.GetSummaryAsync(customerId.Value, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Không thể tải reward summary cho đơn POS {OrderId}, customer {CustomerId}. Bỏ qua để tiếp tục hiển thị POS.", orderId, customerId);
+            return null;
+        }
     }
     private static List<OrderLine> BuildOrderedPosLines(Order order)
     {
@@ -3409,21 +3547,11 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         return await AddItemByBarcodeAsync(currentOrder.Id, barcode, qty, ct);
     }
 
-    public async Task<OrderDraftDto> AddPaymentToCurrentCartAsync(QuickAddPaymentRequest dto, CancellationToken ct = default)
-    {
-        var currentOrder = await RequireCurrentDraftAsync(ct);
-
-        var paymentDto = new UpsertPaymentRequest
-        {
-            Method = dto.Method,
-            Amount = dto.Amount,
-            ReferenceCode = dto.ReferenceCode,
-            Provider = dto.Provider
-        };
-
-        return await AddPaymentAsync(currentOrder.Id, paymentDto, ct);
-    }
-
+    public Task<OrderDraftDto> AddPaymentToCurrentCartAsync(QuickAddPaymentRequest dto, CancellationToken ct = default)
+        => AddPaymentCoreAsync(dto.OrderId, new UpsertPaymentRequest {
+            ClientRequestId = dto.ClientRequestId, Method = dto.Method, Amount = dto.Amount,
+            ReferenceCode = dto.ReferenceCode, Provider = dto.Provider
+        }, requireCurrentCart: true, ct);
     public async Task<OrderDraftDto> FinalizeCurrentCartAsync(CancellationToken ct = default)
     {
         var currentOrder = await RequireCurrentDraftAsync(ct);
@@ -3630,6 +3758,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             order.RewardVouchers.Clear();
         }
 
+        if (order.CustomerId != customer.Id) { order.CustomerDepositId = null; order.DepositAmount = 0; }
         order.CustomerId = customer.Id;
 
         // NEW:
@@ -3686,6 +3815,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 priceTier);
 
             line.UnitPrice = newUnitPrice;
+            line.RewardBaseUnitPrice = ResolveRewardBaseUnitPrice(variant);
         }
     }
 
@@ -3693,6 +3823,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     {
         var order = await RequireCurrentDraftAsync(ct);
 
+        order.CustomerDepositId = null;
+        order.DepositAmount = 0;
         order.CustomerId = null;
 
         await _orders.ClearRewardVouchersAsync(order.Id, ct);
@@ -3822,6 +3954,7 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
         try
         {
+            if (_receivables != null) await _receivables.LockOrderAsync(orderId, ct);
             var order = await _orders.GetCompletedOrderForVoidAsync(orderId, ct)
                 ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
 
@@ -3854,6 +3987,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             // - tăng VoidCount
             // - KHÔNG đụng RefundCount / RefundTotal
             // =====================================================
+            if (_receivables != null) await _receivables.VoidAsync(order, ct);
+            if (_deposits != null) await _deposits.RestoreVoidAsync(order, ct);
             ReversePaymentsFromShiftForVoid(shift, order);
 
             // Đơn nhiều HKD đảo đúng allocation/valuation gốc; đơn legacy giữ nguyên luồng cũ.
@@ -3993,12 +4128,16 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     private static void ReversePaymentsFromShiftForVoid(POSShift shift, Order order)
     {
         var payments = order.Payments
-            .Where(x => !x.IsDeleted)
+            .Where(x => !x.IsDeleted && !x.IsDebtCollection && x.Amount > 0)
+            .OrderBy(x => x.Method == PaymentMethod.Cash ? 2 : 1).ThenBy(x => x.Id)
             .ToList();
-
+        var remaining = Math.Max(0, order.GrandTotal - order.DepositAmount);
         foreach (var payment in payments)
         {
-            shift.ReverseSaleAmount(payment.Amount, payment.Method);
+            var amount = Math.Min(payment.Amount, remaining);
+            if (amount <= 0) break;
+            shift.ReverseSaleAmount(amount, payment.Method);
+            remaining -= amount;
         }
 
         shift.IncreaseVoidCount();
@@ -4094,12 +4233,12 @@ IOrderLegalEntityReversalService legalEntityReversalService)
 
         var cashSales = completed
             .SelectMany(x => x.Payments)
-            .Where(p => !p.IsDeleted && p.Method == PaymentMethod.Cash)
+            .Where(p => !p.IsDeleted && !p.IsDebtCollection && p.Method == PaymentMethod.Cash)
             .Sum(x => x.Amount);
 
         var bankSales = completed
             .SelectMany(x => x.Payments)
-            .Where(p => !p.IsDeleted && p.Method != PaymentMethod.Cash)
+            .Where(p => !p.IsDeleted && !p.IsDebtCollection && p.Method != PaymentMethod.Cash)
             .Sum(x => x.Amount);
 
         return new POSShiftDashboardDto
@@ -4136,10 +4275,18 @@ IOrderLegalEntityReversalService legalEntityReversalService)
     private async Task ApplyRewardForFinalizedOrderAsync(Order order, CancellationToken ct)
     {
         if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+        {
+            foreach (var line in order.Lines.Where(x => !x.IsDeleted)) line.RewardableAmountSnapshot = 0;
             return;
+        }
 
-        if (order.Status != OrderStatus.Completed || order.PaymentStatus != PaymentStatus.Paid)
+        if (order.Status != OrderStatus.Completed || (order.PaymentStatus != PaymentStatus.Paid && !order.IsCreditSale))
             return;
+        if (!await _customerRewardService.IsProgramEnabledAsync(ct))
+        {
+            foreach (var line in order.Lines.Where(x => !x.IsDeleted)) line.RewardableAmountSnapshot = 0;
+            return;
+        }
 
         var existed = await _rewardLedgerRepository.HasLedgerForOrderAsync(
      order.Id,
@@ -4149,6 +4296,10 @@ IOrderLegalEntityReversalService legalEntityReversalService)
             return;
 
         var calculation = await _orderRewardCalculator.CalculateAsync(order.Id, ct);
+
+        var amounts = calculation.Lines.ToDictionary(line => line.OrderLineId, line => line.RewardableAmount);
+        foreach (var line in order.Lines.Where(x => !x.IsDeleted))
+            line.RewardableAmountSnapshot = amounts.GetValueOrDefault(line.Id);
 
         if (calculation.RewardableAmount <= 0)
             return;
@@ -4467,6 +4618,8 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         if (variant == null)
             return;
 
+        _draftDisplayVariants[variantId] = variant;
+
         var priceTier = ResolveOrderPriceTier(order);
 
         var lines = order.Lines
@@ -4483,6 +4636,10 @@ IOrderLegalEntityReversalService legalEntityReversalService)
         }
 
         var totalBaseQty = lines.Sum(x => x.BaseQuantity);
+
+        var rewardBasePrice = ResolveRewardBaseUnitPrice(variant);
+        foreach (var line in lines)
+            line.RewardBaseUnitPrice = rewardBasePrice;
 
         var activeConversions = variant.UnitConversions?
             .Where(x => !x.IsDeleted && x.IsActive)
@@ -4540,6 +4697,13 @@ IOrderLegalEntityReversalService legalEntityReversalService)
                 currentConversion,
                 priceTier);
         }
+    }
+    private static decimal ResolveRewardBaseUnitPrice(ProductVariant variant)
+    {
+        var baseConversion = variant.UnitConversions?
+            .Where(x => !x.IsDeleted && x.IsActive && x.Factor == 1 && x.UnitId == variant.Product.BaseUnitId)
+            .OrderByDescending(x => x.IsBaseUnit).ThenBy(x => x.Id).FirstOrDefault();
+        return ResolveSalePriceByTier(variant, baseConversion, CustomerPriceTiers.Retail);
     }
     #endregion
 

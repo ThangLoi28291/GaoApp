@@ -26,6 +26,21 @@ public class WarehouseRepository : IWarehouseRepository
             .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
 
+    public async Task<Warehouse?> LockByStoreAndIdAsync(
+        int storeId, int id, CancellationToken ct = default)
+    {
+        if (!_db.Database.IsRelational())
+            return await _db.Warehouses.Include(x => x.LegalEntity)
+                .FirstOrDefaultAsync(x => x.StoreId == storeId && x.Id == id, ct);
+
+        return await _db.Warehouses.FromSqlInterpolated($$"""
+                SELECT * FROM [dbo].[Warehouses] WITH (UPDLOCK, HOLDLOCK)
+                WHERE [StoreId] = {{storeId}} AND [Id] = {{id}} AND [IsDeleted] = 0
+                """)
+            .Include(x => x.LegalEntity)
+            .SingleOrDefaultAsync(ct);
+    }
+
     public async Task<Warehouse?> GetDefaultAsync(CancellationToken ct = default)
     {
         return await _db.Warehouses

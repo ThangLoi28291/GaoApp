@@ -1,13 +1,15 @@
-﻿@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
 @using GaoApp.Domain.Enums
 @using GaoApp.Web.Areas.Admin.Models.Inventory
 @using GaoApp.Application.Common.Security
 @using System.Globalization
 @inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 
 @{
     ViewData["Title"] = "Chi tiết phiếu nhập kho";
     Layout = "_ContentNavbarLayout";
+    ViewData["container"] = "container-fluid sd-stock-document-shell";
 
     var isPurchaseOrderReceipt = Model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder;
     var employeePolicy = isPurchaseOrderReceipt
@@ -35,9 +37,18 @@
     var canApproveByStatus = Model.Status == StockDocumentStatus.PendingApproval;
 
     var canEditHeader = !isPurchaseOrderReceipt && hasUpdatePermission && canEditHeaderByStatus;
+    var canEditPendingOwnership = !isPurchaseOrderReceipt &&
+                                  hasApprovePermission &&
+                                  Model.Status == StockDocumentStatus.PendingApproval;
     var canEditLines = !isPurchaseOrderReceipt && hasUpdatePermission && canEditLinesByStatus;
     var canSubmitApproval = hasUpdatePermission && canSubmitApprovalByStatus;
     var canApprove = hasApprovePermission && canApproveByStatus;
+    var canManageInputInvoiceMapping = hasApprovePermission &&
+        Model.Status == StockDocumentStatus.PendingApproval;
+    var canSplitReceipt = !isPurchaseOrderReceipt &&
+                          hasApprovePermission &&
+                          Model.ReceiptSource == PurchaseReceiptSource.Direct &&
+                          Model.Status == StockDocumentStatus.PendingApproval;
     var hasViewCostPermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
     var canViewCost = hasApprovePermission || hasViewCostPermission;
@@ -48,7 +59,27 @@
             policyName: PermissionCodes.System.AuditLog.View)).Succeeded;
     var showCommercialReview = hasApprovePermission &&
         Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed;
+    var receiptHeading = isPurchaseOrderReceipt && !string.IsNullOrWhiteSpace(Model.PurchaseOrderTitle)
+        ? $"Nhận hàng — {Model.PurchaseOrderTitle}"
+        : $"Phiếu nhập kho: {Model.DocumentNo}";
+    var hasReceiptSupplier = Model.SupplierId.HasValue;
+    var hasSupplierTaxCode = !string.IsNullOrWhiteSpace(Model.SupplierTaxCode);
+    var canOpenInputInvoicePicker = hasReceiptSupplier && hasSupplierTaxCode;
+    var managerLines = Model.Lines?.OrderBy(x => x.LineNo).ToList()
+        ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>();
+    var pendingOutsideCount = managerLines.Count(x =>
+        x.ReceiptAllocationKind == ReceiptAllocationKind.OutsidePo &&
+        x.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Pending);
+    var overdeliveryCount = managerLines.Count(x => x.ProjectedOverdeliveryQuantity > 0m);
+    var provisionalEnabled = Configuration.GetValue<bool>("ReceivingWorkbench:ProvisionalItemsEnabled");
+    var unresolvedProvisionalCount = Model.UnresolvedProvisionalCount;
+    var catalogReviewCount = managerLines.Count(x => x.RequiresCatalogReview);
+    var canApproveWithoutOutsideBlocker = canApprove && pendingOutsideCount == 0 &&
+        unresolvedProvisionalCount == 0 && catalogReviewCount == 0;
     ViewData["CanEditReceiptPhysical"] = canEditLines;
+    ViewData["CanManageInputInvoiceMapping"] = canManageInputInvoiceMapping;
+    ViewData["CanApproveOutsidePo"] = canApprove;
+    ViewData["CanCompleteCatalogProduct"] = canApprove;
 
     string statusText = Model.Status switch
     {
@@ -62,10 +93,12 @@
 
     var linesTableVm = new StockDocumentLinesTableViewModel
     {
+        DocumentId = Model.Id,
+        RowVersion = Model.RowVersion,
         CanEdit = canEditLines,
         CanViewCost = canViewCost,
-        Lines = Model.Lines?.OrderBy(x => x.LineNo).ToList()
-            ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>()
+        Lines = managerLines,
+        ProvisionalItems = Model.ProvisionalItems
     };
 }
 
@@ -75,11 +108,18 @@
 
     <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
     <link href="~/admin/css/purchase-receipt-approval.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/admin/css/purchase-receipt-history.css" rel="stylesheet" asp-append-version="true" />
+    @if (provisionalEnabled) { <link href="~/admin/css/provisional-receiving.css" rel="stylesheet" asp-append-version="true" /> }
 }
 
-<div class="container-xxl flex-grow-1 container-p-y">
+<div class="container-fluid flex-grow-1 container-p-y sd-receipt-page">
 
     <input type="hidden" id="StockDocumentId" value="@Model.Id" />
+    @if (canApprove)
+    {
+        @await Html.PartialAsync("_ProductLabelReceiptLink", Model.Id)
+    }
+    @await Html.PartialAsync("_ReceiptIntake", Model.Id)
     <input type="hidden" id="CurrentLegalEntityId" value="@Model.LegalEntityId" />
     <input type="hidden" id="CurrentLegalEntityText" value="@Model.LegalEntityName" />
     <input type="hidden" id="CurrentWarehouseId" value="@Model.WarehouseId" />
@@ -87,16 +127,40 @@
     <input type="hidden" id="CurrentSupplierId" value="@(Model.SupplierId?.ToString() ?? "")" />
     <input type="hidden" id="CurrentSupplierText" value="@(Model.SupplierName ?? "")" />
     <input type="hidden" id="CanEditHeader" value="@canEditHeader.ToString().ToLower()" />
+    <input type="hidden" id="CanEditPendingOwnership" value="@canEditPendingOwnership.ToString().ToLower()" />
     <input type="hidden" id="CanEditLines" value="@canEditLines.ToString().ToLower()" />
+    <input type="hidden" id="CanManageInputInvoiceMapping" value="@canManageInputInvoiceMapping.ToString().ToLower()" />
     <input type="hidden" id="CanApproveCommercial" value="@canApprove.ToString().ToLower()" />
     <input type="hidden" id="CanViewCost" value="@canViewCost.ToString().ToLower()" />
+    <input type="hidden" id="IsConfirmedReceipt" value="@(Model.Status == StockDocumentStatus.Confirmed ? "true" : "false")" />
+    @if (canApprove)
+    {
+        <form id="managerOutsidePoAntiforgery" class="d-none">@Html.AntiForgeryToken()</form>
+        <form id="catalogReviewAntiforgery" class="d-none">@Html.AntiForgeryToken()</form>
+    }
+    @if (provisionalEnabled)
+    {
+        <form id="provisionalReceivingAntiforgery" class="d-none">@Html.AntiForgeryToken()</form>
+    }
 
     <div class="card sd-card mb-3">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
                 <div>
-                    <h4 class="mb-1">Phiếu nhập kho: @Model.DocumentNo</h4>
-                    <div class="sd-status-text">Trạng thái: @statusText</div>
+                    <h4 class="mb-1">@receiptHeading</h4>
+                    @if (isPurchaseOrderReceipt)
+                    {
+                        <div class="text-muted">
+                            @(Model.PurchaseOrderNumber ?? "Chưa có số PO") · @(Model.SupplierName ?? "Chưa có nhà cung cấp")
+                        </div>
+                        <div class="small text-muted">
+                            Phiếu nhận @Model.DocumentNo · @Model.WarehouseName · @statusText
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="sd-status-text">Trạng thái: @statusText</div>
+                    }
                 </div>
 
                 <div class="sd-toolbar">
@@ -116,12 +180,20 @@
 
                     @if (canApprove)
                     {
-                        <button type="button" class="btn btn-success" id="btnOpenApproveModal">
-                            Duyệt phiếu
+                        @if (canSplitReceipt)
+                        {
+                            <a class="btn btn-outline-primary"
+                               href="@Url.Action("Split", "StockDocumentManagement", new { area = "Admin", id = Model.Id })">
+                                Tách phiếu nhập
+                            </a>
+                        }
+                        <button type="button" class="btn btn-outline-danger" id="btnOpenRejectModal">
+                            Trả về chỉnh sửa
                         </button>
 
-                        <button type="button" class="btn btn-danger" id="btnOpenRejectModal">
-                            Trả về chỉnh sửa
+                        <button type="button" class="btn btn-success" id="btnOpenApproveModal"
+                                disabled="@(!canApproveWithoutOutsideBlocker)">
+                            Duyệt và ghi sổ
                         </button>
                     }
                 </div>
@@ -170,6 +242,52 @@
                     </div>
                 </div>
             }
+            @if (showCommercialReview)
+            {
+                <div class="sd-manager-summary" aria-label="Tóm tắt phiếu nhận">
+                    <div class="sd-manager-summary-item">
+                        <span>Số dòng</span>
+                        <strong>@managerLines.Count</strong>
+                    </div>
+                    @if (canViewCost)
+                    {
+                        <div class="sd-manager-summary-item">
+                            <span>Tổng tiền</span>
+                            <strong id="txtTotalAmount">@Model.TotalAmount.ToString("N0") đ</strong>
+                        </div>
+                    }
+                    @if (overdeliveryCount > 0)
+                    {
+                        <div class="sd-manager-summary-item is-warning">
+                            <span>Vượt PO</span>
+                            <strong>@overdeliveryCount dòng</strong>
+                        </div>
+                    }
+                    @if (pendingOutsideCount > 0)
+                    {
+                        <div class="sd-manager-summary-item is-warning">
+                            <span>Ngoài PO</span>
+                            <strong>@pendingOutsideCount chờ xử lý</strong>
+                        </div>
+                    }
+                    @if (unresolvedProvisionalCount > 0)
+                    {
+                        <div class="sd-manager-summary-item is-warning">
+                            <span>Chưa có danh mục</span>
+                            <strong>@unresolvedProvisionalCount chờ xử lý</strong>
+                        </div>
+                    }
+                    @if (catalogReviewCount > 0)
+                    {
+                        <div class="sd-manager-summary-item is-warning">
+                            <span>Sản phẩm tạm</span>
+                            <strong>@catalogReviewCount cần hoàn thiện</strong>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">Mã phiếu</label>
@@ -180,8 +298,9 @@
                 </div>
 
                 <div class="col-md-3">
-                    <label class="form-label">HKD nhập hàng</label>
+                    <label class="form-label">Pháp nhân (lọc kho)</label>
                     <select id="LegalEntityId" class="form-select"></select>
+                    <div class="form-text">Chủ thể phiếu luôn lấy từ kho đã chọn; trường này không ghi đè owner.</div>
                 </div>
 
                 <div class="col-md-3">
@@ -251,109 +370,203 @@
                               class="form-control"
                               rows="2">@Model.ApprovalNote</textarea>
                 </div>
+                <div class="col-12">
+                    <div id="editHeaderMessage"
+                         class="small"
+                         role="alert"
+                         aria-live="assertive"></div>
+                </div>
             </div>
+            }
         </div>
     </div>
+
+    @if (provisionalEnabled && ((canEditLines && !isPurchaseOrderReceipt) || (canApprove && unresolvedProvisionalCount > 0)))
+    {
+        <section id="provisionalReceivingPanel" class="card sd-card mb-3 provisional-panel"
+                 hidden
+                 data-document-id="@Model.Id" data-document-row-version="@Model.RowVersion"
+                 data-mode="@(canApprove && Model.Status == StockDocumentStatus.PendingApproval ? "manager" : "warehouse")"
+                 data-receipt-source="@(isPurchaseOrderReceipt ? "purchase-order" : "direct")">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                    <div>
+                        <div class="sd-section-title mb-1">Sản phẩm chưa có trong danh mục</div>
+                        <div class="small text-muted">Bằng chứng vật lý được giữ nguyên; dòng chưa xử lý không tham gia tồn kho, FIFO, giá vốn, công nợ hoặc XML.</div>
+                        @if (canApprove)
+                        {
+                            <div class="small mt-1">Manager có thể <strong>Liên kết sản phẩm có sẵn</strong>, <strong>Tạo sản phẩm mới</strong>, hoặc <strong>Loại khỏi phiếu</strong>.</div>
+                        }
+                    </div>
+                </div>
+                <div id="provisionalReceivingMessage" class="small mt-2" role="status" aria-live="polite"></div>
+                <div id="provisionalReceivingItems" class="vstack gap-2 mt-3"></div>
+            </div>
+        </section>
+    }
     @if (showCommercialReview)
     {
         @await Html.PartialAsync("_CommercialApprovalWorkbench", Model, ViewData)
     }
 
-    @if (Model.Status == StockDocumentStatus.PendingApproval && hasApprovePermission)
-{
-    <div class="card sd-card mb-3">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    @if ((Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed) && hasApprovePermission)
+    {
+        <details class="card sd-card mb-3 sd-optional-xml">
+            <summary class="sd-optional-xml-summary">
+                <span>
+                    <strong>Đối chiếu XML — tùy chọn</strong>
+                    <small>Thông tin hỗ trợ, không bắt buộc để duyệt phiếu.</small>
+                </span>
+                <i class="bx bx-chevron-down" aria-hidden="true"></i>
+            </summary>
+        <div id="inputInvoicePickerSection">
+            <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                     <div class="sd-section-title mb-1">Hóa đơn điện tử đầu vào</div>
-                    <small class="text-muted">
-                        Upload XML hóa đơn đầu vào để đối chiếu từng dòng nhập kho.
-                    </small>
-                </div>
-
-                <div class="d-flex gap-2 align-items-center">
-                    @if (canApprove)
+                    <div class="small text-muted">
+                        Nhà cung cấp: <strong>@(Model.SupplierName ?? "Chưa chọn")</strong>
+                        <span class="mx-1">·</span>
+                        MST: <strong id="inputInvoiceSupplierTaxCode">@(hasSupplierTaxCode ? Model.SupplierTaxCode : "Chưa có")</strong>
+                    </div>
+                    <div class="small mt-1">
+                        Chủ thể phiếu: <strong>@(Model.Status == StockDocumentStatus.Confirmed
+                            ? Model.ConfirmedLegalEntityName ?? "Thiếu snapshot"
+                            : Model.LegalEntityName)</strong>
+                        @if (Model.Status == StockDocumentStatus.Confirmed)
+                        {
+                            <span class="badge text-bg-secondary ms-1">Đã chốt khi xác nhận</span>
+                        }
+                    </div>
+                    @if (!hasReceiptSupplier)
                     {
-                        <input type="file"
-                               id="inputInvoiceXmlFile"
-                               class="form-control"
-                               accept=".xml"
-                               style="max-width:320px;" />
-
-                        <button type="button"
-                                id="btnUploadInputInvoiceXml"
-                                class="btn btn-primary">
-                            Upload XML
-                        </button>
+                        <div class="small text-danger mt-1">
+                            <div>Chưa chọn nhà cung cấp.</div>
+                            <div>Vui lòng chọn nhà cung cấp trước khi chọn hóa đơn.</div>
+                        </div>
                     }
-                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                            data-bs-toggle="collapse" data-bs-target="#inputInvoicePanel"
-                            aria-expanded="false" aria-controls="inputInvoicePanel">
-                        <i class="bx bx-chevron-down me-1"></i>Xem đối chiếu XML
-                    </button>
-                </div>
-            </div>
-
-            <div class="collapse" id="inputInvoicePanel">
-            <div id="inputInvoiceUploadMessage" class="small mb-3"></div>
-
-            <div id="inputInvoiceInfoBox" class="border rounded-3 p-3 bg-light d-none">
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <div class="text-muted small">Ký hiệu</div>
-                        <div class="fw-semibold" id="xmlInvoiceSeries">-</div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="text-muted small">Số hóa đơn</div>
-                        <div class="fw-semibold" id="xmlInvoiceNumber">-</div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="text-muted small">Ngày hóa đơn</div>
-                        <div class="fw-semibold" id="xmlInvoiceDate">-</div>
-                    </div>
-
-                    <div class="col-md-3">
-                        <div class="text-muted small">Số dòng XML</div>
-                        <div class="fw-semibold" id="xmlDetailCount">0</div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="text-muted small">MST người bán</div>
-                        <div class="fw-semibold" id="xmlSellerTaxCode">-</div>
-                    </div>
-
-                    <div class="col-md-8">
-                        <div class="text-muted small">Tên người bán</div>
-                        <div class="fw-semibold" id="xmlSellerName">-</div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="text-muted small">Tiền trước thuế</div>
-                        <div class="fw-semibold" id="xmlTotalBeforeTax">0</div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="text-muted small">Tiền thuế</div>
-                        <div class="fw-semibold" id="xmlTotalTaxAmount">0</div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="text-muted small">Tổng thanh toán</div>
-                        <div class="fw-bold text-primary" id="xmlTotalPaymentAmount">0</div>
+                    else if (!hasSupplierTaxCode)
+                    {
+                        <div class="small text-danger mt-1">
+                            <div>Nhà cung cấp chưa có mã số thuế.</div>
+                            <div>Vui lòng cập nhật danh mục nhà cung cấp trước khi chọn hóa đơn.</div>
+                        </div>
+                    }
+                    @if (Model.Status == StockDocumentStatus.Confirmed)
+                    {
+                        <div class="small text-muted mt-1">
+                            Việc liên kết hóa đơn sau xác nhận không thay đổi số lượng, giá, tồn kho hoặc công nợ đã ghi nhận.
+                        </div>
+                    }
+                    <div id="inputInvoiceAssociationState" class="small mt-2" role="status" aria-live="polite">
+                        Đang kiểm tra trạng thái liên kết XML...
                     </div>
                 </div>
+                <button type="button" id="btnOpenInputInvoicePicker" class="btn btn-primary"
+                        disabled="@(!canOpenInputInvoicePicker)">
+                    <i class="bx bx-receipt me-1"></i>Chọn hóa đơn
+                </button>
             </div>
-
-            <div id="inputInvoiceListContainer" class="mt-3">
-                <div class="text-muted small">
-                    Chưa có hóa đơn XML nào được gắn với phiếu này.
+            <div id="inputInvoicePickerPageMessage" class="small px-4 pb-3" role="status" aria-live="polite"></div>
+            <div id="inputInvoiceListContainer" class="px-4 pb-4">
+                <div class="text-muted small">Chưa có hóa đơn nào được gắn với phiếu này.</div>
+            </div>
+            <section id="inputInvoiceReconciliationPanel" class="mx-4 mb-4 border rounded-3 p-3 d-none"
+                     aria-labelledby="inputInvoiceReconciliationTitle"
+                     aria-describedby="inputInvoiceReconciliationTolerance inputInvoiceReconciliationMessage">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <h6 id="inputInvoiceReconciliationTitle" class="mb-1" tabindex="0">Đối chiếu XML — tùy chọn</h6>
+                        <div id="inputInvoiceReconciliationTolerance" class="small text-muted">
+                            Sai số cho phép: 0,0001 đơn vị gốc · tiền/VAT/header: 1 ₫.
+                        </div>
+                    </div>
+                    <span id="inputInvoiceReconciliationState" class="badge bg-label-secondary">Đang tải</span>
                 </div>
-            </div>
+                <div id="inputInvoiceReconciliationMessage" class="small mt-2" role="status" aria-live="polite"></div>
+                <div id="inputInvoiceReconciliationHeader" class="mt-3"></div>
+                <div id="inputInvoiceReconciliationDetails" class="mt-3"></div>
+                <div id="inputInvoiceReconciliationAcceptance" class="mt-3"></div>
+            </section>
+        </div>
+        </details>
+
+        @await Html.PartialAsync("_InputInvoicePickerModal")
+
+        <div class="modal fade" id="linkedInputInvoicePreviewModal" tabindex="-1"
+             aria-labelledby="linkedInputInvoicePreviewTitle" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="linkedInputInvoicePreviewTitle">Xem hóa đơn</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                    </div>
+                    <div id="linkedInputInvoicePreviewBody" class="modal-body p-0 bg-body-tertiary"
+                         style="min-height:70vh;">
+                        <div class="p-4 text-muted">Đang tải bản xem trước...</div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+
+        <div class="modal fade" id="unlinkInputInvoiceModal" tabindex="-1"
+             aria-labelledby="unlinkInputInvoiceTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 rounded-4">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="unlinkInputInvoiceTitle">Gỡ liên kết hóa đơn?</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="unlinkInputInvoiceDescription" class="mb-2"></p>
+                        <p class="small text-muted mb-0">PDF, XML và hóa đơn gốc không bị xóa.</p>
+                        <div class="mt-3">
+                            <label for="inputInvoiceAssociationReason" class="form-label">
+                                Lý do gỡ liên kết <span class="text-danger" aria-hidden="true">*</span>
+                            </label>
+                            <textarea id="inputInvoiceAssociationReason" class="form-control" maxlength="1000"
+                                      rows="3" required aria-describedby="inputInvoiceAssociationReasonHelp"></textarea>
+                            <div id="inputInvoiceAssociationReasonHelp" class="form-text">
+                                Bắt buộc, tối đa 1000 ký tự. Lý do được lưu trong lịch sử phiếu.
+                            </div>
+                        </div>
+                        <div id="unlinkInputInvoiceMessage" class="small text-danger mt-3" role="alert"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                            Giữ liên kết
+                        </button>
+                        <button type="button" class="btn btn-danger" id="btnConfirmUnlinkInputInvoice">
+                            Gỡ liên kết
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="inputInvoiceReconciliationReasonModal" tabindex="-1"
+             aria-labelledby="inputInvoiceReconciliationReasonTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 rounded-4">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="inputInvoiceReconciliationReasonTitle">Nhập lý do</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="inputInvoiceReconciliationReasonSnapshot"
+                             class="alert alert-warning py-2 d-none"
+                             role="status" aria-live="polite"></div>
+                        <label for="inputInvoiceReconciliationReason" class="form-label">Lý do bắt buộc</label>
+                        <textarea id="inputInvoiceReconciliationReason" class="form-control" maxlength="1000" rows="3"></textarea>
+                        <div id="inputInvoiceReconciliationReasonMessage" class="small text-danger mt-2"
+                             role="alert" aria-live="assertive"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                        <button type="button" class="btn btn-primary" id="btnConfirmInputInvoiceReconciliationReason">Xác nhận</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
     @if (canEditLines)
     {
@@ -378,21 +591,6 @@
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                     <div class="sd-section-title mb-0">Danh sách dòng nhập</div>
 
-                    @if (canEditLines)
-                    {
-                        <div class="form-check form-switch d-flex align-items-center gap-2 mb-0">
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   role="switch"
-                                   id="toggleAllInputInvoiceLines" />
-
-                            <label class="form-check-label fw-semibold"
-                                   for="toggleAllInputInvoiceLines"
-                                   id="toggleAllInputInvoiceLinesLabel">
-                                Không thuộc XML
-                            </label>
-                        </div>
-                    }
                 </div>
 
                 @if (canViewCost)
@@ -407,7 +605,7 @@
             </div>
 
             <div id="stockDocumentLinesContainer">
-                @await Html.PartialAsync("_StockDocumentLinesTable", linesTableVm)
+                @await Html.PartialAsync("_StockDocumentLinesTable", linesTableVm, ViewData)
             </div>
         </div>
     </div>
@@ -476,9 +674,8 @@
 </div>
 
 <div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4 sd-approve-modal">
-
             <div class="modal-body p-4">
                 <div class="d-flex align-items-start justify-content-between mb-3">
                     <div class="d-flex align-items-center gap-3">
@@ -487,9 +684,9 @@
                         </div>
 
                         <div>
-                            <h5 class="fw-bold mb-1">Duyệt phiếu nhập kho</h5>
+                            <h5 class="fw-bold mb-1">Xác nhận duyệt và ghi sổ</h5>
                             <div class="text-muted small">
-                                Kiểm tra thông tin trước khi xác nhận nhập kho.
+                                @Model.DocumentNo · @(Model.PurchaseOrderTitle ?? receiptHeading)
                             </div>
                         </div>
                     </div>
@@ -500,29 +697,8 @@
                 </div>
 
                 <div class="alert alert-success border-0 rounded-3 small mb-3">
-                    Sau khi duyệt, phiếu sẽ được ghi nhận vào tồn kho và không nên chỉnh sửa thủ công.
+                    Tồn kho, FIFO/cost và công nợ sẽ được ghi một lần.
                 </div>
-
-                @if (Model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder &&
-                     (Model.Lines?.Any(x => x.ProjectedOverdeliveryQuantity > 0m) ?? false))
-                {
-                    <div class="alert alert-warning border-0 rounded-3 mb-3" id="overdeliveryAcceptancePanel">
-                        <div class="fw-semibold mb-2">Xác nhận nhận vượt đơn đặt hàng</div>
-                        @foreach (var line in (Model.Lines ?? new()).Where(x => x.ProjectedOverdeliveryQuantity > 0m).OrderBy(x => x.LineNo))
-                        {
-                            <div class="small">Dòng @line.LineNo · @line.ProductNameSnapshot: vượt @line.ProjectedOverdeliveryQuantity.ToString("0.###") đơn vị gốc.</div>
-                        }
-                        <div class="form-check mt-3">
-                            <input class="form-check-input" type="checkbox" id="acceptOverdelivery" />
-                            <label class="form-check-label fw-semibold" for="acceptOverdelivery">
-                                Tôi đã kiểm tra và chấp nhận số lượng nhận vượt
-                            </label>
-                        </div>
-                        <label class="form-label small mt-2" for="overdeliveryNote">Lý do/ghi chú nhận vượt (không bắt buộc)</label>
-                        <textarea class="form-control" id="overdeliveryNote" rows="2" maxlength="1000"
-                                  placeholder="Có thể để trống"></textarea>
-                    </div>
-                }
 
                 <div class="alert alert-warning border-0 rounded-3 mb-3 d-none"
                      id="priceVarianceAcceptancePanel">
@@ -542,78 +718,30 @@
                     <div class="form-text">Không bắt buộc nhập lý do chỉ vì giá thay đổi.</div>
                 </div>
 
-                <div class="row g-3 mb-3">
-                    <div class="col-md-4">
-                        <div class="sd-popup-info-box">
-                            <div class="sd-popup-info-label">Mã phiếu</div>
-                            <div class="sd-popup-info-value">@Model.DocumentNo</div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="sd-popup-info-box">
-                            <div class="sd-popup-info-label">Kho nhập</div>
-                            <div class="sd-popup-info-value">@Model.WarehouseName</div>
-                        </div>
-                    </div>
-
+                <div class="sd-approval-final-summary mb-3">
+                    <div><span>Số dòng</span><strong>@managerLines.Count</strong></div>
                     @if (canViewCost)
                     {
-                        <div class="col-md-4">
-                            <div class="sd-popup-info-box">
-                                <div class="sd-popup-info-label">Tổng tiền</div>
-                                <div class="sd-popup-info-value text-primary" id="commercialApprovalModalMerchandiseTotal">@Model.TotalAmount.ToString("N0")</div>
-                            </div>
-                        </div>
+                        <div><span>Tổng</span><strong id="commercialApprovalModalMerchandiseTotal">@Model.TotalAmount.ToString("N0") đ</strong></div>
                     }
-
-                    <div class="col-md-4">
-                        <div class="sd-popup-info-box">
-                            <div class="sd-popup-info-label">Số dòng</div>
-                            <div class="sd-popup-info-value">@(Model.Lines?.Count ?? 0)</div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="sd-popup-info-box">
-                            <div class="sd-popup-info-label">Loại sản phẩm</div>
-                            <div class="sd-popup-info-value">
-                                @(Model.Lines?.Select(x => x.ProductVariantId).Distinct().Count() ?? 0)
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="sd-popup-info-box">
-                            <div class="sd-popup-info-label">Gửi duyệt lúc</div>
-                            <div class="sd-popup-info-value">
-                                @(Model.SubmittedAtUtc.HasValue
-                                    ? Model.SubmittedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                    : "-")
-                            </div>
-                        </div>
-                    </div>
+                    <div><span>Ngoài PO</span><strong>@(pendingOutsideCount == 0 ? "Đã xử lý" : $"Còn {pendingOutsideCount}")</strong></div>
                 </div>
 
                 <label class="form-label fw-semibold">Ghi chú duyệt</label>
                 <textarea class="form-control"
                           id="approveNote"
-                          rows="4"
+                          rows="2"
                           placeholder="Nhập ghi chú duyệt nếu cần..."></textarea>
 
                 <div class="form-text text-danger mt-2" id="approveMessage"></div>
             </div>
 
-            <div class="modal-footer justify-content-between border-0 px-4 pb-4 pt-0">
-                <div class="small text-muted">
-                    Ctrl + Enter: duyệt phiếu · Esc: đóng
-                </div>
-
+            <div class="modal-footer justify-content-end border-0 px-4 pb-4 pt-0">
                 <div class="d-flex gap-2">
                     <button type="button"
                             class="btn btn-outline-secondary px-4"
                             data-bs-dismiss="modal">
-                        Đóng
+                        Quay lại
                     </button>
 
                     <button type="button"
@@ -624,7 +752,6 @@
                     </button>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
@@ -713,8 +840,8 @@
                     <input type="number"
                            class="form-control"
                            id="editLineQuantity"
-                           min="0.001"
-                           step="0.001" />
+                           min="1"
+                           step="1" />
                 </div>
 
                 <input type="hidden" id="editLineUnitCost" value="0" />
@@ -740,16 +867,24 @@
     </div>
 </div>
 
+@if (canManageInputInvoiceMapping)
+{
 <div class="modal fade" id="mapInputInvoiceLineModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content border-0 rounded-4">
             <div class="modal-header">
-                <h5 class="modal-title">Gắn dòng nhập với dòng XML</h5>
+                <h5 class="modal-title">Ghép dòng nhập với XML</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
                 <input type="hidden" id="mapStockDocumentLineId" />
+
+                <div class="bg-body-tertiary rounded-3 p-3 mb-3">
+                    <div class="small text-muted">Hàng thực nhận cố định</div>
+                    <div id="mapReceiptLineProduct" class="fw-semibold"></div>
+                    <div id="mapReceiptLineQuantity" class="small text-muted"></div>
+                </div>
 
                 <div class="form-check form-switch mb-3">
                     <input class="form-check-input" type="checkbox" id="mapUseInputInvoice" />
@@ -758,8 +893,25 @@
                     </label>
                 </div>
 
+                <div id="mapInputInvoiceExclusionReasonBox" class="mb-3 d-none">
+                    <label for="mapInputInvoiceExclusionReason" class="form-label">Lý do không thuộc XML</label>
+                    <textarea id="mapInputInvoiceExclusionReason" class="form-control" maxlength="1000" rows="2"></textarea>
+                    <div class="form-text">Bắt buộc khi loại dòng khỏi hóa đơn XML.</div>
+                </div>
+
                 <div id="mapInputInvoiceXmlLinesBox">
                     <div class="text-muted">Đang tải dòng XML...</div>
+                </div>
+
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox"
+                           id="mapRememberItemCatalogMapping" />
+                    <label class="form-check-label" for="mapRememberItemCatalogMapping">
+                        Ghi nhớ lựa chọn này cho lần sau
+                    </label>
+                    <div class="form-text">
+                        Tùy chọn. Hệ thống dùng đúng hàng và đơn vị của dòng nhập hiện tại.
+                    </div>
                 </div>
 
                 <div class="text-danger small mt-2" id="mapInputInvoiceMessage"></div>
@@ -771,12 +923,13 @@
                 </button>
 
                 <button class="btn btn-primary" id="btnSaveInputInvoiceLineMap">
-                    Lưu map
+                    Xác nhận ghép
                 </button>
             </div>
         </div>
     </div>
 </div>
+}
 
 <div class="modal fade" id="quickAddProductModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -848,8 +1001,8 @@
                                        id="popupQuickQty"
                                        class="form-control form-control-lg"
                                        value="1"
-                                       min="0.001"
-                                       step="0.001"
+                                       min="1"
+                                       step="1"
                                        inputmode="decimal" />
                             </div>
 
@@ -952,8 +1105,8 @@
                                            id="quickEditQty"
                                            class="form-control form-control-lg sd-edit-main-input"
                                            value="1"
-                                           min="0.001"
-                                           step="0.001"
+                                           min="1"
+                                           step="1"
                                            inputmode="decimal" />
                                 </div>
 
@@ -996,15 +1149,50 @@
 {
     <div class="container-xxl flex-grow-1">
         <div class="card sd-card mb-3" id="purchaseReceiptAuditCard">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 class="mb-0">Lịch sử kiểm toán phiếu nhập</h5>
-                <span class="text-muted small">Chỉ đọc</span>
+            <div class="card-header d-flex align-items-center justify-content-between rh-heading">
+                <div>
+                    <h5 class="mb-0">Lịch sử phiếu nhập</h5>
+                    <p class="rh-subtitle">Theo dõi ai đã thao tác và những nội dung thay đổi trên phiếu.</p>
+                </div>
+                <div class="rh-header-actions">
+                    <span class="text-muted small"><i class="bx bx-lock-alt" aria-hidden="true"></i> Chỉ đọc</span>
+                    <button type="button" id="receiptHistoryRefresh" class="btn btn-sm btn-outline-secondary">
+                        <i class="bx bx-refresh me-1" aria-hidden="true"></i>Tải lại
+                    </button>
+                </div>
             </div>
             <div class="card-body">
-                <div id="purchaseReceiptAuditStatus" class="text-muted small">
-                    Đang tải lịch sử...
+                <div class="rh-controls">
+                    <div class="rh-search-control">
+                        <label for="receiptHistorySearch">Tìm trong lịch sử</label>
+                        <input type="search" id="receiptHistorySearch" class="form-control" placeholder="Tên nhân viên, tên hàng, nội dung…" autocomplete="off" />
+                    </div>
+                    <div>
+                        <label for="receiptHistoryFilter">Loại thao tác</label>
+                        <select id="receiptHistoryFilter" class="form-select">
+                            <option value="">Tất cả</option>
+                            <option value="receipt">Thông tin phiếu</option>
+                            <option value="goods">Hàng nhập</option>
+                            <option value="approval">Duyệt phiếu</option>
+                            <option value="invoice">Hóa đơn</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="receiptHistorySort">Thứ tự</label>
+                        <select id="receiptHistorySort" class="form-select">
+                            <option value="newest">Mới nhất</option>
+                            <option value="oldest">Cũ nhất</option>
+                        </select>
+                    </div>
                 </div>
-                <div id="purchaseReceiptAuditTimeline" class="d-grid gap-3"></div>
+                <div class="rh-overview">
+                    <span id="purchaseReceiptAuditStatus" role="status" aria-live="polite">Đang tải lịch sử...</span>
+                    <span id="receiptHistoryStats"></span>
+                </div>
+                <div id="purchaseReceiptAuditTimeline"></div>
+                <div class="rh-footer">
+                    <button type="button" id="receiptHistoryMore" class="btn btn-sm btn-outline-primary" hidden>Xem thêm thao tác</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1054,11 +1242,22 @@
 }
 
 @section PageScripts {
+    <script src="~/Admin/js/receipt-barcode-proposals.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/receipt-intake.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/receipt-quantity-controls.js" asp-append-version="true"></script>
+    @if (canViewAudit)
+    {
+        <script src="~/Admin/js/purchase-receipt-history.js" asp-append-version="true"></script>
+    }
+    @if (canApprove)
+    {
+        <script src="~/Admin/js/printing/label-receipt-links.js" asp-append-version="true"></script>
+    }
     <script>
         window.stockDocumentPage = {
         mode: 'edit',
         documentId: @Model.Id,
-        rowVersion: '@Model.RowVersion',
+        rowVersion: @Json.Serialize(Model.RowVersion),
         editableHeader: @canEditHeader.ToString().ToLower(),
         editableLines: @canEditLines.ToString().ToLower(),
         canSubmitApproval: @canSubmitApproval.ToString().ToLower(),
@@ -1070,5 +1269,7 @@
     </script>
 
     <script src="~/admin/js/stock-document-management.js" asp-append-version="true"></script>
+    <script src="~/admin/js/input-invoice-picker.js" asp-append-version="true"></script>
     <script src="~/admin/js/purchase-receipt-approval.js" asp-append-version="true"></script>
+    @if (provisionalEnabled) { <script src="~/admin/js/provisional-receiving.js" asp-append-version="true"></script> }
 }

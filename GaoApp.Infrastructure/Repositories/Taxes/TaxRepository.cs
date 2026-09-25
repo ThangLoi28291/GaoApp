@@ -8,11 +8,23 @@ namespace GaoApp.Infrastructure.Repositories.Taxes;
 
 public sealed class TaxRepository : ITaxRepository
 {
+    private const string AccentInsensitiveSearchCollation =
+        "Latin1_General_100_CI_AI";
+
     private readonly AppDbContext _db;
     public TaxRepository(AppDbContext db) => _db = db;
 
-    public async Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
+    public Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
@@ -20,13 +32,40 @@ public sealed class TaxRepository : ITaxRepository
 
         var q = _db.Set<Tax>()
             .AsNoTracking()
-            .Where(x => x.StoreId == storeId);
+            .Where(x => x.StoreId == storeId && !x.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            search = search.Trim();
-            q = q.Where(x => x.Code.Contains(search) || x.Name.Contains(search));
+            var normalizedSearch = search.Trim();
+
+            if (_db.Database.IsRelational())
+            {
+                var accentInsensitiveSearch = normalizedSearch
+                    .Replace('Đ', 'D')
+                    .Replace('đ', 'd');
+
+                q = q.Where(x =>
+                    EF.Functions.Collate(
+                        x.Code
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch));
+            }
+            else
+            {
+                q = q.Where(x =>
+                    x.Code.Contains(normalizedSearch) ||
+                    x.Name.Contains(normalizedSearch));
+            }
         }
+
+        if (status.HasValue)
+            q = q.Where(x => x.IsActive == status.Value);
 
         var total = await q.CountAsync(ct);
 
@@ -37,6 +76,34 @@ public sealed class TaxRepository : ITaxRepository
             .ToListAsync(ct);
 
         return (items, total);
+    }
+
+    public async Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        var counts = await _db.Set<Tax>()
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId && !x.IsDeleted)
+            .GroupBy(x => x.IsActive)
+            .Select(group => new
+            {
+                IsActive = group.Key,
+                Count = group.Count()
+            })
+            .ToListAsync(ct);
+
+        var activeItems = counts
+            .Where(x => x.IsActive)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        var inactiveItems = counts
+            .Where(x => !x.IsActive)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        return (activeItems + inactiveItems, activeItems, inactiveItems);
     }
 
     public Task<Tax?> GetByIdAsync(int storeId, int id, CancellationToken ct = default)

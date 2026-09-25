@@ -14,6 +14,16 @@ namespace GaoApp.Tests.Inventory;
 
 public sealed class ReturnableValuationFragmentServiceTests
 {
+    [Fact]
+    public async Task No_data_returns_no_cost_fragment_or_invented_finalization_value()
+    {
+        await using var context = CreateContext();
+        var service = new ReturnableValuationFragmentService(
+            new InventoryValuationEntryRepository(context),
+            new OrderLegalEntityAllocationReversalRepository(context));
+        (await service.GetForOrderLineAsync(700, 701)).Should().BeEmpty();
+        (await service.GetQuantityOnlyForOrderLineAsync(700, 701, default)).Should().BeEmpty();
+    }
     [Theory]
     [InlineData(0)]
     [InlineData(2)]
@@ -38,6 +48,17 @@ public sealed class ReturnableValuationFragmentServiceTests
             UnitCost = 10m,
             Amount = -50m,
             OccurredAtUtc = occurredAtUtc,
+            InventoryTransaction = new InventoryTransaction
+            {
+                Id = 501, StoreId = 1, WarehouseId = 11, ProductVariantId = 99,
+                TransactionType = InventoryTransactionType.SaleIssue,
+                ReferenceType = InventoryReferenceType.Order, ReferenceId = "700", ReferenceLineId = 701
+            },
+            CostLayerAllocations = new List<InventoryCostLayerAllocation>
+            {
+                new() { Id = 201, StoreId = 1, InventoryValuationEntryId = 100,
+                    Quantity = 5, UnitCost = 10, Amount = 50, RowVersion = new byte[8] }
+            },
             RowVersion = new byte[8]
         });
         if (valuationReverseQuantity > 0)
@@ -57,6 +78,13 @@ public sealed class ReturnableValuationFragmentServiceTests
                 UnitCost = 10m,
                 Amount = valuationReverseQuantity * 10m,
                 SourceValuationEntryId = 100,
+                SourceReferenceSubKey = "SALE-SOURCE",
+                InventoryTransaction = new InventoryTransaction
+                {
+                    Id = 601, StoreId = 1, WarehouseId = 11, ProductVariantId = 99,
+                    TransactionType = InventoryTransactionType.CustomerReturnIn,
+                    ReferenceType = InventoryReferenceType.Refund, ReferenceId = "800", ReferenceLineId = 801
+                },
                 OccurredAtUtc = occurredAtUtc.AddMinutes(1),
                 RowVersion = new byte[8]
             });
@@ -88,13 +116,18 @@ public sealed class ReturnableValuationFragmentServiceTests
             new InventoryValuationEntryRepository(context),
             new OrderLegalEntityAllocationReversalRepository(context));
 
-        var result = await service.GetForOrderLineAsync(700, 701);
+        // This fixture checks eligibility, not a reconstructed final cost.
+        // Complete owner/cost evidence is exercised by the SQL integration cases.
+        var result = await service.GetQuantityOnlyForOrderLineAsync(700, 701, default);
 
         result.Should().ContainSingle();
         result[0].ReversedQuantityAbs.Should().Be(2m);
         result[0].RemainingQuantityAbs.Should().Be(3m);
         result[0].InventoryTransactionId.Should().Be(501);
         result[0].WarehouseId.Should().Be(11);
+        Func<Task> costRead = () => service.GetForOrderLineAsync(700, 701);
+        await costRead.Should().ThrowAsync<InvalidOperationException>(
+            "missing master linkage must not silently drop the root or produce an empty successful cost result");
     }
 
     private static InMemoryAppDbContext CreateContext()

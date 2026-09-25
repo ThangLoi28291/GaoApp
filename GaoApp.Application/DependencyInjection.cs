@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using GaoApp.Application.DTOs.AttributeValues;
 using GaoApp.Application.DTOs.Brands;
 using GaoApp.Application.DTOs.ProductAttributes;
@@ -10,6 +10,7 @@ using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Auth;
 using GaoApp.Application.Interfaces.Services.Brands;
 using GaoApp.Application.Interfaces.Services.Categories;
+using GaoApp.Application.Interfaces.Services.Customers;
 using GaoApp.Application.Interfaces.Services.Display;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.LegalEntities;
@@ -36,6 +37,7 @@ using GaoApp.Application.Services.Audit;
 using GaoApp.Application.Services.Auth;
 using GaoApp.Application.Services.Brands;
 using GaoApp.Application.Services.Categories;
+using GaoApp.Application.Services.Customers;
 using GaoApp.Application.Services.Display;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Application.Services.LegalEntities;
@@ -63,6 +65,8 @@ using GaoApp.Application.Validators.Units;
 using GaoApp.Infrastructure.Services.POSPaymentQrs;
 using GaoApp.Infrastructure.Services.Products;
 using Microsoft.Extensions.DependencyInjection;
+using GaoApp.Application.Interfaces.Services.Reports;
+using GaoApp.Application.Services.Reports;
 
 namespace GaoApp.Application;
 
@@ -71,6 +75,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ICustomerManagementService, CustomerManagementService>();
         services.AddScoped<ISupplierService, SupplierService>();
 
         services.AddScoped<IBrandService, BrandService>();
@@ -98,21 +103,39 @@ public static class DependencyInjection
         services.AddScoped<IOrderLegalEntityFinalizeService, OrderLegalEntityFinalizeService>();
         services.AddScoped<IOrderLegalEntityReversalService, OrderLegalEntityReversalService>();
         services.AddScoped<IPOSShiftService, POSShiftService>();
+        services.AddScoped<POSShiftCashReceiptService>();
+
 
         services.AddScoped<IStoreBankAccountService, StoreBankAccountService>();
+        services.AddScoped<IStoreBankAccountIndexReadService, StoreBankAccountIndexReadService>();
         services.AddScoped<ILocalVietQrGenerator, LocalVietQrGenerator>();
         services.AddScoped<IPOSPaymentQrService, POSPaymentQrService>();
         services.AddScoped<IDisplayPromotionService, DisplayPromotionService>();
+        services.AddSingleton<SalesReportingPeriodPolicy>();
+        services.AddScoped<ISalesReportReadService, SalesReportReadService>();
+        services.AddScoped<IProfitReportReadService, ProfitReportReadService>();
+        services.AddSingleton<ProfitReportAggregationPolicy>();
 
         services.AddScoped<IWarehouseService, WarehouseService>();
         services.AddScoped<ILegalEntityService, LegalEntityService>();
         services.AddScoped<ILegalEntityReconciliationService, LegalEntityReconciliationService>();
         services.AddScoped<ILegalEntityCanaryService, LegalEntityCanaryService>();
         services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<IInventoryInquiryReadService, InventoryInquiryReadService>();
+        services.AddScoped<IInventoryLedgerIndexReadService, InventoryLedgerIndexReadService>();
+        services.AddScoped<GaoApp.Application.Services.Invoices.InvoiceInputStockReadService>();
+        services.AddScoped<IStockTransferIndexReadService, StockTransferIndexReadService>();
+        services.AddScoped<IStockCountIndexReadService, StockCountIndexReadService>();
+        services.AddScoped<IInventoryAdjustmentIndexReadService, InventoryAdjustmentIndexReadService>();
         services.AddScoped<IStockDocumentService, StockDocumentService>();
+        services.AddScoped<IPurchaseReceivingWorkbenchService, PurchaseReceivingWorkbenchService>();
+        services.AddScoped<IStockDocumentProvisionalItemService, StockDocumentProvisionalItemService>();
+        services.AddScoped<IReceiptIntakeService, StockDocumentProvisionalItemService>();
         services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
+        services.AddScoped<IPurchaseOrderIndexReadService, PurchaseOrderIndexReadService>();
         services.AddScoped<IProcurementCatalogService, ProcurementCatalogService>();
         services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
+        services.AddScoped<IPurchaseRequestIndexReadService, PurchaseRequestIndexReadService>();
         services.AddScoped<IProductUnitConversionService, ProductUnitConversionService>();
         services.AddScoped<IBarcodeLookupService, BarcodeLookupService>();
         services.AddScoped<IInventoryAdjustmentService, InventoryAdjustmentService>();
@@ -130,7 +153,17 @@ public static class DependencyInjection
         services.AddScoped<IOrderInventoryIssueService, OrderInventoryIssueService>();
         services.AddScoped<IStockTransferService, StockTransferService>();
         services.AddScoped<IStockDocumentLookupService, StockDocumentLookupService>();
+        services.AddSingleton<IInputInvoiceXmlDocumentParser, InputInvoiceXmlDocumentParser>();
         services.AddScoped<IInputInvoiceXmlService, InputInvoiceXmlService>();
+        services.AddScoped<IInputInvoiceSupplierResolutionService, InputInvoiceSupplierResolutionService>();
+        services.AddScoped<IInputInvoiceBuyerOwnerResolutionService, InputInvoiceBuyerOwnerResolutionService>();
+        services.AddScoped<IInputInvoiceReceiptOwnerGuard, InputInvoiceReceiptOwnerGuard>();
+        services.AddScoped<IInputInvoiceReceiptLinkService, InputInvoiceReceiptLinkService>();
+        services.AddScoped<IInputInvoiceOwnerGuardAuditService, InputInvoiceOwnerGuardAuditService>();
+        services.AddScoped<IInputInvoiceItemCatalogMappingService, InputInvoiceItemCatalogMappingService>();
+        services.AddScoped<IInputInvoiceReconciliationService, InputInvoiceReconciliationService>();
+        services.AddScoped<IInputInvoicePickerService, InputInvoicePickerService>();
+        services.AddScoped<IStockDocumentSplitService, StockDocumentSplitService>();
         services.AddScoped<IInvoiceReadService, InvoiceReadService>();
         services.AddScoped<IInvoiceCommandService, InvoiceCommandService>();
         services.AddScoped<IDraftInvoiceReturnSyncService, DraftInvoiceReturnSyncService>();
@@ -142,9 +175,15 @@ public static class DependencyInjection
 
         services.AddScoped<ICurrentStorePermissionService, CurrentStorePermissionService>();
         services.AddScoped<IRoleAdminService, RoleAdminService>();
+        services.AddScoped<IRoleIndexReadService, RoleIndexReadService>();
         services.AddScoped<IRolePermissionAdminService, RolePermissionAdminService>();
         services.AddScoped<IUserInStoreAdminService, UserInStoreAdminService>();
+        services.AddScoped<IEmployeeIndexReadService, EmployeeIndexReadService>();
         services.AddScoped<ICustomerRewardService, CustomerRewardService>();
+        services.AddScoped<
+    IRewardSettingsAdminService,
+    RewardSettingsAdminService>();
+        services.AddScoped<IRewardVoucherIndexReadService, RewardVoucherIndexReadService>();
         services.AddScoped<IOrderRewardCalculator, OrderRewardCalculator>();
         services.AddScoped<IPOSShiftHandoverSlipService, POSShiftHandoverSlipService>();
         services.AddScoped<IPOSShiftClosingSlipService, POSShiftClosingSlipService>();
@@ -160,6 +199,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceDashboardService, InvoiceDashboardService>();
         services.AddScoped<IInvoiceIntegrationLogCleanupService, InvoiceIntegrationLogCleanupService>();
         services.AddScoped<IInvoiceCorrectionService, InvoiceCorrectionService>();
+        services.AddScoped<IAutoInvoiceService, AutoInvoiceService>();
 
 
 

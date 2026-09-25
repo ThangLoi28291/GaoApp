@@ -14,7 +14,8 @@ public static class ProductAttributeMappings
             Id = source.Id,
             Code = source.Code,
             Name = source.Name,
-            Status = source.Status
+            Status = source.Status,
+            CreatedAtUtc = source.CreatedAtUtc
         };
     }
 

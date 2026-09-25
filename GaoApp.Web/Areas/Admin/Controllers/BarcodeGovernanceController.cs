@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Products;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -36,6 +38,7 @@ public sealed class BarcodeGovernanceController : ControllerBase
     /// - mã lịch sử đã đổi
     /// </summary>
     [HttpGet("lookup")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.View)]
     public async Task<IActionResult> Lookup([FromQuery] string barcode, CancellationToken ct)
     {
         var result = await _barcodeLookupService.LookupAsync(barcode, ct);
@@ -49,6 +52,7 @@ public sealed class BarcodeGovernanceController : ControllerBase
     /// - ghi lịch sử append-only
     /// </summary>
     [HttpPost("change")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Update)]
     public async Task<IActionResult> ChangeBarcode([FromBody] ChangeBarcodeRequest request, CancellationToken ct)
     {
         try
@@ -76,6 +80,7 @@ public sealed class BarcodeGovernanceController : ControllerBase
     /// Trả về list thuần để admin UI render nhanh.
     /// </summary>
     [HttpGet("conversion/{conversionId:int}/list")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.View)]
     public async Task<IActionResult> GetBarcodesByConversion(int conversionId, CancellationToken ct)
     {
         var items = await _barcodeReadService.GetByConversionIdAsync(conversionId, ct);
@@ -91,6 +96,7 @@ public sealed class BarcodeGovernanceController : ControllerBase
     /// - frontend phải đọc result.items thay vì đọc trực tiếp result
     /// </summary>
     [HttpGet("conversion/{conversionId:int}/history")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.View)]
     public async Task<IActionResult> GetHistoryByConversion(int conversionId, CancellationToken ct)
     {
         var result = await _barcodeHistoryService.GetPagedAsync(

@@ -1,88 +1,108 @@
 @model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseOrderIndexViewModel
-@using GaoApp.Web.Areas.Admin.Models.Purchases
 @{
     ViewData["Title"] = "Đơn đặt hàng";
-    var result = Model.Result;
-    var query = result.Query;
-    var pagedOrders = result.Orders;
-    var tabs = new[]
-    {
-        new { Key = "awaiting", Label = "Chờ tôi duyệt", Icon = "bx-user-check", Visible = Model.CanApprove },
-        new { Key = "draft", Label = "Nháp / Cần sửa", Icon = "bx-edit", Visible = true },
-        new { Key = "approved", Label = "Đã duyệt", Icon = "bx-check-shield", Visible = true },
-        new { Key = "sent", Label = "Đã gửi NCC", Icon = "bx-send", Visible = true },
-        new { Key = "receiving", Label = "Đang nhận", Icon = "bx-package", Visible = true },
-        new { Key = "completed", Label = "Hoàn tất", Icon = "bx-check-circle", Visible = true },
-        new { Key = "closed", Label = "Hủy / Từ chối", Icon = "bx-archive", Visible = true },
-        new { Key = "all", Label = "Tất cả", Icon = "bx-list-ul", Visible = true }
-    };
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
 }
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-index.css" asp-append-version="true" /> }
 
-<div class="poi-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div><h4 class="mb-1">Đơn đặt hàng</h4><div class="text-muted">Kiểm soát cam kết mua, xét duyệt và tiến độ giao hàng theo từng đơn.</div></div>
-        @if (Model.CanCreate)
-        {
-            <a class="btn btn-primary" asp-action="Create"><i class="bx bx-plus me-1"></i>Tạo đơn ngoài yêu cầu</a>
-        }
-    </div>
-
-    @if (TempData["Success"] is string success) { <div class="alert alert-success">@success</div> }
-    @if (TempData["Error"] is string error) { <div class="alert alert-danger">@error</div> }
-
-    <div class="card poi-card mb-4">
-        <div class="poi-tabs">
-            @foreach (var tab in tabs.Where(x => x.Visible))
-            {
-                var active = string.Equals(query.Tab, tab.Key, StringComparison.OrdinalIgnoreCase);
-                var count = result.TabCounts.TryGetValue(tab.Key, out var value) ? value : 0;
-                <a class="poi-tab @(active ? "active" : null)" asp-action="Index" asp-route-tab="@tab.Key"
-                   asp-route-search="@query.Search" asp-route-legalEntityId="@query.LegalEntityId"
-                   asp-route-fromDate="@query.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate?.ToString("yyyy-MM-dd")">
-                    <i class="bx @tab.Icon"></i><span>@tab.Label</span><span class="poi-count">@count</span>
-                </a>
-            }
-        </div>
-        <div class="card-body border-top">
-            <form method="get" asp-action="Index" class="row g-3 align-items-end">
-                <input type="hidden" name="Tab" value="@query.Tab" />
-                <div class="col-12 col-lg-5"><label class="form-label" for="Search">Tìm đơn đặt hàng</label><div class="input-group"><span class="input-group-text"><i class="bx bx-search"></i></span><input class="form-control" id="Search" name="Search" value="@query.Search" maxlength="100" placeholder="Mã đơn, tên đơn hoặc nhà cung cấp..." /></div></div>
-                <div class="col-12 col-sm-6 col-lg-3"><label class="form-label" for="LegalEntityId">Đơn vị mua hàng</label><select class="form-select" id="LegalEntityId" name="LegalEntityId"><option value="">Tất cả HKD</option>@foreach (var item in Model.LegalEntities){<option value="@item.Id" selected="@(item.Id == query.LegalEntityId)">@item.Text</option>}</select></div>
-                <div class="col-6 col-lg-2"><label class="form-label" for="FromDate">Từ ngày</label><input class="form-control" id="FromDate" name="FromDate" type="date" value="@query.FromDate?.ToString("yyyy-MM-dd")" /></div>
-                <div class="col-6 col-lg-2"><label class="form-label" for="ToDate">Đến ngày</label><input class="form-control" id="ToDate" name="ToDate" type="date" value="@query.ToDate?.ToString("yyyy-MM-dd")" /></div>
-                <div class="col-12 d-flex justify-content-end gap-2"><a class="btn btn-label-secondary" asp-action="Index" asp-route-tab="@query.Tab">Đặt lại</a><button class="btn btn-primary" type="submit"><i class="bx bx-filter-alt me-1"></i>Lọc danh sách</button></div>
-            </form>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Đơn đặt hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Theo dõi cam kết mua, xét duyệt và tiến độ giao hàng theo từng đơn.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnPoReload"><i class="bx bx-refresh"></i><span>Tải lại</span></button>
+                @if (Model.CanCreate)
+                {
+                    <a class="btn btn-primary gds-action-button" asp-action="Create"><i class="bx bx-plus"></i><span>Tạo đơn ngoài yêu cầu</span></a>
+                }
+            </div>
         </div>
     </div>
+}
 
-    <div class="card poi-card">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 poi-table">
-                <thead><tr><th>Đơn đặt hàng</th><th>Nhà cung cấp</th><th>Đơn vị / Kho nhận</th><th>Tiến độ giao</th><th>Trạng thái</th><th></th></tr></thead>
-                <tbody>
-                @if (!pagedOrders.Items.Any())
-                {
-                    <tr><td colspan="6"><div class="poi-empty"><span><i class="bx bx-purchase-tag-alt"></i></span><h6>Không có đơn phù hợp</h6><p>Thử đổi trạng thái hoặc điều kiện tìm kiếm.</p></div></td></tr>
-                }
-                @foreach (var item in pagedOrders.Items)
-                {
-                    var progress = item.OrderedQuantity <= 0 ? 0 : Math.Min(100m, item.ReceivedQuantity * 100m / item.OrderedQuantity);
-                    <tr>
-                        <td><a class="fw-semibold" asp-action="Details" asp-route-id="@item.Id">@(string.IsNullOrWhiteSpace(item.Title) ? item.OrderNumber : item.Title)</a><div class="small text-muted">@item.OrderNumber · @item.OrderDate.ToString("dd/MM/yyyy")</div><span class="poi-source @(item.SourcePurchaseRequestId.HasValue ? "source-request" : "source-direct")"><i class="bx @(item.SourcePurchaseRequestId.HasValue ? "bx-link-alt" : "bx-error-circle")"></i>@(item.SourcePurchaseRequestId.HasValue ? "Từ yêu cầu mua" : "Ngoài yêu cầu")</span></td>
-                        <td><div class="fw-medium">@item.SupplierName</div></td>
-                        <td><div>@item.LegalEntityName</div><small class="text-muted">@item.WarehouseName</small></td>
-                        <td><div class="d-flex justify-content-between small mb-1"><span>Nhận @PurchaseQuantityFormatter.Display(item.ReceivedQuantity) / @PurchaseQuantityFormatter.Display(item.OrderedQuantity)</span><span>@progress.ToString("0")%</span></div><div class="progress poi-progress"><div class="progress-bar" style="width:@progress.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></div></div><small class="text-muted">Còn chờ @PurchaseQuantityFormatter.Display(item.PendingQuantity)</small></td>
-                        <td><span class="badge @PurchaseOrderPresentation.StatusClass(item.Status)">@PurchaseOrderPresentation.StatusLabel(item.Status)</span></td>
-                        <td class="text-end"><a class="btn btn-sm btn-icon btn-label-secondary" asp-action="Details" asp-route-id="@item.Id" aria-label="Xem chi tiết"><i class="bx bx-chevron-right"></i></a></td>
-                    </tr>
-                }
-                </tbody>
-            </table>
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/purchase-order-index.css" asp-append-version="true" />
+}
+
+<div class="purchase-order-index-page gds-page"
+     data-gao-ui="modern"
+     data-purchase-order-index
+     data-data-url="@Url.Action("GetPurchaseOrderIndexData", "PurchaseOrders", new { area = "Admin" })"
+     data-filter-options-url="@Url.Action("GetPurchaseOrderIndexFilterOptions", "PurchaseOrders", new { area = "Admin" })"
+     data-quick-view-url="@Url.Action("GetPurchaseOrderQuickView", "PurchaseOrders", new { area = "Admin" })"
+     data-detail-base-url="/admin/purchase-orders"
+     data-can-view-cost="@Model.CanViewCost.ToString().ToLowerInvariant()"
+     data-can-approve="@Model.CanApprove.ToString().ToLowerInvariant()">
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="alert alert-success alert-dismissible mb-0" role="alert">@success<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger alert-dismissible mb-0" role="alert">@error<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    }
+
+    <section aria-label="Tổng quan đơn đặt hàng">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col"><button type="button" class="po-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-po-state="all" aria-pressed="false"><span class="gds-kpi-card__icon is-primary"><i class="bx bx-receipt"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng đơn</span><span class="gds-kpi-card__value text-primary" id="poStatTotal">0</span><small>Mọi trạng thái</small></span></button></div>
+            <div class="col"><button type="button" class="po-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-po-state="needs-action" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-task"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Cần xử lý</span><span class="gds-kpi-card__value text-warning" id="poStatNeedsAction">0</span><small>Nháp, trả sửa, chờ duyệt</small></span></button></div>
+            <div class="col"><button type="button" class="po-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-po-state="in-progress" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-info text-info"><i class="bx bx-package"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đang thực hiện</span><span class="gds-kpi-card__value text-info" id="poStatInProgress">0</span><small>Đã duyệt, đã gửi, đang nhận</small></span></button></div>
+            <div class="col"><button type="button" class="po-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-po-state="completed" aria-pressed="false"><span class="gds-kpi-card__icon is-success"><i class="bx bx-check-double"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Hoàn tất</span><span class="gds-kpi-card__value text-success" id="poStatCompleted">0</span><small>Nhận đủ hoặc đóng thiếu</small></span></button></div>
         </div>
-        @if (pagedOrders.TotalPages > 1)
-        {
-            <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2"><small class="text-muted">Trang @pagedOrders.Page/@pagedOrders.TotalPages · @pagedOrders.TotalItems đơn</small><nav><ul class="pagination pagination-sm mb-0">@for(var p=1;p<=pagedOrders.TotalPages;p++){<li class="page-item @(p==pagedOrders.Page?"active":null)"><a class="page-link" asp-action="Index" asp-route-tab="@query.Tab" asp-route-search="@query.Search" asp-route-legalEntityId="@query.LegalEntityId" asp-route-fromDate="@query.FromDate?.ToString("yyyy-MM-dd")" asp-route-toDate="@query.ToDate?.ToString("yyyy-MM-dd")" asp-route-page="@p">@p</a></li>}</ul></nav></div>
-        }
+    </section>
+
+    <section class="card shadow-sm border-0" aria-label="Bộ lọc đơn đặt hàng">
+        <div class="card-header bg-transparent border-0 pb-0"><div class="d-flex align-items-center gap-2"><span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span><div><h5 class="mb-0 text-dark">Tra cứu đơn đặt hàng</h5><small class="text-muted">Tìm theo đơn, nhà cung cấp, yêu cầu mua, sản phẩm, SKU hoặc barcode.</small></div></div></div>
+        <div class="card-body pt-3"><div class="po-index-filter-bar">
+            <div class="po-index-search-wrap"><label for="poKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label><div class="gds-search-field"><i class="bx bx-search"></i><input type="search" id="poKeyword" class="form-control" placeholder="Mã đơn, NCC, yêu cầu mua, sản phẩm, SKU, barcode..." autocomplete="off" /><button type="button" id="poClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button></div></div>
+            <div class="po-index-desktop-filters">
+                <div><label for="poLegalEntity" class="form-label">Đơn vị mua hàng</label><select id="poLegalEntity" class="form-select"><option value="">Tất cả HKD</option></select></div>
+                <div><label for="poSupplier" class="form-label">Nhà cung cấp</label><select id="poSupplier" class="form-select"><option value="">Tất cả nhà cung cấp</option></select></div>
+                <div><label for="poWarehouse" class="form-label">Kho nhận</label><select id="poWarehouse" class="form-select"><option value="">Tất cả kho nhận</option></select></div>
+                <div><label for="poSource" class="form-label">Nguồn đơn</label><select id="poSource" class="form-select"><option value="all">Tất cả nguồn</option><option value="request">Từ yêu cầu mua</option><option value="direct">Đơn trực tiếp</option></select></div>
+                <div><label for="poState" class="form-label">Trạng thái</label><select id="poState" class="form-select"><option value="open" selected>Đang mở</option><option value="all">Tất cả trạng thái</option><option value="needs-action">Cần xử lý</option><option value="in-progress">Đang thực hiện</option><option value="completed">Hoàn tất</option><option value="draft">Đơn nháp</option><option value="pending">Chờ duyệt</option><option value="returned">Cần chỉnh sửa</option><option value="rejected">Đã từ chối</option><option value="approved">Đã duyệt</option><option value="sent">Đã gửi NCC</option><option value="receiving">Đang nhận hàng</option><option value="fully-received">Đã nhận đủ</option><option value="short-closed">Đã đóng thiếu</option><option value="cancelled">Đã hủy</option></select></div>
+                <div><label for="poFromDate" class="form-label">Từ ngày</label><input type="date" id="poFromDate" class="form-control" /></div>
+                <div><label for="poToDate" class="form-label">Đến ngày</label><input type="date" id="poToDate" class="form-control" /></div>
+                <div class="po-index-compact-filter"><label for="poPageSize" class="form-label">Số dòng / trang</label><select id="poPageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+                <button type="button" class="gds-icon-button po-index-reset-button d-none" id="poResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
+            </div>
+            <button type="button" class="btn btn-label-primary po-index-mobile-filter-button" id="poOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#purchaseOrderMobileFilterSheet"><i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="poActiveFilterCount">0</span></button>
+            <div class="po-index-date-error d-none" id="poDateError" role="alert">Từ ngày không được lớn hơn đến ngày.</div>
+        </div></div>
+    </section>
+
+    <section class="gds-list-panel po-index-results-panel" id="purchaseOrderResultsPanel" aria-label="Danh sách đơn đặt hàng" aria-live="polite" aria-busy="false">
+        <div class="po-index-results-heading"><div><h5 class="mb-1 text-dark">Danh sách đơn đặt hàng</h5><small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh từng mặt hàng.</small></div><span class="po-index-default-scope"><i class="bx bx-pulse"></i> Mặc định: Đang mở</span></div>
+        <div class="po-index-desktop-list" id="purchaseOrderDesktopList"><div class="table-responsive"><table class="table align-middle gds-table mb-0 po-index-table"><thead><tr><th>Đơn đặt hàng / ngày</th><th>Nhà cung cấp</th><th>Đơn vị / Kho nhận</th><th>Ngày dự kiến</th><th>Tiến độ dòng hàng</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead><tbody id="poTableBody"><tr><td colspan="7" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody></table></div></div>
+        <div class="po-index-mobile-list" id="purchaseOrderMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+    <div class="gds-list-footer po-index-list-footer"><div class="gds-list-footer__summary" id="poPagingInfo">0 kết quả</div><nav aria-label="Phân trang đơn đặt hàng"><ul class="pagination pagination-sm mb-0 po-index-pagination" id="poPageNumbers"></ul></nav></div>
+
+    <div class="modal fade" id="purchaseOrderQuickViewModal" tabindex="-1" aria-labelledby="purchaseOrderQuickViewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable po-index-quick-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><div><div class="text-primary fw-semibold small text-uppercase">Xem nhanh đơn đặt hàng</div><h4 class="modal-title text-dark" id="purchaseOrderQuickViewTitle">Thông tin đơn</h4><div class="d-flex flex-wrap gap-2 mt-1"><span class="gds-code" id="purchaseOrderQuickNumber">—</span><span class="gds-status gds-status--dot is-neutral" id="purchaseOrderQuickState">—</span></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="purchaseOrderQuickViewBody"><div class="text-center text-muted py-5">Đang tải thông tin...</div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><a href="#" class="btn btn-primary" id="btnOpenPurchaseOrderDetail">Mở đơn đặt hàng</a></div></div></div></div>
+
+    <div class="modal fade" id="purchaseOrderImagePreviewModal" tabindex="-1" aria-labelledby="purchaseOrderImagePreviewTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered po-index-image-preview-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><h5 class="modal-title" id="purchaseOrderImagePreviewTitle">Ảnh sản phẩm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body po-index-image-preview-body"><img id="purchaseOrderImagePreviewImage" alt="Ảnh sản phẩm phóng to" /></div></div></div></div>
+
+    <div class="offcanvas offcanvas-bottom po-index-filter-sheet" tabindex="-1" id="purchaseOrderMobileFilterSheet" aria-labelledby="purchaseOrderMobileFilterTitle">
+        <div class="offcanvas-header"><div><h5 class="offcanvas-title" id="purchaseOrderMobileFilterTitle">Bộ lọc đơn đặt hàng</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+        <div class="offcanvas-body"><div class="row g-3">
+            <div class="col-12"><label for="poMobileLegalEntity" class="form-label">Đơn vị mua hàng</label><select id="poMobileLegalEntity" class="form-select"><option value="">Tất cả HKD</option></select></div>
+            <div class="col-12"><label for="poMobileSupplier" class="form-label">Nhà cung cấp</label><select id="poMobileSupplier" class="form-select"><option value="">Tất cả nhà cung cấp</option></select></div>
+            <div class="col-12"><label for="poMobileWarehouse" class="form-label">Kho nhận</label><select id="poMobileWarehouse" class="form-select"><option value="">Tất cả kho nhận</option></select></div>
+            <div class="col-12"><label for="poMobileSource" class="form-label">Nguồn đơn</label><select id="poMobileSource" class="form-select"><option value="all">Tất cả nguồn</option><option value="request">Từ yêu cầu mua</option><option value="direct">Đơn trực tiếp</option></select></div>
+            <div class="col-12"><label for="poMobileState" class="form-label">Trạng thái</label><select id="poMobileState" class="form-select"><option value="open" selected>Đang mở</option><option value="all">Tất cả trạng thái</option><option value="needs-action">Cần xử lý</option><option value="in-progress">Đang thực hiện</option><option value="completed">Hoàn tất</option><option value="draft">Đơn nháp</option><option value="pending">Chờ duyệt</option><option value="returned">Cần chỉnh sửa</option><option value="rejected">Đã từ chối</option><option value="approved">Đã duyệt</option><option value="sent">Đã gửi NCC</option><option value="receiving">Đang nhận hàng</option><option value="fully-received">Đã nhận đủ</option><option value="short-closed">Đã đóng thiếu</option><option value="cancelled">Đã hủy</option></select></div>
+            <div class="col-6"><label for="poMobileFromDate" class="form-label">Từ ngày</label><input type="date" id="poMobileFromDate" class="form-control" /></div>
+            <div class="col-6"><label for="poMobileToDate" class="form-label">Đến ngày</label><input type="date" id="poMobileToDate" class="form-control" /></div>
+            <div class="col-12"><label for="poMobilePageSize" class="form-label">Số dòng / trang</label><select id="poMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+        </div></div>
+        <div class="offcanvas-footer po-index-filter-sheet__footer"><button type="button" class="btn btn-label-secondary" id="poMobileClearFilters">Xóa lọc</button><button type="button" class="btn btn-primary flex-grow-1" id="poMobileApplyFilters">Áp dụng</button></div>
     </div>
 </div>
+
+@section PageScripts {
+    <script src="~/Admin/js/purchase-order-index.js" asp-append-version="true"></script>
+}

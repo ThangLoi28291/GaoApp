@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Returns;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,7 +8,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos/returns")]
-[Authorize]
+[Authorize(Policy = PermissionCodes.Pos.Order.View)]
 public class POSReturnController : Controller
 {
     private readonly ISalesReturnService _salesReturnService;
@@ -32,6 +33,8 @@ public class POSReturnController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Refund)]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Refund)]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create([FromBody] CreateSalesReturnRequest request, CancellationToken ct)
     {

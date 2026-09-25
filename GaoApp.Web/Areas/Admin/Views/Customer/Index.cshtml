@@ -1,0 +1,83 @@
+@using GaoApp.Web.Areas.Admin.ViewModels.Customers
+@model CustomerIndexVM
+
+@{
+    ViewData["Title"] = "Khách hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+    var canCreate = (bool?)(ViewData["CanCreateCustomer"]) ?? false;
+    var canUpdate = (bool?)(ViewData["CanUpdateCustomer"]) ?? false;
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/customer-index.css" asp-append-version="true" />
+}
+
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Danh sách khách hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Quản lý hồ sơ, nhóm giá và quyền công nợ tại cửa hàng hiện tại.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <a href="/admin/reward-vouchers"
+                   data-customer-reward-vouchers-link
+                   class="btn btn-label-primary gds-action-button"
+                   title="Theo dõi phiếu được đổi từ điểm thưởng">
+                    <i class="bx bx-gift" aria-hidden="true"></i><span>Phiếu giảm giá</span>
+                </a>
+                @if (canCreate)
+                {
+                    <a asp-area="Admin" asp-controller="Customer" asp-action="Create"
+                       class="btn btn-primary gds-action-button gds-action-button--primary">
+                        <i class="bx bx-user-plus" aria-hidden="true"></i><span>Thêm khách hàng</span>
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<div data-gao-ui="modern" data-layout-consistency>
+  <div class="customer-index-page gds-page"
+       data-customer-shell
+       data-search-url="@Url.Action("Search", "Customer", new { area = "Admin" })"
+       data-quick-view-url="@Url.Action("QuickView", "Customer", new { area = "Admin" })"
+       data-toggle-url="@Url.Action("ToggleActive", "Customer", new { area = "Admin" })"
+       data-page="@Model.Page">
+
+    <section class="gds-kpi-grid" aria-label="Tổng quan khách hàng">
+        <article class="gds-kpi-card gds-kpi-card--primary"><div class="gds-kpi-card__icon is-primary"><i class="bx bx-group"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label">Tổng khách hàng</div><div id="customerTotalCount" class="gds-kpi-card__value">@Model.Summary.TotalCustomers</div></div></article>
+        <article class="gds-kpi-card gds-kpi-card--success"><div class="gds-kpi-card__icon is-success"><i class="bx bx-user-check"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label">Đang hoạt động</div><div id="customerActiveCount" class="gds-kpi-card__value">@Model.Summary.ActiveCustomers</div></div></article>
+        <article class="gds-kpi-card gds-kpi-card--neutral"><div class="gds-kpi-card__icon is-neutral"><i class="bx bx-user-x"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label">Ngừng hoạt động</div><div id="customerInactiveCount" class="gds-kpi-card__value">@Model.Summary.InactiveCustomers</div></div></article>
+        <article class="gds-kpi-card gds-kpi-card--warning"><div class="gds-kpi-card__icon is-warning"><i class="bx bx-wallet"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label">Được phép công nợ</div><div id="customerDebtEnabledCount" class="gds-kpi-card__value">@Model.Summary.DebtEnabledCustomers</div></div></article>
+    </section>
+
+    <button type="button" id="customerFilterOpen" class="btn btn-primary customer-filter-open"><i class="bx bx-filter-alt me-1"></i>Bộ lọc</button>
+    <div id="customerFilterOverlay" class="customer-filter-overlay" aria-hidden="true"></div>
+    <section id="customerFilterSheet" class="gds-section gds-section--compact customer-filter-section customer-filter-sheet" aria-label="Tra cứu khách hàng">
+        <div class="customer-filter-heading"><span class="customer-filter-heading__icon"><i class="bx bx-filter-alt"></i></span><div><h5>Tra cứu khách hàng</h5><p>Tìm theo tên, mã, điện thoại, email hoặc mã số thuế.</p></div><button type="button" id="customerFilterClose" class="customer-filter-close" aria-label="Đóng bộ lọc"><i class="bx bx-x"></i></button></div>
+        <div class="gds-filter-bar customer-filter-grid">
+            <div class="gds-filter-bar__search">
+                <label for="txtSearch" class="form-label">Tìm kiếm</label>
+                <div class="gds-search-field"><i class="bx bx-search"></i><input id="txtSearch" class="form-control" autocomplete="off" value="@Model.SearchString" placeholder="Tên, mã, điện thoại, email, mã số thuế..." /><button id="btnClearSearch" type="button" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button></div>
+            </div>
+            <div class="gds-filter-control"><label for="ddlPriceTier" class="form-label">Nhóm giá</label><select id="ddlPriceTier" class="form-select"><option value="" selected="@(string.IsNullOrWhiteSpace(Model.PriceTier))">Tất cả nhóm giá</option><option value="RETAIL" selected="@(Model.PriceTier == "RETAIL")">Khách lẻ</option><option value="WHOLESALE" selected="@(Model.PriceTier == "WHOLESALE")">Khách sỉ</option></select></div>
+            <div class="gds-filter-control"><label for="ddlStatus" class="form-label">Trạng thái</label><select id="ddlStatus" class="form-select"><option value="" selected="@(!Model.Status.HasValue)">Tất cả trạng thái</option><option value="true" selected="@(Model.Status == true)">Đang hoạt động</option><option value="false" selected="@(Model.Status == false)">Ngừng hoạt động</option></select></div>
+            <div class="gds-filter-control"><label for="ddlDebt" class="form-label">Công nợ</label><select id="ddlDebt" class="form-select"><option value="" selected="@(!Model.HaveDebt.HasValue)">Tất cả</option><option value="true" selected="@(Model.HaveDebt == true)">Được phép</option><option value="false" selected="@(Model.HaveDebt == false)">Không được phép</option></select></div>
+            <div class="gds-filter-control gds-filter-control--compact"><label for="ddlPageSize" class="form-label">Số dòng / trang</label><select id="ddlPageSize" class="form-select"><option value="10" selected="@(Model.PageSize == 10)">10</option><option value="20" selected="@(Model.PageSize == 20)">20</option><option value="50" selected="@(Model.PageSize == 50)">50</option><option value="100" selected="@(Model.PageSize == 100)">100</option></select></div>
+        </div>
+    </section>
+
+    <form id="customerAntiForgeryForm" method="post" class="d-none">@Html.AntiForgeryToken()</form>
+    <div id="customerTableWrapper" class="gds-results-region" aria-live="polite" aria-busy="false">@await Html.PartialAsync("_CustomerTable", Model, new ViewDataDictionary(ViewData))</div>
+
+    <div class="modal fade customer-quick-view" id="customerQuickViewModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><div><h5 class="modal-title" id="customerQuickViewName">Chi tiết khách hàng</h5><div class="text-muted small" id="customerQuickViewCode">—</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div><div class="modal-body"><div id="customerQuickViewBody" class="customer-quick-view__grid"></div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>@if (canUpdate) { <a id="customerQuickViewEdit" class="btn btn-primary" href="#"><i class="bx bx-edit me-1"></i>Sửa hồ sơ</a> }</div></div></div>
+    </div>
+  </div>
+</div>
+
+@section PageScripts { <script src="~/admin/js/customer.js" asp-append-version="true"></script> }

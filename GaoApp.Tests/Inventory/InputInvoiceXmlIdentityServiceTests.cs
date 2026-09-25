@@ -4,6 +4,8 @@ using FluentAssertions;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Inventory.InputInvoices;
+using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -14,9 +16,51 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Tests.Inventory;
 
+// R2.4-C2 coverage: every XML import/link path converges on the central owner guard.
+// R2.4-C2 coverage: every XML import/link path converges on the central owner guard.
 public sealed class InputInvoiceXmlIdentityServiceTests
 {
+    [Fact]
+    public void Xml_service_exposes_transaction_owned_split_resolution_without_a_nested_public_link()
+    {
+        var method = typeof(IInputInvoiceXmlService).GetMethod("ResolveInvoiceWithinTransactionAsync");
+
+        Assert.NotNull(method);
+        Assert.Equal(typeof(Task<InputInvoiceResolution>), method!.ReturnType);
+    }
+
     private const int StoreId = 1;
+
+    [Fact]
+    public void Extracted_parser_should_preserve_required_identity_and_lines()
+    {
+        var parsed = new InputInvoiceXmlDocumentParser().Parse(BuildXml(
+            "0312770607", "C26TAA", "9000", "parser"));
+
+        parsed.NormalizedSellerTaxCode.Should().Be("0312770607");
+        parsed.NormalizedInvoiceSeries.Should().Be("C26TAA");
+        parsed.NormalizedInvoiceNumber.Should().Be("9000");
+        parsed.InvoiceIdentityDate.Should().Be(new DateTime(2026, 8, 17));
+        var detail = parsed.Details.Should().ContainSingle().Subject;
+        detail.SupplierItemCode.Should().Be("ITEM-parser");
+        detail.NormalizedSupplierItemCode.Should().Be("ITEM-PARSER");
+        detail.NormalizedItemName.Should().Be("RICE PARSER");
+        detail.NormalizedUnitName.Should().Be("KG");
+    }
+
+    [Fact]
+    public void Extracted_parser_should_prohibit_dtd_and_external_entities()
+    {
+        var bytes = Encoding.UTF8.GetBytes("""
+            <!DOCTYPE HDon [<!ENTITY external SYSTEM "file:///etc/passwd">]>
+            <HDon><DLHDon><TTChung><KHHDon>C26</KHHDon><SHDon>1</SHDon><NLap>2026-08-22</NLap></TTChung><NDHDon><NBan><MST>0312770607</MST></NBan><DSHHDVu><HHDVu><STT>1</STT><THHDVu>&external;</THHDVu></HHDVu></DSHHDVu></NDHDon></DLHDon></HDon>
+            """);
+
+        var action = () => new InputInvoiceXmlDocumentParser().Parse(bytes);
+
+        action.Should().Throw<BusinessRuleException>()
+            .WithMessage("*DTD*");
+    }
 
     [Fact]
     public async Task Different_xml_serializations_with_same_business_identity_should_reuse_invoice()
@@ -747,7 +791,7 @@ public sealed class InputInvoiceXmlIdentityServiceTests
                    <NMua><MST>0100000001</MST><Ten>Buyer</Ten></NMua>
                    <DSHHDVu>
                      <HHDVu>
-                       <STT>1</STT><THHDVu>Rice {marker}</THHDVu><DVTinh>kg</DVTinh>
+                       <STT>1</STT><MHHDVu>ITEM-{marker}</MHHDVu><THHDVu>Rice {marker}</THHDVu><DVTinh>kg</DVTinh>
                        <SLuong>1</SLuong><DGia>10</DGia><ThTien>10</ThTien><TSuat>10%</TSuat>
                      </HHDVu>
                    </DSHHDVu>

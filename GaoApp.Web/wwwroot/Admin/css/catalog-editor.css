@@ -1,0 +1,68 @@
+/* Catalog Create/Edit only: deliberately independent of the list styles. */
+.catalog-editor { --ce-ink:#24324b; --ce-muted:#68758a; --ce-accent:#5854d8; max-width:1180px; margin:0 auto; color:var(--ce-ink); padding:8px 0 24px; }
+.catalog-editor .ce-breadcrumb { display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:24px; color:var(--ce-muted); }
+.catalog-editor .ce-breadcrumb a { color:var(--ce-muted); }
+.catalog-editor .ce-header { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:28px; }
+.catalog-editor .ce-eyebrow { display:block; color:var(--ce-accent); font-size:11px; font-weight:700; letter-spacing:1.6px; margin-bottom:8px; }
+.catalog-editor h1 { font-size:30px; font-weight:750; letter-spacing:-.8px; margin:0 0 10px; color:var(--ce-ink); }
+.catalog-editor p { color:var(--ce-muted); font-size:13px; line-height:1.65; margin:0; }
+.catalog-editor .ce-back { display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:13px; color:var(--ce-muted); padding:10px 0; }
+.catalog-editor .ce-back:hover,.catalog-editor .ce-breadcrumb a:hover { color:var(--ce-accent); }
+.catalog-editor .ce-layout { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr); align-items:start; gap:24px; }
+.catalog-editor .ce-main,.catalog-editor .ce-side { display:grid; gap:22px; min-width:0; }
+.catalog-editor .ce-card { background:#fff; border:1px solid #e6eaf1; border-radius:18px; padding:26px; box-shadow:0 4px 20px #23345104; min-width:0; }
+.catalog-editor .ce-section-heading { display:flex; align-items:center; gap:12px; margin-bottom:25px; }
+.catalog-editor h2 { font-size:16px; font-weight:700; color:var(--ce-ink); margin:0 0 5px; }
+.catalog-editor .ce-icon { display:flex; flex-shrink:0; align-items:center; justify-content:center; width:44px; height:44px; border-radius:13px; background:#eeedff; color:var(--ce-accent); font-size:24px; }
+.catalog-editor .ce-icon-neutral { background:#f0f3f7; color:#67788c; }
+.catalog-editor .ce-section-number { margin-left:auto; font-size:28px; color:#e1e5ef; font-weight:600; }
+.catalog-editor .ce-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 18px; }
+.catalog-editor .ce-full { grid-column:1/-1; }
+.catalog-editor .ce-field { min-width:0; }
+.catalog-editor .ce-field label { display:block; font-size:13px; font-weight:600; color:#3c4960; margin-bottom:8px; }
+.catalog-editor .ce-required { color:#d44959; }
+.catalog-editor .form-control { border:1px solid #dce2eb; border-radius:9px; min-height:46px; padding:11px 13px; font-size:14px; color:var(--ce-ink); background:#fff; box-shadow:none; transition:border-color .15s,box-shadow .15s; width:100%; }
+.catalog-editor .form-control::placeholder { color:#8a95a6; opacity:1; font-size:13px; }
+.catalog-editor .form-control:hover { border-color:#b9c1d3; }
+.catalog-editor .form-control:focus { border-color:var(--ce-accent); box-shadow:0 0 0 3px #5854d81a; outline:none; }
+.catalog-editor .form-control[readonly] { background:#f3f5f9; color:#68758a; }
+.catalog-editor textarea.form-control { resize:vertical; min-height:98px; }
+.catalog-editor .text-danger { display:block; font-size:12px; margin-top:5px; }
+.catalog-editor .input-validation-error { border-color:#c9394a; }
+.catalog-editor .ce-optional { font-size:11px; font-weight:500; color:#68758a; margin-left:auto; white-space:nowrap; }
+.catalog-editor .ce-status-card { padding:22px 26px; }
+.catalog-editor .ce-status-top { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:9px; }
+.catalog-editor .ce-status-top h2 { font-size:14px; margin:0; }
+.catalog-editor .form-switch { padding:0; margin:0; min-height:26px; flex-shrink:0; }
+.catalog-editor .form-switch .form-check-input { float:none; margin:0; width:44px; height:25px; cursor:pointer; }
+.catalog-editor .form-check-input:checked { background-color:var(--ce-accent); border-color:var(--ce-accent); }
+.catalog-editor .ce-actions { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:20px 24px; margin-top:24px; background:#fff; border:1px solid #e6eaf1; border-radius:14px; }
+.catalog-editor .ce-actions>span { font-size:12px; color:var(--ce-muted); }
+.catalog-editor .ce-actions>div { display:flex; align-items:center; gap:12px; }
+.catalog-editor .ce-actions .btn { min-height:44px; padding:11px 20px; border-radius:9px; font-size:13px; font-weight:600; }
+.catalog-editor .ce-cancel { background:#fff; border:1px solid #dce2eb; color:#526078; }
+.catalog-editor .ce-save { background:var(--ce-accent); border:1px solid var(--ce-accent); color:#fff; box-shadow:0 4px 10px #5854d825; display:inline-flex; align-items:center; gap:7px; }
+.catalog-editor .ce-save i { font-size:20px; }
+.catalog-editor .ce-save:hover { background:#4540bf; color:#fff; }
+.catalog-editor .ce-cancel:hover { background:#f3f5f9; }
+.catalog-editor a:focus-visible,.catalog-editor button:focus-visible { outline:3px solid #9c98ee; outline-offset:3px; }
+@media(max-width:800px) { .catalog-editor .ce-layout { grid-template-columns:1fr; } .catalog-editor .ce-header { align-items:flex-start; } .catalog-editor h1 { font-size:26px; } .catalog-editor .ce-back { font-size:0; } .catalog-editor .ce-back i { font-size:22px; } }
+@media(prefers-reduced-motion:reduce) { .catalog-editor .form-control { transition:none; } }
+/* The admin theme assigns fixed heading line-heights; scale them with this form. */
+.catalog-editor h1,.catalog-editor h2 { line-height:1.3; }
+.catalog-editor { max-width:1080px; }
+.catalog-editor .ce-layout { grid-template-columns:minmax(0,1.65fr) minmax(280px,1fr); }
+.catalog-editor .ce-guide { background:linear-gradient(135deg,#eeedff,#f9f9ff); border-color:#e0def6; }
+.catalog-editor .ce-guide .ce-icon { background:#fff; margin-bottom:24px; }
+.catalog-editor .ce-guide h2 { font-size:21px; margin:12px 0; }
+.catalog-editor .ce-guide .ce-eyebrow { font-size:10px; letter-spacing:1.3px; }
+.catalog-editor .ce-example { border-top:1px solid #dedcf2; margin-top:24px; padding-top:18px; color:#656097; font-size:13px; }
+.catalog-editor .ce-field-help { font-size:12px; margin-top:8px; }
+.catalog-editor .form-select { min-height:46px; border:1px solid #dce2eb; border-radius:9px; padding:11px 38px 11px 13px; font-size:14px; color:#24324b; width:100%; }
+.catalog-editor .form-select:focus { border-color:#5854d8; box-shadow:0 0 0 3px #5854d81a; }
+.catalog-editor .ce-field .ce-optional { float:right; }
+.catalog-editor .ce-audit { margin-top:24px; }
+.catalog-editor .ce-audit h2 { margin-bottom:20px; }
+.catalog-editor .ce-audit strong { display:block; margin:6px 0; font-size:13px; }
+@media(max-width:800px) { .catalog-editor .ce-layout { grid-template-columns:1fr; } .catalog-editor .ce-guide { display:none; } }
+@media(max-width:480px) { .catalog-editor .ce-fields { grid-template-columns:1fr; } .catalog-editor .ce-card { padding:20px 18px; } .catalog-editor .ce-actions { flex-direction:column; align-items:stretch; padding:18px; gap:14px; } .catalog-editor .ce-actions>div { display:flex; flex-wrap:wrap; } .catalog-editor .ce-save { flex:1; justify-content:center; } }

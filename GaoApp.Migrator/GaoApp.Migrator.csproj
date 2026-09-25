@@ -48,4 +48,8 @@
 		</None>
 	</ItemGroup>
 
+  <PropertyGroup>
+    <GaoAppDeploymentSettings>$(MSBuildThisFileDirectory)..\eng\deployment\migrator.appsettings.json</GaoAppDeploymentSettings>
+  </PropertyGroup>
+  <Import Project="..\eng\deployment\PublishSafety.targets" />
 </Project>

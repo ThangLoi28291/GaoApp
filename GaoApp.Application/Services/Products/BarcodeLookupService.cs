@@ -147,15 +147,20 @@ public class BarcodeLookupService : IBarcodeLookupService
         if (!addedKeys.Add(key))
             return;
 
+        var productName = string.IsNullOrWhiteSpace(variant.ProductVariantName)
+            ? variant.Product.Name : variant.ProductVariantName;
+
         results.Add(new StockDocumentLookupSelect2ItemDto
         {
             ProductVariantId = variant.Id,
             ProductUnitConversionId = unit.ProductUnitConversionId,
             UnitId = unit.UnitId,
-            ProductName = variant.Product.Name,
+            ProductName = productName,
             Sku = variant.Sku,
             Barcode = normalizedBarcode,
             UnitName = unit.UnitName,
+            BaseUnitName = variant.Product.BaseUnit?.Name ?? string.Empty,
+            IsBaseUnit = unit.UnitId == variant.Product.BaseUnitId,
             Factor = unit.Factor,
             IsBaseUnitFallback = unit.IsBaseUnitFallback,
             SourceType = sourceType,
@@ -163,7 +168,7 @@ public class BarcodeLookupService : IBarcodeLookupService
             CostPrice = variant.CostPrice,
             ImageUrl = BuildImageUrl(variant),
             Text = BuildLookupText(
-                variant.Product.Name,
+                productName,
                 variant.Sku,
                 unit.UnitName,
                 unit.Factor,

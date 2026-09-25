@@ -881,30 +881,26 @@
         });
     }
 
+    let navigatingToShift = false;
+    function redirectToShiftIfNeeded(errorCode) {
+        if (errorCode !== 'POS_SHIFT_NOT_OPEN' ||
+            !/^\/admin\/pos(?:\/(?:v3|legacy))?\/?$/.test(window.location.pathname)) return false;
+        const offline = window.PosOffline?.status();
+        // Keep the original journal and its recovery controls available until
+        // pending operations have been reconciled against their own shift.
+        if (offline?.pending > 0 || offline?.connected === false) return false;
+        if (navigatingToShift) return true;
+        navigatingToShift = true;
+        const query = new URLSearchParams({ start: '1', returnUrl: window.location.pathname + window.location.search });
+        window.location.replace('/admin/pos-shift?' + query.toString());
+        return true;
+    }
+
     function handle(error, options) {
         const err = normalize(error);
         const displayMode = options?.displayMode || getUiBehavior(err);
 
-        // AUTO REDIRECT KHI CHƯA MỞ CA POS
-        if (err.errorCode === 'POS_SHIFT_NOT_OPEN') {
-
-            if (window.toastr) {
-                toastr.warning(buildText(err).replace(/\n/g, '<br/>'));
-            }
-
-            setTimeout(function () {
-
-                const ctx = getActionContext();
-
-                if (typeof ctx.goToShiftPage === 'function') {
-                    ctx.goToShiftPage();
-                    return;
-                }
-
-                window.location.href = '/admin/pos-shift';
-
-            }, 800);
-
+        if (redirectToShiftIfNeeded(err.errorCode)) {
             return err;
         }
 
@@ -953,6 +949,7 @@
         getActions,
         closeModal,
         handle,
+        redirectToShiftIfNeeded,
 
         classifyRetryError,
         getActionRetryProfile,

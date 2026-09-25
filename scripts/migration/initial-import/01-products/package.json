@@ -1,0 +1,20 @@
+{
+  "PackageId": "GSTORE-01-products-V2",
+  "SourceTables": [
+    "ProductDetail",
+    "Product",
+    "Promotion",
+    "Supplier",
+    "Order",
+    "OrderDetail"
+  ],
+  "TargetTables": [
+    "Category",
+    "Suppliers",
+    "Unit",
+    "Products",
+    "ProductVariant",
+    "ProductUnitConversion",
+    "ProductVariantUnitBarcode"
+  ]
+}

@@ -9,6 +9,8 @@ namespace GaoApp.Application.DTOs.POS
 {
     public sealed class QuickAddPaymentRequest
     {
+        public int OrderId { get; set; }
+        public Guid ClientRequestId { get; set; }
         public PaymentMethod Method { get; set; }
         public decimal Amount { get; set; }
         public string? ReferenceCode { get; set; }

@@ -13,6 +13,20 @@ public interface IProductService
         int pageSize,
         CancellationToken ct = default);
 
+    Task<PagedResult<ProductListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        int? categoryId,
+        bool? isActive,
+        bool? isSellable,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int PosAllowedItems, int NotForPosItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<Result<int>> CreateAsync(
         int storeId,
         ProductCreateDto dto,

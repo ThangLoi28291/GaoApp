@@ -6,72 +6,256 @@
     var taxes = ViewData["ReceiptTaxOptions"] as IEnumerable<StockReceiptTaxOptionDto>
         ?? Enumerable.Empty<StockReceiptTaxOptionDto>();
     var readOnly = Model.Status == StockDocumentStatus.Confirmed;
-    // Số lượng/đơn vị đã được nhân viên xác nhận trước khi gửi duyệt.
-    // Workbench thương mại chỉ chốt giá, VAT và công nợ.
-    var canEditPhysical = false;
-    var overdeliveryLines = Model.Lines
-        .Where(x => x.ProjectedOverdeliveryQuantity > 0m)
-        .OrderBy(x => x.LineNo)
+    var canManageInputInvoiceMapping =
+        ViewData["CanManageInputInvoiceMapping"] as bool? == true;
+    var canApproveOutsidePo = ViewData["CanApproveOutsidePo"] as bool? == true;
+    var canCompleteCatalogProduct =
+        ViewData["CanCompleteCatalogProduct"] as bool? == true;
+    var lines = Model.Lines.OrderBy(x => x.LineNo).ToList();
+    var outsideLines = lines
+        .Where(x => x.ReceiptAllocationKind == ReceiptAllocationKind.OutsidePo)
         .ToList();
+    var pendingOutsideLines = outsideLines
+        .Where(x => x.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Pending)
+        .ToList();
+    var overdeliveryLines = lines
+        .Where(x => x.ProjectedOverdeliveryQuantity > 0m)
+        .ToList();
+    var unresolvedProvisionalCount = Model.UnresolvedProvisionalCount;
+    var catalogReviewLines = lines.Where(x => x.RequiresCatalogReview).ToList();
+    var missingPriceCount = lines.Count(x => !x.EditableUnitPriceBeforeVat.HasValue);
+    var exceptionCount = pendingOutsideLines.Count + overdeliveryLines.Count +
+        unresolvedProvisionalCount + catalogReviewLines.Count;
 }
 
 <section class="card sd-card sd-commercial-workbench mb-3"
          id="commercialApprovalWorkbench"
-         data-readonly="@readOnly.ToString().ToLowerInvariant()">
+         data-readonly="@readOnly.ToString().ToLowerInvariant()"
+         data-has-pending-outside="@(pendingOutsideLines.Count > 0 ? "true" : "false")"
+         data-has-unresolved-provisional="@(unresolvedProvisionalCount > 0 ? "true" : "false")"
+         data-has-catalog-review="@(catalogReviewLines.Count > 0 ? "true" : "false")">
     <div class="card-header border-0 pb-0">
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
             <div class="d-flex align-items-start gap-3">
-                <span class="sd-commercial-icon"><i class="bx bx-calculator"></i></span>
+                <span class="sd-commercial-icon"><i class="bx bx-check-shield"></i></span>
                 <div>
-                    <h5 class="mb-1">Chốt giá nhập và công nợ</h5>
-                    <div class="text-muted small">
-                        Giá tại đây là giá thực tế nhà cung cấp giao. Tồn kho, FIFO và công nợ chỉ được ghi khi duyệt.
-                    </div>
+                <div class="text-uppercase text-primary small fw-semibold mb-1">Duyệt nhập kho</div>
+                <h4 class="mb-1">Đối chiếu hàng, danh mục và giá nhập</h4>
+                <div class="text-muted small">
+                    Xử lý các mục cần chú ý rồi xác nhận ghi tồn kho, giá vốn và công nợ.
+                </div>
                 </div>
             </div>
             <span class="badge bg-label-@(readOnly ? "success" : "warning") rounded-pill">
                 <i class="bx @(readOnly ? "bx-lock-alt" : "bx-edit") me-1"></i>
-                @(readOnly ? "Đã khóa sau duyệt" : "Đang chờ quản lý chốt")
+                @(readOnly ? "Đã ghi sổ" : "Chờ quản lý duyệt")
             </span>
         </div>
     </div>
 
     <div class="card-body">
-        @if (overdeliveryLines.Count > 0)
-        {
-            <div class="alert alert-warning border-0">
-                <strong>Phiếu có nhận vượt đơn đặt hàng.</strong>
-                @foreach (var line in overdeliveryLines)
-                {
-                    <div class="small">
-                        Dòng @line.LineNo · @line.ProductNameSnapshot: dự kiến vượt
-                        @line.ProjectedOverdeliveryQuantity.ToString("0.###") đơn vị gốc.
-                    </div>
-                }
-                <div class="small mt-1">Manager/Admin phải xác nhận rõ tại hộp thoại duyệt. Lý do là tùy chọn.</div>
+        <div class="sd-approval-overview mb-4" aria-label="Tổng quan duyệt phiếu">
+            <div><span>Mặt hàng</span><strong>@lines.Count</strong><small>dòng thực nhận</small></div>
+            <div class="@(catalogReviewLines.Count > 0 ? "is-warning" : "is-success")">
+                <span>Danh mục</span><strong>@(lines.Count - catalogReviewLines.Count)/@lines.Count</strong>
+                <small>@(catalogReviewLines.Count > 0 ? $"{catalogReviewLines.Count} cần xử lý" : "Đã nhận diện")</small>
             </div>
-        }
-        <div class="sd-commercial-settlement mb-4">
-            <div class="row g-3 align-items-end">
-                <div class="col-12 col-md-3">
-                    <label class="form-label d-block">Thuế giá trị gia tăng</label>
-                    <div class="sd-commercial-switch">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="commercialHasVat"
-                                   checked="@Model.HasVat" disabled="@readOnly" />
-                            <label class="form-check-label fw-semibold" for="commercialHasVat">Có VAT</label>
-                        </div>
-                        <small class="text-muted">Giá nhập là giá chưa VAT</small>
-                        <div class="form-check mt-2">
-                            <input class="form-check-input" type="checkbox" id="includeVatInInventoryCost"
-                                   checked="@Model.IncludeVatInInventoryCost" disabled="@(readOnly || !Model.HasVat)" />
-                            <label class="form-check-label" for="includeVatInInventoryCost">Đưa VAT vào giá vốn</label>
-                        </div>
-                    </div>
+            <div class="@(missingPriceCount > 0 ? "is-warning" : "is-success")">
+                <span>Giá nhập</span><strong>@(lines.Count - missingPriceCount)/@lines.Count</strong>
+                <small>@(missingPriceCount > 0 ? $"{missingPriceCount} chưa có giá" : "Đã đủ giá")</small>
+            </div>
+            <div class="@(exceptionCount > 0 ? "is-warning" : "is-success")">
+                <span>Ngoại lệ</span><strong>@exceptionCount</strong>
+                <small>@(exceptionCount > 0 ? "cần kiểm tra" : "Sẵn sàng")</small>
+            </div>
+        </div>
+
+        <nav class="sd-workbench-tabs" aria-label="Các bước duyệt phiếu" role="tablist">
+            <button type="button" class="active" role="tab" aria-selected="true"
+                    data-workbench-tab="goods">
+                <i class="bx bx-package"></i>
+                <span>Hàng hóa</span>
+                <b>@lines.Count</b>
+            </button>
+            <button type="button" role="tab" aria-selected="false"
+                    data-workbench-tab="settlement">
+                <i class="bx bx-wallet"></i>
+                <span>Thanh toán &amp; thuế</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false"
+                    data-workbench-tab="freight">
+                <i class="bx bx-truck"></i>
+                <span>Vận chuyển</span>
+                @if (Model.HasFreight) { <b>@Model.FreightTotal.ToString("N0") đ</b> }
+            </button>
+            @if (canManageInputInvoiceMapping)
+            {
+                <button type="button" role="tab" aria-selected="false"
+                        data-workbench-tab="xml">
+                    <i class="bx bx-receipt"></i>
+                    <span>Đối chiếu XML</span>
+                </button>
+            }
+        </nav>
+
+        <div class="sd-workbench-tab-panel" data-workbench-panel="goods">
+        <section class="sd-manager-exceptions mb-4" id="managerExceptionQueue"
+                 aria-labelledby="managerExceptionQueueTitle">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+                <div>
+                    <h5 class="mb-1" id="managerExceptionQueueTitle">Cần xử lý trước khi duyệt</h5>
+                    <div class="small text-muted">Chỉ hiển thị các quyết định cần Manager chú ý.</div>
                 </div>
-                <div class="col-12 col-md-4">
+                @if (pendingOutsideLines.Count > 0)
+                {
+                    <span class="badge bg-label-warning">@pendingOutsideLines.Count chờ xử lý</span>
+                }
+                @if (unresolvedProvisionalCount > 0)
+                {
+                    <span class="badge bg-label-warning">@unresolvedProvisionalCount sản phẩm chưa có danh mục</span>
+                }
+                @if (catalogReviewLines.Count > 0)
+                {
+                    <span class="badge bg-label-danger">@catalogReviewLines.Count tên sản phẩm tạm</span>
+                }
+            </div>
+
+            @if (overdeliveryLines.Count == 0 && pendingOutsideLines.Count == 0 &&
+                 unresolvedProvisionalCount == 0 && catalogReviewLines.Count == 0)
+            {
+                <div class="sd-manager-exception-empty" role="status">
+                    <i class="bx bx-check-circle" aria-hidden="true"></i>
+                    <span>Không còn ngoại lệ cần xử lý</span>
+                </div>
+            }
+
+            @foreach (var line in catalogReviewLines)
+            {
+                <article class="sd-manager-exception-card is-catalog" id="catalogReview-@line.Id">
+                    <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="sd-catalog-warning-icon"><i class="bx bx-package"></i></span>
+                            <div>
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                    <span class="badge bg-label-danger">Tên dữ liệu cũ</span>
+                                    <span class="small text-muted">Variant #@line.ProductVariantId</span>
+                                </div>
+                                <div class="fw-semibold">@line.CatalogDisplayName</div>
+                                <div class="small text-muted">
+                                    SKU: @(line.CatalogSku ?? line.SkuSnapshot ?? "—") · Mã vạch: @(line.BarcodeSnapshot ?? "—")
+                                </div>
+                            </div>
+                        </div>
+                        @if (!readOnly && canCompleteCatalogProduct)
+                        {
+                            <button type="button" class="btn btn-primary js-complete-catalog-product"
+                                    data-line-id="@line.Id"
+                                    data-variant-id="@line.ProductVariantId"
+                                    data-legacy-name="@line.ProductNameSnapshot"
+                                    data-sku="@(line.CatalogSku ?? line.SkuSnapshot)"
+                                    data-barcode="@line.BarcodeSnapshot">
+                                <i class="bx bx-edit-alt me-1"></i>Hoàn thiện sản phẩm
+                            </button>
+                        }
+                    </div>
+                </article>
+            }
+
+            @if (overdeliveryLines.Count > 0)
+            {
+                <article class="sd-manager-exception-card is-warning">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                        <div>
+                            <span class="badge bg-label-warning mb-2">Vượt PO</span>
+                            @foreach (var line in overdeliveryLines)
+                            {
+                                <div class="fw-semibold">@line.CatalogDisplayName</div>
+                                <div class="small text-muted mb-1">
+                                    Thực nhận @line.Quantity.ToString("0.###") @line.UnitName · vượt
+                                    @line.ProjectedOverdeliveryQuantity.ToString("0.###") @line.BaseUnitName
+                                </div>
+                            }
+                        </div>
+                        @if (!readOnly)
+                        {
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="acceptOverdelivery" />
+                                <label class="form-check-label fw-semibold" for="acceptOverdelivery">
+                                    Chấp nhận vượt
+                                </label>
+                            </div>
+                        }
+                    </div>
+                    @if (!readOnly)
+                    {
+                        <details class="mt-2">
+                            <summary class="small text-primary">Thêm ghi chú (tùy chọn)</summary>
+                            <textarea class="form-control form-control-sm mt-2" id="overdeliveryNote"
+                                      rows="2" maxlength="1000" placeholder="Có thể để trống"></textarea>
+                        </details>
+                    }
+                </article>
+            }
+
+            @foreach (var line in outsideLines)
+            {
+                var isPending = line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Pending;
+                var isAccepted = line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Accepted;
+                <article class="sd-manager-exception-card @(isPending ? "is-warning" : "is-resolved")"
+                         id="outsidePoDecision-@line.Id" data-outside-line-id="@line.Id">
+                    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                        <div>
+                            <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                                <span class="badge bg-label-warning">Ngoài PO</span>
+                                <span class="badge bg-label-@(isPending ? "warning" : isAccepted ? "success" : "secondary")">
+                                    @(isPending ? "Chờ Manager" : isAccepted ? "Đã chấp nhận" : "Đã loại")
+                                </span>
+                            </div>
+                            <div class="fw-semibold">@line.CatalogDisplayName</div>
+                            <div class="small text-muted">
+                                @line.Quantity.ToString("0.###") @line.UnitName
+                                @if (!line.IsBaseUnit)
+                                {
+                                    <span> · tương đương @line.BaseQuantity.ToString("0.###") @line.BaseUnitName</span>
+                                }
+                            </div>
+                        </div>
+                        @if (isPending && canApproveOutsidePo && !readOnly)
+                        {
+                            <div class="d-flex gap-2 flex-wrap" role="group"
+                                 aria-label="Xử lý hàng ngoài PO @line.CatalogDisplayName">
+                                <button type="button" class="btn btn-sm btn-outline-success js-manager-outside-decision"
+                                        data-line-id="@line.Id" data-accept="true">
+                                    Chấp nhận ngoài PO
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger js-manager-outside-decision"
+                                        data-line-id="@line.Id" data-accept="false">
+                                    Loại khỏi phiếu
+                                </button>
+                            </div>
+                        }
+                    </div>
+                    <div class="small text-danger mt-2 d-none js-manager-outside-message"
+                         role="alert" aria-live="assertive"></div>
+                </article>
+            }
+        </section>
+        </div>
+
+        <div class="sd-workbench-tab-panel" data-workbench-panel="settlement" hidden>
+        <section class="sd-commercial-settlement" aria-labelledby="commercialSettlementTitle">
+            <div class="mb-3">
+                <h5 class="mb-1" id="commercialSettlementTitle">Thanh toán &amp; thuế</h5>
+                <div class="small text-muted">Kiểm tra nhà cung cấp, VAT và tình trạng thanh toán tiền hàng.</div>
+            </div>
+            <div class="sd-settlement-grid">
+                <article class="sd-setting-block is-supplier">
+                    <div class="sd-setting-heading">
+                        <span class="sd-setting-icon"><i class="bx bx-store"></i></span>
+                        <div><strong>Nhà cung cấp</strong><small>Đơn vị phát sinh tiền hàng và công nợ</small></div>
+                    </div>
                     <label class="form-label" for="commercialSupplierId">
-                        Nhà cung cấp <span class="sd-supplier-required text-danger">*</span>
+                        Chọn nhà cung cấp <span class="sd-supplier-required text-danger">*</span>
                     </label>
                     <select class="form-select" id="commercialSupplierId" disabled="@readOnly">
                         <option value="">-- Chọn nhà cung cấp --</option>
@@ -81,171 +265,317 @@
                         }
                     </select>
                     <div class="form-text">Nhà cung cấp bắt buộc trước khi duyệt, kể cả phiếu đã trả tiền.</div>
-                </div>
-                <div class="col-12 col-md-2">
-                    <label class="form-label d-block">Thanh toán tiền hàng</label>
+                </article>
+
+                <article class="sd-setting-block">
+                    <div class="sd-setting-heading">
+                        <span class="sd-setting-icon is-vat"><i class="bx bx-receipt"></i></span>
+                        <div><strong>Thuế VAT</strong><small>Cách tính giá vốn của hàng nhập</small></div>
+                    </div>
+                    <div class="sd-commercial-switch">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="commercialHasVat"
+                                   checked="@Model.HasVat" disabled="@readOnly" />
+                            <label class="form-check-label fw-semibold" for="commercialHasVat">Có VAT</label>
+                        </div>
+                        <small class="text-muted">Giá chưa VAT</small>
+                    </div>
+                    <div class="sd-inline-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="includeVatInInventoryCost"
+                               checked="@Model.IncludeVatInInventoryCost" disabled="@(readOnly || !Model.HasVat)" />
+                        <label for="includeVatInInventoryCost">
+                            <strong>Đưa VAT vào giá vốn</strong>
+                            <small>Áp dụng khi thuế không được khấu trừ</small>
+                        </label>
+                    </div>
+                </article>
+
+                <article class="sd-setting-block">
+                    <div class="sd-setting-heading">
+                        <span class="sd-setting-icon is-payment"><i class="bx bx-credit-card"></i></span>
+                        <div><strong>Tiền hàng</strong><small>Trạng thái chi trả cho nhà cung cấp</small></div>
+                    </div>
                     <div class="form-check form-switch sd-paid-switch">
                         <input class="form-check-input" type="checkbox" id="commercialMerchandisePaid"
                                checked="@Model.IsMerchandisePaid" disabled="@readOnly" />
                         <label class="form-check-label fw-semibold" for="commercialMerchandisePaid">Đã trả ngay</label>
                     </div>
-                </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label" for="commercialPayeeName">Người/đơn vị nhận tiền</label>
+                    <label class="form-label mt-3" for="commercialPayeeName">Người/đơn vị nhận tiền</label>
                     <input class="form-control" id="commercialPayeeName" maxlength="250"
                            value="@Model.MerchandisePayeeName" disabled="@readOnly"
-                           placeholder="Thông tin thanh toán/hiển thị (không thay thế nhà cung cấp)" />
-                </div>
+                           placeholder="Nhập khi đã trả tiền" />
+                    <div class="form-text">Thông tin người nhận tiền để đối chiếu, không thay thế nhà cung cấp.</div>
+                </article>
             </div>
+        </section>
         </div>
 
-        <div class="table-responsive sd-commercial-table-wrap">
-            <table class="table align-middle mb-0 sd-commercial-table">
-                <thead>
-                    <tr>
-                        <th style="min-width:270px">Hàng thực nhận</th>
-                        <th class="text-end" style="min-width:110px">Số lượng</th>
-                        <th class="text-end" style="min-width:155px">Giá chưa VAT</th>
-                        <th class="text-end" style="min-width:135px">Giá gần nhất</th>
-                        <th style="min-width:145px">Thuế suất</th>
-                        <th class="text-end" style="min-width:130px">Tiền VAT</th>
-                        <th class="text-end" style="min-width:155px">Tiền hàng sau VAT</th>
-                        <th class="text-end" style="min-width:145px">Phí phân bổ</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var line in Model.Lines.OrderBy(x => x.LineNo))
-                    {
-                        var selectedTaxId = line.TaxId ?? (!readOnly ? line.SuggestedTaxId : null);
-                        <tr class="commercial-line"
-                            data-line-id="@line.Id"
-                            data-line-no="@line.LineNo"
-                            data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
-                            data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
-                            <td>
-                                <div class="fw-semibold">@line.ProductNameSnapshot</div>
-                                <div class="small text-muted">
-                                    @if (!string.IsNullOrWhiteSpace(line.SkuSnapshot))
-                                    {
-                                        <span>SKU: @line.SkuSnapshot · </span>
-                                    }
-                                    <span>@line.UnitName × @line.Factor.ToString("N3")</span>
-                                </div>
-                            </td>
-                            <td class="text-end">
-                                @if (canEditPhysical)
-                                {
-                                    <input class="form-control form-control-sm text-end commercial-quantity"
-                                           type="number" min="0.001" step="0.001"
-                                           value="@line.Quantity.ToString("0.###", CultureInfo.InvariantCulture)"
-                                           data-original="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
-                                           data-unit-id="@line.UnitId"
-                                           data-note="@line.Note"
-                                           aria-label="Số lượng thực nhận" />
-                                }
-                                else
-                                {
-                                <strong>@line.Quantity.ToString("0.###")</strong>
-                                <div class="small text-muted">@line.UnitName</div>
-                                }
-                            </td>
-                            <td>
-                                <div class="input-group input-group-sm">
-                                    <input class="form-control text-end commercial-unit-price" type="number"
-                                           min="0.01" step="0.01"
-                                           value="@line.UnitPriceBeforeVat.ToString("0.##", CultureInfo.InvariantCulture)"
-                                           disabled="@readOnly" aria-label="Giá nhập chưa VAT" />
-                                    <span class="input-group-text">đ</span>
-                                </div>
-                                <div class="small commercial-price-error text-danger"></div>
-                            </td>
-                            <td class="text-end">
-                                <span class="commercial-last-price" data-value="@(line.LastPurchaseUnitPriceBeforeVat?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)">
-                                    @(line.LastPurchaseUnitPriceBeforeVat.HasValue ? line.LastPurchaseUnitPriceBeforeVat.Value.ToString("N0") + " đ" : "Chưa có")
-                                </span>
-                                <div class="small commercial-price-variance text-muted" aria-live="polite"></div>
-                            </td>
-                            <td>
-                                <select class="form-select form-select-sm commercial-tax" disabled="@(readOnly || !Model.HasVat)">
-                                    <option value="" data-rate="">-- Chọn thuế suất --</option>
-                                    @foreach (var tax in taxes)
-                                    {
-                                        <option value="@tax.Id" data-rate="@tax.Rate.ToString(CultureInfo.InvariantCulture)"
-                                                selected="@(selectedTaxId == tax.Id)">@tax.Name (@tax.Rate.ToString("0.##")%)</option>
-                                    }
-                                </select>
-                            </td>
-                            <td class="text-end commercial-line-vat">@line.VatAmount.ToString("N0") đ</td>
-                            <td class="text-end fw-semibold commercial-line-after-vat">@line.LineTotal.ToString("N0") đ</td>
-                            <td>
-                                <div class="input-group input-group-sm">
-                                    <input class="form-control text-end commercial-freight-allocation" type="number"
-                                           min="0" step="0.01"
-                                           value="@line.FreightAllocation.ToString("0.##", CultureInfo.InvariantCulture)"
-                                           disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)" aria-label="Phí vận chuyển phân bổ" />
-                                    <span class="input-group-text">đ</span>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        <div class="sd-commercial-freight mt-4">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div class="sd-workbench-tab-panel" data-workbench-panel="goods">
+        <div class="sd-manager-goods">
+            <div class="sd-table-toolbar">
                 <div>
-                    <h6 class="mb-1">Phí vận chuyển</h6>
-                    <div class="small text-muted">Mặc định ghi nhận riêng. Khi vốn hóa, hệ thống phân bổ theo tiền hàng sau VAT và cho phép sửa từng dòng.</div>
+                    <h5 class="mb-1">Hàng hóa thực nhận</h5>
+                    <div class="small text-muted">Tên chính thức được ưu tiên từ danh mục hiện tại.</div>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-primary" id="commercialAutoAllocate" disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)">
-                    <i class="bx bx-reset me-1"></i>Đặt lại phân bổ tự động
-                </button>
-            </div>
-            <div class="row g-3 align-items-end">
-                <div class="col-12 col-md-2">
-                    <div class="form-check form-switch sd-paid-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="commercialHasFreight"
-                               checked="@Model.HasFreight" disabled="@readOnly" />
-                        <label class="form-check-label fw-semibold" for="commercialHasFreight">Có phí vận chuyển</label>
-                    </div>
-                </div>
-                <div class="col-12 col-md-3">
-                    <div class="form-check form-switch sd-paid-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="capitalizeFreightInInventoryCost"
-                               checked="@Model.CapitalizeFreightInInventoryCost" disabled="@(readOnly || !Model.HasFreight)" />
-                        <label class="form-check-label fw-semibold" for="capitalizeFreightInInventoryCost">Vốn hóa vào giá vốn</label>
-                    </div>
-                </div>
-                <div class="col-12 col-md-2">
-                    <label class="form-label" for="commercialFreightTotal">Tổng phí</label>
-                    <div class="input-group">
-                        <input class="form-control text-end" type="number" min="0" step="0.01"
-                               id="commercialFreightTotal"
-                               value="@Model.FreightTotal.ToString("0.##", CultureInfo.InvariantCulture)"
-                               disabled="@(readOnly || !Model.HasFreight)" />
-                        <span class="input-group-text">đ</span>
-                    </div>
-                </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label" for="commercialFreightPayee">Người/đơn vị nhận tiền</label>
-                    <input class="form-control" id="commercialFreightPayee" maxlength="250"
-                           value="@Model.FreightPayeeName" disabled="@(readOnly || !Model.HasFreight)" />
-                </div>
-                <div class="col-12 col-md-2">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="commercialFreightPaid"
-                               checked="@Model.IsFreightPaid" disabled="@(readOnly || !Model.HasFreight)" />
-                        <label class="form-check-label" for="commercialFreightPaid">Đã trả phí</label>
-                    </div>
-                </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label" for="commercialFreightNote">Ghi chú vận chuyển</label>
-                    <input class="form-control" id="commercialFreightNote" maxlength="1000"
-                           value="@Model.FreightNote" disabled="@(readOnly || !Model.HasFreight)" />
+                <div class="sd-filter-chips" role="group" aria-label="Lọc dòng hàng">
+                    <button type="button" class="active" data-commercial-filter="all">Tất cả <span>@lines.Count</span></button>
+                    <button type="button" data-commercial-filter="catalog">Cần xử lý SP <span>@catalogReviewLines.Count</span></button>
+                    <button type="button" data-commercial-filter="price">Thiếu giá <span>@missingPriceCount</span></button>
+                    <button type="button" data-commercial-filter="exception">Ngoại lệ <span>@exceptionCount</span></button>
                 </div>
             </div>
-            <div class="sd-allocation-status mt-3" id="commercialAllocationStatus"></div>
+            <div class="table-responsive sd-commercial-table-wrap">
+                <table class="table align-middle mb-0 sd-commercial-table">
+                    <thead>
+                        <tr>
+                            <th>Sản phẩm</th>
+                            <th>Thực nhận</th>
+                            <th>Giá nhập</th>
+                            <th>VAT</th>
+                            <th>Thành tiền</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in lines)
+                        {
+                            var selectedTaxId = line.TaxId ?? (!readOnly ? line.SuggestedTaxId : null);
+                            var editableUnitPriceBeforeVat = line.EditableUnitPriceBeforeVat;
+                            var isOutside = line.ReceiptAllocationKind == ReceiptAllocationKind.OutsidePo;
+                            var isOverdelivery = line.ProjectedOverdeliveryQuantity > 0m;
+                            <tr class="commercial-line"
+                                data-line-id="@line.Id"
+                                data-line-no="@line.LineNo"
+                                data-catalog-review="@line.RequiresCatalogReview.ToString().ToLowerInvariant()"
+                                data-price-missing="@(!editableUnitPriceBeforeVat.HasValue ? "true" : "false")"
+                                data-exception="@(isOutside || isOverdelivery || line.RequiresCatalogReview ? "true" : "false")"
+                                data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
+                                data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
+                                <td data-label="Sản phẩm">
+                                    <div class="sd-product-identity">
+                                        <div class="fw-semibold">@line.CatalogDisplayName</div>
+                                        @if (line.RequiresCatalogReview)
+                                        {
+                                            <a class="small text-danger fw-semibold" href="#catalogReview-@line.Id">Cần hoàn thiện tên sản phẩm</a>
+                                        }
+                                        else if (line.UsesLegacyProductSnapshot &&
+                                                 !string.Equals(line.CatalogDisplayName, line.ProductNameSnapshot, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <div class="small text-success"><i class="bx bx-check-circle me-1"></i>Đã nhận diện từ danh mục</div>
+                                            <div class="small text-muted">Dữ liệu cũ: @line.ProductNameSnapshot</div>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(line.CatalogSku ?? line.SkuSnapshot))
+                                    {
+                                        <div class="small text-muted">SKU: @(line.CatalogSku ?? line.SkuSnapshot)</div>
+                                    }
+                                </td>
+                                <td data-label="Thực nhận">
+                                    <strong>@line.Quantity.ToString("0.###") @line.UnitName</strong>
+                                    @if (!line.IsBaseUnit)
+                                    {
+                                        <div class="small text-muted">
+                                            Tương đương @line.BaseQuantity.ToString("0.###") @line.BaseUnitName
+                                        </div>
+                                    }
+                                </td>
+                                <td data-label="Giá nhập">
+                                    <div class="input-group input-group-sm">
+                                        <input class="form-control text-end commercial-unit-price" type="number"
+                                               min="0.01" step="0.01"
+                                               value="@(editableUnitPriceBeforeVat?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty)"
+                                               disabled="@readOnly" aria-label="Giá nhập chưa VAT của @line.CatalogDisplayName" />
+                                        <span class="input-group-text">đ/@line.UnitName</span>
+                                    </div>
+                                    @if (!editableUnitPriceBeforeVat.HasValue)
+                                    {
+                                        <div class="small text-warning commercial-price-missing">
+                                            Chưa có giá nhập — quản lý cần nhập giá trước khi duyệt.
+                                        </div>
+                                    }
+                                    <div class="small text-muted mt-1">
+                                        Giá gần nhất:
+                                        <span class="commercial-last-price"
+                                              data-value="@(line.LastPurchaseUnitPriceBeforeVat?.ToString(CultureInfo.InvariantCulture) ?? string.Empty)">
+                                            @(line.LastPurchaseUnitPriceBeforeVat.HasValue ? line.LastPurchaseUnitPriceBeforeVat.Value.ToString("N0") + " đ" : "Chưa có")
+                                        </span>
+                                    </div>
+                                    <div class="small commercial-price-variance text-muted" aria-live="polite"></div>
+                                    <div class="small commercial-price-error text-danger"></div>
+                                </td>
+                                <td data-label="VAT">
+                                    <select class="form-select form-select-sm commercial-tax"
+                                            disabled="@(readOnly || !Model.HasVat)"
+                                            aria-label="Thuế suất của @line.CatalogDisplayName">
+                                        <option value="" data-rate="">-- Chọn --</option>
+                                        @foreach (var tax in taxes)
+                                        {
+                                            <option value="@tax.Id" data-rate="@tax.Rate.ToString(CultureInfo.InvariantCulture)"
+                                                    selected="@(selectedTaxId == tax.Id)">@tax.Name (@tax.Rate.ToString("0.##")%)</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td data-label="Thành tiền">
+                                    <strong class="commercial-line-after-vat">@line.LineTotal.ToString("N0") đ</strong>
+                                    <div class="small text-muted">VAT: <span class="commercial-line-vat">@line.VatAmount.ToString("N0") đ</span></div>
+                                </td>
+                                <td data-label="Trạng thái">
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <span class="badge bg-label-@(line.RequiresCatalogReview ? "danger" : "success")">
+                                            @(line.RequiresCatalogReview ? "Danh mục: cần xử lý" : "Danh mục: đã nhận diện")
+                                        </span>
+                                        @if (isOutside)
+                                        {
+                                            <span class="badge bg-label-warning">Ngoài PO</span>
+                                            <span class="badge bg-label-@(line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Accepted ? "success" : "warning")">
+                                                @(line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Accepted ? "Đã chấp nhận" : "Chờ xử lý")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-label-success">Trong PO</span>
+                                        }
+                                        @if (isOverdelivery)
+                                        {
+                                            <span class="badge bg-label-warning">Vượt PO</span>
+                                        }
+                                        @if (canManageInputInvoiceMapping)
+                                        {
+                                            <span class="badge bg-label-secondary js-commercial-item-map-status"
+                                                  data-item-map-line-id="@line.Id">Chưa đối chiếu XML</span>
+                                        }
+                                    </div>
+                                    @if (isOutside && line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Pending)
+                                    {
+                                        <a class="small d-inline-block mt-2" href="#outsidePoDecision-@line.Id">Xử lý</a>
+                                    }
+                                    <div class="commercial-line-freight mt-2 @(Model.HasFreight && Model.CapitalizeFreightInInventoryCost ? string.Empty : "d-none")">
+                                        <label class="small text-muted" for="commercialFreightAllocation-@line.Id">Phí phân bổ</label>
+                                        <div class="input-group input-group-sm">
+                                            <input class="form-control text-end commercial-freight-allocation" type="number"
+                                                   id="commercialFreightAllocation-@line.Id" min="0" step="0.01"
+                                                   value="@line.FreightAllocation.ToString("0.##", CultureInfo.InvariantCulture)"
+                                                   disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)" />
+                                            <span class="input-group-text">đ</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div>
+
+        @if (canManageInputInvoiceMapping)
+        {
+            <div class="sd-workbench-tab-panel" data-workbench-panel="xml" hidden>
+            <section class="sd-commercial-disclosure sd-tab-surface" id="commercialXmlDisclosure">
+                <header>
+                    <span>
+                        <strong>Đối chiếu hóa đơn XML</strong>
+                        <small>Đối chiếu XML — tùy chọn; không chặn duyệt phiếu.</small>
+                    </span>
+                    <span id="inputInvoiceMappingSummary" class="badge bg-label-secondary"
+                          role="status" aria-live="polite">Đang tải đối chiếu...</span>
+                </header>
+                <div class="sd-commercial-disclosure-body">
+                    @foreach (var line in lines)
+                    {
+                        <div class="d-flex justify-content-between align-items-center gap-3 py-2 border-bottom">
+                            <div>
+                                <div class="fw-semibold">@line.CatalogDisplayName</div>
+                                <div class="small text-muted">@line.Quantity.ToString("0.###") @line.UnitName</div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary btn-map-input-invoice-line"
+                                    data-line-id="@line.Id"
+                                    data-product-name="@line.CatalogDisplayName"
+                                    data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
+                                    data-unit-name="@line.UnitName"
+                                    data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
+                                Ghép với XML (tùy chọn)
+                            </button>
+                        </div>
+                    }
+                </div>
+            </section>
+            </div>
+        }
+
+        <div class="sd-workbench-tab-panel" data-workbench-panel="freight" hidden>
+        <section class="sd-commercial-disclosure sd-commercial-freight sd-tab-surface"
+                 id="commercialFreightDisclosure">
+            <header>
+                <span>
+                    @if (Model.HasFreight)
+                    {
+                        <strong>Phí vận chuyển: @Model.FreightTotal.ToString("N0") đ</strong>
+                    }
+                    else
+                    {
+                        <strong>Phí vận chuyển: Không có</strong>
+                    }
+                    <small>@(Model.HasFreight ? "Kiểm tra thanh toán và phân bổ." : "Bật khi phiếu có phát sinh phí vận chuyển.")</small>
+                </span>
+                <i class="bx bx-truck" aria-hidden="true"></i>
+            </header>
+            <div class="sd-commercial-disclosure-body">
+                <div class="small text-muted mb-3">
+                    Mặc định ghi nhận riêng. Khi vốn hóa, hệ thống phân bổ theo tiền hàng sau VAT.
+                </div>
+                <div class="d-flex justify-content-end mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="commercialAutoAllocate"
+                            disabled="@(readOnly || !Model.HasFreight || !Model.CapitalizeFreightInInventoryCost)">
+                        <i class="bx bx-reset me-1"></i>Đặt lại phân bổ tự động
+                    </button>
+                </div>
+                <div class="row g-3 align-items-end sd-freight-grid">
+                    <div class="col-12 col-md-2">
+                        <div class="form-check form-switch sd-paid-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="commercialHasFreight"
+                                   checked="@Model.HasFreight" disabled="@readOnly" />
+                            <label class="form-check-label fw-semibold" for="commercialHasFreight">Có phí vận chuyển</label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <div class="form-check form-switch sd-paid-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="capitalizeFreightInInventoryCost"
+                                   checked="@Model.CapitalizeFreightInInventoryCost" disabled="@(readOnly || !Model.HasFreight)" />
+                            <label class="form-check-label fw-semibold" for="capitalizeFreightInInventoryCost">Vốn hóa vào giá vốn</label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <label class="form-label" for="commercialFreightTotal">Tổng phí</label>
+                        <div class="input-group">
+                            <input class="form-control text-end" type="number" min="0" step="0.01"
+                                   id="commercialFreightTotal"
+                                   value="@Model.FreightTotal.ToString("0.##", CultureInfo.InvariantCulture)"
+                                   disabled="@(readOnly || !Model.HasFreight)" />
+                            <span class="input-group-text">đ</span>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-3">
+                        <label class="form-label" for="commercialFreightPayee">Người/đơn vị nhận tiền</label>
+                        <input class="form-control" id="commercialFreightPayee" maxlength="250"
+                               value="@Model.FreightPayeeName" disabled="@(readOnly || !Model.HasFreight)" />
+                    </div>
+                    <div class="col-12 col-md-2">
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="commercialFreightPaid"
+                                   checked="@Model.IsFreightPaid" disabled="@(readOnly || !Model.HasFreight)" />
+                            <label class="form-check-label" for="commercialFreightPaid">Đã trả phí</label>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="form-label" for="commercialFreightNote">Ghi chú vận chuyển</label>
+                        <input class="form-control" id="commercialFreightNote" maxlength="1000"
+                               value="@Model.FreightNote" disabled="@(readOnly || !Model.HasFreight)" />
+                    </div>
+                </div>
+                <div class="sd-allocation-status mt-3" id="commercialAllocationStatus"></div>
+            </div>
+        </section>
         </div>
 
         <div class="sd-commercial-totals mt-4">
@@ -253,26 +583,79 @@
             <div><span>Tiền VAT</span><strong id="commercialVatTotal">0 đ</strong></div>
             <div><span>Tiền hàng</span><strong id="commercialMerchandiseTotal">0 đ</strong></div>
             <div><span>Phí vận chuyển</span><strong id="commercialFreightSummary">0 đ</strong></div>
-            <div class="sd-commercial-grand-total"><span>Giá trị nhập kho theo chính sách</span><strong id="commercialLandedTotal">0 đ</strong></div>
+            <div class="sd-commercial-grand-total"><span>Giá trị nhập kho</span><strong id="commercialLandedTotal">0 đ</strong></div>
         </div>
 
-        <div class="alert alert-danger d-none mt-3 mb-0" id="commercialValidationMessage" role="alert"></div>
+        <div class="alert alert-danger d-none mt-3 mb-0" id="commercialValidationMessage" role="alert" tabindex="-1"></div>
     </div>
 
     @if (!readOnly)
     {
         <div class="sd-commercial-sticky-actions">
-            <div class="small text-muted d-none d-lg-block">
-                Kiểm tra giá, VAT, công nợ và phân bổ · <kbd>Ctrl</kbd> + <kbd>Enter</kbd> để duyệt
+            <div class="sd-manager-save-state">
+                <i class="bx bx-check-circle" aria-hidden="true"></i>
+                <span>Đã lưu</span>
             </div>
-            <div class="d-flex gap-2 ms-auto">
+            <div class="sd-manager-blocker-summary @(pendingOutsideLines.Count > 0 || unresolvedProvisionalCount > 0 || catalogReviewLines.Count > 0 ? "is-blocked" : string.Empty)"
+                 id="managerApprovalBlockerSummary" role="status" aria-live="polite" tabindex="-1">
+                @(catalogReviewLines.Count > 0
+                    ? $"Còn {catalogReviewLines.Count} sản phẩm tạm cần hoàn thiện"
+                    : unresolvedProvisionalCount > 0
+                    ? $"Còn {unresolvedProvisionalCount} sản phẩm chưa có trong danh mục"
+                    : pendingOutsideLines.Count > 0
+                    ? $"Còn {pendingOutsideLines.Count} hàng Ngoài PO chưa xử lý"
+                    : "Sẵn sàng duyệt khi giá và VAT hợp lệ")
+            </div>
+            <div class="d-flex gap-2 ms-auto sd-manager-primary-actions">
                 <button type="button" class="btn btn-outline-danger" id="commercialRejectButton">
-                    <i class="bx bx-x me-1"></i>Từ chối
+                    Trả về chỉnh sửa
                 </button>
-                <button type="button" class="btn btn-success" id="commercialApproveButton">
+                <button type="button" class="btn btn-success" id="commercialApproveButton"
+                        disabled="@(pendingOutsideLines.Count > 0 || unresolvedProvisionalCount > 0 || catalogReviewLines.Count > 0)">
                     <i class="bx bx-check-shield me-1"></i>Duyệt và ghi sổ
                 </button>
             </div>
         </div>
     }
 </section>
+
+@if (!readOnly && canCompleteCatalogProduct)
+{
+    <div class="modal fade" id="completeCatalogProductModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 rounded-4 sd-catalog-modal">
+                <div class="modal-header border-0 pb-0">
+                    <div>
+                        <div class="text-uppercase text-primary small fw-semibold">Hoàn thiện danh mục</div>
+                        <h5 class="modal-title">Đặt tên chính thức cho sản phẩm</h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="catalogReviewLineId" />
+                    <div class="sd-catalog-legacy-box mb-3">
+                        <span>Tên dữ liệu cũ</span>
+                        <strong id="catalogReviewLegacyName">—</strong>
+                        <small id="catalogReviewIdentity">—</small>
+                    </div>
+                    <label class="form-label fw-semibold" for="catalogReviewProductName">
+                        Tên sản phẩm chính thức <span class="text-danger">*</span>
+                    </label>
+                    <input class="form-control form-control-lg" id="catalogReviewProductName"
+                           maxlength="200" autocomplete="off"
+                           placeholder="Ví dụ: Nước giặt OMO Matic 3,6 kg" />
+                    <div class="form-text">
+                        Hệ thống giữ nguyên variant, SKU, mã vạch, tồn kho và lịch sử giá; chỉ hoàn thiện tên đang tạm.
+                    </div>
+                    <div class="small text-danger mt-2" id="catalogReviewMessage" role="alert" aria-live="assertive"></div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <button type="button" class="btn btn-primary" id="btnSaveCatalogProduct">
+                        <i class="bx bx-check me-1"></i>Lưu và nhận diện
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}

@@ -1,0 +1,87 @@
+﻿@await Html.PartialAsync("Sections/_Variables")
+
+@{
+    Layout = "_CommonMasterLayout";
+
+    ViewData["isNavbar"] = false;
+    ViewData["isMenu"] = false;
+    ViewData["isFooter"] = false;
+    ViewData["isFlex"] = false;
+
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "";
+    ViewData["menuCollapsed"] = "";
+}
+
+<div class="pos-prime-layout"
+     data-pos-prime-layout>
+
+    <main class="pos-prime-layout__content">
+        @RenderBody()
+    </main>
+
+</div>
+
+<div class="offcanvas offcanvas-start pos-prime-admin-drawer"
+     tabindex="-1"
+     id="posPrimeAdminDrawer"
+     aria-labelledby="posPrimeAdminDrawerLabel"
+     data-bs-scroll="false"
+     data-bs-backdrop="true">
+
+    <div class="offcanvas-header pos-prime-admin-drawer__header">
+        <div>
+            <div class="pos-prime-admin-drawer__eyebrow">
+                GAOAPP
+            </div>
+
+            <h5 class="offcanvas-title"
+                id="posPrimeAdminDrawerLabel">
+                Menu quản trị
+            </h5>
+        </div>
+
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                aria-label="Đóng menu quản trị">
+        </button>
+    </div>
+
+    <div class="offcanvas-body pos-prime-admin-drawer__body">
+        <div class="pos-prime-menu-host">
+            @await Html.PartialAsync("Sections/Menu/_VerticalMenu")
+        </div>
+    </div>
+
+    <div class="pos-prime-admin-drawer__footer">
+        <a asp-area="Admin"
+           asp-controller="Home"
+           asp-action="Index"
+           class="btn btn-outline-secondary w-100">
+            <i class="bx bx-arrow-back me-1"
+               aria-hidden="true"></i>
+            Về trang quản trị
+        </a>
+    </div>
+</div>
+
+@section VendorStyles {
+    @RenderSection("VendorStyles", required: false)
+}
+
+@section PageStyles {
+    @RenderSection("PageStyles", required: false)
+}
+
+@section VendorScripts {
+    @RenderSection("VendorScripts", required: false)
+}
+
+@section PageScripts {
+    @RenderSection("PageScripts", required: false)
+}
+
+@section Scripts {
+    @RenderSection("Scripts", required: false)
+}

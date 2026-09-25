@@ -51,7 +51,9 @@
 
     <!-- Toastr CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
-    <link rel="stylesheet" href="~/Admin/css/gaoapp.ui.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.design-system.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.responsive-navigation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/employee-account.css" asp-append-version="true" />
 
     <!-- Page Styles -->
     @RenderSection("PageStyles", required: false)
@@ -63,6 +65,7 @@
 <body>
     <!-- Layout Content -->
     @RenderBody()
+    @await Component.InvokeAsync("EmployeeAccount")
     <!--/ Layout Content -->
     <!-- Core Scripts -->
     @await Html.PartialAsync("Sections/_Scripts")
@@ -72,6 +75,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
     <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
     <script src="~/Admin/js/gaoapp.ui.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/employee-account.js" asp-append-version="true"></script>
 
     <!-- Vendor Scripts -->
     @RenderSection("VendorScripts", required: false)

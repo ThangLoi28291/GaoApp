@@ -20,15 +20,18 @@ public class StockDocumentManagementController : Controller
     private readonly IStockDocumentService _stockDocumentService;
     private readonly IBarcodeLookupService _barcodeLookupService;
     private readonly IAuthorizationService _authorizationService;
+    private readonly IStockDocumentSplitService? _stockDocumentSplitService;
 
     public StockDocumentManagementController(
         IStockDocumentService stockDocumentService,
         IBarcodeLookupService barcodeLookupService,
-        IAuthorizationService authorizationService)
+        IAuthorizationService authorizationService,
+        IStockDocumentSplitService? stockDocumentSplitService = null)
     {
         _stockDocumentService = stockDocumentService;
         _barcodeLookupService = barcodeLookupService;
         _authorizationService = authorizationService;
+        _stockDocumentSplitService = stockDocumentSplitService;
     }
 
     [HttpGet("")]
@@ -46,9 +49,15 @@ public class StockDocumentManagementController : Controller
     }
 
     [HttpGet("receipt-form-options")]
-    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
     public async Task<IActionResult> GetReceiptFormOptions(CancellationToken ct)
     {
+        if (!await HasAnyPermissionAsync(
+                PermissionCodes.Inventory.StockDocument.Update,
+                PermissionCodes.Inventory.StockDocument.Approve))
+        {
+            return Forbid();
+        }
+
         var result = await _stockDocumentService.GetReceiptFormOptionsAsync(ct);
         return Ok(result);
     }
@@ -79,6 +88,69 @@ public class StockDocumentManagementController : Controller
         ViewData["ReceiptTaxOptions"] = receiptOptions.Taxes;
 
         return View(model);
+    }
+
+    [HttpPost("{id:int}/catalog-lines/{lineId:int}/complete")]
+    public async Task<IActionResult> CompleteLegacyCatalogProduct(
+        int id,
+        int lineId,
+        [FromBody] CompleteLegacyCatalogProductRequest request,
+        CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "Vui lòng nhập tên sản phẩm hợp lệ."
+            });
+        }
+
+        try
+        {
+            var document = await _stockDocumentService.GetDetailAsync(id, ct);
+            if (document == null)
+                return NotFound(new { success = false, message = "Phiếu nhập kho không tồn tại." });
+
+            var approvePolicy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+                ? PermissionCodes.Purchase.Receipt.Approve
+                : PermissionCodes.Inventory.StockDocument.Approve;
+            if (!(await _authorizationService.AuthorizeAsync(
+                    User, resource: null, policyName: approvePolicy)).Succeeded)
+            {
+                return Forbid();
+            }
+
+            await _stockDocumentService.CompleteLegacyCatalogProductAsync(
+                id, lineId, request, ct);
+            return Json(new
+            {
+                success = true,
+                message = "Đã hoàn thiện tên sản phẩm và giữ nguyên mã biến thể."
+            });
+        }
+        catch (BusinessRuleException exception)
+        {
+            return Conflict(new { success = false, message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("{id:int}/split")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> Split(int id, CancellationToken ct)
+    {
+        if (_stockDocumentSplitService is null)
+            throw new InvalidOperationException("Purchase-receipt split service is not configured.");
+        try
+        {
+            var model = await _stockDocumentSplitService.GetWorkspaceAsync(id, ct);
+            return View(model);
+        }
+        catch (BusinessRuleException exception)
+        {
+            TempData["ErrorMessage"] = exception.SafeMessage;
+            return RedirectToAction(nameof(Edit), new { id });
+        }
     }
     [HttpGet("product-lookup-select2")]
     [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
@@ -151,11 +223,29 @@ public class StockDocumentManagementController : Controller
     }
 
     [HttpPost("update-header")]
-    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Update)]
     public async Task<IActionResult> UpdateHeader([FromBody] UpdateStockDocumentHeaderRequest request, CancellationToken ct)
     {
         try
         {
+            var document = await _stockDocumentService.GetDetailAsync(request.StockDocumentId, ct);
+            if (document == null)
+                return NotFound(new { success = false, message = "Phiếu nhập kho không tồn tại." });
+
+            var requiredPolicy = document.Status == StockDocumentStatus.PendingApproval
+                ? document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+                    ? PermissionCodes.Purchase.Receipt.Approve
+                    : PermissionCodes.Inventory.StockDocument.Approve
+                : document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+                    ? PermissionCodes.Purchase.Receipt.Update
+                    : PermissionCodes.Inventory.StockDocument.Update;
+            if (!(await _authorizationService.AuthorizeAsync(
+                    User,
+                    resource: null,
+                    policyName: requiredPolicy)).Succeeded)
+            {
+                return Forbid();
+            }
+
             await _stockDocumentService.UpdateHeaderAsync(request, ct);
             return Json(new { success = true, message = "Cập nhật thông tin phiếu thành công." });
         }
@@ -232,13 +322,16 @@ public class StockDocumentManagementController : Controller
 
         var vm = new StockDocumentLinesTableViewModel
         {
+            DocumentId = document.Id,
+            RowVersion = document.RowVersion,
             CanEdit = hasUpdatePermission &&
                       (document.Status == StockDocumentStatus.Draft
                     || document.Status == StockDocumentStatus.Rejected),
 
             CanViewCost = hasApprovePermission || hasViewCostPermission,
 
-            Lines = document.Lines?.OrderBy(x => x.LineNo).ToList() ?? new List<StockDocumentLineDto>()
+            Lines = document.Lines?.OrderBy(x => x.LineNo).ToList() ?? new List<StockDocumentLineDto>(),
+            ProvisionalItems = document.ProvisionalItems
         };
 
         return PartialView("_StockDocumentLinesTable", vm);

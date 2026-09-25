@@ -1,4 +1,4 @@
-using GaoApp.Application.DTOs.Invoices;
+﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
@@ -50,11 +50,22 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
             {
                 Id = x.Id,
                 StoreId = x.StoreId,
+                LegalEntityId = x.LegalEntityId,
                 OriginalInvoiceHeadId = x.OriginalInvoiceHeadId,
                 DefaultWarehouseId = x.LegalEntity != null
                     ? x.LegalEntity.DefaultWarehouseId
                     : null,
-                OrderWarehouseId = x.Order.POSShift.WarehouseId
+                OrderWarehouseId = x.Order != null ? x.Order.POSShift.WarehouseId : null,
+                // Legacy/old POS drafts can have no OrderLegalEntityAllocation and
+                // no navigable Order. Keep the stock preflight aligned with the
+                // XML-stock screen by using the store's explicit default warehouse
+                // as a compatibility fallback. Never guess from product stock.
+                StoreDefaultWarehouseId = _db.Warehouses
+                    .Where(w => w.StoreId == x.StoreId && !w.IsDeleted && w.IsActive && w.IsDefault
+                        && (!x.LegalEntityId.HasValue || w.LegalEntityId == x.LegalEntityId.Value))
+                    .OrderBy(w => w.Id)
+                    .Select(w => (int?)w.Id)
+                    .FirstOrDefault()
             })
             .SingleOrDefaultAsync(ct);
 
@@ -64,6 +75,25 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
             {
                 InvoiceHeadId = invoiceHeadId
             };
+        }
+
+        // Some older stores have exactly one active warehouse but never marked
+        // it as IsDefault. That is still an unambiguous warehouse identity, so
+        // use it as a compatibility fallback. If there is more than one, do
+        // not guess: the draft remains blocked until its source warehouse is
+        // configured explicitly.
+        if (!header.StoreDefaultWarehouseId.HasValue)
+        {
+            var activeWarehouseIds = await _db.Warehouses
+                .AsNoTracking()
+                .Where(w => w.StoreId == header.StoreId && !w.IsDeleted && w.IsActive
+                    && (!header.LegalEntityId.HasValue || w.LegalEntityId == header.LegalEntityId.Value))
+                .OrderBy(w => w.Id)
+                .Select(w => w.Id)
+                .Take(2)
+                .ToListAsync(ct);
+            if (activeWarehouseIds.Count == 1)
+                header.StoreDefaultWarehouseId = activeWarehouseIds[0];
         }
 
         // Hóa đơn điều chỉnh/thay thế không tiêu tồn đầu vào lần hai.
@@ -90,120 +120,21 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
             };
         }
 
-        var warehouseIds = required.Select(x => x.WarehouseId).Distinct().ToList();
-        var variantIds = required.Select(x => x.ProductVariantId).Distinct().ToList();
-
-        var eligibleInbound = await (
-                from lineMap in _db.StockDocumentLineInputInvoiceMaps.AsNoTracking()
-                join line in _db.StockDocumentLines.AsNoTracking()
-                    on lineMap.StockDocumentLineId equals line.Id
-                join document in _db.StockDocuments.AsNoTracking()
-                    on lineMap.StockDocumentId equals document.Id
-                where lineMap.StoreId == header.StoreId
-                      && !lineMap.IsDeleted
-                      && lineMap.UseInputInvoice
-                      && !line.IsDeleted
-                      && !document.IsDeleted
-                      && document.Type == StockDocumentType.Receipt
-                      && document.Status == StockDocumentStatus.Confirmed
-                      && warehouseIds.Contains(document.WarehouseId)
-                      && variantIds.Contains(line.ProductVariantId)
-                      && _db.StockDocumentInputInvoiceMaps.Any(headMap =>
-                          headMap.StoreId == header.StoreId
-                          && headMap.StockDocumentId == document.Id
-                          && !headMap.IsDeleted
-                          && !headMap.InputInvoiceHead.IsDeleted)
-                group line by new
-                {
-                    document.WarehouseId,
-                    line.ProductVariantId
-                }
-                into grouped
-                select new QuantitySnapshot
-                {
-                    WarehouseId = grouped.Key.WarehouseId,
-                    ProductVariantId = grouped.Key.ProductVariantId,
-                    BaseQuantity = grouped.Sum(x => x.BaseQuantity)
-                })
-            .ToListAsync(ct);
-
-        var candidateHeaders = await _db.InvoiceHeads
-            .AsNoTracking()
-            .Where(x =>
-                x.StoreId == header.StoreId
-                && x.Id != invoiceHeadId
-                && !x.IsDeleted
-                && x.OriginalInvoiceHeadId == null
-                && (
-                    x.ProviderStatus == InvoiceProviderStatus.Issuing
-                    || x.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber
-                    || x.ProviderStatus == InvoiceProviderStatus.Issued
-                    || x.ProviderStatus == InvoiceProviderStatus.PdfDownloaded
-                    || x.ProviderStatus == InvoiceProviderStatus.ZipDownloaded
-                    || x.ProviderStatus == InvoiceProviderStatus.EmailSent
-                    || x.ProviderStatus == InvoiceProviderStatus.IssueFailed
-                    || x.ProviderInvoiceNo != null))
-            .Select(x => new CommittedHeaderSnapshot
-            {
-                Id = x.Id,
-                ProviderStatus = x.ProviderStatus,
-                ProviderInvoiceNo = x.ProviderInvoiceNo,
-                LastErrorCode = x.LastErrorCode,
-                LastErrorMessage = x.LastErrorMessage,
-                DefaultWarehouseId = x.LegalEntity != null
-                    ? x.LegalEntity.DefaultWarehouseId
-                    : null,
-                OrderWarehouseId = x.Order.POSShift.WarehouseId
-            })
-            .ToListAsync(ct);
-
-        var committedHeaders = candidateHeaders
-            .Where(IsCommitted)
-            .ToDictionary(x => x.Id);
-
-        var committedOutbound = new List<QuantitySnapshot>();
-        if (committedHeaders.Count > 0)
-        {
-            var committedDetails = await _db.InvoiceDetails
-                .AsNoTracking()
-                .Where(x =>
-                    committedHeaders.Keys.Contains(x.InvoiceHeadId)
-                    && !x.IsDeleted
-                    && x.ProductVariantId.HasValue
-                    && x.ProductVariant!.HasInputInvoice)
-                .Select(x => new DetailSnapshot
-                {
-                    InvoiceHeadId = x.InvoiceHeadId,
-                    ProductVariantId = x.ProductVariantId!.Value,
-                    ItemName = x.ItemName,
-                    Quantity = x.Quantity,
-                    AllocationWarehouseId = x.OrderLegalEntityAllocation != null
-                        ? x.OrderLegalEntityAllocation.WarehouseId
-                        : null,
-                    AllocationBaseQuantity = x.OrderLegalEntityAllocation != null
-                        ? x.OrderLegalEntityAllocation.BaseQuantity
-                        : null,
-                    OrderLineBaseQuantity = x.OrderLine != null
-                        ? x.OrderLine.BaseQuantity
-                        : null,
-                    OrderLineQuantity = x.OrderLine != null
-                        ? x.OrderLine.Quantity
-                        : null
-                })
-                .ToListAsync(ct);
-
-            committedOutbound = committedDetails
-                .Select(x => ResolveDetail(x, committedHeaders[x.InvoiceHeadId]))
-                .Where(x => x.BaseQuantity > 0m)
-                .GroupBy(x => new { x.WarehouseId, x.ProductVariantId })
-                .Select(x => new QuantitySnapshot
-                {
-                    WarehouseId = x.Key.WarehouseId,
-                    ProductVariantId = x.Key.ProductVariantId,
-                    BaseQuantity = x.Sum(y => y.BaseQuantity)
-                })
-                .ToList();
-        }
+        var variantIds = required
+            .Select(x => x.ProductVariantId)
+            .Distinct()
+            .ToArray();
+        var warehouseIds = required
+            .Select(x => x.WarehouseId)
+            .Where(x => x > 0)
+            .Distinct()
+            .ToArray();
+        var movements = await new InvoiceInputStockReadRepository(_db)
+            .GetMovementsAsync(header.StoreId, variantIds, warehouseIds, ct);
+        var eligibleInbound = movements.Where(x => x.Kind == "increase" && (!header.LegalEntityId.HasValue || x.LegalEntityId == header.LegalEntityId))
+            .Select(x => new QuantitySnapshot { WarehouseId = x.WarehouseId, ProductVariantId = x.ProductVariantId, BaseQuantity = x.Change }).ToList();
+        var committedOutbound = movements.Where(x => x.InvoiceHeadId != invoiceHeadId && (x.Kind == "decrease" || x.Kind == "hold"))
+            .Select(x => new QuantitySnapshot { WarehouseId = x.WarehouseId, ProductVariantId = x.ProductVariantId, BaseQuantity = -x.Change + x.Held }).ToList();
 
         var lines = required
             .Select(item => new InvoiceInputStockAvailabilityLineDto
@@ -240,16 +171,19 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
             .Where(x =>
                 x.InvoiceHeadId == invoiceHeadId
                 && !x.IsDeleted
-                && x.ProductVariantId.HasValue
-                && x.ProductVariant!.HasInputInvoice)
+                && x.ProductVariantId.HasValue)
             .Select(x => new DetailSnapshot
             {
                 InvoiceHeadId = x.InvoiceHeadId,
                 ProductVariantId = x.ProductVariantId!.Value,
                 ItemName = x.ItemName,
                 Quantity = x.Quantity,
+                LegacyUnitFactor = x.LegacyUnitFactor,
                 AllocationWarehouseId = x.OrderLegalEntityAllocation != null
                     ? x.OrderLegalEntityAllocation.WarehouseId
+                    : null,
+                OrderLineWarehouseId = x.OrderLine != null && x.OrderLine.Order != null
+                    ? x.OrderLine.Order.POSShift.WarehouseId
                     : null,
                 AllocationBaseQuantity = x.OrderLegalEntityAllocation != null
                     ? x.OrderLegalEntityAllocation.BaseQuantity
@@ -283,14 +217,17 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
     {
         var warehouseId = detail.AllocationWarehouseId
                           ?? header.DefaultWarehouseId
+                          ?? detail.OrderLineWarehouseId
                           ?? header.OrderWarehouseId;
+
+        warehouseId ??= header.StoreDefaultWarehouseId;
 
         var baseQuantity = detail.AllocationBaseQuantity
                            ?? ResolveLegacyBaseQuantity(detail);
 
         return new ResolvedDetailSnapshot
         {
-            WarehouseId = warehouseId,
+            WarehouseId = warehouseId ?? 0,
             ProductVariantId = detail.ProductVariantId,
             ItemName = detail.ItemName,
             BaseQuantity = Math.Abs(baseQuantity)
@@ -299,6 +236,7 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
 
     private static decimal ResolveLegacyBaseQuantity(DetailSnapshot detail)
     {
+        if (detail.LegacyUnitFactor.HasValue) return detail.Quantity * detail.LegacyUnitFactor.Value;
         if (detail.OrderLineBaseQuantity.HasValue
             && detail.OrderLineQuantity.HasValue
             && detail.OrderLineQuantity.Value != 0m)
@@ -312,61 +250,25 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
         return detail.Quantity;
     }
 
-    private static bool IsCommitted(CommittedHeaderSnapshot header)
-    {
-        if (!string.IsNullOrWhiteSpace(header.ProviderInvoiceNo))
-            return true;
-
-        if (header.ProviderStatus is
-            InvoiceProviderStatus.Issuing or
-            InvoiceProviderStatus.IssuedWaitingNumber or
-            InvoiceProviderStatus.Issued or
-            InvoiceProviderStatus.PdfDownloaded or
-            InvoiceProviderStatus.ZipDownloaded or
-            InvoiceProviderStatus.EmailSent)
-        {
-            return true;
-        }
-
-        if (header.ProviderStatus != InvoiceProviderStatus.IssueFailed)
-            return false;
-
-        var code = header.LastErrorCode ?? string.Empty;
-        var message = header.LastErrorMessage ?? string.Empty;
-
-        return code.Equals("TIMEOUT", StringComparison.OrdinalIgnoreCase)
-               || code.StartsWith("HTTP_5", StringComparison.OrdinalIgnoreCase)
-               || code.Equals("HTTP_500", StringComparison.OrdinalIgnoreCase)
-               || code.Equals("VIETTEL_SERVER_500", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("timeout", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("HTTP 500", StringComparison.OrdinalIgnoreCase);
-    }
 
     private interface IWarehouseContext
     {
         int? DefaultWarehouseId { get; }
-        int OrderWarehouseId { get; }
+        int? OrderWarehouseId { get; }
+        int? StoreDefaultWarehouseId { get; }
     }
 
     private sealed class InvoiceHeaderSnapshot : IWarehouseContext
     {
         public int Id { get; init; }
         public int StoreId { get; init; }
+        public int? LegalEntityId { get; init; }
         public int? OriginalInvoiceHeadId { get; init; }
         public int? DefaultWarehouseId { get; init; }
-        public int OrderWarehouseId { get; init; }
+        public int? OrderWarehouseId { get; init; }
+        public int? StoreDefaultWarehouseId { get; set; }
     }
 
-    private sealed class CommittedHeaderSnapshot : IWarehouseContext
-    {
-        public int Id { get; init; }
-        public InvoiceProviderStatus ProviderStatus { get; init; }
-        public string? ProviderInvoiceNo { get; init; }
-        public string? LastErrorCode { get; init; }
-        public string? LastErrorMessage { get; init; }
-        public int? DefaultWarehouseId { get; init; }
-        public int OrderWarehouseId { get; init; }
-    }
 
     private sealed class DetailSnapshot
     {
@@ -374,7 +276,9 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
         public int ProductVariantId { get; init; }
         public string ItemName { get; init; } = string.Empty;
         public decimal Quantity { get; init; }
+        public decimal? LegacyUnitFactor { get; init; }
         public int? AllocationWarehouseId { get; init; }
+        public int? OrderLineWarehouseId { get; init; }
         public decimal? AllocationBaseQuantity { get; init; }
         public decimal? OrderLineBaseQuantity { get; init; }
         public decimal? OrderLineQuantity { get; init; }

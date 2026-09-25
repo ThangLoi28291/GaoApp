@@ -30,6 +30,9 @@ public sealed class OrderPaymentConfiguration : IEntityTypeConfiguration<OrderPa
         // b.Property(x => x.FeeAmount).HasPrecision(18, 2);
 
         b.HasIndex(x => new { x.StoreId, x.OrderId });
+        b.HasIndex(x => new { x.StoreId, x.ClientRequestId })
+            .IsUnique().HasFilter("[ClientRequestId] IS NOT NULL")
+            .HasDatabaseName("UX_OrderPayments_StoreId_ClientRequestId");
 
         b.HasQueryFilter(x => !x.IsDeleted);
     }

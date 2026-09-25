@@ -22,6 +22,12 @@ public interface IStockDocumentService
 
     Task<StockDocumentDto?> GetDetailAsync(int id, CancellationToken ct = default);
 
+    Task CompleteLegacyCatalogProductAsync(
+        int documentId,
+        int lineId,
+        CompleteLegacyCatalogProductRequest request,
+        CancellationToken ct = default);
+
     Task<PurchaseReceiptAuditTimelineDto?> GetAuditTimelineAsync(
         int id,
         CancellationToken ct = default);

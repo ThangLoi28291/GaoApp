@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    FILE: pos.render.js
    Mục đích:
    - Chứa toàn bộ hàm render UI cho màn hình POS
@@ -36,14 +36,14 @@ window.PosRender = (function () {
         const parts = [];
 
         if (line?.barcode) {
-            parts.push(`Barcode: ${escapeHtml(line.barcode)}`);
+            parts.push(escapeHtml(line.barcode));
         }
 
         if (line?.sellingUnitName) {
-            parts.push(`Đơn vị: ${escapeHtml(line.sellingUnitName)}`);
+            parts.push(escapeHtml(line.sellingUnitName));
         }
 
-        return parts.join(' | ');
+        return parts.join(' · ');
     }
 
     function buildLineDetailHtml(line) {
@@ -198,6 +198,24 @@ window.PosRender = (function () {
     }
 
     function getNetworkUiState(posState) {
+        const offline = window.PosOffline?.status();
+        if (offline?.sessionIssue) {
+            return { variant: 'blocked', title: offline.sessionIssue.title,
+                message: offline.sessionIssue.message + (offline.pending ? ` Đang giữ ${offline.pending} thao tác tại quầy để đồng bộ/đối soát.` : ''),
+                lastSyncAt: null };
+        }
+        if (offline?.preparing && !offline.message) {
+            return { variant: 'reconnecting', title: 'Đang chuẩn bị bán offline',
+                message: 'Bạn có thể bán hàng trực tuyến trong lúc tải dữ liệu. Bán offline sẽ sẵn sàng khi tải xong.', lastSyncAt: null };
+        }
+        if (offline?.message || offline?.ready && (!offline.connected || offline.pending)) {
+            return {
+                variant: 'offline',
+                title: !offline.ready || !window.PosOffline.canWork() ? 'POS offline chưa sẵn sàng' : offline.connected ? 'Đang đồng bộ dữ liệu tại quầy' : 'Mất kết nối máy chủ — đang bán offline',
+                message: offline.message || (offline.pending ? `${offline.pending} thao tác đã lưu tại quầy, đang chờ đồng bộ.` : 'Giao dịch được lưu trên máy tính tiền.'),
+                lastSyncAt: posState?.offline?.lastSyncAt
+            };
+        }
         const isOnline = !!posState?.offline?.isOnline;
         const connectionStatus = String(posState?.realtime?.connectionStatus || '').trim().toLowerCase();
         const lastSyncAt = posState?.offline?.lastSyncAt || posState?.network?.lastSuccessAt || null;
@@ -258,6 +276,14 @@ window.PosRender = (function () {
         if (!container) return;
 
         const ui = getNetworkUiState(posState);
+        const previousVariant = container.dataset.networkVariant;
+        // Heartbeats and cart refreshes must not reopen or extend the recovery notice.
+        if (ui.variant === 'online' && previousVariant === 'online') return;
+        container.dataset.networkVariant = ui.variant;
+        if (ui.variant === 'online' && !previousVariant) {
+            container.style.display = 'none';
+            return;
+        }
         const lastSyncText = formatNetworkTime(ui.lastSyncAt);
 
         clearTimeout(networkBannerHideTimer);
@@ -274,7 +300,16 @@ window.PosRender = (function () {
 
         container.style.display = '';
 
-        // Kết nối ổn định: hiện 3 giây rồi ẩn
+        if (window.PosOffline?.status().pending > 0) {
+            const tools = document.createElement('div'); tools.className = 'd-flex gap-2 px-3 pb-2';
+            for (const [label, action] of [['Thử đồng bộ', () => window.PosOffline.sync(true)], ['Lưu bản đối soát', () => window.PosOffline.exportPending()]]) {
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm btn-outline-secondary';
+                button.textContent = label; button.addEventListener('click', action); tools.appendChild(button);
+            }
+            container.appendChild(tools);
+        }
+
+        // Chỉ báo phục hồi một lần trong 3 giây sau offline / reconnecting.
         if (ui.variant === 'online') {
             networkBannerHideTimer = setTimeout(function () {
                 container.style.display = 'none';
@@ -785,71 +820,237 @@ window.PosRender = (function () {
        4. CUSTOMER BOX
     ========================================================= */
     function renderCustomerInfo(draft) {
-        const customerInfoBox = document.getElementById('customerInfoBox');
-        if (!customerInfoBox) return;
+        const customerInfoBox =
+            document.getElementById(
+                'customerInfoBox'
+            );
 
-        const customer = getDraftCustomerInfo(draft);
-        const priceTier = String(customer.priceTier || '').trim().toUpperCase();
-        const isWholesale = priceTier === 'WHOLESALE';
-        const reward = draft?.rewardSummary || draft?.RewardSummary || null;
-
-        if (!draft || !customer.customerId) {
-            customerInfoBox.innerHTML = `
-            <div class="text-muted">Khách lẻ</div>
-        `;
+        if (!customerInfoBox) {
             return;
         }
 
-        const availablePoints = Number(reward?.availablePoints || reward?.AvailablePoints || 0);
-        const redeemableVoucherCount = Number(reward?.redeemableVoucherCount || reward?.RedeemableVoucherCount || 0);
-        const availableVoucherCount = Number(reward?.availableVoucherCount || reward?.AvailableVoucherCount || 0);
-        const availableVoucherValue = Number(reward?.availableVoucherValue || reward?.AvailableVoucherValue || 0);
+        const customer =
+            getDraftCustomerInfo(draft);
+
+        const priceTier =
+            String(
+                customer.priceTier || ''
+            )
+                .trim()
+                .toUpperCase();
+
+        const isWholesale =
+            priceTier === 'WHOLESALE';
+
+        const reward =
+            draft?.rewardSummary ||
+            draft?.RewardSummary ||
+            null;
+
+        /*
+         * Không có customer:
+         * giữ rất compact, không dựng empty-card lớn.
+         * Customer selection vẫn qua @ Khách / command center.
+         */
+        if (
+            !draft ||
+            !customer.customerId
+        ) {
+            customerInfoBox.innerHTML = `
+            <div class="pos-customer-empty">
+                <div class="pos-customer-empty__identity">
+                    <div class="pos-customer-empty__name">
+                        Khách lẻ
+                    </div>
+
+                    <div class="pos-customer-empty__hint">
+                        Dùng <strong>@ Khách</strong>
+                        để chọn khách hàng và sử dụng
+                        điểm thưởng / voucher.
+                    </div>
+                </div>
+            </div>
+        `;
+
+            return;
+        }
+
+        const availablePoints =
+            Number(
+                reward?.availablePoints ||
+                reward?.AvailablePoints ||
+                0
+            );
+
+        const redeemableVoucherCount =
+            Number(
+                reward?.redeemableVoucherCount ||
+                reward?.RedeemableVoucherCount ||
+                0
+            );
+
+        const availableVoucherCount =
+            Number(
+                reward?.availableVoucherCount ||
+                reward?.AvailableVoucherCount ||
+                0
+            );
+
+        const availableVoucherValue =
+            Number(
+                reward?.availableVoucherValue ||
+                reward?.AvailableVoucherValue ||
+                0
+            );
+
+        const tierBadge =
+            isWholesale
+                ? `
+                <span class="pos-customer-tier
+                             pos-customer-tier--wholesale">
+                    KHÁCH SỈ
+                </span>
+              `
+                : `
+                <span class="pos-customer-tier
+                             pos-customer-tier--retail">
+                    KHÁCH LẺ
+                </span>
+              `;
+
+        const voucherValueText =
+            availableVoucherValue > 0
+                ? formatMoney(
+                    availableVoucherValue
+                )
+                : 'Chưa có giá trị';
+
+        const redeemText =
+            redeemableVoucherCount > 0
+                ? `Đổi được ${redeemableVoucherCount} phiếu`
+                : 'Chưa đủ điểm đổi phiếu';
+
+        const voucherText =
+            availableVoucherCount > 0
+                ? `${availableVoucherCount} phiếu khả dụng`
+                : 'Chưa có voucher';
 
         customerInfoBox.innerHTML = `
-       <div class="pos-customer-name">
-    ${escapeHtml(customer.name || 'Khách hàng')}
-    ${isWholesale
-                ? '<span class="badge bg-success ms-2">KHÁCH SỈ</span>'
-                : '<span class="badge bg-secondary ms-2">KHÁCH LẺ</span>'}
-</div>
+        <div class="pos-customer-compact">
 
-        <div class="pos-customer-phone">
-            ${escapeHtml(customer.phone || '')}
+            <div class="pos-customer-identity">
+
+                <div class="pos-customer-identity__main">
+
+                    <div class="pos-customer-identity__name">
+                        ${escapeHtml(
+            customer.name ||
+            'Khách hàng'
+        )}
+                    </div>
+
+                    ${tierBadge}
+
+                </div>
+
+                ${customer.phone
+                ? `
+                        <div class="pos-customer-identity__phone">
+                            ${escapeHtml(customer.phone)}
+                        </div>
+                        `
+                : ''
+            }
+
+            </div>
+
+            <div class="pos-customer-benefit-grid">
+
+                <button type="button"
+                        class="pos-customer-benefit-card
+                               pos-customer-benefit-card--points"
+                        data-customer-action="reward"
+                        title="Xem và đổi điểm thưởng">
+
+                    <div class="pos-customer-benefit-card__icon">
+                        <i class="bx bx-star"></i>
+                    </div>
+
+                    <div class="pos-customer-benefit-card__content">
+
+                        <div class="pos-customer-benefit-card__value">
+                            ${formatMoney(
+                availablePoints
+            )}
+                        </div>
+
+                        <div class="pos-customer-benefit-card__label">
+                            điểm
+                        </div>
+
+                        <div class="pos-customer-benefit-card__meta">
+                            ${escapeHtml(redeemText)}
+                        </div>
+
+                    </div>
+
+                </button>
+
+                <button type="button"
+                        class="pos-customer-benefit-card
+                               pos-customer-benefit-card--voucher"
+                        data-customer-action="use-voucher"
+                        title="Xem voucher khả dụng">
+
+                    <div class="pos-customer-benefit-card__icon">
+                        <i class="bx bx-purchase-tag-alt"></i>
+                    </div>
+
+                    <div class="pos-customer-benefit-card__content">
+
+                        <div class="pos-customer-benefit-card__value">
+                            ${availableVoucherCount}
+                        </div>
+
+                        <div class="pos-customer-benefit-card__label">
+                            voucher
+                        </div>
+
+                        <div class="pos-customer-benefit-card__meta">
+                            ${escapeHtml(voucherText)}
+                        </div>
+
+                        ${availableVoucherValue > 0
+                ? `
+                                <div class="pos-customer-benefit-card__amount">
+                                    ${voucherValueText}
+                                </div>
+                                `
+                : ''
+            }
+
+                    </div>
+
+                </button>
+
+            </div>
+
+            <div class="pos-customer-compact__footer">
+
+                <span class="pos-customer-compact__hint">
+                    Bấm vào Điểm hoặc Voucher để xem chi tiết.
+                </span>
+
+                <button type="button"
+                        class="pos-customer-clear-link"
+                        data-customer-action="clear">
+                    <i class="bx bx-user-x"></i>
+                    <span>Bỏ khách</span>
+                </button>
+
+            </div>
+
         </div>
-
-        <div class="pos-customer-reward-box mt-2"
-     role="button"
-     data-customer-action="reward"
-     title="Bấm để đổi điểm thành phiếu">
-            <div class="pos-customer-reward-row">
-                <span>Điểm hiện có</span>
-                <strong>${formatMoney(availablePoints)}</strong>
-            </div>
-
-            <div class="pos-customer-reward-row">
-                <span>Có thể đổi</span>
-                <strong>${redeemableVoucherCount} phiếu</strong>
-            </div>
-
-            <div class="pos-customer-reward-row">
-                <span>Phiếu sẵn</span>
-                <strong>${availableVoucherCount} phiếu · ${formatMoney(availableVoucherValue)}</strong>
-            </div>
-        </div>
-
-       <div class="pos-customer-actions mt-2 d-grid gap-2">
-    <button type="button"
-            class="btn btn-sm btn-primary pos-use-voucher-btn"
-            data-customer-action="use-voucher">
-        Dùng voucher
-    </button>
-
-    <button type="button"
-            class="btn btn-sm btn-outline-danger"
-            data-customer-action="clear">
-        Bỏ khách
-    </button>
-</div>
     `;
     }
     function renderMetaPanelSummary(draft) {
@@ -960,7 +1161,7 @@ window.PosRender = (function () {
     function renderEmptyDraftRow(message) {
         return `
             <tr>
-                <td colspan="6" class="text-center text-muted py-4">${escapeHtml(message || '')}</td>
+                <td colspan="5" class="text-center text-muted py-4">${escapeHtml(message || '')}</td>
             </tr>
         `;
     }
@@ -1084,7 +1285,10 @@ window.PosRender = (function () {
 
     function buildDraftLineRowHtml(line, index) {
         const displayName =
-            buildVariantDisplayName(line.productName || line.itemName || '', line.productVariantName || '') ||
+            buildVariantDisplayName(
+                line.productName || line.itemName || '',
+                line.productVariantName || ''
+            ) ||
             line.itemName ||
             'Sản phẩm';
 
@@ -1092,7 +1296,11 @@ window.PosRender = (function () {
         const quantity = Number(line.quantity || 0);
         const unitPrice = Number(line.unitPrice || 0);
         const lineTotal = Number(line.lineTotal || 0);
-        const isPromotionGift = line.isPromotionGift === true || line.IsPromotionGift === true;
+        const lineDiscount = Number(line.lineDiscount || 0);
+
+        const isPromotionGift =
+            line.isPromotionGift === true ||
+            line.IsPromotionGift === true;
 
         const giftPromotionNote = String(
             line.giftPromotionNote ??
@@ -1118,9 +1326,10 @@ window.PosRender = (function () {
             0
         );
 
-        const originalUnitPrice = originalUnitPriceRaw > 0
-            ? originalUnitPriceRaw
-            : unitPrice;
+        const originalUnitPrice =
+            originalUnitPriceRaw > 0
+                ? originalUnitPriceRaw
+                : unitPrice;
 
         const promotionName = String(
             line.promotionName ??
@@ -1131,12 +1340,6 @@ window.PosRender = (function () {
         const promotionType = Number(
             line.promotionType ??
             line.PromotionType ??
-            0
-        );
-
-        const promotionBuyQuantity = Number(
-            line.promotionBuyQuantity ??
-            line.PromotionBuyQuantity ??
             0
         );
 
@@ -1151,35 +1354,62 @@ window.PosRender = (function () {
             originalUnitPrice > 0 &&
             quantity > 0;
 
-        const isProductDiscountPromotion = hasPromotion && promotionType === 1;
-        const isBuyXGetYPromotion = hasPromotion && promotionType === 3;
+        const isProductDiscountPromotion =
+            hasPromotion &&
+            promotionType === 1;
+
+        const isBuyXGetYPromotion =
+            hasPromotion &&
+            promotionType === 3;
 
         const roundVnd = function (value) {
             return Math.round(Number(value || 0));
         };
 
-        const displayOriginalUnitPrice = roundVnd(originalUnitPrice);
+        const displayOriginalUnitPrice =
+            roundVnd(originalUnitPrice);
 
-        const promotionUnitPrice = hasPromotion
-            ? roundVnd(Math.max(originalUnitPrice - (promotionDiscount / quantity), 0))
-            : roundVnd(unitPrice);
+        const promotionUnitPrice =
+            hasPromotion
+                ? roundVnd(
+                    Math.max(
+                        originalUnitPrice -
+                        (promotionDiscount / quantity),
+                        0
+                    )
+                )
+                : roundVnd(unitPrice);
 
-        const savePerUnit = hasPromotion
-            ? roundVnd(Math.max(displayOriginalUnitPrice - promotionUnitPrice, 0))
-            : 0;
+        const savePerUnit =
+            hasPromotion
+                ? roundVnd(
+                    Math.max(
+                        displayOriginalUnitPrice -
+                        promotionUnitPrice,
+                        0
+                    )
+                )
+                : 0;
 
-        const hasLineDiscount = Number(line.lineDiscount || 0) > 0;
+        const hasLineDiscount =
+            lineDiscount > 0;
 
-        const qtyText = line.sellingUnitName
-            ? `${formatMoney(quantity)} ${escapeHtml(line.sellingUnitName)}`
-            : '';
-
-        const baseQtyText =
-            Number(line.multiplier || 1) > 1 && line.baseUnitName
-                ? `${formatMoney(Number(line.baseQuantity || 0))} ${escapeHtml(line.baseUnitName)}`
+        const qtyText =
+            line.sellingUnitName
+                ? `${formatMoney(quantity)} ${escapeHtml(line.sellingUnitName)}`
                 : '';
 
-        const promoLabel = promotionName || 'Khuyến mãi sản phẩm';
+        const baseQtyText =
+            Number(line.multiplier || 1) > 1 &&
+                line.baseUnitName
+                ? `${formatMoney(
+                    Number(line.baseQuantity || 0)
+                )} ${escapeHtml(line.baseUnitName)}`
+                : '';
+
+        const promoLabel =
+            promotionName ||
+            'Khuyến mãi sản phẩm';
 
         const comboPromotionName = String(
             line.comboPromotionName ??
@@ -1203,182 +1433,393 @@ window.PosRender = (function () {
             comboAllocatedDiscount > 0 ||
             comboPromotionName.length > 0;
 
-        const unitNameForGift = line.sellingUnitName || 'sản phẩm';
+        const unitNameForGift =
+            line.sellingUnitName ||
+            'sản phẩm';
 
         return `
-        <tr data-line-id="${lineId}"
-            data-render-key="${escapeHtml(getDraftLineRenderKey(line))}"
-            data-row-index="${index}"
-          class="pos-line-row ${isPromotionGift ? 'is-promotion-gift' : ''} ${hasLineDiscount ? 'has-line-discount' : ''} ${hasPromotion ? 'has-promotion' : ''}">
-            
-            <td class="pos-line-index">${index + 1}</td>
+    <tr data-line-id="${lineId}"
+        data-render-key="${escapeHtml(
+            getDraftLineRenderKey(line)
+        )}"
+        data-row-index="${index}"
+        class="pos-line-row
+            ${isPromotionGift ? 'is-promotion-gift' : ''}
+            ${hasLineDiscount ? 'has-line-discount' : ''}
+            ${hasPromotion ? 'has-promotion' : ''}">
 
-            <td class="pos-line-name-cell">
-                <div class="pos-line-name-wrap">
-                    <div class="pos-line-product-wrap">
-                        ${line?.hasImage && (line?.imageThumbUrl || line?.imageUrl)
+        <td class="pos-line-name-cell">
+            <div class="pos-line-name-wrap">
+                <div class="pos-line-product-wrap">
+
+                    ${line?.hasImage &&
+                (
+                    line?.imageThumbUrl ||
+                    line?.imageUrl
+                )
                 ? `
-                                <div class="pos-line-thumb-wrap"
-                                     title="Xem ảnh"
-                                     data-image-url="${escapeHtml(line.imageUrl || line.imageThumbUrl || '')}">
-                                    <img class="pos-line-thumb"
-                                         src="${escapeHtml(line.imageThumbUrl || line.imageUrl || '')}"
-                                         alt="${escapeHtml(line.imageAlt || displayName)}"
-                                         loading="lazy" />
-                                </div>
-                            `
+                        <div class="pos-line-thumb-wrap"
+                             title="Xem ảnh"
+                             data-image-url="${escapeHtml(
+                    line.imageUrl ||
+                    line.imageThumbUrl ||
+                    ''
+                )}">
+
+                            <img class="pos-line-thumb"
+                                 src="${escapeHtml(
+                    line.imageThumbUrl ||
+                    line.imageUrl ||
+                    ''
+                )}"
+                                 alt="${escapeHtml(
+                    line.imageAlt ||
+                    displayName
+                )}"
+                                 loading="lazy" />
+                        </div>
+                        `
                 : `
-                                <div class="pos-line-thumb-placeholder">
-                                    IMG
-                                </div>
+                        <div class="pos-line-thumb-placeholder">
+                            IMG
+                        </div>
+                        `
+            }
+
+                    <div class="pos-line-name-main">
+                    ${
+            isPromotionGift
+                ? `
+        <div class="pos-gift-relation">
+            <i class="bx bx-subdirectory-right"
+               aria-hidden="true"></i>
+
+            <span>
+                Tặng kèm khuyến mãi
+            </span>
+        </div>
+        `
+                : ''
+}
+
+                        <div class="pos-line-name">
+                            ${escapeHtml(displayName)}
+
+                            ${isPromotionGift
+                ? `
+                                    <span class="pos-gift-inline-label">
+                                        Hàng tặng
+                                    </span>
+                                    `
+                : ''
+            }
+                        </div>
+
+                        <div class="pos-line-submeta">
+                            ${buildCompactLineMeta(line)}
+                        </div>
+
+                        ${hasLineDiscount
+                ? `
+                            <div class="pos-line-adjustment-note">
+                                <i class="bx bx-purchase-tag-alt"></i>
+                                <span>Giảm dòng</span>
+                                <strong>
+                                    ${formatMoney(lineDiscount)}
+                                </strong>
+                            </div>
                             `
-            }
-
-                       <div class="pos-line-name-main">
-    <div class="pos-line-name">
-        ${escapeHtml(displayName)}
-        ${isPromotionGift ? '<span class="pos-gift-inline-label">Hàng tặng</span>' : ''}
-    </div>
-
-    <div class="pos-line-submeta">${buildCompactLineMeta(line)}</div>
-
-    ${isPromotionGift ? `
-        <div class="pos-gift-badge mt-1">
-            🎁 Hàng tặng khuyến mãi
-        </div>
-        <div class="pos-gift-note">
-            ${escapeHtml(giftPromotionNote || giftPromotionName || 'Hàng tặng từ chương trình khuyến mãi')}
-        </div>
-    ` : ''}
-
-    ${hasComboPromotion
-                ? `
-                                    <div class="pos-line-combo-badge"
-                                         title="${escapeHtml(comboPromotionNote || comboPromotionName)}">
-                                        🎁 ${escapeHtml(comboPromotionName || 'Combo khuyến mãi')}
-                                    </div>
-                                `
                 : ''
             }
-                        </div>
+
+                        ${isPromotionGift
+                ? `
+                            <div class="pos-gift-badge mt-1">
+                                🎁 Hàng tặng khuyến mãi
+                            </div>
+
+                            <div class="pos-gift-note">
+                                ${escapeHtml(
+                    giftPromotionNote ||
+                    giftPromotionName ||
+                    'Hàng tặng từ chương trình khuyến mãi'
+                )}
+                            </div>
+                            `
+                : ''
+            }
+
+                        ${hasComboPromotion
+                ? `
+                            <div class="pos-line-combo-badge"
+                                 title="${escapeHtml(
+                    comboPromotionNote ||
+                    comboPromotionName
+                )}">
+                                🎁 ${escapeHtml(
+                    comboPromotionName ||
+                    'Combo khuyến mãi'
+                )}
+                            </div>
+                            `
+                : ''
+            }
+
                     </div>
-
-                   ${!isPromotionGift ? `
-    <button type="button"
-            class="btn btn-sm btn-outline-primary pos-line-price-btn"
-            data-price-line-id="${lineId}"
-            title="Xem bảng giá sản phẩm">
-        <i class="bx bx-purchase-tag"></i>
-    </button>
-` : ''}
                 </div>
-            </td>
+            </div>
+        </td>
 
-            <td class="pos-line-qty-cell">
-                <div class="pos-qty-stack">
-                 <button type="button"
-        class="btn btn-sm btn-outline-secondary qty-btn"
-        data-inc-line-id="${lineId}"
-        title="Tăng số lượng"
-        ${isPromotionGift ? 'disabled' : ''}>+</button>
+        <td class="pos-line-qty-cell">
 
-                  <input type="number"
-       class="form-control form-control-sm qty-input"
-       min="1"
-       step="1"
-       value="${quantity}"
-       data-qty-line-id="${lineId}"
-       ${isPromotionGift ? 'disabled readonly' : ''} />
+            <div class="pos-qty-inline">
 
-                  <button type="button"
-        class="btn btn-sm btn-outline-secondary qty-btn"
-        data-dec-line-id="${lineId}"
-        title="Giảm số lượng"
-        ${isPromotionGift ? 'disabled' : ''}>-</button>
-                </div>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary qty-btn"
+                        data-dec-line-id="${lineId}"
+                        title="Giảm số lượng"
+                        aria-label="Giảm số lượng"
+                        ${isPromotionGift ? 'disabled' : ''}>
+                    −
+                </button>
 
-                ${qtyText || baseQtyText
-                ? `
-                        <div class="pos-qty-summary">
-                            ${qtyText ? `<div>${qtyText}</div>` : ''}
-                            ${baseQtyText ? `<div class="pos-qty-base">(${baseQtyText})</div>` : ''}
-                        </div>
-                    `
+                <input type="number"
+                       class="form-control form-control-sm qty-input"
+                       min="1"
+                       step="1"
+                       value="${quantity}"
+                       data-qty-line-id="${lineId}"
+                       aria-label="Số lượng"
+                       ${isPromotionGift
+                ? 'disabled readonly'
                 : ''
-            }
-            </td>
+            } />
 
-            <td class="pos-line-money-cell pos-line-money-cell--center">
-                ${isProductDiscountPromotion
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary qty-btn"
+                        data-inc-line-id="${lineId}"
+                        title="Tăng số lượng"
+                        aria-label="Tăng số lượng"
+                        ${isPromotionGift ? 'disabled' : ''}>
+                    +
+                </button>
+
+            </div>
+
+            ${qtyText || baseQtyText
                 ? `
-                        <div class="pos-line-price-stack">
-                            <div class="pos-line-original-price">
-                                ${formatMoney(displayOriginalUnitPrice)}
-                            </div>
+                <div class="pos-qty-summary">
 
-                            <div class="pos-line-promo-price">
-                                ${formatMoney(promotionUnitPrice)}
-                            </div>
-
-                            <div class="pos-line-promo-badge" title="${escapeHtml(promoLabel)}">
-                                <i class="bx bx-purchase-tag"></i>
-                                <span>${escapeHtml(promoLabel)}</span>
-                            </div>
-
-                            ${savePerUnit > 0
-                    ? `
-                                    <div class="pos-line-promo-save">
-                                        Tiết kiệm <strong>${formatMoney(savePerUnit)}</strong>/${escapeHtml(line.sellingUnitName || 'đv')}
-                                    </div>
-                                `
+                    ${qtyText
+                    ? `<span>${qtyText}</span>`
                     : ''
                 }
+
+                    ${baseQtyText
+                    ? `
+                            <span class="pos-qty-base">
+                                · ${baseQtyText}
+                            </span>
+                            `
+                    : ''
+                }
+
+                </div>
+                `
+                : ''
+            }
+
+        </td>
+
+        <td class="pos-line-money-cell
+                   pos-line-money-cell--center">
+
+            ${isProductDiscountPromotion
+                ? `
+                <div class="pos-line-price-stack">
+
+                    <div class="pos-line-original-price">
+                        ${formatMoney(
+                    displayOriginalUnitPrice
+                )}
+                    </div>
+
+                    <div class="pos-line-promo-price">
+                        ${formatMoney(
+                    promotionUnitPrice
+                )}
+                    </div>
+
+                    <div class="pos-line-promo-badge"
+                         title="${escapeHtml(
+                    promoLabel
+                )}">
+                        <i class="bx bx-purchase-tag"></i>
+                        <span>
+                            ${escapeHtml(promoLabel)}
+                        </span>
+                    </div>
+
+                    ${savePerUnit > 0
+                    ? `
+                        <div class="pos-line-promo-save">
+                            Tiết kiệm
+                            <strong>
+                                ${formatMoney(savePerUnit)}
+                            </strong>/
+                            ${escapeHtml(
+                        line.sellingUnitName ||
+                        'đv'
+                    )}
                         </div>
-                    `
+                        `
+                    : ''
+                }
+
+                </div>
+                `
                 : isBuyXGetYPromotion
                     ? `
-                            <div class="pos-line-price-stack pos-line-price-stack--gift">
-                                <div class="pos-line-money">
-                                    ${formatMoney(unitPrice)}
-                                </div>
+                <div class="pos-line-price-stack
+                            pos-line-price-stack--gift">
 
-                                <div class="pos-line-gift-badge" title="${escapeHtml(promoLabel)}">
-                                    🎁 <span>${escapeHtml(promoLabel)}</span>
-                                </div>
+                    <div class="pos-line-money">
+                        ${formatMoney(unitPrice)}
+                    </div>
 
-                                ${promotionGiftQuantity > 0
+                    <div class="pos-line-gift-badge"
+                         title="${escapeHtml(
+                        promoLabel
+                    )}">
+                        🎁
+                        <span>
+                            ${escapeHtml(promoLabel)}
+                        </span>
+                    </div>
+
+                    ${promotionGiftQuantity > 0
                         ? `
-                                        <div class="pos-line-gift-note">
-                                            Đã tặng <strong>${formatMoney(promotionGiftQuantity)}</strong> ${escapeHtml(unitNameForGift)}
-                                        </div>
-                                    `
+                        <div class="pos-line-gift-note">
+                            Đã tặng
+                            <strong>
+                                ${formatMoney(
+                            promotionGiftQuantity
+                        )}
+                            </strong>
+                            ${escapeHtml(
+                            unitNameForGift
+                        )}
+                        </div>
+                        `
                         : ''
                     }
-                            </div>
-                        `
+
+                </div>
+                `
                     : `
-                            <div class="pos-line-money">${formatMoney(unitPrice)}</div>
-                        `
+                <div class="pos-line-money">
+                    ${formatMoney(unitPrice)}
+                </div>
+                `
             }
-            </td>
 
-            <td class="pos-line-total-cell pos-line-total-cell--center">
-                <div class="pos-line-total">${formatMoney(lineTotal)}</div>
-            </td>
+        </td>
 
-            <td class="pos-line-remove-cell">
-             ${!isPromotionGift ? `
-    <button type="button"
-            class="btn btn-sm btn-outline-danger pos-remove-btn"
-            data-remove-line-id="${lineId}">
-        Xóa
-    </button>
-` : `
-    <span class="pos-gift-lock-text">Tự động</span>
-`}
-            </td>
-        </tr>
-    `;
+        <td class="pos-line-total-cell
+                   pos-line-total-cell--center">
+
+            <div class="pos-line-total">
+                ${formatMoney(lineTotal)}
+            </div>
+
+        </td>
+
+        <td class="pos-line-actions-cell">
+
+            ${!isPromotionGift
+                ? `
+                <div class="dropdown
+                            dropstart
+                            pos-line-actions">
+
+                    <button type="button"
+                            class="btn
+                                   pos-line-actions-toggle"
+                            data-bs-toggle="dropdown"
+                            data-bs-auto-close="true"
+                            aria-expanded="false"
+                            aria-label="Mở tác vụ dòng hàng"
+                            title="Tác vụ dòng hàng">
+
+                        <i class="bx
+                                  bx-dots-vertical-rounded">
+                        </i>
+                    </button>
+
+                    <ul class="dropdown-menu
+                               pos-line-actions-menu">
+
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item"
+                                    data-price-line-id="${lineId}">
+
+                                <i class="bx bx-purchase-tag"></i>
+                                <span>Bảng giá</span>
+                            </button>
+                        </li>
+
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item"
+                                    data-line-discount-id="${lineId}"
+                                    data-line-discount-amount="${lineDiscount}"
+                                    data-line-name="${escapeHtml(
+                    displayName
+                )}">
+
+                                <i class="bx bx-discount"></i>
+                                <span>Giảm giá dòng</span>
+                            </button>
+                        </li>
+
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item"
+                                    data-open-qty-line-id="${lineId}">
+
+                                <i class="bx bx-edit-alt"></i>
+                                <span>Sửa số lượng</span>
+                            </button>
+                        </li>
+
+                        <li>
+                            <hr class="dropdown-divider" />
+                        </li>
+
+                        <li>
+                            <button type="button"
+                                    class="dropdown-item text-danger"
+                                    data-remove-line-id="${lineId}">
+
+                                <i class="bx bx-trash"></i>
+                                <span>Xóa sản phẩm</span>
+                            </button>
+                        </li>
+
+                    </ul>
+                </div>
+                `
+                : `
+                <span class="pos-gift-lock-text">
+                    Tự động
+                </span>
+                `
+            }
+
+        </td>
+    </tr>
+`;
     }
 
     function buildDraftLinesHtml(lines) {
@@ -2178,10 +2619,10 @@ window.PosRender = (function () {
         if (patch.linesChanged) {
             patchDraftLines(prevDraft, nextDraft);
 
-            if (touchedLineId) {
+            if (touchedLineId && !window.PosScanFeedback?.isPending()) {
                 requestAnimationFrame(function () {
                     highlightTouchedLine(touchedLineId, {
-                        scroll: true
+                        scroll: false
                     });
                 });
             }
@@ -2203,6 +2644,8 @@ window.PosRender = (function () {
 
         if (patch.linesChanged || patch.paymentsChanged || patch.summaryChanged || patch.fieldsChanged) {
             renderSummary(nextDraft);
+            renderSummaryState(nextDraft);
+            renderSummaryActionState(nextDraft);
             renderMetaPanelSummary(nextDraft);
             renderCurrentBadge({ currentOrderId: nextOrderId }, nextDraft);
             renderPaymentPreview(posState);
@@ -2224,6 +2667,9 @@ window.PosRender = (function () {
     }
     function renderScreen(screen, posState) {
         const currentDraft = screen?.currentDraft || null;
+        const cartScroller = document.querySelector('.pos-cart-scroll');
+        const previousOrderId = posState?.business?.currentDraft?.orderId || posState?.currentDraft?.orderId;
+        const cartScrollTop = previousOrderId === currentDraft?.orderId ? cartScroller?.scrollTop || 0 : 0;
         const currentOrderId =
             screen?.currentCart?.currentOrderId ||
             currentDraft?.currentOrderId ||
@@ -2246,15 +2692,24 @@ window.PosRender = (function () {
 
         renderDraftSections(currentDraft, posState);
         renderHeldList(heldOrders);
+        window.PosScanFeedback?.sync(currentDraft);
+        if (cartScroller) cartScroller.scrollTop = cartScrollTop;
     }
 
     function syncDraftToUi(draft, posState) {
+        const cartScroller = document.querySelector('.pos-cart-scroll');
+        const cartScrollTop = cartScroller?.scrollTop || 0;
         const prevDraft =
             posState?.business?.currentDraft ||
             posState?.currentDraft ||
             null;
 
-        return applyDraftPatch(prevDraft, draft || null, posState);
+        const patch = applyDraftPatch(prevDraft, draft || null, posState);
+        window.PosScanFeedback?.sync(draft || null);
+        // Replacing/reordering rows can temporarily collapse the scroll area.
+        // Restore after the whole patch, never scroll the page toward a scan.
+        if (cartScroller) cartScroller.scrollTop = patch?.draftIdentityChanged ? 0 : cartScrollTop;
+        return patch;
     }
 
     /* =========================================================

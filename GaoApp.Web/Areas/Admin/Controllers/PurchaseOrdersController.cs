@@ -21,26 +21,32 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public sealed class PurchaseOrdersController : Controller
 {
     private readonly IPurchaseOrderService _service;
+    private readonly IPurchaseOrderIndexReadService _indexReadService;
     private readonly IProcurementCatalogService _procurementCatalogService;
     private readonly IStockDocumentService _stockDocumentService;
     private readonly IUnitService _unitService;
     private readonly ICurrentStore _currentStore;
     private readonly IAuthorizationService _authorizationService;
+    private readonly IConfiguration _configuration;
 
     public PurchaseOrdersController(
         IPurchaseOrderService service,
+        IPurchaseOrderIndexReadService indexReadService,
         IProcurementCatalogService procurementCatalogService,
         IStockDocumentService stockDocumentService,
         IUnitService unitService,
         ICurrentStore currentStore,
-        IAuthorizationService authorizationService)
+        IAuthorizationService authorizationService,
+        IConfiguration configuration)
     {
         _service = service;
+        _indexReadService = indexReadService;
         _procurementCatalogService = procurementCatalogService;
         _stockDocumentService = stockDocumentService;
         _unitService = unitService;
         _currentStore = currentStore;
         _authorizationService = authorizationService;
+        _configuration = configuration;
     }
 
     [HttpGet("")]
@@ -51,17 +57,40 @@ public sealed class PurchaseOrdersController : Controller
         if (!await CanAccessOrdersAsync()) return Forbid();
         var canViewCost = await HasPermissionAsync(PermissionCodes.Purchase.Order.ViewCost);
         var canApprove = await HasPermissionAsync(PermissionCodes.Purchase.Order.Approve);
-        if (!canApprove && string.Equals(query.Tab, "awaiting", StringComparison.OrdinalIgnoreCase))
-            query.Tab = "all";
-        var options = await _service.GetFormOptionsAsync(ct);
         return View(new PurchaseOrderIndexViewModel
         {
-            Result = await _service.GetListAsync(query, canViewCost, canApprove, ct),
-            LegalEntities = options.LegalEntities,
             CanCreate = await HasPermissionAsync(PermissionCodes.Purchase.Order.Create),
             CanViewCost = canViewCost,
             CanApprove = canApprove
         });
+    }
+
+    [HttpGet("data")]
+    public async Task<IActionResult> GetPurchaseOrderIndexData(
+        [FromQuery] PurchaseOrderIndexQueryRequest request,
+        CancellationToken ct)
+    {
+        if (!await CanAccessOrdersAsync()) return Forbid();
+        var canViewCost = await HasPermissionAsync(PermissionCodes.Purchase.Order.ViewCost);
+        return Json(await _indexReadService.GetPageAsync(request, canViewCost, ct));
+    }
+
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetPurchaseOrderIndexFilterOptions(CancellationToken ct)
+    {
+        if (!await CanAccessOrdersAsync()) return Forbid();
+        return Json(await _indexReadService.GetFilterOptionsAsync(ct));
+    }
+
+    [HttpGet("quick-view")]
+    public async Task<IActionResult> GetPurchaseOrderQuickView(
+        [FromQuery] int orderId,
+        CancellationToken ct)
+    {
+        if (!await CanAccessOrdersAsync()) return Forbid();
+        var canViewCost = await HasPermissionAsync(PermissionCodes.Purchase.Order.ViewCost);
+        var result = await _indexReadService.GetQuickViewAsync(orderId, canViewCost, ct);
+        return result is null ? NotFound() : Json(result);
     }
 
     [HttpGet("create")]
@@ -189,7 +218,7 @@ public sealed class PurchaseOrdersController : Controller
             Status = detail.Status,
             Request = new SavePurchaseOrderRequest
             {
-                Id = detail.Id, Title = detail.Title, SupplierId = detail.SupplierId, ExpectedWarehouseId = detail.ExpectedWarehouseId,
+                Id = detail.Id, Title = detail.Title, SupplierId = detail.SupplierId ?? 0, ExpectedWarehouseId = detail.ExpectedWarehouseId,
                 LegalEntityId = detail.LegalEntityId, OrderDate = detail.OrderDate,
                 ExpectedDeliveryDate = detail.ExpectedDeliveryDate, Note = detail.Note, HasVat = false,
                 OutsideRequestReason = detail.OutsideRequestReason,
@@ -293,6 +322,8 @@ public sealed class PurchaseOrdersController : Controller
             (!x.ProductVariantId.HasValue || !x.ProductUnitConversionId.HasValue));
         var canQuickCreateProduct = canResolveItems &&
                                     await HasPermissionAsync(PermissionCodes.Catalog.Product.Create);
+        ViewData["ReceivingWorkbenchEnabled"] =
+            _configuration.GetValue<bool>("ReceivingWorkbench:Enabled");
 
         return View(new PurchaseOrderDetailsViewModel
         {
@@ -396,8 +427,16 @@ public sealed class PurchaseOrdersController : Controller
 
     [HttpPost("{id:int}/approve")]
     [Authorize(Policy = PermissionCodes.Purchase.Order.Approve)]
-    public Task<IActionResult> Approve(int id, [FromForm] PurchaseWorkflowRequest request, CancellationToken ct)
-        => RunWorkflow(() => _service.ApproveAsync(id, request, ct), id);
+    public Task<IActionResult> Approve(int id, [FromForm] ApprovePurchaseOrderRequest request, CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["Error"] = "Vui lòng chọn nhà cung cấp trước khi duyệt đơn đặt hàng.";
+            return Task.FromResult<IActionResult>(RedirectToAction(nameof(Details), new { id }));
+        }
+
+        return RunWorkflow(() => _service.ApproveAsync(id, request, ct), id);
+    }
 
     [HttpPost("{id:int}/return")]
     [Authorize(Policy = PermissionCodes.Purchase.Order.Approve)]
@@ -484,6 +523,7 @@ public sealed class PurchaseOrdersController : Controller
     private async Task<bool> CanUseProcurementProductLookupAsync()
     {
         if (await CanUseOrderEditorAsync()) return true;
+        if (await HasPermissionAsync(PermissionCodes.Purchase.Order.Approve)) return true;
         return await HasPermissionAsync(PermissionCodes.Purchase.Receipt.Create);
     }
 
@@ -521,7 +561,7 @@ public sealed class PurchaseOrdersController : Controller
             Order = detail,
             Request = request,
             Options = await _service.GetFormOptionsAsync(
-                request.SupplierId > 0 ? request.SupplierId : detail.SupplierId,
+                request.SupplierId is > 0 ? request.SupplierId : detail.SupplierId,
                 detail.Lines.Where(x => x.ProductUnitConversionId.HasValue)
                     .Select(x => x.ProductUnitConversionId!.Value).ToArray(),
                 ct)

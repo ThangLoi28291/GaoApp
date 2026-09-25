@@ -1,0 +1,75 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
+@{
+    ViewData["Title"] = "Chi tiết giá vốn & lợi nhuận";
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+    var canSales = (await Authorization.AuthorizeAsync(User, PermissionCodes.Report.Sales.View)).Succeeded;
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/reports/profit-report.css" asp-append-version="true" />
+}
+<div class="profit-report" data-profit-report data-mode="detail" data-can-sales="@canSales.ToString().ToLowerInvariant()"
+     data-url="/admin/reports/profit/data" aria-busy="true">
+    <header class="profit-heading">
+        <div><p class="profit-eyebrow">BÁO CÁO • LỢI NHUẬN GỘP</p><h1>Chi tiết giá vốn & lợi nhuận</h1>
+            <p>Giá vốn mới nhất theo kỳ bán gốc. Lợi nhuận gộp chưa trừ chi phí vận hành.</p></div>
+        <nav aria-label="Điều hướng lợi nhuận" class="profit-actions">
+            <a class="btn btn-outline-secondary" data-profit-back href="/admin/reports/profit">Tổng quan lợi nhuận</a>
+            <a class="btn btn-outline-primary" data-profit-activity href="/admin/reports/cost-adjustments">Điều chỉnh giá vốn</a>
+            <button class="btn btn-primary" type="button" data-profit-refresh>Làm mới</button>
+        </nav>
+    </header>
+    <form data-profit-filters class="profit-filters" aria-label="Bộ lọc báo cáo">
+        <label>Kỳ bán — từ ngày<input type="date" name="fromDate" required /></label>
+        <label>Đến ngày<input type="date" name="toDate" required /></label>
+        <label >So sánh<select name="compare"><option value="previous">Kỳ trước</option><option value="none">Không so sánh</option></select></label>
+        <label>Terminal<select name="terminalId"><option value="">Tất cả terminal</option></select></label>
+        <label>Khách hàng<select name="customerState"><option value="all">Tất cả</option><option value="linked">Có khách hàng</option><option value="guest">Khách lẻ</option></select></label>
+        <button type="submit" class="btn btn-primary">Áp dụng</button>
+    </form>
+    <div data-profit-live role="status" aria-live="polite">Đang tải báo cáo…</div>
+    <div data-profit-error role="alert" class="profit-error" hidden><span></span> <button type="button" class="btn btn-outline-primary" data-profit-retry>Thử lại</button></div>
+    <p data-profit-context class="profit-context"></p>
+    <div data-profit-results hidden>
+        <p data-profit-empty class="profit-notice" hidden></p>
+        <p data-profit-quality class="profit-notice"></p>
+        <section class="profit-kpis" data-profit-kpis aria-label="Sáu chỉ số lợi nhuận"></section>
+        <div class="profit-panels">
+            <section class="profit-panel"><h2>Profit Bridge</h2><p>Net Sales − COGS = Lợi nhuận gộp</p><dl data-profit-bridge></dl></section>
+            <section class="profit-panel"><h2>Giá vốn & mức độ xác định</h2><p data-profit-cost-state></p>
+                <p data-profit-exposure></p><button type="button" class="btn btn-outline-primary" data-profit-drill="provisional">Xem phạm vi còn tạm tính</button>
+                <p class="profit-muted">Giá vốn đã xác định không có nghĩa kỳ kế toán đã khóa sổ.</p></section>
+        </div>
+        <section class="profit-panel" data-profit-trend-panel>
+            <div class="profit-chart-heading"><h2 data-profit-chart-title aria-live="polite">Xu hướng Lợi nhuận gộp</h2>
+            <label>Chỉ số<select data-profit-metric><option value="grossProfit">Lợi nhuận gộp</option><option value="netSales">Net Sales</option><option value="cogs">COGS</option></select></label></div>
+            <p data-profit-legend class="profit-muted"></p><div data-profit-chart></div>
+            <details open><summary>Bảng dữ liệu tương đương</summary><div class="profit-table-wrap"><table data-profit-trend-table></table></div></details>
+        </section>
+        <section class="profit-panel">
+            <h2>Chi tiết theo ngày / đơn</h2>
+            <form data-profit-detail-filter class="profit-detail-filters">
+                <label>Tìm mã đơn<input name="search" maxlength="100" /></label>
+                <label>Sắp xếp<select name="sort"><option value="newest">Mới nhất</option><option value="oldest">Cũ nhất</option></select></label>
+                <label>Số dòng<select name="pageSize"><option>25</option><option>50</option><option>100</option></select></label>
+                <button type="submit" class="btn btn-outline-primary">Lọc chi tiết</button>
+            </form>
+            <p data-profit-bucket hidden></p>
+            <div class="profit-table-wrap"><table data-profit-detail-table></table></div>
+            <div class="profit-pagination"><button type="button" data-profit-prev class="btn btn-outline-primary">Trước</button>
+                <span data-profit-page></span><button type="button" data-profit-next class="btn btn-outline-primary">Sau</button></div>
+        </section>
+    </div>
+    <details class="profit-panel profit-help"><summary>Cách đọc báo cáo</summary>
+        <p>Net Sales = Gross Sales − Discounts − Returns. Trả hàng theo ngày hoàn tất chứng từ trả; Refund Amount không bị trừ thêm.</p>
+        <p>COGS dùng lịch sử định giá và hoàn giá vốn gắn với dòng bán gốc. Điều chỉnh sau kỳ bán cập nhật lại kỳ bán; không cộng hoạt động điều chỉnh lần nữa.</p>
+        <p>Gross Profit = Net Sales − COGS. Gross Margin = Gross Profit ÷ Net Sales × 100%. Net Sales bằng 0: biên lợi nhuận là —. Net Sales âm: tỷ lệ giữ nguyên dấu của phép chia.</p>
+        <p>NoRestock giảm Net Sales theo chứng từ trả; không tự hoàn giá vốn khi không có lịch sử hoàn tương ứng.</p>
+        <p>Mức độ xác định giá vốn: Đã xác định / Tạm tính / Chưa đủ dữ liệu. Phạm vi thiếu dữ liệu không được thay bằng giá vốn 0 hoặc tổng của phần dữ liệu còn lại.</p>
+    </details>
+</div>
+@section PageScripts {
+    <script src="~/Admin/js/reports/profit-report.page.js" asp-append-version="true"></script>
+}

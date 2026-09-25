@@ -115,8 +115,13 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         CreateUserInStoreRequest request,
         CancellationToken ct = default)
     {
+        // Linking an existing global identity is a host operation. A store's
+        // employee manager must not claim another store's account by guessing its ID.
+        if (!await CanAssignExistingUsersAsync(actorUserId, ct))
+            return (false, "Chỉ quản trị hệ thống được gán tài khoản đã tồn tại. Hãy dùng chức năng tạo nhân viên mới.", null);
+
         var user = await _userRepository.GetByIdAsync(request.UserId, ct);
-        if (user == null)
+        if (user == null || user.IsHostAdmin)
             return (false, "Người dùng không tồn tại.", null);
 
         if (!user.IsActive || user.IsDeleted)
@@ -223,6 +228,12 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         }).ToList();
     }
 
+    public async Task<bool> CanAssignExistingUsersAsync(int? actorUserId, CancellationToken ct = default)
+    {
+        var actor = actorUserId.HasValue ? await _userRepository.GetByIdAsync(actorUserId.Value, ct) : null;
+        return actor is { IsHostAdmin: true, IsActive: true, IsDeleted: false };
+    }
+
     public async Task<List<RoleLookupItemDto>> GetRoleLookupAsync(int storeId, bool onlyActive = true, CancellationToken ct = default)
     {
         var roles = await _roleRepository.GetLookupAsync(storeId, onlyActive, ct);
@@ -241,6 +252,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     CreateEmployeeInStoreRequest request,
     CancellationToken ct = default)
     {
+        if (!IsAcceptablePassword(request.Password))
+            return (false, "Mật khẩu phải có từ 12 đến 128 ký tự.", null);
         var userName = request.UserName.Trim();
 
         var existsUser = await _userRepository.ExistsByUserNameAsync(userName, ct);
@@ -294,6 +307,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     int? actorUserId,
     CancellationToken ct = default)
     {
+        if (!IsAcceptablePassword(newPassword))
+            return (false, "Mật khẩu phải có từ 12 đến 128 ký tự.");
         var mapping = await _userInStoreRepository
             .GetByUserIdAsync(storeId, userId, ct);
 
@@ -302,6 +317,9 @@ public class UserInStoreAdminService : IUserInStoreAdminService
 
         if (mapping.User.IsHostAdmin)
             return (false, "Không được đổi mật khẩu Host Admin.");
+
+        if (await _userRepository.HasOtherStoreMembershipAsync(userId, storeId, ct))
+            return (false, "Tài khoản dùng ở nhiều cửa hàng cần quản trị hệ thống xử lý mật khẩu.");
 
         mapping.User.PasswordHash =
             _passwordHasher.Hash(newPassword);
@@ -313,6 +331,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
 
         return (true, null);
     }
+    private static bool IsAcceptablePassword(string? password)
+        => !string.IsNullOrWhiteSpace(password) && password.Length is >= 12 and <= 128;
     public async Task<(bool Success, string? ErrorMessage)> ToggleActiveAsync(
     int storeId,
     int id,

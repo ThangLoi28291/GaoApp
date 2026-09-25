@@ -1,113 +1,64 @@
-﻿using GaoApp.Application.Common.Abstractions;
-using Microsoft.AspNetCore.Hosting;
+using GaoApp.Application.Common.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Infrastructure.Storage;
 
-public sealed class LocalFileStorageService : IFileStorageService
+public sealed class LocalFileStorageService(UploadPathResolver paths, ILogger<LocalFileStorageService> logger) : IFileStorageService
 {
-    private readonly IWebHostEnvironment _env;
-
-    public LocalFileStorageService(IWebHostEnvironment env)
-    {
-        _env = env;
-    }
-
     public async Task<string> SaveAsync(Stream content, string relativePath, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(relativePath))
-            throw new ArgumentException("relativePath is required.", nameof(relativePath));
-
-        relativePath = NormalizeRelative(relativePath);
-        var fullPath = ResolveInsideWebRoot(relativePath);
-        var dir = Path.GetDirectoryName(fullPath);
-        if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        // overwrite allowed (tùy bạn). Nếu muốn tránh overwrite thì tự generate tên khác.
-        await using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true);
-        await content.CopyToAsync(fs, ct);
-
+        relativePath = UploadPathResolver.Normalize(relativePath);
+        var fullPath = paths.Resolve(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        var temporary = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var fs = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, true))
+                await content.CopyToAsync(fs, ct);
+            ct.ThrowIfCancellationRequested();
+            File.Move(temporary, fullPath, overwrite: true);
+        }
+        finally
+        {
+            try { File.Delete(temporary); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { logger.LogWarning(ex, "Could not remove interrupted upload temporary file."); }
+        }
         return relativePath;
     }
 
     public Task DeleteAsync(string relativePath, CancellationToken ct = default)
     {
-        relativePath = NormalizeRelative(relativePath);
-        var fullPath = ResolveInsideWebRoot(relativePath);
-
-        if (File.Exists(fullPath))
-            File.Delete(fullPath);
-
+        ct.ThrowIfCancellationRequested();
+        relativePath = UploadPathResolver.Normalize(relativePath);
+        if (!Directory.Exists(paths.Root)) throw new DirectoryNotFoundException("Upload storage root is unavailable.");
+        DeleteIfPresent(paths.Resolve(relativePath));
+        // Remove the old public webroot copy as well, if middleware can serve it.
+        if (paths.LegacyRoot != null && !string.Equals(paths.Root, paths.LegacyRoot, StringComparison.OrdinalIgnoreCase) &&
+            (relativePath.StartsWith("uploads/products/", StringComparison.Ordinal) || relativePath.StartsWith("uploads/_temp/", StringComparison.Ordinal)))
+            DeleteIfPresent(UploadPathResolver.ResolveUnderRoot(paths.LegacyRoot, relativePath[8..]));
         return Task.CompletedTask;
     }
 
     public Task MoveAsync(string fromRelativePath, string toRelativePath, CancellationToken ct = default)
     {
-        fromRelativePath = NormalizeRelative(fromRelativePath);
-        toRelativePath = NormalizeRelative(toRelativePath);
-
-        var fromFull = ResolveInsideWebRoot(fromRelativePath);
-        var toFull = ResolveInsideWebRoot(toRelativePath);
-
-        var dir = Path.GetDirectoryName(toFull);
-        if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        if (!File.Exists(fromFull))
-            throw new FileNotFoundException("Source file not found.", fromFull);
-
-        // Nếu đích đã tồn tại: overwrite
-        if (File.Exists(toFull))
-            File.Delete(toFull);
-
-        File.Move(fromFull, toFull);
-
+        ct.ThrowIfCancellationRequested();
+        var source = paths.Resolve(fromRelativePath);
+        var target = paths.Resolve(toRelativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Move(source, target, overwrite: true);
         return Task.CompletedTask;
     }
 
-    public string ToPublicUrl(string relativePath)
-    {
-        relativePath = NormalizeRelative(relativePath);
-        return "/" + relativePath; // wwwroot served => "/uploads/..."
-    }
+    public string ToPublicUrl(string relativePath) => "/" + UploadPathResolver.Normalize(relativePath);
 
-    private static string NormalizeRelative(string path)
+    private static void DeleteIfPresent(string path)
     {
-        path = path.Trim().Replace('\\', '/');
-        path = path.TrimStart('/');
-
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0 ||
-            Path.IsPathRooted(path) ||
-            segments.Any(x => x is "." or ".."))
+        try { File.Delete(path); }
+        catch (DirectoryNotFoundException)
         {
-            throw new InvalidOperationException("Invalid path.");
+            // Deleting an already absent nested directory has reached the requested state.
+            return;
         }
-
-        return path;
-    }
-
-    private string ResolveInsideWebRoot(string relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(_env.WebRootPath))
-            throw new InvalidOperationException("WebRootPath chưa được cấu hình.");
-
-        var root = Path.GetFullPath(_env.WebRootPath);
-        var candidate = Path.GetFullPath(Path.Combine(
-            root,
-            relativePath.Replace('/', Path.DirectorySeparatorChar)));
-
-        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar)
-            ? root
-            : root + Path.DirectorySeparatorChar;
-
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        if (!candidate.StartsWith(rootWithSeparator, comparison))
-            throw new InvalidOperationException("Invalid path.");
-
-        return candidate;
     }
 }

@@ -42,11 +42,9 @@ public sealed class MigrationExecutionPipeline
         _transactionRunner = transactionRunner;
     }
 
-    public async Task RunAsync(CancellationToken ct = default)
+    public async Task RunAsync(MigratorMode mode, CancellationToken ct = default)
     {
-        var optionalSeedMode = _configurationValidator.Validate(
-            _seedOptions,
-            _bootstrapOptions,
+        _configurationValidator.ValidateMode(mode, _seedOptions, _bootstrapOptions,
             _environment.EnvironmentName);
 
         Console.WriteLine("=================================================");
@@ -102,99 +100,60 @@ public sealed class MigrationExecutionPipeline
             throw new DatabaseCompatibilityException(compatibility);
         }
 
-        Console.WriteLine("Applying migrations...");
-        await _migrationExecutor.MigrateAsync(ct);
-        Console.WriteLine("Migrations applied successfully.");
-        Console.WriteLine();
-
-        ProductionBootstrapPlan? initialBootstrapPlan = null;
-        if (optionalSeedMode
-            == MigratorOptionalSeedMode.ProductionBootstrap)
+        if (mode == MigratorMode.SchemaOnly)
         {
-            initialBootstrapPlan =
-                await _productionBootstrapper.InspectAsync(ct);
-            Console.WriteLine(
-                "Production bootstrap inspection: {0}.",
-                initialBootstrapPlan.State);
+            Console.WriteLine("Applying schema migrations only...");
+            await _migrationExecutor.MigrateAsync(ct);
+            var verified = await _databasePreflight.InspectAsync(ct);
+            EnsureCurrentSchema(verified);
+            Console.WriteLine("SCHEMA_ONLY_VERIFIED; SourceMigrations={0}; AppliedMigrations={1}",
+                verified.SourceMigrationCount, verified.AppliedMigrationCount);
+            return;
+        }
+
+        // Explicit data operations never apply migrations, even to an empty database.
+        EnsureCurrentSchema(compatibility);
+        ProductionBootstrapPlan? initialBootstrapPlan = null;
+        if (mode == MigratorMode.Bootstrap)
+        {
+            initialBootstrapPlan = await _productionBootstrapper.InspectAsync(ct);
             EnsureBootstrapPlanIsAccepted(initialBootstrapPlan);
         }
 
-        ProductionBootstrapResult? bootstrapResult = null;
-        await _transactionRunner.ExecuteAsync(
-            async transactionCt =>
-            {
-                switch (optionalSeedMode)
-                {
-                    case MigratorOptionalSeedMode.DemoSeed:
-                        Console.WriteLine(
-                            "Demo seed is explicitly enabled.");
-                        await _mandatorySecuritySeeder.SeedAsync(
-                            transactionCt);
-                        await _demoDataSeeder.SeedAsync(
-                            _seedOptions,
-                            transactionCt);
-                        break;
-
-                    case MigratorOptionalSeedMode.ProductionBootstrap:
-                        var lockedPlan =
-                            await _productionBootstrapper.InspectAsync(
-                                transactionCt);
-                        EnsureBootstrapPlanIsAccepted(lockedPlan);
-
-                        if (lockedPlan.State
-                            != initialBootstrapPlan!.State)
-                        {
-                            throw new ProductionBootstrapStateException(
-                                "BootstrapStateChanged");
-                        }
-
-                        await _mandatorySecuritySeeder.SeedAsync(
-                            transactionCt);
-                        bootstrapResult =
-                            await _productionBootstrapper.ApplyAsync(
-                                lockedPlan,
-                                transactionCt);
-                        break;
-
-                    default:
-                        await _mandatorySecuritySeeder.SeedAsync(
-                            transactionCt);
-                        break;
-                }
-            },
-            ct);
-
-        switch (optionalSeedMode)
+        await _transactionRunner.ExecuteAsync(async transactionCt =>
         {
-            case MigratorOptionalSeedMode.DemoSeed:
-                Console.WriteLine("Production bootstrap skipped.");
-                break;
+            switch (mode)
+            {
+                case MigratorMode.SecuritySeed:
+                    await _mandatorySecuritySeeder.SeedAsync(transactionCt);
+                    break;
+                case MigratorMode.DemoSeed:
+                    await _demoDataSeeder.SeedAsync(_seedOptions, transactionCt);
+                    break;
+                case MigratorMode.Bootstrap:
+                    var lockedPlan = await _productionBootstrapper.InspectAsync(transactionCt);
+                    EnsureBootstrapPlanIsAccepted(lockedPlan);
+                    if (lockedPlan.State != initialBootstrapPlan!.State)
+                        throw new ProductionBootstrapStateException("BootstrapStateChanged");
+                    // Matching bootstrap is a true no-op: do not reconcile customized menus/roles.
+                    await _productionBootstrapper.ApplyAsync(lockedPlan, transactionCt);
+                    break;
+                default:
+                    throw new MigratorConfigurationException(MigratorCommand.Usage);
+            }
+        }, ct);
+        Console.WriteLine("Explicit operation completed: {0}.", mode);
+    }
 
-            case MigratorOptionalSeedMode.ProductionBootstrap:
-                Console.WriteLine("Demo user seed skipped.");
-                Console.WriteLine(
-                    bootstrapResult switch
-                    {
-                        ProductionBootstrapResult.Created =>
-                            "Production bootstrap completed successfully.",
-                        ProductionBootstrapResult.AlreadyProvisioned =>
-                            "Production bootstrap already completed; no changes applied.",
-                        _ =>
-                            "Production bootstrap returned an invalid result."
-                    });
-                break;
-
-            default:
-                Console.WriteLine("Demo user seed skipped.");
-                Console.WriteLine("Production bootstrap is disabled.");
-                break;
-        }
-
-        Console.WriteLine("Security seed completed.");
-        Console.WriteLine();
-        Console.WriteLine("=================================================");
-        Console.WriteLine("GaoApp Migrator completed successfully");
-        Console.WriteLine("=================================================");
+    private static void EnsureCurrentSchema(DatabaseCompatibilityResult result)
+    {
+        if (!result.IsAllowed || result.State != DatabaseCompatibilityState.CurrentBaseline
+            || result.AppliedMigrationCount != result.SourceMigrationCount)
+            throw new DatabaseCompatibilityException(result with
+            {
+                IsAllowed = false,
+                SafeReasonCode = "CurrentSchemaRequired"
+            });
     }
 
     private static void EnsureBootstrapPlanIsAccepted(

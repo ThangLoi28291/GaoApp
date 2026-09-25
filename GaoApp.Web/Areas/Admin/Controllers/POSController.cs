@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common.Exceptions.Pos;
+using GaoApp.Domain.Enums;
+using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Application.DTOs.POSShifts;
 using GaoApp.Application.Interfaces.Services.Orders;
@@ -8,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using GaoApp.Application.DTOs.POSPaymentQrs;
 using GaoApp.Application.Interfaces.Services.POSPaymentQrs;
+using GaoApp.Application.Common.Security;
+using Microsoft.AspNetCore.Authorization;
 
 using GaoApp.Application.Common.Exceptions;
 
@@ -15,6 +18,9 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos")]
+[Authorize(Policy = PermissionCodes.Pos.Order.View)]
+[AutoValidateAntiforgeryToken]
+[ServiceFilter(typeof(GaoApp.Web.Services.Offline.PosOperationFilter))]
 public class POSController : BasePOSPageController
 {
     private readonly IPOSService _pos;
@@ -133,9 +139,11 @@ public class POSController : BasePOSPageController
             ct: ct);
     }
     [HttpPost("cart/current/payment-qr")]
-
+    [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> CreatePaymentQrForCurrentCart(
     [FromBody] CreatePOSPaymentQrRequest request,
+    [FromServices] GaoApp.Web.Services.Acb.AcbPaymentService acb,
     CancellationToken ct = default)
     {
         var currentCart = await _pos.GetCurrentCartAsync(ct);
@@ -154,10 +162,7 @@ public class POSController : BasePOSPageController
             return BadRequest("Không tìm thấy draft đơn hàng.");
         }
 
-        var qr = await _paymentQrService.CreateLocalManualQrAsync(
-            draft,
-            request ?? new CreatePOSPaymentQrRequest(),
-            ct);
+        var qr = await acb.CreateQrAsync(draft, request ?? new CreatePOSPaymentQrRequest(), _paymentQrService, ct);
 
         await NotifyTerminalAsync(
             eventType: "payment_qr_created",
@@ -171,17 +176,19 @@ public class POSController : BasePOSPageController
     }
     [HttpPost("payment-qr/{qrId:int}/manual-confirm")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ManualConfirmPaymentQr(int qrId, CancellationToken ct = default)
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
+    public async Task<IActionResult> ManualConfirmPaymentQr(int qrId, [FromServices] GaoApp.Web.Services.Acb.AcbPaymentService acb, CancellationToken ct = default)
     {
-        await _paymentQrService.MarkManualConfirmedAsync(qrId, null, ct);
-        return Ok(new { success = true, message = "Đã xác nhận QR đã nhận tiền." });
+        return Ok(await acb.ConfirmManualQrAsync(qrId, ct));
     }
 
     [HttpPost("payment-qr/{qrId:int}/cancel")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CancelPaymentQr(int qrId, CancellationToken ct = default)
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
+    public async Task<IActionResult> CancelPaymentQr(int qrId, [FromServices] GaoApp.Web.Services.Acb.AcbPaymentService acb, CancellationToken ct = default)
     {
-        await _paymentQrService.CancelAsync(qrId, ct);
+        await acb.CancelSavedQrAsync(qrId, ct);
         return Ok(new { success = true, message = "Đã hủy QR chuyển khoản." });
     }
 
@@ -191,6 +198,7 @@ public class POSController : BasePOSPageController
     }
     [HttpPost("payment-qr/cancel-by-content")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> CancelPaymentQrByContent(
     [FromBody] CancelPaymentQrByContentRequest request,
     CancellationToken ct = default)
@@ -214,6 +222,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("draft")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> CreateDraft(int? customerId = null, string? note = null, CancellationToken ct = default)
     {
         var orderId = await _pos.CreateDraftAsync(customerId, note, ct);
@@ -235,6 +244,7 @@ public class POSController : BasePOSPageController
         => Ok(await _pos.GetDraftAsync(orderId, ct));
 
     [HttpPost("{orderId:int}/items")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> AddItem(
     int orderId,
     [FromQuery] int variantId,
@@ -258,6 +268,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("{orderId:int}/barcode")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> AddByBarcode(int orderId, string barcode, decimal qty = 1, CancellationToken ct = default)
     {
         var draft = await _pos.AddItemByBarcodeAsync(orderId, barcode, qty, ct);
@@ -274,6 +285,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPatch("lines/{lineId:int}")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> UpdateQty(int lineId, decimal qty, CancellationToken ct = default)
     {
         var draft = await _pos.UpdateLineQtyAsync(lineId, qty, ct);
@@ -290,6 +302,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpDelete("lines/{lineId:int}")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> RemoveLine(int lineId, CancellationToken ct = default)
     {
         var draft = await _pos.RemoveLineAsync(lineId, ct);
@@ -306,6 +319,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("{orderId:int}/payments")]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> AddPayment(int orderId, [FromBody] UpsertPaymentRequest dto, CancellationToken ct)
     {
         var draft = await _pos.AddPaymentAsync(orderId, dto, ct);
@@ -323,6 +337,7 @@ public class POSController : BasePOSPageController
 
     [HttpDelete("payments/{paymentId:int}")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> RemovePayment(int paymentId, CancellationToken ct = default)
     {
        
@@ -340,9 +355,25 @@ public class POSController : BasePOSPageController
 
     }
 
+    [HttpPost("{orderId:int}/finalize-credit")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
+    [Authorize(Policy = PermissionCodes.CustomerDebt.Sell)]
+    public async Task<IActionResult> FinalizeCredit(int orderId, [FromBody] FinalizeCreditRequest request, CancellationToken ct)
+    {
+        if (Request.Headers["X-POS-Offline"] == "1")
+            throw new BusinessRuleException("Ghi công nợ cần thực hiện trực tuyến để kiểm tra khách và số dư mới nhất.");
+        var result = await _pos.FinalizeCreditAsync(orderId, request, ct);
+        await NotifyStoreAsync(PosRealtimeEventTypes.OrderFinalized, orderId: orderId, heldChanged: true,
+            message: "Đã chốt đơn và ghi công nợ khách hàng.", ct: ct);
+        return Ok(result);
+    }
+
     [HttpPost("{orderId:int}/finalize")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
     public async Task<IActionResult> Finalize(int orderId, CancellationToken ct)
     {
+        if (Request.Headers["X-POS-Offline"] == "1" && (await _pos.GetDraftAsync(orderId, ct)).DepositAmount > 0)
+            throw new BusinessRuleException("Đơn sử dụng tiền cọc cần chốt trực tuyến.");
         var result = await _pos.FinalizeAsync(orderId, ct);
 
         await NotifyStoreAsync(
@@ -356,6 +387,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("{orderId:int}/cancel")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> Cancel(int orderId, string? reason = null, CancellationToken ct = default)
     {
         await _pos.CancelAsync(orderId, reason, ct);
@@ -379,18 +411,19 @@ public class POSController : BasePOSPageController
         => Ok(await _pos.GetReceiptAsync(orderId, ct));
 
     [HttpGet("orders/{orderId:int}/print")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Reprint)]
     public async Task<IActionResult> PrintReceipt(
         int orderId,
-        [FromQuery] string size = "80",
+        [FromServices] GaoApp.Web.Services.Printing.ReceiptTemplateService templates,
+        [FromServices] IPOSRuntimeContextAccessor runtime,
+        [FromQuery] string? size = null,
         [FromQuery] bool autoPrint = true,
         CancellationToken ct = default)
     {
         var model = await _pos.GetReceiptAsync(orderId, ct);
 
-        ViewBag.PrintSize = size;
-        ViewBag.AutoPrint = autoPrint;
-
-        return View("~/Areas/Admin/Views/POS/PrintReceipt.cshtml", model);
+        return View("~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
+            new GaoApp.Web.Services.Printing.ReceiptPrintModel(model, await templates.ListAsync(ct), CurrentStoreId, runtime.TerminalId, autoPrint, size));
     }
 
     [HttpGet("orders")]
@@ -417,6 +450,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("orders/{orderId:int}/hold")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Hold)]
     public async Task<IActionResult> HoldOrder(int orderId, [FromBody] HoldOrderRequest request, CancellationToken ct)
     {
         var result = await _pos.HoldAndCreateNewDraftAsync(orderId, request?.HoldNote, ct);
@@ -440,6 +474,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("orders/{orderId:int}/resume")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Hold)]
     public async Task<IActionResult> ResumeHeldOrder(int orderId, CancellationToken ct)
     {
         var resumedOrderId = await _pos.ResumeHeldAsync(orderId, ct);
@@ -467,6 +502,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> SetCurrentCart([FromBody] SwitchCurrentCartRequest request, CancellationToken ct)
     {
         await _pos.SetCurrentCartAsync(request.OrderId, ct);
@@ -497,6 +533,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/ensure")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> EnsureCurrentCart(CancellationToken ct)
     {
         var result = await _pos.EnsureCurrentCartAsync(ct);
@@ -513,6 +550,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/scan")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> ScanToCurrentCart([FromBody] ScanBarcodeToCurrentCartRequest request, CancellationToken ct)
     {
         var result = await _pos.ScanToCurrentCartAsync(request.Barcode, request.Quantity, ct);
@@ -530,6 +568,7 @@ public class POSController : BasePOSPageController
 
     [HttpPost("cart/current/payments")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> AddPaymentToCurrentCart(
         [FromBody] QuickAddPaymentRequest request,
         CancellationToken ct = default)
@@ -550,6 +589,8 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/payment-and-finalize")]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
     public async Task<IActionResult> AddPaymentAndMaybeFinalizeCurrentCart([FromBody] QuickAddPaymentRequest request, CancellationToken ct)
     {
 
@@ -576,7 +617,9 @@ public class POSController : BasePOSPageController
                 });
             }
 
-        var finalizedDraft = await _pos.FinalizeCurrentCartAsync(ct)
+        if (draft.Status is not (OrderStatus.Draft or OrderStatus.Completed))
+            throw new GaoApp.Application.Common.Exceptions.ConflictAppException("Đơn đã đổi trạng thái. Vui lòng kiểm tra lịch sử thanh toán.");
+        var finalizedDraft = draft.Status == OrderStatus.Completed ? draft : await _pos.FinalizeAsync(draft.OrderId, ct)
             ?? throw new InvalidOperationException(
                 "POS service returned no result after automatic finalization.");
 
@@ -599,6 +642,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/hold")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Hold)]
     public async Task<IActionResult> HoldCurrentCart([FromBody] HoldCurrentCartRequest request, CancellationToken ct)
     {
        
@@ -616,6 +660,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/cancel")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> CancelCurrentCart([FromBody] CancelCurrentCartRequest request, CancellationToken ct)
     {
         await _pos.CancelCurrentCartAsync(request?.Reason, ct);
@@ -630,6 +675,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/new")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> CreateAndSwitchNewCart(
         [FromBody] CreateNewCartRequest request,
         CancellationToken ct)
@@ -659,6 +705,7 @@ public class POSController : BasePOSPageController
     }
 
     [HttpPost("cart/current/finalize")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
     public async Task<IActionResult> FinalizeCurrentCart(CancellationToken ct)
     {
         // B8.1:
@@ -688,13 +735,40 @@ public class POSController : BasePOSPageController
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken ct)
+    public Task<IActionResult> Index(CancellationToken ct)
     {
+        return RenderPosPageAsync(
+            isPrime: true,
+            ct);
+    }
+
+    [HttpGet("v3")]
+    public Task<IActionResult> Prime(CancellationToken ct)
+    {
+        return RenderPosPageAsync(
+            isPrime: true,
+            ct);
+    }
+
+    [HttpGet("legacy")]
+    public Task<IActionResult> Legacy(CancellationToken ct)
+    {
+        return RenderPosPageAsync(
+            isPrime: false,
+            ct);
+    }
+
+    private async Task<IActionResult> RenderPosPageAsync(
+        bool isPrime,
+        CancellationToken ct)
+    {
+        ViewData["IsPOSPrime"] = isPrime;
+
         try
         {
             await BindPOSHeaderContextAsync(ct);
 
-            return View();
+            return View("Index");
         }
         catch (PosAppException ex) when (
             ex.ErrorType == PosErrorTypes.Ownership ||
@@ -705,17 +779,18 @@ public class POSController : BasePOSPageController
         {
             await BindPOSHeaderContextAsync(ct);
 
-            ViewBag.PosBootstrapError = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                success = false,
-                message = ex.SafeMessage,
-                errorCode = ex.ErrorCode,
-                actionHint = ex.ActionHint,
-                errorType = ex.ErrorType,
-                metadata = ex.Metadata
-            });
+            ViewBag.PosBootstrapError =
+                System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    message = ex.SafeMessage,
+                    errorCode = ex.ErrorCode,
+                    actionHint = ex.ActionHint,
+                    errorType = ex.ErrorType,
+                    metadata = ex.Metadata
+                });
 
-            return View();
+            return View("Index");
         }
     }
 
@@ -748,6 +823,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("cart/current/customer/{customerId:int}")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> SetCustomerForCurrentCart(
         int customerId,
         [FromBody] SetCurrentCartCustomerRequest? request,
@@ -771,6 +847,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpDelete("cart/current/customer")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> ClearCustomerForCurrentCart(CancellationToken ct = default)
     {
        
@@ -790,6 +867,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("customers/quick-create")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> QuickCreateCustomer([FromBody] CreatePOSCustomerDto request, CancellationToken ct = default)
     {
        
@@ -809,6 +887,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("cart/current/note")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> UpdateCurrentCartNote(
         [FromBody] UpdateCurrentCartNoteRequest request,
         CancellationToken ct = default)
@@ -829,6 +908,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("cart/current/discount")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Discount)]
     public async Task<IActionResult> UpdateCurrentCartDiscount(
         [FromBody] UpdateOrderDiscountRequest request,
         CancellationToken ct = default)
@@ -850,6 +930,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("cart/current/reward-vouchers")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Discount)]
     public async Task<IActionResult> ApplyRewardVouchersToCurrentCart(
     [FromBody] ApplyRewardVouchersRequest request,
     CancellationToken ct = default)
@@ -870,6 +951,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpDelete("cart/current/reward-vouchers")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Discount)]
     public async Task<IActionResult> ClearRewardVouchersFromCurrentCart(
         CancellationToken ct = default)
     {
@@ -888,6 +970,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("lines/{lineId:int}/discount")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Discount)]
     public async Task<IActionResult> UpdateLineDiscount(
         int lineId,
         [FromBody] UpdateLineDiscountRequest request,
@@ -909,6 +992,7 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
     }
 
     [HttpPost("orders/{orderId:int}/void")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Void)]
     public async Task<IActionResult> VoidOrder(
         int orderId,
         [FromBody] VoidOrderRequest request,
@@ -936,6 +1020,8 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
 
     [HttpPost("orders/{orderId:int}/refund")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Refund)]
+    [Authorize(Policy = PermissionCodes.Pos.Payment.Refund)]
     public async Task<IActionResult> RefundOrder(
        int orderId,
        [FromBody] RefundOrderRequest request,
@@ -1014,10 +1100,22 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
     }
 
     #region CustomerDisplay
+    [HttpGet("customer-display/info")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CustomerDisplayInfo(
+        [FromServices] GaoApp.Web.Services.CustomerDisplayService display, CancellationToken ct)
+        => Ok(await display.GetInfoAsync(ct));
+
     [HttpGet("customer-display")]
-    public async Task<IActionResult> CustomerDisplay(CancellationToken ct)
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> CustomerDisplay(
+        [FromServices] GaoApp.Web.Services.Printing.ReceiptTemplateService receiptTemplates,
+        [FromServices] GaoApp.Web.Services.CustomerDisplayService display,
+        CancellationToken ct)
     {
         await BindPOSHeaderContextAsync(ct);
+        ViewBag.CustomerDisplayStore = await receiptTemplates.GetStoreInfoAsync(ct);
+        ViewBag.CustomerDisplayInfo = await display.GetInfoAsync(ct);
 
         return View("~/Areas/Admin/Views/POS/CustomerDisplay.cshtml");
     }

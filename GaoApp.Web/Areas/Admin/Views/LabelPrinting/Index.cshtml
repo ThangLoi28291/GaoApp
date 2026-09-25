@@ -1,0 +1,120 @@
+@{
+    var isSettings = (bool)ViewBag.IsSettings;
+    var canPrint = (bool)ViewBag.CanPrint;
+    ViewData["Title"] = isSettings ? "Cấu hình in tem" : "In tem sản phẩm";
+    var canManage = (bool)ViewBag.CanManage;
+}
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/label-printing.css" asp-append-version="true" /> }
+<main id="labelPrinting" class="label-app" data-page="@(isSettings ? "settings" : "print")" data-can-manage="@canManage.ToString().ToLowerInvariant()" data-store-id="@ViewBag.StoreId">
+    @Html.AntiForgeryToken()
+    <header class="label-heading"><div><div class="label-eyebrow">GAOAPP · @(isSettings ? "CẤU HÌNH" : "IN ẤN")</div><h1>@ViewData["Title"]</h1><p>@(isSettings ? "Thiết lập mẫu tem và máy in cho cửa hàng." : "Chọn phiếu, mẫu và máy in. Theo dõi số tem đã in.")</p></div>
+        <div class="label-inline">
+            @if (isSettings && canPrint) { <a href="/admin/label-printing" class="btn btn-outline-secondary">Mở khu in tem</a> }
+            @if (!isSettings)
+            {
+                <a href="/admin/stock-documents" class="btn btn-outline-secondary">Phiếu nhập kho</a>
+                @if (canManage) { <a href="/admin/label-printing-settings" class="btn btn-outline-secondary">Cấu hình in tem</a> }
+            }
+        </div></header>
+    <div id="labelMessage" role="status" aria-live="polite" hidden></div>
+    <nav class="label-tabs" aria-label="Chức năng in tem">
+        @if (isSettings)
+        {
+            <button type="button" data-tab="templates" class="active">Mẫu tem</button>
+            <button type="button" data-tab="printers">Máy in tại server</button>
+        }
+        else
+        {
+            <button type="button" data-tab="tasks" class="active">Phiếu chờ in</button>
+            <button type="button" data-tab="history">Lịch sử in</button>
+        }
+    </nav>
+    @if (!isSettings)
+    {
+    <section data-panel="tasks">
+        <div class="label-panel label-toolbar"><div><h2>Phiếu in tem</h2><p>In theo đơn vị gốc và giá bán lẻ. Có thể in từng phần.</p></div>
+            <div class="label-inline"><input id="taskSearch" class="form-control" placeholder="Tìm số phiếu…" aria-label="Tìm phiếu in" /><button id="reloadTasks" class="btn btn-outline-secondary">Tải lại</button></div></div>
+        <div id="receiptEntry" class="label-panel" hidden><p id="receiptEntryText"></p><button id="addReceipt" class="btn btn-primary">Đưa phiếu vào in tem</button></div>
+        <div id="labelTaskList" class="label-panel"></div>
+        <section id="labelTaskDetail" class="label-panel" hidden>
+            <div class="label-toolbar"><div><div class="label-eyebrow">CHI TIẾT PHIẾU</div><h2 id="taskTitle"></h2><a id="sourceReceipt">Mở phiếu nhập</a></div><button id="closeTask" class="btn btn-outline-secondary">Đóng chi tiết</button></div>
+            <div id="sourceChanged" class="alert alert-warning" hidden></div>
+            <div class="label-fields task-controls">
+                <label>Mẫu tem<select id="taskTemplate" class="form-select"></select></label>
+                <label>Máy in<select id="taskPrinter" class="form-select"></select></label>
+                <div class="label-inline"><button id="applyDefaults" class="btn btn-outline-primary">Áp dụng SL mặc định của mẫu</button><button id="refreshSource" class="btn btn-outline-secondary">Cập nhật từ phiếu nhập</button></div>
+            </div>
+            <div class="label-table-scroll"><table class="table"><thead><tr><th><input id="selectAllLines" type="checkbox" checked aria-label="Chọn tất cả sản phẩm" /></th><th>Sản phẩm / Mã vạch</th><th>ĐVT gốc</th><th>Giá bán lẻ</th><th>SL nhập quy đổi</th><th>Cần in</th><th>Đã nhận</th><th>In lần này</th></tr></thead><tbody id="taskLines"></tbody></table></div>
+            <div class="label-toolbar"><span id="taskTotals"></span><div class="label-inline"><button id="savePlan" class="btn btn-outline-primary">Lưu số lượng</button><button id="previewTask" class="btn btn-outline-secondary">Xem trước tem</button><button id="printTask" class="btn btn-primary">In sản phẩm đã chọn</button><button id="reprintTask" class="btn btn-outline-secondary">In lại</button><button id="completeTask" class="btn btn-success">Chốt hoàn thành</button></div></div>
+            <h3 class="mt-4">Các lần in của phiếu</h3><div id="taskHistory"></div>
+        </section>
+    </section>
+    }
+    @if (isSettings)
+    {
+    <section data-panel="templates">
+        <div class="label-studio">
+            <aside class="label-panel"><div class="label-toolbar"><h2>Mẫu đã lưu</h2>@if (canManage) { <button id="newTemplate" class="btn btn-sm btn-primary">Tạo mẫu</button> }</div><div id="templateList"></div></aside>
+            <section class="label-panel">
+                <div class="label-toolbar"><h2 id="templateHeading">Thiết kế mẫu tem</h2><span id="templateSaveState"></span></div>
+                <fieldset id="templateFields" disabled="@(!canManage)">
+                    <div class="label-layout-heading"><h3>Chọn kiểu trình bày</h3><p>Chọn một kiểu, chỉnh nội dung rồi lưu thành mẫu của tiệm.</p></div>
+                    <input type="hidden" name="layout" value="standard" />
+                    <input type="hidden" name="barcodeFormat" value="AUTO" />
+                    <div id="layoutGallery" class="label-layout-gallery" role="group" aria-label="Kiểu trình bày tem">
+                        @foreach (var layout in GaoApp.Infrastructure.Printing.ProductLabelLayouts.All)
+                        {
+                            <button type="button" class="label-layout-card" data-layout="@layout.Key" data-layout-name="@layout.Name" aria-pressed="false">
+                                <span class="label-layout-image"><img src="@Url.Action("LayoutPreview", "LabelPrinting", new { area = "Admin", key = layout.Key })" alt="" loading="lazy" /></span>
+                                <strong>@layout.Name</strong><small>@layout.Description</small><span class="label-layout-selected" aria-hidden="true">✓ Đang chọn</span>
+                            </button>
+                        }
+                    </div>
+                    <div class="label-fields">
+                        <label class="label-wide">Tên mẫu<input name="name" class="form-control" maxlength="100" /></label>
+                        <label>Rộng từng tem (mm)<input name="widthMm" class="form-control" type="number" min="20" max="108" step="0.1" /></label>
+                        <label>Cao từng tem (mm)<input name="heightMm" class="form-control" type="number" min="15" max="150" step="0.1" /></label>
+                        <label>Số cột<input name="columns" class="form-control" type="number" min="1" max="5" step="1" /></label>
+                        <label>Cách cột (mm)<input name="columnGapMm" class="form-control" type="number" min="0" max="10" step="0.1" /></label>
+                        <label>Cách hàng tem (mm)<input name="rowGapMm" class="form-control" type="number" min="0" max="10" step="0.1" /></label>
+                        <label>Lề trái cuộn (mm)<input name="leftMarginMm" class="form-control" type="number" min="0" max="10" step="0.1" /></label>
+                        <label>Lề phải cuộn (mm)<input name="rightMarginMm" class="form-control" type="number" min="0" max="10" step="0.1" /></label>
+                        <label>Cỡ chữ (pt)<input name="fontSize" class="form-control" type="number" min="6" max="16" /></label>
+                        <label>SL in mặc định<select name="quantityMode" class="form-select"><option value="one">1 tem mỗi sản phẩm</option><option value="received">Theo SL nhập quy đổi về ĐVT gốc</option></select></label>
+                    </div>
+                    <div class="label-barcode-policy"><strong>Tự nhận dạng mã vạch trên từng sản phẩm</strong><span>EAN-13 hợp lệ → in EAN-13. Mã còn lại → in Code 128. Giữ nguyên mã sản phẩm, kể cả số 0 ở đầu.</span></div>
+                    <div class="label-checks"><label><input type="checkbox" name="showName" /> Tên sản phẩm</label><label><input type="checkbox" name="showBarcode" /> Mã vạch</label><label><input type="checkbox" name="showBarcodeText" /> Số dưới mã vạch</label><label><input type="checkbox" name="showUnit" /> Đơn vị tính</label><label><input type="checkbox" name="showPrice" /> Giá bán lẻ</label></div>
+                </fieldset>
+                <div class="label-toolbar"><div class="label-inline">@if (canManage) { <button id="saveTemplate" class="btn btn-primary">Lưu mẫu</button><button id="copyTemplate" class="btn btn-outline-secondary">Lưu thành mẫu mới</button><button id="deleteTemplate" class="btn btn-outline-danger">Xóa mẫu</button> }</div><button id="previewTemplate" class="btn btn-outline-primary">Cập nhật xem trước</button></div>
+                <div class="label-preview-stage"><div><div id="previewDimensions" class="label-eyebrow"></div><img id="labelPreview" alt="Xem trước một hàng tem" hidden /><p id="previewError"></p></div></div>
+                <p class="label-help">Khổ từng tem và số cột được chọn riêng. Tổng chiều rộng gồm các tem, khoảng cách cột và lề cuộn. Mẫu không thay đổi thông tin sản phẩm.</p>
+            </section>
+        </div>
+    </section>
+    <section data-panel="printers" hidden>
+        <div class="label-panel"><h2>Máy in tem trên Windows Server</h2><p>Chọn đúng tên máy đã cài bằng USB. Dịch vụ GaoApp Label Print Server xử lý hàng đợi in.</p><div id="printerList"></div></div>
+        @if (canManage)
+        {
+            <section class="label-panel"><h2 id="printerHeading">Thêm máy in</h2><form id="printerForm"><div class="label-fields">
+                <label>Tên dễ nhận biết<input name="name" class="form-control" required maxlength="100" placeholder="Xprinter · Quầy kho" /></label>
+                <label>Tên máy in Windows<select name="windowsPrinterName" class="form-select" required></select></label>
+                <label>Độ phân giải<select name="dpi" class="form-select"><option value="203">203 DPI</option><option value="300">300 DPI</option></select></label>
+                <label>Vùng in tối đa (mm)<input name="printableWidthMm" type="number" class="form-control" value="108" min="20" max="108" step="0.1" /></label>
+                <label>Dịch ngang (mm)<input name="offsetXmm" type="number" class="form-control" value="0" min="-5" max="5" step="0.1" /></label>
+                <label>Dịch dọc (mm)<input name="offsetYmm" type="number" class="form-control" value="0" min="-5" max="5" step="0.1" /></label>
+                <label class="label-checks"><input name="enabled" type="checkbox" checked /> Cho phép in</label>
+            </div><div class="label-inline"><button class="btn btn-primary" type="submit">Lưu máy in</button><button id="newPrinter" class="btn btn-outline-secondary" type="button">Thêm máy khác</button><button id="reloadInstalled" class="btn btn-outline-secondary" type="button">Tải máy đã cài</button></div></form></section>
+        }
+        @if (canPrint)
+        {
+            <div class="label-panel"><h3>In thử một hàng tem</h3><div class="label-fields"><label>Mẫu đã lưu<select id="testTemplate" class="form-select"></select></label><label>Máy in<select id="testPrinter" class="form-select"></select></label></div><button id="printTest" class="btn btn-outline-primary">Gửi in thử</button><p class="label-help">In thử dùng dữ liệu mẫu, không cộng tiến độ phiếu nhập. Kết quả nằm trong lịch sử tại khu in tem.</p></div>
+        }
+    </section>
+    }
+    @if (!isSettings)
+    {
+    <section data-panel="history" hidden><div class="label-panel"><div class="label-toolbar"><h2>Lịch sử và hàng đợi in</h2><button id="reloadHistory" class="btn btn-outline-secondary">Tải lại</button></div><div id="allHistory"></div></div></section>
+    }
+    <dialog id="labelDialog"><div id="labelDialogContent"></div><div class="label-inline mt-3"><button id="dialogAccept" class="btn btn-primary">Xác nhận</button><button id="dialogClose" class="btn btn-outline-secondary">Đóng</button></div></dialog>
+</main>
+@section PageScripts { <script src="~/Admin/js/printing/label-printing.js" asp-append-version="true"></script> }

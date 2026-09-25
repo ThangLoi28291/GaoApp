@@ -1,0 +1,23 @@
+<section id="wrdScanFeedback" class="wrd-scan-feedback" aria-label="Xác nhận nhận hàng">
+    <div class="wrd-feedback-toolbar">
+        <div id="wrdSaveStatus" class="wrd-save-status" role="status" aria-live="polite">Sẵn sàng nhận hàng</div>
+    </div>
+    <button type="button" id="wrdRetrySave" class="btn btn-sm btn-outline-danger mb-2" hidden>Kiểm tra / lưu lại thay đổi</button>
+    <div id="wrdLastSaved" class="wrd-scan-card" hidden>
+        <button type="button" id="wrdScanImageButton" class="wrd-scan-image" aria-label="Xem ảnh sản phẩm vừa nhận" disabled>
+            <img id="wrdScanImage" alt="" hidden /><i id="wrdScanImageFallback" class="bx bx-package" aria-hidden="true"></i>
+        </button>
+        <div class="wrd-scan-facts" role="status" aria-live="polite" aria-atomic="true">
+            <div class="wrd-scan-caption"><i class="bx bx-check-circle" aria-hidden="true"></i> Lần nhận gần nhất <time id="wrdScanTime"></time></div>
+            <strong id="wrdScanName"></strong>
+            <div id="wrdScanCode" class="wrd-scan-code"></div>
+            <div class="wrd-scan-quantities"><span id="wrdScanAdded"></span><span id="wrdScanTotal"></span></div>
+        </div>
+    </div>
+</section>
+<div class="modal fade" id="wrdScanPhotoModal" tabindex="-1" aria-labelledby="wrdScanPhotoTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 id="wrdScanPhotoTitle" class="modal-title">Ảnh sản phẩm vừa nhận</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng ảnh"></button></div>
+        <div class="modal-body"><img id="wrdScanPhotoLarge" alt="" /></div>
+    </div></div>
+</div>

@@ -60,6 +60,13 @@ public interface IStockDocumentRepository
         int storeId, int stockDocumentId, IReadOnlyCollection<int> stockDocumentLineIds,
         CancellationToken ct = default)
         => Task.FromResult(true);
+    Task<bool> HasOtherActiveReceivingDraftAsync(
+        int storeId, int purchaseOrderId, int excludeStockDocumentId,
+        CancellationToken ct = default)
+        => Task.FromResult(false);
+    Task<bool> HasUnresolvedProvisionalItemsAsync(
+        int storeId, int stockDocumentId, CancellationToken ct = default)
+        => Task.FromResult(false);
     Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default);
     Task<bool> PurchasePayableExistsAsync(string sourceKey, CancellationToken ct = default);
 
@@ -103,4 +110,4 @@ public sealed record PurchaseOrderLineAllocationState(
 
 public sealed record PurchaseOrderReceiptState(
     int PurchaseOrderId, int StoreId, PurchaseOrderStatus Status,
-    int SupplierId, int ExpectedWarehouseId, int LegalEntityId);
+    int? SupplierId, int ExpectedWarehouseId, int LegalEntityId);

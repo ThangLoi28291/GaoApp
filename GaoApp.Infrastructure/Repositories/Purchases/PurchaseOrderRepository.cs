@@ -33,7 +33,7 @@ public sealed class PurchaseOrderRepository : IPurchaseOrderRepository
             query = query.Where(x =>
                 x.OrderNumber.Contains(search) ||
                 (x.Title != null && x.Title.Contains(search)) ||
-                x.Supplier.Name.Contains(search) ||
+                (x.Supplier != null && x.Supplier.Name.Contains(search)) ||
                 x.Lines.Any(line =>
                     !line.IsDeleted &&
                     (line.ProductNameSnapshot.Contains(search) ||

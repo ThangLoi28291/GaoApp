@@ -106,7 +106,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            ModelState.AddModelError(string.Empty, result.Error?.Message ?? "Không thể lưu cấu hình.");
             return View("Form", vm);
         }
 

@@ -5,9 +5,14 @@ namespace GaoApp.Application.Interfaces.Services.POSShiftHandoverSlips;
 
 public interface IPOSShiftHandoverSlipService
 {
+    Task<POSShiftHandoverAssignmentsDto> GetAssignmentsAsync(CancellationToken ct = default);
+
     Task<POSShiftHandoverSlipDto> CreateAsync(
         CreatePOSShiftHandoverSlipRequest request,
         CancellationToken ct = default);
+
+    Task<POSShiftHandoverSlipDto> UpdateAsync(
+        int id, UpdatePOSShiftHandoverSlipRequest request, CancellationToken ct = default);
 
     Task<POSShiftHandoverSlipDto?> GetByIdAsync(
         int id,
@@ -23,7 +28,8 @@ public interface IPOSShiftHandoverSlipService
 
     Task<POSShiftHandoverSlipDto> MarkPrintedAsync(
         int id,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? barcodeValue = null);
 
     Task<POSShiftHandoverSlipDto> CancelAsync(
         int id,

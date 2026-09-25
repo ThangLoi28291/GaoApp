@@ -26,6 +26,10 @@ public class PosPaymentQrRequestConfiguration : IEntityTypeConfiguration<PosPaym
             .IsUnique();
 
         builder.HasIndex(x => new { x.StoreId, x.OrderId, x.Status });
+        builder.HasIndex(x => new { x.StoreId, x.OrderId, x.ClientRequestId })
+            .IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
+        builder.HasOne<OrderPayment>().WithMany().HasForeignKey(x => x.PaymentId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(x => x.Order)
             .WithMany()

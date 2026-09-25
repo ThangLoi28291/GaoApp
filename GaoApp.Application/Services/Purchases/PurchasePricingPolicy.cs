@@ -113,6 +113,38 @@ public static class PurchasePricingPolicy
         return result;
     }
 
+    public static IReadOnlyDictionary<int, decimal> AllocateByWeight(
+        decimal amount,
+        IReadOnlyList<(int Key, decimal Weight)> weights)
+    {
+        var total = RoundMoney(amount);
+        if (total < 0m) throw new InvalidOperationException("Số tiền phân bổ không được âm.");
+        if (weights.Count == 0)
+        {
+            if (total != 0m) throw new InvalidOperationException("Không có đối tượng nhận phân bổ.");
+            return new Dictionary<int, decimal>();
+        }
+        if (weights.Select(x => x.Key).Distinct().Count() != weights.Count ||
+            weights.Any(x => x.Weight < 0m))
+            throw new InvalidOperationException("Trọng số phân bổ không hợp lệ.");
+        var weightTotal = weights.Sum(x => x.Weight);
+        if (total > 0m && weightTotal <= 0m)
+            throw new InvalidOperationException("Tổng trọng số phân bổ phải lớn hơn 0.");
+
+        var result = new Dictionary<int, decimal>();
+        decimal allocated = 0m;
+        for (var index = 0; index < weights.Count; index++)
+        {
+            var item = weights[index];
+            var value = index == weights.Count - 1
+                ? RoundMoney(total - allocated)
+                : RoundMoney(total * item.Weight / weightTotal);
+            result[item.Key] = value;
+            allocated += value;
+        }
+        return result;
+    }
+
     public static void EnsureFreightBalanced(decimal freightTotal, IEnumerable<decimal> allocations)
     {
         var materialized = allocations.ToArray();

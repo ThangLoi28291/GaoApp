@@ -1,4 +1,4 @@
-﻿
+
     let dashboardData = null;
     let selectedShiftId = null;
 
@@ -13,8 +13,28 @@
     const detailModalEl = document.getElementById('shiftDetailModal');
     const detailModal = detailModalEl ? new bootstrap.Modal(detailModalEl) : null;
 
+    const receiptForm = document.getElementById('cashReceiptForm');
+    const receiptAmount = document.getElementById('cashReceivedAmount');
+    const receiptNote = document.getElementById('cashReceiptNote');
+    const receiptError = document.getElementById('cashReceiptError');
+    const receiptButton = document.getElementById('btnConfirmCashReceipt');
+    const receiptFilter = document.getElementById('filterCashReceipt');
+
+    function escapeHtml(value) {
+        const node = document.createElement('span');
+        node.textContent = value == null ? '' : String(value);
+        return node.innerHTML;
+    }
+    function isClosed(item) { return String(item.status).toLowerCase() === 'closed' || Number(item.status) === 2; }
+    function receiptBadge(item) {
+        if (!isClosed(item)) return '<span class="text-muted">Chưa chốt ca</span>';
+        return item.cashReceivedAtUtc
+            ? '<span class="badge bg-label-success">Đã nhận tiền / Đã duyệt</span>'
+            : '<span class="badge bg-label-warning">Chờ admin nhận tiền</span>';
+    }
+
     function money(value) {
-        return Number(value || 0).toLocaleString('vi-VN') + ' đ';
+        return Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 0 }) + ' đ';
     }
 
     function numberText(value) {
@@ -331,6 +351,11 @@
     }
 
     function renderShifts(items) {
+        const all = items || [];
+        document.getElementById('cashReceiptPendingCount').textContent =
+            all.filter(x => isClosed(x) && !x.cashReceivedAtUtc).length + ' ca chờ nhận';
+        items = all.filter(x => !receiptFilter.value || (isClosed(x)
+            && (receiptFilter.value === 'received' ? !!x.cashReceivedAtUtc : !x.cashReceivedAtUtc)));
         const body = document.getElementById('shiftBody');
         const pagerInfo = document.getElementById('shiftPagerInfo');
         const btnPrev = document.getElementById('btnShiftPrev');
@@ -368,10 +393,10 @@
                 + '  <td>' + statusBadge(x.status) + '</td>'
                 + '  <td class="text-end fw-bold">' + money(x.totalSales) + '</td>'
                 + '  <td class="text-end">' + money(x.cashSalesTotal) + '</td>'
-                + '  <td class="text-end">' + money(x.refundTotal) + '</td>'
+                + '  <td>' + receiptBadge(x) + '</td>'
                 + '  <td class="text-end">' + diffPill(x.cashDifference) + '</td>'
                 + '  <td class="text-end">'
-                + '      <button class="btn btn-outline-primary btn-sm table-action-btn" data-detail="' + x.id + '">Chi tiết</button>'
+                + '      <button class="btn btn-outline-primary btn-sm table-action-btn" data-detail="' + x.id + '">' + (isClosed(x) && !x.cashReceivedAtUtc ? 'Nhận tiền / Duyệt' : 'Chi tiết') + '</button>'
                 + '  </td>'
                 + '</tr>';
         }).join('');
@@ -418,7 +443,7 @@
         const html = ''
             + '<div class="manager-popup-grid">'
             + popupItem('Trạng thái', statusBadge(item.status))
-            + popupItem('Nhân viên mở ca', shiftUserNameText(item))
+            + popupItem('Nhân viên mở ca', escapeHtml(shiftUserNameText(item)))
             + popupItem('Mở lúc', dt(item.openedAtUtc))
             + popupItem('Đóng lúc', dt(item.closedAtUtc))
             + popupItem('Tiền đầu ca', money(item.openingCash))
@@ -430,7 +455,13 @@
             + popupItem('Refund', money(item.refundTotal) + ' / ' + (item.refundCount || 0) + ' lần')
             + popupItem('Void', item.voidCount || 0)
             + popupItem('Tiền dự kiến', money(item.closingCashExpected))
-            + popupItem('Tiền thực đếm', item.closingCashActual == null ? '-' : money(item.closingCashActual))
+            + popupItem('Nhân viên thực đếm', item.closingCashActual == null ? '-' : money(item.closingCashActual))
+            + popupItem('Bàn giao tiền', receiptBadge(item))
+            + popupItem('Admin thực nhận', item.cashReceivedAmount == null ? '-' : money(item.cashReceivedAmount))
+            + popupItem('Lệch so với nhân viên', item.cashReceivedAmount == null ? '-' : diffPill(item.cashReceivedAmount - item.closingCashActual))
+            + popupItem('Admin xác nhận', escapeHtml(item.cashReceivedByUserName || '-'))
+            + popupItem('Xác nhận lúc', dt(item.cashReceivedAtUtc))
+            + popupItem('Ghi chú bàn giao', escapeHtml(item.cashReceiptNote || '-'))
             + '<div class="manager-popup-item" style="grid-column:1/-1;">'
             + '    <div class="manager-popup-label">Lệch quỹ</div>'
             + '    <div class="manager-popup-value">' + diffPill(item.cashDifference) + '</div>'
@@ -439,6 +470,14 @@
 
         document.getElementById('detailContent').innerHTML = html;
 
+        receiptForm.hidden = !isClosed(item) || item.closingCashActual == null || !!item.cashReceivedAtUtc;
+        document.getElementById('cashReceiptSummary').textContent = 'Nhân viên khai: ' + money(item.closingCashActual) + ' · Sổ quỹ dự kiến: ' + money(item.closingCashExpected);
+        receiptAmount.value = '';
+        receiptNote.value = '';
+        receiptError.textContent = '';
+        document.getElementById('cashReceiptDifference').textContent = '';
+        receiptButton.disabled = false;
+        document.getElementById('btnPrintClosingSlip').hidden = !isClosed(item);
         if (detailModal) detailModal.show();
     }
 
@@ -545,13 +584,60 @@ function exportManagerDashboardExcel() {
         w.document.open();
         w.document.write(html);
         w.document.close();
+        GaoPrintLifecycle.autoClose(w);
 
         setTimeout(function () {
             w.print();
         }, 500);
     }
 
+    function updateReceiptDifference() {
+        const item = (dashboardData?.shifts || []).find(x => x.id === selectedShiftId);
+        const valid = item && receiptAmount.value !== '' && Number.isFinite(Number(receiptAmount.value));
+        const amount = Number(receiptAmount.value);
+        receiptNote.required = !!valid && (amount !== Number(item.closingCashActual) || amount !== Number(item.closingCashExpected));
+        document.getElementById('cashReceiptDifference').textContent = valid
+            ? 'Lệch so với nhân viên: ' + money(amount - item.closingCashActual)
+                + ' · Lệch so với sổ quỹ: ' + money(amount - item.closingCashExpected)
+                + (receiptNote.required ? '. Cần ghi lý do chênh lệch.' : '') : '';
+    }
+
+    async function confirmCashReceipt(event) {
+        event.preventDefault();
+        updateReceiptDifference();
+        if (!receiptForm.reportValidity() || receiptButton.disabled) return;
+        const id = selectedShiftId;
+        receiptButton.disabled = true;
+        receiptError.textContent = '';
+        try {
+            const response = await fetch('/admin/pos/shift/' + id + '/cash-receipt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value },
+                body: JSON.stringify({ receivedAmount: Number(receiptAmount.value), note: receiptNote.value.trim() || null })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Không xác nhận được tiền bàn giao.');
+            // Lock the local form immediately; a failed refresh must not invite a second edit.
+            const item = (dashboardData?.shifts || []).find(x => x.id === id);
+            if (item) item.cashReceivedAtUtc = new Date().toISOString();
+            receiptForm.hidden = true;
+            renderShifts(dashboardData.shifts);
+            const data = await fetchJson(buildUrl());
+            renderAll(data);
+            if (selectedShiftId === id) openDetail(id);
+            showSuccess('Đã xác nhận nhận tiền và duyệt chốt ca.');
+        } catch (err) { receiptError.textContent = err.message; }
+        finally { receiptButton.disabled = false; }
+    }
+
     function bindEvents() {
+        receiptForm.addEventListener('submit', confirmCashReceipt);
+        receiptAmount.addEventListener('input', updateReceiptDifference);
+        receiptFilter.addEventListener('change', function () {
+            shiftPager.page = 1;
+            renderShifts(dashboardData?.shifts || []);
+        });
         document.addEventListener('click', function (e) {
             const detailBtn = e.target.closest('[data-detail]');
 

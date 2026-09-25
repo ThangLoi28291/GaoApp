@@ -918,7 +918,7 @@ window.PosCommon = (function () {
             return err;
         }
 
-        const status = Number(err?.status || err?.response?.status || 0);
+        const status = Number(err?.status || err?.statusCode || err?.response?.status || 0);
         const payload = err?.payload || err?.response?.payload || null;
 
         const payloadMessage = extractPayloadMessage(payload);
@@ -1212,6 +1212,7 @@ window.PosCommon = (function () {
 
         if (typeof stateHelpers.setActionPending === 'function') {
             stateHelpers.setActionPending(posState, actionKey, isPending);
+            refreshUiLocks(posState);
             return;
         }
 
@@ -1231,6 +1232,7 @@ window.PosCommon = (function () {
 
         if (typeof stateHelpers.setBusyScopes === 'function') {
             stateHelpers.setBusyScopes(posState, scopes, isBusy);
+            refreshUiLocks(posState);
             return;
         }
 

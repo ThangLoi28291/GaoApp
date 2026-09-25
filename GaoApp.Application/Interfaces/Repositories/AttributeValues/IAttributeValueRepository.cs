@@ -13,6 +13,10 @@ public interface IAttributeValueRepository
    int pageSize,
    CancellationToken ct = default);
 
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<AttributeValue?> GetByIdAsync(int storeId, int id, CancellationToken ct = default);
 
     Task<bool> ExistsCodeAsync(int storeId, int attributeId, string code, int? excludeId, CancellationToken ct = default);

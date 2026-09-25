@@ -193,6 +193,11 @@ public sealed class POSShiftManagerShiftItemDto
     public decimal ClosingCashExpected { get; set; }
 
     public decimal? ClosingCashActual { get; set; }
+    public decimal? CashReceivedAmount { get; set; }
+    public int? CashReceivedByUserId { get; set; }
+    public string? CashReceivedByUserName { get; set; }
+    public DateTime? CashReceivedAtUtc { get; set; }
+    public string? CashReceiptNote { get; set; }
 
     public decimal CashDifference { get; set; }
 

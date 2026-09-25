@@ -1,0 +1,433 @@
+﻿@model GaoApp.Application.DTOs.Rewards.RewardSettingsAdminDto
+
+@{
+    ViewData["Title"] = "Cấu hình tích điểm";
+
+    Layout = "_ContentNavbarLayout";
+
+    var pageState =
+        Model.Exists
+            ? "existing"
+            : "new";
+}
+
+@section VendorStyles {
+    <link rel="stylesheet"
+          href="~/Admin/css/reward-settings.css"
+          asp-append-version="true" />
+}
+
+<div class="reward-settings-page"
+     data-reward-settings-page
+     data-page-state="@pageState"
+     data-original-money-per-point="@Model.MoneyPerPoint"
+     data-original-points-per-voucher="@Model.PointsPerVoucher"
+     data-original-voucher-value="@Model.VoucherValue">
+
+    <div class="reward-settings-header">
+
+        <div>
+            <a asp-area="Admin"
+               asp-controller="RewardVouchers"
+               asp-action="Index"
+               class="reward-settings-back">
+                <i class="bx bx-arrow-back"></i>
+                Phiếu giảm giá khách hàng
+            </a>
+
+            <h1>
+                Cấu hình tích điểm
+            </h1>
+
+            <p>
+                Quản lý chính sách tích điểm và
+                phát hành voucher cho cửa hàng hiện tại.
+            </p>
+        </div>
+
+    </div>
+
+    @if (TempData["SuccessMessage"] is string success)
+    {
+        <div class="alert alert-success">
+            @success
+        </div>
+    }
+
+    <div asp-validation-summary="ModelOnly"
+         class="alert alert-danger reward-settings-validation">
+    </div>
+
+    <form asp-area="Admin"
+          asp-controller="RewardSettings"
+          asp-action="Save"
+          method="post"
+          id="rewardSettingsForm">
+
+        @Html.AntiForgeryToken()
+
+        <input type="hidden"
+               name="RowVersion"
+               value="@Model.RowVersion" />
+
+        <input type="hidden"
+               name="ConfirmRateChange"
+               id="confirmRateChange"
+               value="false" />
+
+        <div class="reward-settings-layout">
+
+            <main class="reward-settings-main">
+
+                <section class="reward-settings-card">
+                    <div class="reward-settings-card__header"><div>
+                        <div class="reward-settings-eyebrow">HÀNG ĐƯỢC TÍCH ĐIỂM</div>
+                        <h2>Đúng đơn vị gốc, đúng giá bán lẻ</h2>
+                    </div></div>
+                    <p>Chỉ tích điểm cho dòng bán bằng đơn vị gốc và giữ nguyên giá lẻ. Bán theo lốc/thùng, áp giá khác giá lẻ hoặc giảm giá dòng hàng sẽ không tích điểm.</p>
+                    <div class="reward-eligibility-examples">
+                        <span>1 hộp × 6.000 ₫: <strong>Được tích</strong></span>
+                        <span>4 hộp × 5.000 ₫: <strong>Không tích</strong></span>
+                        <span>1 lốc × 20.000 ₫: <strong>Không tích</strong></span>
+                    </div>
+                    <h3 class="h5 mt-4">Ngành hàng không tích điểm</h3>
+                    <p class="text-muted small">Đánh dấu ngành hàng cần loại trừ, ví dụ Sữa. Toàn bộ sản phẩm trong ngành hàng và ngành hàng con sẽ không tích điểm, kể cả sản phẩm được bật tích điểm riêng.</p>
+                    <input type="hidden" name="UpdateCategoryExclusions" value="true" />
+                    <input type="hidden" name="CategorySelectionVersion" value="@Model.CategorySelectionVersion" />
+                    <label for="rewardCategorySearch" class="form-label">Tìm ngành hàng</label>
+                    <input type="search" id="rewardCategorySearch" class="form-control mb-3" placeholder="Nhập tên ngành hàng…" autocomplete="off" />
+                    <div class="reward-category-list" id="rewardCategoryList">
+                        @foreach (var category in Model.Categories)
+                        {
+                            <label class="reward-category-option" data-reward-category="@category.Name">
+                                <input type="checkbox" name="ExcludedCategoryIds" value="@category.Id" checked="@category.IsExcluded" />
+                                <span>@category.Name</span>
+                            </label>
+                        }
+                        @if (Model.Categories.Count == 0)
+                        {
+                            <p class="text-muted mb-0">Cửa hàng chưa có ngành hàng.</p>
+                        }
+                    </div>
+                    <p class="text-muted small mt-3 mb-0">Áp dụng khi thanh toán đơn mới. Điểm đã tích và phiếu giảm giá đã phát hành vẫn được giữ.</p>
+                </section>
+
+                <section class="reward-settings-card">
+
+                    <div class="reward-settings-card__header">
+                        <div>
+                            <div class="reward-settings-eyebrow">
+                                CHƯƠNG TRÌNH
+                            </div>
+
+                            <h2>
+                                Trạng thái tích điểm
+                            </h2>
+                        </div>
+                    </div>
+
+                    <label class="reward-settings-switch-row">
+
+                        <span>
+                            <strong>
+                                Tích điểm mới
+                            </strong>
+
+                            <small>
+                                Khi tắt, khách không nhận thêm
+                                tích lũy từ đơn mới. Điểm và voucher
+                                đã có vẫn được giữ và sử dụng.
+                            </small>
+                        </span>
+
+                        <span class="form-check form-switch">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   role="switch"
+                                   id="rewardProgramEnabled"
+                                   name="IsEnabled"
+                                   value="true"
+                                   @(Model.IsEnabled ? "checked" : null) />
+
+                            <input type="hidden"
+                                   name="IsEnabled"
+                                   value="false" />
+                        </span>
+
+                    </label>
+
+                </section>
+
+
+                <section class="reward-settings-card">
+
+                    <div class="reward-settings-card__header">
+                        <div>
+                            <div class="reward-settings-eyebrow">
+                                QUY TẮC
+                            </div>
+
+                            <h2>
+                                Tích điểm và đổi voucher
+                            </h2>
+                        </div>
+                    </div>
+
+                    <div class="reward-settings-fields">
+
+                        <div class="reward-settings-field">
+
+                            <label for="moneyPerPoint">
+                                Tiền để nhận 1 điểm
+                            </label>
+
+                            <div class="reward-settings-input-unit">
+                                <input id="moneyPerPoint"
+                                       name="MoneyPerPoint"
+                                       type="number"
+                                       min="1"
+                                       step="1"
+                                       required
+                                       value="@Model.MoneyPerPoint.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <span>đ</span>
+                            </div>
+
+                        </div>
+
+
+                        <div class="reward-settings-field">
+
+                            <label for="pointsPerVoucher">
+                                Số điểm đổi 1 voucher
+                            </label>
+
+                            <div class="reward-settings-input-unit">
+                                <input id="pointsPerVoucher"
+                                       name="PointsPerVoucher"
+                                       type="number"
+                                       min="1"
+                                       step="1"
+                                       required
+                                       value="@Model.PointsPerVoucher" />
+
+                                <span>điểm</span>
+                            </div>
+
+                        </div>
+
+
+                        <div class="reward-settings-field">
+
+                            <label for="voucherValue">
+                                Giá trị voucher
+                            </label>
+
+                            <div class="reward-settings-input-unit">
+                                <input id="voucherValue"
+                                       name="VoucherValue"
+                                       type="number"
+                                       min="1"
+                                       step="1"
+                                       required
+                                       value="@Model.VoucherValue.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)" />
+
+                                <span>đ</span>
+                            </div>
+
+                        </div>
+
+
+                        <div class="reward-settings-field reward-settings-field--full">
+
+                            <label for="rewardSettingsNote">
+                                Ghi chú
+                            </label>
+
+                            <textarea id="rewardSettingsNote"
+                                      name="Note"
+                                      maxlength="500"
+                                      rows="3"
+                                      placeholder="Mô tả chính sách hoặc lưu ý nội bộ">@Model.Note</textarea>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </main>
+
+
+            <aside class="reward-settings-preview-card">
+
+                <div class="reward-settings-eyebrow">
+                    XEM TRƯỚC CHÍNH SÁCH
+                </div>
+
+                <div class="reward-settings-preview-row">
+                    <span>1 điểm</span>
+
+                    <strong id="previewMoneyPerPoint">
+                        -
+                    </strong>
+                </div>
+
+                <div class="reward-settings-preview-row">
+                    <span>1 voucher</span>
+
+                    <strong id="previewPointsPerVoucher">
+                        -
+                    </strong>
+                </div>
+
+                <div class="reward-settings-preview-row is-primary">
+                    <span>
+                        Cần tích lũy / voucher
+                    </span>
+
+                    <strong id="previewRequiredAmount">
+                        -
+                    </strong>
+                </div>
+
+                <div class="reward-settings-preview-row">
+                    <span>Giá trị voucher</span>
+
+                    <strong id="previewVoucherValue">
+                        -
+                    </strong>
+                </div>
+
+                <div class="reward-settings-preview-rate">
+
+                    <span>
+                        Tỷ lệ ưu đãi tương đương
+                    </span>
+
+                    <strong id="previewRewardRate">
+                        -
+                    </strong>
+
+                </div>
+
+                <div class="reward-settings-preview-note">
+                    Voucher đã phát hành trước đây
+                    không thay đổi giá trị khi sửa chính sách.
+                </div>
+
+            </aside>
+
+        </div>
+
+
+        <div class="reward-settings-actions">
+
+            <a asp-area="Admin"
+               asp-controller="RewardVouchers"
+               asp-action="Index"
+               class="btn btn-light">
+                Hủy
+            </a>
+
+            <button type="submit"
+                    class="btn btn-primary"
+                    id="btnSaveRewardSettings">
+                @(Model.Exists
+                    ? "Lưu cấu hình"
+                    : "Tạo cấu hình")
+            </button>
+
+        </div>
+
+    </form>
+
+
+    <div class="modal fade"
+         id="rewardSettingsConfirmModal"
+         tabindex="-1"
+         aria-hidden="true">
+
+        <div class="modal-dialog modal-dialog-centered">
+
+            <div class="modal-content reward-settings-confirm">
+
+                <div class="modal-header">
+                    <div>
+                        <div class="reward-settings-eyebrow">
+                            XÁC NHẬN
+                        </div>
+
+                        <h5 class="modal-title">
+                            Thay đổi chính sách tích điểm
+                        </h5>
+                    </div>
+
+                    <button type="button"
+                            class="btn-close"
+                            data-bs-dismiss="modal"
+                            aria-label="Đóng">
+                    </button>
+                </div>
+
+                <div class="modal-body">
+
+                    <p>
+                        Thay đổi này có thể làm thay đổi số điểm
+                        và khả năng đổi voucher từ số dư tích lũy
+                        chưa sử dụng của khách hàng hiện tại.
+                    </p>
+
+                    <div class="reward-settings-compare">
+
+                        <div>
+                            <span>Hiện tại</span>
+                            <strong id="oldPolicySummary">
+                                -
+                            </strong>
+                        </div>
+
+                        <i class="bx bx-right-arrow-alt"></i>
+
+                        <div>
+                            <span>Mới</span>
+                            <strong id="newPolicySummary">
+                                -
+                            </strong>
+                        </div>
+
+                    </div>
+
+                    <div class="alert alert-info mb-0">
+                        Voucher đã phát hành sẽ giữ nguyên
+                        giá trị và mức tích lũy đã ghi nhận.
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+
+                    <button type="button"
+                            class="btn btn-light"
+                            data-bs-dismiss="modal">
+                        Quay lại
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-warning"
+                            id="btnConfirmRewardRateChange">
+                        Xác nhận thay đổi
+                    </button>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@section PageScripts {
+    <script src="~/Admin/js/reward-settings.js"
+            asp-append-version="true"></script>
+}

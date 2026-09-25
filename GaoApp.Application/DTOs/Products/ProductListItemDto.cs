@@ -16,6 +16,7 @@ public class ProductListItemDto
     public bool IsActive { get; set; }
     public bool IsSellable { get; set; }
     public bool HasVariants { get; set; }
+    public int VariantCount { get; set; }
     public string? PrimaryImageUrl { get; set; }
     public int ImageCount { get; set; }
 

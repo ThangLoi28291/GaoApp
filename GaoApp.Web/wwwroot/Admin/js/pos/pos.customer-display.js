@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     'use strict';
 
     const app = document.getElementById('customerDisplayApp');
@@ -8,6 +8,8 @@
     let refreshTimer = null;
     let pollingTimer = null;
     let backupPollingTimer = null;
+    let depositQrPollingTimer = null;
+    let activeDepositQr = false;
 
     let lastLoadAt = 0;
     let isLoading = false;
@@ -23,13 +25,65 @@
     let idleMediaItems = [];
     let idleMediaIndex = 0;
     let idleMediaTimer = null;
-    let idleMediaLoaded = false;
+    let promotionStarted = false;
+    let promotionLoadVersion = 0;
     let isIdleVisible = false;
     let idleMediaPreloadCache = new Map();
 
     let countdownTimer = null;
 
-    const MAX_VISIBLE_LINES = 7;
+    let cartScrollTimer = null;
+    let cartSignature = '';
+    let displayInfoLoading = false;
+
+    async function loadDisplayInfo() {
+        if (displayInfoLoading) return;
+        displayInfoLoading = true;
+        try {
+            const res = await fetch('/admin/pos/customer-display/info', {
+                credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
+            });
+            if (res.status === 401 || res.status === 403 || res.redirected) {
+                setText('cdCashierName', 'Chờ nhân viên đăng nhập');
+                return;
+            }
+            if (!res.ok) return;
+            const info = await res.json();
+            if (String(info.storeId) !== String(getStoreId()) || String(info.terminalId ?? '') !== String(getTerminalId())) {
+                // Rebind the display and hub groups together if a new login selects another counter.
+                location.reload();
+                return;
+            }
+            setText('cdCashierName', info.cashierName || 'Chưa xác định nhân viên');
+            setText('cdTerminalName', info.terminalName || 'Quầy thanh toán');
+            setText('cdWifiName', info.wifiName || '');
+            setText('cdWifiPassword', info.wifiPassword || 'Không cần mật khẩu');
+            document.getElementById('cdWifi').hidden = !info.wifiName;
+        } catch { /* Keep confirmed information while the server is unavailable. */ }
+        finally { displayInfoLoading = false; }
+    }
+
+    function productImage(line) {
+        const value = line?.imageThumbUrl || line?.imageUrl || '';
+        if (!value) return '';
+        try {
+            const url = new URL(value, location.origin);
+            return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+        } catch { return ''; }
+    }
+
+    function startCartScroll() {
+        clearInterval(cartScrollTimer);
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        cartScrollTimer = setInterval(() => {
+            const box = document.getElementById('cdCartLines');
+            if (!box || isIdleVisible || app.classList.contains('is-paying') ||
+                app.classList.contains('is-thanking') || box.matches(':hover, :focus-within')) return;
+            if (box.scrollHeight <= box.clientHeight + 2) return;
+            const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 5;
+            box.scrollTo({ top: atEnd ? 0 : box.scrollTop + box.clientHeight - 40, behavior: 'smooth' });
+        }, 7000);
+    }
 
     // =========================================================
     // BASIC HELPERS
@@ -98,7 +152,7 @@
     }
 
     // =========================================================
-    // IDLE PROMOTION ENGINE
+    // SHARED PROMOTION ENGINE: the same player stays mounted in idle and checkout.
     // =========================================================
 
     async function loadIdleMediaItems() {
@@ -111,27 +165,16 @@
                 }
             });
 
-            if (!res.ok) {
-                idleMediaItems = [];
-                idleMediaLoaded = true;
-                return;
-            }
+            if (!res.ok) return null;
 
             const result = await res.json();
 
-            idleMediaItems = Array.isArray(result?.data)
-                ? result.data
-                : [];
-
-            preloadIdleMediaItems(idleMediaItems);
-
-            idleMediaLoaded = true;
+            return Array.isArray(result?.data) ? result.data : [];
         }
         catch (err) {
             console.warn('Load idle media failed:', err);
 
-            idleMediaItems = [];
-            idleMediaLoaded = true;
+            return null;
         }
     }
 
@@ -274,8 +317,10 @@
             return;
         }
 
+        app.classList.add('has-promotions');
+
         const type = String(item.mediaType || 'text').toLowerCase();
-        const title = escapeHtml(item.title || 'GaoMart');
+        const title = escapeHtml(item.title || app.dataset.storeName || 'Cửa hàng');
         const desc = escapeHtml(item.description || '');
         const mediaUrl = item.mediaUrl || '';
         const bg = item.backgroundColor || '';
@@ -299,8 +344,9 @@
 
             if (img) {
                 img.onerror = function () {
+                    if (!img.isConnected) return;
                     console.warn('Idle image load failed:', mediaUrl);
-                    goNextIdleMedia();
+                    skipFailedIdleMedia(mediaUrl);
                 };
             }
 
@@ -329,18 +375,21 @@
 
                 if (playPromise && typeof playPromise.catch === 'function') {
                     playPromise.catch(function () {
+                        if (!video.isConnected) return;
                         console.warn('Video autoplay blocked. Skip to next media.');
-                        goNextIdleMedia();
+                        skipFailedIdleMedia(mediaUrl);
                     });
                 }
 
                 video.onended = function () {
+                    if (!video.isConnected) return;
                     goNextIdleMedia();
                 };
 
                 video.onerror = function () {
+                    if (!video.isConnected) return;
                     console.warn('Idle video load failed:', mediaUrl);
-                    goNextIdleMedia();
+                    skipFailedIdleMedia(mediaUrl);
                 };
             }
 
@@ -371,23 +420,19 @@
 
         stage.classList.remove('is-fullscreen-media');
         idle?.classList.remove('has-fullscreen-media');
+        app.classList.remove('has-promotions');
 
-        stage.innerHTML = `
-            <div class="cd-idle-media-fallback">
-                <div class="cd-idle-promo-title">
-                    GaoMart
-                </div>
+        stage.replaceChildren(document.getElementById('cdIdleFallbackTemplate').content.cloneNode(true));
+    }
 
-                <div class="cd-idle-promo-desc">
-                    Hàng tốt mỗi ngày • Thanh toán nhanh chóng
-                </div>
-            </div>
-        `;
+    function skipFailedIdleMedia(url) {
+        stopIdlePromoRotation();
+        idleMediaItems = idleMediaItems.filter(item => item.mediaUrl !== url);
+        idleMediaIndex--;
+        goNextIdleMedia();
     }
 
     function goNextIdleMedia() {
-        if (!isIdleVisible) return;
-
         if (!Array.isArray(idleMediaItems) || idleMediaItems.length === 0) {
             const stage = document.getElementById('cdIdleMediaStage');
 
@@ -398,7 +443,7 @@
             return;
         }
 
-        stopIdlePromoRotation();
+        clearTimeout(idleMediaTimer);
 
         idleMediaIndex++;
 
@@ -412,7 +457,7 @@
     }
 
     function scheduleNextIdleMedia() {
-        stopIdlePromoRotation();
+        clearTimeout(idleMediaTimer);
 
         if (!Array.isArray(idleMediaItems) || idleMediaItems.length === 0) {
             return;
@@ -429,11 +474,16 @@
     }
 
     async function startIdlePromoRotation() {
-        stopIdlePromoRotation();
+        const version = ++promotionLoadVersion;
+        const items = await loadIdleMediaItems();
+        if (version !== promotionLoadVersion) return;
+        // Keep the current player on an unchanged update or a temporary server failure.
+        if ((items === null || JSON.stringify(items) === JSON.stringify(idleMediaItems)) &&
+            document.getElementById('cdIdleMediaStage')?.childElementCount) return;
 
-        if (!idleMediaLoaded) {
-            await loadIdleMediaItems();
-        }
+        stopIdlePromoRotation();
+        idleMediaItems = items || [];
+        preloadIdleMediaItems(idleMediaItems);
 
         if (!idleMediaItems.length) {
             const stage = document.getElementById('cdIdleMediaStage');
@@ -462,15 +512,7 @@
     }
 
     async function refreshIdleMediaRealtime() {
-        idleMediaLoaded = false;
-
-        stopIdlePromoRotation();
-
-        await loadIdleMediaItems();
-
-        if (isIdleVisible) {
-            await startIdlePromoRotation();
-        }
+        await startIdlePromoRotation();
     }
 
     function showIdleScreen() {
@@ -483,30 +525,24 @@
         }
 
         isIdleVisible = true;
+        app.dataset.view = 'idle';
+        clearInterval(cartScrollTimer);
 
-        idle.classList.remove('d-none');
-
-        startIdleClock();
-        startIdlePromoRotation();
+        idle.setAttribute('aria-label', 'Chào mừng quý khách');
+        if (!promotionStarted) {
+            promotionStarted = true;
+            startIdlePromoRotation();
+        }
     }
 
     function hideIdleScreen() {
         const idle = document.getElementById('cdIdleScreen');
-        const stage = document.getElementById('cdIdleMediaStage');
-
         if (!idle) return;
 
         isIdleVisible = false;
+        app.dataset.view = 'cart';
 
-        idle.classList.add('d-none');
-        idle.classList.remove('has-fullscreen-media');
-
-        stage?.classList.remove('is-fullscreen-media');
-
-        stopIdleClock();
-        stopIdlePromoRotation();
-
-        idleMediaLoaded = false;
+        idle.setAttribute('aria-label', 'Thông tin và quảng cáo tại tiệm');
     }
 
     function startIdleClock() {
@@ -556,6 +592,7 @@
     function buildLineKey(line) {
         return String(
             line?.id ||
+            line?.lineId ||
             line?.orderLineId ||
             line?.variantId ||
             line?.productVariantId ||
@@ -592,72 +629,36 @@
 
     function renderHeroProduct(line) {
         const hero = document.getElementById('cdHeroProduct');
-        const nameEl = document.getElementById('cdHeroName');
-        const qtyEl = document.getElementById('cdHeroQty');
-        const priceEl = document.getElementById('cdHeroPrice');
-        const totalEl = document.getElementById('cdHeroTotal');
-
-        if (!hero || !nameEl || !qtyEl || !priceEl) return;
-
-        if (!line) {
-            nameEl.textContent = 'Chưa có sản phẩm';
-
-            qtyEl.innerHTML = `
-                <span class="cd-hero-meta-label">Số lượng</span>
-                0
-            `;
-
-            priceEl.innerHTML = `
-                <span class="cd-hero-meta-label">Đơn giá</span>
-                0
-            `;
-
-            if (totalEl) {
-                totalEl.innerHTML = `
-                    <span class="cd-hero-meta-label">Thành tiền</span>
-                    0
-                `;
-            }
-
-            return;
-        }
-
-        const key = buildLineKey(line);
-        const name = getDisplayName(line);
-        const qty = Number(line?.quantity || 0);
-        const unit = line?.sellingUnitName || '';
-        const price = Number(line?.unitPrice || 0);
-        const total = Number(line?.lineTotal || 0);
-
-        nameEl.textContent = name;
-
-        qtyEl.innerHTML = `
-            <span class="cd-hero-meta-label">Số lượng</span>
-            ${formatMoney(qty)} ${escapeHtml(unit)}
-        `;
-
-        priceEl.innerHTML = `
-            <span class="cd-hero-meta-label">Đơn giá</span>
-            ${formatMoney(price)} đ
-        `;
-
-        if (totalEl) {
-            totalEl.innerHTML = `
-                <span class="cd-hero-meta-label">Thành tiền</span>
-                ${formatMoney(total)} đ
-            `;
-        }
-
-        if (key !== lastHeroLineKey) {
+        const image = document.getElementById('cdHeroImage');
+        setText('cdHeroName', line ? getDisplayName(line) : 'Sản phẩm của bạn');
+        const fields = [
+            ['cdHeroQty', 'Số lượng', `${formatMoney(line?.quantity)} ${escapeHtml(line?.sellingUnitName || line?.unitName || '')}`],
+            ['cdHeroPrice', 'Đơn giá', `${formatMoney(line?.unitPrice)} ₫`],
+            ['cdHeroTotal', 'Thành tiền', `${formatMoney(line?.lineTotal)} ₫`]
+        ];
+        fields.forEach(([id, label, value]) => {
+            document.getElementById(id).innerHTML = `<span class="cd-hero-meta-label">${label}</span>${value}`;
+        });
+        const url = productImage(line);
+        image.hidden = !url;
+        if (url && image.getAttribute('src') !== url) {
+            image.src = url;
+            image.alt = getDisplayName(line);
+            image.onerror = () => { image.hidden = true; };
+        } else if (!url) image.removeAttribute('src');
+        const signature = line ? buildLineSignature(line) : '';
+        if (signature !== lastHeroLineKey) {
             hero.classList.remove('is-hero-changed');
             void hero.offsetWidth;
             hero.classList.add('is-hero-changed');
-
-            lastHeroLineKey = key;
+            lastHeroLineKey = signature;
         }
     }
-
     function renderEmpty(message) {
+        cartSignature = '';
+        setText('cdCustomerName', 'Quý khách');
+        setText('cdCustomerPhone', '');
+        document.getElementById('cdSettlement').hidden = true;
         const box = document.getElementById('cdCartLines');
 
         if (box) {
@@ -688,96 +689,33 @@
 
     function renderLines(lines) {
         const box = document.getElementById('cdCartLines');
-
-        if (!box) return;
-
-        if (!Array.isArray(lines) || lines.length === 0) {
-            renderEmpty('Chưa có sản phẩm');
-            return;
-        }
-
-        const changedKey = detectChangedLine(lines);
-
+        if (!Array.isArray(lines) || !lines.length) { renderEmpty(); return; }
+        const signature = JSON.stringify(lines);
         hideIdleScreen();
-
-        if (changedKey) {
-            lastChangedLineKey = changedKey;
-        }
-
-        const sortedLines = [...lines].sort(function (a, b) {
-            const ak = buildLineKey(a);
-            const bk = buildLineKey(b);
-
-            if (ak === lastChangedLineKey) return -1;
-            if (bk === lastChangedLineKey) return 1;
-
-            return 0;
-        });
-
-        const heroLine =
-            sortedLines.find(x => buildLineKey(x) === lastChangedLineKey) ||
-            sortedLines[0];
-
-        renderHeroProduct(heroLine);
-
-        const visibleLines = sortedLines.slice(0, MAX_VISIBLE_LINES);
-        const hiddenCount = Math.max(0, sortedLines.length - visibleLines.length);
-
-        const nextSignatureMap = {};
-        let totalQty = 0;
-
-        for (const line of lines) {
-            totalQty += Number(line?.quantity || 0);
-            nextSignatureMap[buildLineKey(line)] = buildLineSignature(line);
-        }
-
-        box.innerHTML = visibleLines.map(function (line, index) {
+        if (signature === cartSignature) return;
+        cartSignature = signature;
+        const changedKey = detectChangedLine(lines);
+        if (changedKey) lastChangedLineKey = changedKey;
+        const sorted = [...lines].sort((a, b) => (buildLineKey(b) === lastChangedLineKey ? 1 : 0) - (buildLineKey(a) === lastChangedLineKey ? 1 : 0));
+        renderHeroProduct(sorted[0]);
+        box.innerHTML = sorted.map((line, index) => {
             const key = buildLineKey(line) || String(index);
-            const isChanged = key === lastChangedLineKey;
-
+            const changed = key === lastChangedLineKey;
             const name = getDisplayName(line);
-            const unit = line?.sellingUnitName || '';
-            const qty = Number(line?.quantity || 0);
-            const price = Number(line?.unitPrice || 0);
-            const total = Number(line?.lineTotal || 0);
-
-            return `
-                <div class="cd-line ${isChanged ? 'is-changed' : ''}">
-                    <div class="cd-line-index">${index + 1}</div>
-
-                    <div class="cd-line-main">
-                        <div class="cd-line-name" title="${escapeHtml(name)}">
-                            ${escapeHtml(name)}
-                        </div>
-
-                        <div class="cd-line-meta">
-                            ${formatMoney(qty)} ${escapeHtml(unit)}
-                            <span>×</span>
-                            ${formatMoney(price)}
-                        </div>
-                    </div>
-
-                    <div class="cd-line-total">
-                        ${formatMoney(total)}
-                    </div>
-                </div>
-            `;
-        }).join('') + (
-                hiddenCount > 0
-                    ? `
-                    <div class="cd-more-lines">
-                        +${hiddenCount} sản phẩm khác trong giỏ
-                    </div>
-                `
-                    : ''
-            );
-
+            const url = productImage(line);
+            return `<div class="cd-line ${changed ? 'is-changed' : ''}">
+                <div class="cd-line-image"><svg aria-hidden="true"><use href="#cd-icon-bag" /></svg>${url ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" />` : ''}</div>
+                <div class="cd-line-main"><div class="cd-line-name">${escapeHtml(name)}${changed ? '<span class="cd-new-label">VỪA CẬP NHẬT</span>' : ''}</div>
+                <div class="cd-line-meta">${formatMoney(line.quantity)} ${escapeHtml(line.sellingUnitName || line.unitName || '')}<span>×</span>${formatMoney(line.unitPrice)} ₫</div></div>
+                <div class="cd-line-total">${formatMoney(line.lineTotal)}<span class="cd-line-currency"> ₫</span></div></div>`;
+        }).join('');
+        box.querySelectorAll('img').forEach(img => { img.onerror = () => img.remove(); });
+        box.scrollTop = 0;
         setText('cdItemCount', formatMoney(lines.length));
-        setText('cdQtyCount', formatMoney(totalQty));
-
-        lastLineSignatureMap = nextSignatureMap;
+        setText('cdQtyCount', formatMoney(lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0)));
+        lastLineSignatureMap = Object.fromEntries(lines.map(line => [buildLineKey(line), buildLineSignature(line)]));
+        startCartScroll();
     }
-
     function renderDraft(draft) {
         if (!draft) {
             renderEmpty('Chưa có giỏ hiện tại');
@@ -790,7 +728,7 @@
             'cdCustomerName',
             draft?.customerName ||
             draft?.customer?.name ||
-            'Khách lẻ'
+            'Quý khách'
         );
 
         setText(
@@ -801,20 +739,15 @@
             ''
         );
 
-        setText(
-            'cdCashierName',
-            draft?.cashierName ||
-            draft?.employeeName ||
-            draft?.createdByName ||
-            'Thu ngân'
-        );
-
         setText('cdGrandTotal', formatMoney(draft.grandTotal));
         setText('cdSubtotal', formatMoney(draft.subtotal));
         setText('cdDiscount', formatMoney((draft.discountTotal || 0) + (draft.orderDiscount || 0)));
         setText('cdPaid', formatMoney(getPaidValue(draft)));
         setText('cdBalance', formatMoney(getBalanceValue(draft)));
         setText('cdChange', formatMoney(getChangeValue(draft)));
+        document.getElementById('cdDiscountRow').hidden = !((draft.discountTotal || 0) + (draft.orderDiscount || 0));
+        document.getElementById('cdSettlement').hidden = getPaidValue(draft) <= 0 && getChangeValue(draft) <= 0;
+        document.getElementById('cdChangeRow').hidden = getChangeValue(draft) <= 0;
     }
 
     // =========================================================
@@ -848,17 +781,18 @@
             });
 
             if (!res.ok) {
-                renderEmpty('Không tải được dữ liệu POS');
+                setConnectionState('Đang chờ cập nhật từ quầy', false);
                 return;
             }
 
             const screen = await res.json();
+            setConnectionState('Sẵn sàng phục vụ', true);
 
             renderDraft(screen?.currentDraft || null);
         }
         catch (err) {
             console.error('Customer display load screen failed:', reason, err);
-            renderEmpty('Mất kết nối tới POS');
+            setConnectionState('Đang chờ cập nhật từ quầy', false);
         }
         finally {
             isLoading = false;
@@ -889,6 +823,9 @@
         if (!overlay) return;
 
         overlay.classList.remove('d-none');
+        overlay.classList.remove('is-qr-fullscreen');
+        app.classList.add('is-paying');
+        document.getElementById('cdCashVisual').hidden = false;
 
         const method = Number(payload?.method || 0);
         const amount = Number(payload?.amount || 0);
@@ -900,22 +837,14 @@
         }
 
         if (title) {
-            title.textContent = method === 1
-                ? 'Thanh toán chuyển khoản'
-                : 'Thanh toán tiền mặt';
+            title.textContent = method === 1 ? 'Thanh toán chuyển khoản.' : 'Thanh toán tiền mặt.';
         }
 
         if (message) {
             message.innerHTML = `
-                <div style="font-size:30px;font-weight:900;margin-top:12px;">
-                    Khách đưa: ${formatMoney(amount)}
-                </div>
-                <div style="font-size:24px;margin-top:8px;color:#dc2626;font-weight:800;">
-                    Còn thiếu: ${formatMoney(expectedBalance)}
-                </div>
-                <div style="font-size:24px;margin-top:8px;color:#047857;font-weight:800;">
-                    Tiền thừa: ${formatMoney(expectedChange)}
-                </div>
+                <div>${method === 1 ? 'Số tiền chuyển khoản' : 'Số tiền khách đưa'}<strong>${formatMoney(amount)} ₫</strong></div>
+                ${expectedBalance > 0 ? `<div class="cd-pay-row"><span>Còn cần thanh toán</span><b>${formatMoney(expectedBalance)} ₫</b></div>` : ''}
+                <div class="cd-pay-row"><span>Tiền thừa trả bạn</span><b>${formatMoney(expectedChange)} ₫</b></div>
             `;
         }
     }
@@ -929,21 +858,23 @@
 
         if (!overlay) return;
 
+        activeDepositQr = payload?.kind === 'deposit';
+
         overlay.classList.remove('d-none');
         overlay.classList.add('is-qr-fullscreen');
+        app.classList.add('is-paying');
+        document.getElementById('cdCashVisual').hidden = true;
 
         if (title) {
-            title.textContent = 'Quét mã QR để thanh toán';
+            title.textContent = payload?.title || 'Thanh toán chuyển khoản';
         }
 
         if (message) {
             message.innerHTML = `
-                <div style="font-size:26px;font-weight:800;">
-                    ${escapeHtml(payload?.bankName || '')}
-                </div>
-                <div style="font-size:24px;margin-top:8px;">
-                    STK: <b>${escapeHtml(payload?.accountNumber || '')}</b>
-                </div>
+                <div>${escapeHtml(payload?.intro || 'Chuyển khoản đến')}</div>
+                <div class="cd-bank-details"><span>${escapeHtml(payload?.bankName || '')}</span>
+                    <b>${escapeHtml(payload?.accountNumber || '')}</b>
+                    ${payload?.accountName ? `<span>${escapeHtml(payload.accountName)}</span>` : ''}</div>
             `;
         }
 
@@ -960,6 +891,8 @@
     }
 
     function hidePaymentOverlay() {
+        activeDepositQr = false;
+        app.classList.remove('is-paying');
         const overlay = document.getElementById('cdPaymentOverlay');
         const qrBox = document.getElementById('cdQrBox');
         const qrImg = document.getElementById('cdQrImage');
@@ -980,6 +913,7 @@
 
     function showPaymentSuccess(payload) {
         hidePaymentOverlay();
+        app.classList.add('is-thanking');
 
         clearTimeout(successTimer);
 
@@ -994,23 +928,26 @@
         const balance = Number(payload?.remainingAmount || 0);
         const change = Number(payload?.changeAmount || 0);
         const isFinalized = payload?.finalized === true;
+        setText('cdSuccessIcon', isFinalized ? '✓' : '…');
 
         overlay.classList.remove('d-none', 'is-success', 'is-info');
         overlay.classList.add(isFinalized ? 'is-success' : 'is-info');
 
         if (isFinalized) {
             if (title) {
-                title.textContent = 'Thanh toán thành công';
+                title.textContent = payload?.title || 'Thanh toán thành công';
             }
 
             if (message) {
-                message.textContent = 'Cảm ơn quý khách!';
+                message.textContent = payload?.message || 'Cảm ơn bạn. Hẹn gặp lại!';
             }
 
             if (amountBox) {
-                amountBox.innerHTML = change > 0
-                    ? `<div class="is-good">Tiền thối: ${formatMoney(change)}</div>`
-                    : '';
+                amountBox.innerHTML = payload?.kind === 'deposit'
+                    ? `<div class="is-good">Tiền cọc đã nhận: ${formatMoney(paid)} ₫</div>`
+                    : change > 0
+                        ? `<div class="is-good">Tiền thừa trả bạn: ${formatMoney(change)} ₫</div>`
+                        : '';
             }
         }
         else {
@@ -1024,8 +961,8 @@
 
             if (amountBox) {
                 amountBox.innerHTML = `
-                    <div>Đã nhận: ${formatMoney(paid)}</div>
-                    <div class="is-danger">Còn thiếu: ${formatMoney(balance)}</div>
+                    <div>Đã nhận: ${formatMoney(paid)} ₫</div>
+                    <div class="is-danger">Còn cần thanh toán: ${formatMoney(balance)} ₫</div>
                 `;
             }
         }
@@ -1034,11 +971,13 @@
 
         successTimer = setTimeout(function () {
             overlay.classList.add('d-none');
+            app.classList.remove('is-thanking');
         }, Number(payload?.durationMs || 4500));
     }
 
     function resetCustomerDisplayAfterFinalize() {
         clearTimeout(successTimer);
+        app.classList.remove('is-thanking');
 
         hidePaymentOverlay();
 
@@ -1106,6 +1045,11 @@
             return;
         }
 
+        if (eventType === 'customer_display_info_changed') {
+            loadDisplayInfo();
+            return;
+        }
+
         if (
             eventType.includes('cart') ||
             eventType.includes('draft') ||
@@ -1126,7 +1070,7 @@
     async function startSignalR() {
         if (!window.signalR) {
             console.warn('SignalR client not found. Fallback polling enabled.');
-            setConnectionState('Mất realtime - đang tự cập nhật', false);
+            setConnectionState('Đang cập nhật từ quầy', false);
             startFallbackPolling();
             return;
         }
@@ -1139,7 +1083,7 @@
         connection.on('joined', function (data) {
             console.log('Customer display joined SignalR group:', data);
 
-            setConnectionState('Đã kết nối realtime', true);
+            setConnectionState('Sẵn sàng phục vụ', true);
             stopFallbackPolling();
             scheduleRefresh('joined');
         });
@@ -1161,7 +1105,7 @@
         });
 
         connection.onreconnected(async function () {
-            setConnectionState('Đã kết nối realtime', true);
+            setConnectionState('Sẵn sàng phục vụ', true);
             stopFallbackPolling();
 
             await joinGroupsSafe();
@@ -1170,7 +1114,7 @@
         });
 
         connection.onclose(function () {
-            setConnectionState('Mất realtime - đang tự cập nhật', false);
+            setConnectionState('Đang cập nhật từ quầy', false);
             startFallbackPolling();
         });
 
@@ -1186,7 +1130,7 @@
         catch (err) {
             console.error('SignalR start failed', err);
 
-            setConnectionState('Mất realtime - đang tự cập nhật', false);
+            setConnectionState('Đang cập nhật từ quầy', false);
             startFallbackPolling();
         }
     }
@@ -1207,7 +1151,7 @@
 
             console.warn('Missing storeId or terminalId, cannot join POS group.', { storeId, terminalId });
 
-            setConnectionState('Thiếu thông tin quầy - đang chờ cấu hình', false);
+            setConnectionState('Vui lòng liên hệ thu ngân', false);
 
             showIdleScreen();
 
@@ -1216,7 +1160,7 @@
         catch (err) {
             console.warn('JoinStoreGroup failed', err);
 
-            setConnectionState('Không join được realtime - đang tự cập nhật', false);
+            setConnectionState('Đang cập nhật từ quầy', false);
             startFallbackPolling();
         }
     }
@@ -1245,7 +1189,34 @@
 
         backupPollingTimer = setInterval(function () {
             loadScreen('backup-polling');
+            loadDisplayInfo();
         }, 15000);
+    }
+
+    async function loadActiveDepositQr() {
+        try {
+            const response = await fetch('/admin/customer-deposit/active-qr', {
+                credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
+            });
+            if (response.status === 204) {
+                if (activeDepositQr) hidePaymentOverlay();
+                return;
+            }
+            if (!response.ok) return;
+            const qr = await response.json();
+            showPaymentQr({
+                ...qr,
+                kind: 'deposit',
+                title: 'Quét mã để đặt cọc',
+                intro: 'Chuyển tiền đặt cọc đến'
+            });
+        } catch { /* SignalR remains the primary real-time path. */ }
+    }
+
+    function startDepositQrPolling() {
+        if (depositQrPollingTimer) return;
+        void loadActiveDepositQr();
+        depositQrPollingTimer = setInterval(loadActiveDepositQr, 3000);
     }
 
     // =========================================================
@@ -1253,13 +1224,30 @@
     // =========================================================
 
     document.addEventListener('DOMContentLoaded', async function () {
+        startIdleClock();
+        loadDisplayInfo();
+        startDepositQrPolling();
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) loadDisplayInfo();
+        });
+        const fullscreen = document.getElementById('cdFullscreen');
+        if (!document.fullscreenEnabled) fullscreen.hidden = true;
+        fullscreen.addEventListener('click', async () => {
+            try {
+                if (document.fullscreenElement) await document.exitFullscreen();
+                else await document.documentElement.requestFullscreen();
+            } catch { /* The display remains usable in its current window. */ }
+        });
+        document.addEventListener('fullscreenchange', () => {
+            fullscreen.setAttribute('aria-label', document.fullscreenElement ? 'Thoát toàn màn hình' : 'Bật toàn màn hình');
+        });
         renderEmpty();
 
         const storeId = getStoreId();
         const terminalId = getTerminalId();
 
         if (!storeId || !terminalId) {
-            setConnectionState('Thiếu thông tin quầy - đang chờ cấu hình', false);
+            setConnectionState('Vui lòng liên hệ thu ngân', false);
             showIdleScreen();
             return;
         }

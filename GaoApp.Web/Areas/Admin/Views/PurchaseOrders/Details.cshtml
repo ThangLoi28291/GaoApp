@@ -6,10 +6,31 @@
     var order = Model.Order;
     ViewData["Title"] = $"Đơn {order.OrderNumber}";
     string Money(decimal value) => value.ToString("#,0.##", CultureInfo.GetCultureInfo("vi-VN")) + " đ";
-    var ordered = order.Lines.Sum(x => x.OrderedQuantity);
-    var received = order.Lines.Sum(x => x.ReceivedQuantity);
-    var pending = order.Lines.Sum(x => x.PendingQuantity);
-    var shortClosed = order.Lines.Sum(x => x.ShortClosedQuantity);
+    var productCount = order.Lines
+        .Select(x => x.ProductVariantId.HasValue ? $"catalog:{x.ProductVariantId}" : $"free:{x.ProductName.Trim().ToLowerInvariant()}")
+        .Distinct()
+        .Count();
+    var unresolvedCount = order.Lines.Count(x => x.ItemKind == PurchaseItemKind.FreeText && !x.ResolvedAtUtc.HasValue);
+    var receivingLineCount = order.Lines.Count(x => x.ReceivedQuantity > 0m);
+    var currentStage = order.Status switch
+    {
+        PurchaseOrderStatus.PendingApproval => 1,
+        PurchaseOrderStatus.Approved => 2,
+        PurchaseOrderStatus.SentToSupplier => 3,
+        PurchaseOrderStatus.PartiallyReceived or PurchaseOrderStatus.FullyReceived or PurchaseOrderStatus.ShortClosed => 4,
+        _ => 0
+    };
+    var workflowStopped = order.Status is PurchaseOrderStatus.Rejected or PurchaseOrderStatus.Cancelled;
+    var receivingWorkbenchEnabled = ViewData["ReceivingWorkbenchEnabled"] as bool? == true;
+    var editableReceipt = order.Receipts.FirstOrDefault(x =>
+        x.Status is StockDocumentStatus.Draft or StockDocumentStatus.Rejected);
+    var pendingReceipt = order.Receipts.FirstOrDefault(x =>
+        x.Status == StockDocumentStatus.PendingApproval);
+    var receivingActionTitle = editableReceipt != null
+        ? "Tiếp tục nhận hàng"
+        : order.Status == PurchaseOrderStatus.PartiallyReceived
+            ? "Nhận đợt tiếp theo"
+            : "Bắt đầu nhận hàng";
 }
 @section VendorStyles {
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -17,82 +38,111 @@
 }
 @section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-details.css" asp-append-version="true" /> }
 
-<div class="pod-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div class="d-flex align-items-start gap-3">
-            <a class="btn btn-icon btn-label-secondary" asp-action="Index"><i class="bx bx-arrow-back"></i></a>
-            <div>
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <h4 class="mb-0">@(string.IsNullOrWhiteSpace(order.Title) ? order.OrderNumber : order.Title)</h4>
-                    <span class="badge @PurchaseOrderPresentation.StatusClass(order.Status)">@PurchaseOrderPresentation.StatusLabel(order.Status)</span>
+<div class="pod-page" id="purchaseOrderDetailsPage" data-supplier-lookup-url="@Url.Content("~/admin/purchase-orders/supplier-lookup")">
+    <header class="pod-hero">
+        <div class="pod-hero-main">
+            <a class="pod-back" asp-action="Index" aria-label="Quay lại danh sách"><i class="bx bx-arrow-back"></i></a>
+            <div class="pod-hero-copy">
+                <div class="pod-eyebrow">ĐƠN ĐẶT HÀNG · @order.OrderNumber</div>
+                <div class="pod-title-row">
+                    <h3>@(string.IsNullOrWhiteSpace(order.Title) ? order.OrderNumber : order.Title)</h3>
+                    <span class="pod-status @PurchaseOrderPresentation.StatusClass(order.Status)">@PurchaseOrderPresentation.StatusLabel(order.Status)</span>
                 </div>
-                <div class="text-muted mt-1">@order.OrderNumber · Lập bởi @order.CreatedByName</div>
-                @if (order.SourcePurchaseRequestId.HasValue)
-                {
-                    <a class="pod-source pod-source-request" asp-controller="PurchaseRequests" asp-action="Details" asp-route-id="@order.SourcePurchaseRequestId"><i class="bx bx-link-alt"></i> Từ yêu cầu mua #@order.SourcePurchaseRequestId</a>
-                }
-                else
-                {
-                    <span class="pod-source pod-source-direct"><i class="bx bx-error-circle"></i> Đơn ngoài yêu cầu mua</span>
-                }
+                <div class="pod-meta">
+                    <span><i class="bx bx-user"></i> @order.CreatedByName</span>
+                    <span><i class="bx bx-calendar"></i> @order.OrderDate.ToString("dd/MM/yyyy")</span>
+                    @if (order.SourcePurchaseRequestId.HasValue)
+                    {
+                        <a class="pod-source pod-source-request" asp-controller="PurchaseRequests" asp-action="Details" asp-route-id="@order.SourcePurchaseRequestId"><i class="bx bx-link-alt"></i> Yêu cầu mua #@order.SourcePurchaseRequestId</a>
+                    }
+                    else
+                    {
+                        <span class="pod-source pod-source-direct"><i class="bx bx-file-blank"></i> Đơn trực tiếp</span>
+                    }
+                </div>
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            @if (Model.CanPrint){<a class="btn btn-outline-secondary" target="_blank" asp-action="Print" asp-route-id="@order.Id"><i class="bx bx-printer me-1"></i>In / Lưu PDF</a>}
-            @if (Model.CanEdit){<a class="btn btn-primary" asp-action="Edit" asp-route-id="@order.Id"><i class="bx bx-edit-alt me-1"></i>Sửa thông tin đơn</a>}
+        <div class="pod-hero-actions">
+            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#purchaseOrderHelpModal"><i class="bx bx-help-circle me-1"></i>Hướng dẫn <kbd>F1</kbd></button>
+            @if (Model.CanPrint){<a class="btn btn-outline-secondary" target="_blank" asp-action="Print" asp-route-id="@order.Id"><i class="bx bx-printer me-1"></i>In đơn</a>}
+            @if (Model.CanEdit){<a class="btn btn-primary" asp-action="Edit" asp-route-id="@order.Id"><i class="bx bx-edit-alt me-1"></i>Chỉnh sửa</a>}
         </div>
-    </div>
+    </header>
+
+    <section class="pod-progress-card" aria-label="Tiến trình đơn đặt hàng">
+        @foreach (var step in new[]
+        {
+            (Index: 0, Icon: "bx-edit", Label: "Đơn nháp", Hint: "Khởi tạo"),
+            (Index: 1, Icon: "bx-time-five", Label: "Chờ duyệt", Hint: "Quản lý kiểm tra"),
+            (Index: 2, Icon: "bx-check-shield", Label: "Đã duyệt", Hint: "Chốt nhà cung cấp"),
+            (Index: 3, Icon: "bx-send", Label: "Đã gửi NCC", Hint: "Chờ giao hàng"),
+            (Index: 4, Icon: "bx-package", Label: "Nhận hàng", Hint: "Nhập kho")
+        })
+        {
+            var stepClass = workflowStopped ? "is-muted" : step.Index < currentStage ? "is-done" : step.Index == currentStage ? "is-current" : string.Empty;
+            <div class="pod-progress-step @stepClass">
+                <span class="pod-progress-icon"><i class="bx @step.Icon"></i></span>
+                <span><strong>@step.Label</strong><small>@step.Hint</small></span>
+            </div>
+        }
+    </section>
 
     @if (TempData["Success"] is string success) { <div class="alert alert-success">@success</div> }
     @if (TempData["Error"] is string error) { <div class="alert alert-danger">@error</div> }
-    @if (Model.CanReview && Model.IsCreatedByCurrentUser)
-    {
-        <div class="alert alert-warning d-flex gap-2"><i class="bx bx-shield-quarter fs-5"></i><div><strong>Bạn đồng thời là người lập đơn</strong><div>Bạn có quyền xử lý đơn này. Hệ thống sẽ lưu chính tài khoản của bạn trong lịch sử duyệt để bảo đảm truy vết.</div></div></div>
-    }
     @if ((order.Status is PurchaseOrderStatus.ReturnedForRevision or PurchaseOrderStatus.Rejected or PurchaseOrderStatus.Cancelled) && !string.IsNullOrWhiteSpace(order.WorkflowNote))
     {
         <div class="alert @(order.Status == PurchaseOrderStatus.ReturnedForRevision ? "alert-warning" : "alert-danger") d-flex gap-2"><i class="bx bx-message-error fs-5"></i><div><strong>@(order.Status == PurchaseOrderStatus.ReturnedForRevision ? "Yêu cầu chỉnh sửa" : order.Status == PurchaseOrderStatus.Rejected ? "Lý do từ chối" : "Lý do hủy")</strong><div>@order.WorkflowNote</div></div></div>
     }
 
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3"><div class="pod-kpi"><span class="icon ordered"><i class="bx bx-cart"></i></span><div><small>Đã đặt</small><strong>@PurchaseQuantityFormatter.Display(ordered)</strong></div></div></div>
-        <div class="col-6 col-lg-3"><div class="pod-kpi"><span class="icon received"><i class="bx bx-package"></i></span><div><small>Đã nhận</small><strong>@PurchaseQuantityFormatter.Display(received)</strong></div></div></div>
-        <div class="col-6 col-lg-3"><div class="pod-kpi"><span class="icon pending"><i class="bx bx-time-five"></i></span><div><small>Còn chờ</small><strong>@PurchaseQuantityFormatter.Display(pending)</strong></div></div></div>
-        <div class="col-6 col-lg-3"><div class="pod-kpi"><span class="icon short"><i class="bx bx-minus-circle"></i></span><div><small>Đã đóng thiếu</small><strong>@PurchaseQuantityFormatter.Display(shortClosed)</strong></div></div></div>
+    <div class="pod-summary-grid">
+        <div class="pod-kpi"><span class="icon ordered"><i class="bx bx-list-ul"></i></span><div><small>Dòng đặt hàng</small><strong>@order.Lines.Count</strong><span>Giữ riêng từng đơn vị</span></div></div>
+        <div class="pod-kpi"><span class="icon product"><i class="bx bx-cube"></i></span><div><small>Sản phẩm</small><strong>@productCount</strong><span>@(unresolvedCount > 0 ? $"{unresolvedCount} dòng cần chuẩn hóa" : "Danh mục đã sẵn sàng")</span></div></div>
+        <div class="pod-kpi"><span class="icon received"><i class="bx bx-package"></i></span><div><small>Tiến độ nhận</small><strong>@receivingLineCount/@order.Lines.Count dòng</strong><span>@order.Receipts.Count phiếu nhập liên quan</span></div></div>
+        <div class="pod-kpi"><span class="icon source"><i class="bx bx-git-branch"></i></span><div><small>Nguồn tạo đơn</small><strong>@(order.SourcePurchaseRequestId.HasValue ? "Yêu cầu mua" : "Trực tiếp")</strong><span>@(order.SourcePurchaseRequestId.HasValue ? $"PR #{order.SourcePurchaseRequestId}" : "Không qua yêu cầu mua")</span></div></div>
     </div>
 
-    <div class="card pod-card mb-4">
-        <div class="card-header border-bottom"><h5 class="mb-0">Thông tin đặt hàng</h5></div>
-        <div class="card-body">
-            <div class="row g-4">
-                <div class="col-md-6 col-lg-3"><small class="text-muted">Nhà cung cấp</small><div class="fw-semibold">@order.SupplierName</div><small>@order.SupplierCode</small></div>
-                <div class="col-md-6 col-lg-3"><small class="text-muted">Đơn vị mua hàng</small><div class="fw-semibold">@order.LegalEntityName</div><small>@order.LegalEntityCode</small></div>
-                <div class="col-md-6 col-lg-3"><small class="text-muted">Kho dự kiến nhận</small><div class="fw-semibold">@order.WarehouseName</div><small>@order.WarehouseCode</small></div>
-                <div class="col-md-6 col-lg-3"><small class="text-muted">Ngày đặt / dự kiến giao</small><div class="fw-semibold">@order.OrderDate.ToString("dd/MM/yyyy")</div><small>@(order.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa xác định")</small></div>
+    <div class="card pod-card pod-info-card">
+        <div class="pod-section-head"><div class="pod-section-icon"><i class="bx bx-receipt"></i></div><div><h5>Thông tin đặt hàng</h5><p>Thông tin giao dịch và nơi dự kiến nhận hàng.</p></div></div>
+        <div class="card-body pt-0">
+            <div class="pod-info-grid">
+                <div class="pod-info-item @(order.SupplierId.HasValue ? string.Empty : "is-attention")"><span class="pod-info-icon"><i class="bx bx-store"></i></span><div><small>Nhà cung cấp</small><strong>@(order.SupplierId.HasValue ? order.SupplierName : "Chưa chọn nhà cung cấp")</strong><span>@(order.SupplierId.HasValue ? order.SupplierCode : "Quản lý chọn khi duyệt đơn")</span></div></div>
+                <div class="pod-info-item"><span class="pod-info-icon"><i class="bx bx-buildings"></i></span><div><small>Đơn vị mua hàng</small><strong>@order.LegalEntityName</strong><span>@order.LegalEntityCode</span></div></div>
+                <div class="pod-info-item"><span class="pod-info-icon"><i class="bx bx-map"></i></span><div><small>Kho dự kiến nhận</small><strong>@order.WarehouseName</strong><span>@order.WarehouseCode</span></div></div>
+                <div class="pod-info-item"><span class="pod-info-icon"><i class="bx bx-calendar-check"></i></span><div><small>Đặt hàng / dự kiến giao</small><strong>@order.OrderDate.ToString("dd/MM/yyyy")</strong><span>@(order.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa xác định ngày giao")</span></div></div>
                 @if (!order.SourcePurchaseRequestId.HasValue)
                 {
-                    <div class="col-12"><small class="text-muted">Lý do đặt ngoài yêu cầu</small><div class="pod-note">@(order.OutsideRequestReason ?? "Dữ liệu cũ chưa có lý do")</div></div>
+                    <div class="pod-note-wrap"><small>Lý do đặt ngoài yêu cầu</small><div class="pod-note">@(order.OutsideRequestReason ?? "Dữ liệu cũ chưa có lý do")</div></div>
                 }
                 @if (!string.IsNullOrWhiteSpace(order.Note))
                 {
-                    <div class="col-12"><small class="text-muted">Ghi chú cho nhà cung cấp</small><div class="pod-note">@order.Note</div></div>
+                    <div class="pod-note-wrap"><small>Ghi chú cho nhà cung cấp</small><div class="pod-note">@order.Note</div></div>
                 }
             </div>
         </div>
     </div>
 
-    <div class="card pod-card mb-4">
-        <div class="card-header border-bottom d-flex justify-content-between align-items-center"><div><h5 class="mb-1">Hàng hóa đặt mua</h5><small class="text-muted">Đơn chỉ xác nhận tên, đơn vị và số lượng; không chốt giá tại đây.</small></div><span class="badge bg-label-secondary"><i class="bx bx-lock-alt me-1"></i>Snapshot số lượng</span></div>
-        <div class="table-responsive"><table class="table align-middle mb-0 pod-lines"><thead><tr><th>#</th><th>Sản phẩm / đơn vị</th><th class="text-end">Đã đặt</th><th class="text-end">Đã nhận</th><th class="text-end">Còn chờ</th><th class="text-end">Đóng thiếu</th><th class="text-end">Quản lý phần thiếu</th></tr></thead><tbody>
-        @foreach(var line in order.Lines)
+    <div class="card pod-card pod-products-card">
+        <div class="pod-section-head"><div class="pod-section-icon is-purple"><i class="bx bx-cube"></i></div><div class="flex-grow-1"><h5>Hàng hóa đặt mua</h5><p>Mỗi đơn vị là một dòng riêng để đối chiếu chính xác khi nhận hàng.</p></div><span class="pod-lock"><i class="bx bx-lock-alt"></i> Khóa số lượng</span></div>
+        <div class="table-responsive"><table class="table align-middle mb-0 pod-lines"><thead><tr><th class="pod-index-col">#</th><th>Sản phẩm</th><th>Đơn vị đặt</th><th class="text-end">Số đặt</th><th class="text-end">Đã nhận</th><th class="text-end">Còn chờ</th><th class="text-end">Đóng thiếu</th><th class="text-end">Thao tác</th></tr></thead><tbody>
+        @foreach(var productGroup in order.Lines.GroupBy(x => x.ProductVariantId.HasValue
+            ? $"catalog:{x.ProductVariantId}"
+            : $"free:{x.ProductName.Trim().ToLowerInvariant()}"))
         {
-            <tr>
-                <td>@line.LineNo</td>
-                <td><div class="fw-semibold">@line.ProductName</div><small class="text-muted">@if(!string.IsNullOrWhiteSpace(line.Sku)){<span>SKU: @line.Sku · </span>}@line.UnitName@if(line.ItemKind==PurchaseItemKind.Catalog){<span> × @PurchaseQuantityFormatter.Display(line.ConversionFactor)</span>}</small>@if(line.ItemKind==PurchaseItemKind.FreeText && !line.ResolvedAtUtc.HasValue){<div><span class="badge bg-label-warning mt-1"><i class="bx bx-link me-1"></i>Cần ghép/tạo sản phẩm trước khi nhập kho</span></div>}else if(line.ItemKind==PurchaseItemKind.FreeText){<div><span class="badge bg-label-success mt-1">Đã ghép sản phẩm kho</span></div>}@if(!string.IsNullOrWhiteSpace(line.ShortCloseReason)){<div class="small text-warning mt-1">Đóng thiếu: @line.ShortCloseReason</div>}</td>
-                <td class="text-end fw-medium">@PurchaseQuantityFormatter.Display(line.OrderedQuantity)</td>
-                <td class="text-end text-success">@PurchaseQuantityFormatter.Display(line.ReceivedQuantity)</td>
-                <td class="text-end text-primary">@PurchaseQuantityFormatter.Display(line.PendingQuantity)</td>
-                <td class="text-end text-warning">@PurchaseQuantityFormatter.Display(line.ShortClosedQuantity)</td>
+            var groupFirstLine = productGroup.First();
+            var groupSize = productGroup.Count();
+            foreach (var line in productGroup)
+            {
+            <tr class="@(line.Id == groupFirstLine.Id ? "pod-product-group-start" : "pod-product-group-related")">
+                <td><span class="pod-line-no">@line.LineNo</span></td>
+                @if (line.Id == groupFirstLine.Id)
+                {
+                    <td rowspan="@groupSize" class="pod-product-cell"><div class="pod-product"><span class="pod-product-avatar"><i class="bx bx-package"></i></span><div><strong>@groupFirstLine.ProductName</strong><small>@(string.IsNullOrWhiteSpace(groupFirstLine.Sku) ? "Chưa có SKU" : $"SKU: {groupFirstLine.Sku}")</small>@if(groupSize > 1){<span class="pod-unit-count">@groupSize đơn vị đặt hàng</span>}@if(groupFirstLine.ItemKind==PurchaseItemKind.FreeText && !groupFirstLine.ResolvedAtUtc.HasValue){<span class="pod-inline-state is-warning"><i class="bx bx-link"></i>Cần chuẩn hóa</span>}else if(groupFirstLine.ItemKind==PurchaseItemKind.FreeText){<span class="pod-inline-state is-success"><i class="bx bx-check"></i>Đã ghép danh mục</span>}</div></div></td>
+                }
+                <td><span class="pod-unit-badge">@line.UnitName <small>× @PurchaseQuantityFormatter.Display(line.ConversionFactor)</small></span><div class="pod-unit-base">@if(line.ItemKind==PurchaseItemKind.Catalog){<span>= @PurchaseQuantityFormatter.Display(line.ConversionFactor) @line.BaseUnitName</span>}@if(!string.IsNullOrWhiteSpace(line.ShortCloseReason)){<span class="pod-short-reason">Đóng thiếu: @line.ShortCloseReason</span>}</div></td>
+                <td class="text-end"><strong class="pod-quantity">@PurchaseQuantityFormatter.Display(line.OrderedQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
+                <td class="text-end"><strong class="pod-quantity is-success">@PurchaseQuantityFormatter.Display(line.ReceivedQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
+                <td class="text-end"><strong class="pod-quantity is-primary">@PurchaseQuantityFormatter.Display(line.PendingQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
+                <td class="text-end"><strong class="pod-quantity is-warning">@PurchaseQuantityFormatter.Display(line.ShortClosedQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
                 <td class="text-end text-nowrap">
                     @if (Model.CanCloseOutstanding && line.PendingQuantity > 0m)
                     {
@@ -104,6 +154,7 @@
                     }
                 </td>
             </tr>
+            }
         }
         </tbody></table></div>
         @if (order.Lines.Any(x => x.ItemKind == PurchaseItemKind.FreeText && x.ResolvedAtUtc.HasValue))
@@ -189,22 +240,81 @@
     @if (Model.CanSubmit || Model.CanReview || Model.CanMarkSent || Model.CanCancel ||
          Model.CanCloseOutstanding || Model.CanReopenOutstanding)
     {
-        <div class="card pod-card mb-4"><div class="card-header border-bottom"><h5 class="mb-0">Thao tác quy trình</h5></div><div class="card-body d-flex flex-wrap gap-2">
-            @if(Model.CanSubmit){<form method="post" asp-action="Submit" asp-route-id="@order.Id">@Html.AntiForgeryToken()<input type="hidden" name="RowVersion" value="@order.RowVersion"/><button class="btn btn-primary"><i class="bx bx-send me-1"></i>Gửi duyệt</button></form>}
-            @if(Model.CanReview){<form method="post" asp-action="Approve" asp-route-id="@order.Id" data-self-review="@(Model.IsCreatedByCurrentUser ? "true" : "false")">@Html.AntiForgeryToken()<input type="hidden" name="RowVersion" value="@order.RowVersion"/><button class="btn btn-success"><i class="bx bx-check-shield me-1"></i>Duyệt đơn</button></form><button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#returnModal"><i class="bx bx-undo me-1"></i>Trả sửa</button><button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal"><i class="bx bx-x me-1"></i>Từ chối</button>}
-            @if(Model.CanMarkSent){<form method="post" asp-action="MarkSent" asp-route-id="@order.Id">@Html.AntiForgeryToken()<input type="hidden" name="RowVersion" value="@order.RowVersion"/><button class="btn btn-info"><i class="bx bx-send me-1"></i>Đánh dấu đã gửi NCC</button></form>}
-            @if(Model.CanCloseOutstanding){<button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#closeAllOutstanding"><i class="bx bx-minus-circle me-1"></i>Đóng toàn bộ phần thiếu</button>}
-            @if(Model.CanReopenOutstanding){<button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#reopenAllOutstanding"><i class="bx bx-reset me-1"></i>Mở lại toàn bộ phần đã đóng</button>}
-            @if(Model.CanCancel){<button class="btn btn-outline-danger ms-auto" data-bs-toggle="modal" data-bs-target="#cancelModal"><i class="bx bx-trash me-1"></i>Hủy đơn</button>}
-        </div></div>
+        @if(Model.CanReview)
+        {
+            <section class="pod-review-card">
+                <div class="pod-review-heading">
+                    <span class="pod-review-icon"><i class="bx bx-check-shield"></i></span>
+                    <div><span>QUẢN LÝ DUYỆT ĐƠN</span><h5>Chọn nhà cung cấp và ra quyết định</h5><p>Số lượng đã được khóa từ yêu cầu mua. Nhà cung cấp chỉ được chốt tại bước duyệt này.</p></div>
+                    <span class="pod-review-badge">Cần xử lý</span>
+                </div>
+                @if (Model.IsCreatedByCurrentUser)
+                {
+                    <div class="pod-self-review"><i class="bx bx-info-circle"></i><span>Bạn là người lập đơn. Quyết định duyệt sẽ được ghi rõ tài khoản trong lịch sử.</span></div>
+                }
+                @if(Model.CanReview)
+                {
+                    <div class="pod-review-body">
+                        <form method="post" asp-action="Approve" asp-route-id="@order.Id" id="purchaseOrderApproveForm" class="pod-approval-form" data-self-review="@(Model.IsCreatedByCurrentUser ? "true" : "false")" data-pod-primary-form>
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="RowVersion" value="@order.RowVersion"/>
+                            <div class="pod-approval-supplier">
+                                <label class="form-label required" for="approvalSupplierSelect">Nhà cung cấp cho đơn này</label>
+                                <select class="form-select" id="approvalSupplierSelect" name="SupplierId" required>
+                                    <option value=""></option>
+                                    @if (order.SupplierId.HasValue)
+                                    {
+                                        <option value="@order.SupplierId" selected>@order.SupplierName</option>
+                                    }
+                                </select>
+                                <small><i class="bx bx-search"></i> Tìm theo tên, mã, số điện thoại hoặc mã số thuế.</small>
+                            </div>
+                            <button class="btn btn-success pod-approve-btn" type="submit"><i class="bx bx-check-shield"></i><span><strong>Duyệt đơn</strong><small>Ctrl + Enter</small></span></button>
+                        </form>
+                        <div class="pod-review-secondary">
+                            <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#returnModal"><i class="bx bx-undo me-1"></i>Trả về chỉnh sửa</button>
+                            <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal"><i class="bx bx-x me-1"></i>Từ chối</button>
+                        </div>
+                    </div>
+                }
+            </section>
+        }
+
+        <div class="pod-action-dock">
+            <div class="pod-action-context"><span class="pod-action-state @PurchaseOrderPresentation.StatusClass(order.Status)"><i class="bx bx-pulse"></i></span><div><small>Trạng thái hiện tại</small><strong>@PurchaseOrderPresentation.StatusLabel(order.Status)</strong></div></div>
+            <div class="pod-action-buttons">
+                @if(Model.CanEdit){<a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@order.Id"><i class="bx bx-edit-alt me-1"></i>Sửa đơn</a>}
+                @if(Model.CanSubmit){<form method="post" asp-action="Submit" asp-route-id="@order.Id" data-pod-primary-form>@Html.AntiForgeryToken()<input type="hidden" name="RowVersion" value="@order.RowVersion"/><button class="btn btn-primary" type="submit"><i class="bx bx-send me-1"></i>Gửi duyệt <kbd>Ctrl+Enter</kbd></button></form>}
+                @if(Model.CanMarkSent){<form method="post" asp-action="MarkSent" asp-route-id="@order.Id" data-pod-primary-form>@Html.AntiForgeryToken()<input type="hidden" name="RowVersion" value="@order.RowVersion"/><button class="btn btn-primary" type="submit"><i class="bx bx-send me-1"></i>Đã gửi nhà cung cấp <kbd>Ctrl+Enter</kbd></button></form>}
+                @if(Model.CanCloseOutstanding){<button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#closeAllOutstanding"><i class="bx bx-minus-circle me-1"></i>Đóng phần thiếu</button>}
+                @if(Model.CanReopenOutstanding){<button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#reopenAllOutstanding"><i class="bx bx-reset me-1"></i>Mở lại phần thiếu</button>}
+                @if(Model.CanCancel){<button class="btn pod-more-danger" type="button" data-bs-toggle="modal" data-bs-target="#cancelModal" title="Hủy đơn"><i class="bx bx-trash"></i></button>}
+            </div>
+        </div>
     }
 
-    @if(Model.CanCreateReceipt && !Model.CanResolveItems)
+    @if((Model.CanCreateReceipt && !Model.CanResolveItems) || (receivingWorkbenchEnabled && pendingReceipt != null))
     {
         var receiptCandidateLines = order.Lines.Where(x => x.PendingQuantity > 0m).ToList();
-        <div class="card pod-card mb-4"><div class="card-header border-bottom"><h5 class="mb-1">Tạo phiếu nhập từ đơn</h5><small class="text-muted">Có thể lưu Draft vượt phần còn lại. Phần vượt chỉ được ghi kho khi Manager/Admin xác nhận lúc duyệt.</small></div><div class="card-body">
-        @if (!receiptCandidateLines.Any(x => x.AvailableToAllocateQuantity > 0m) && receiptCandidateLines.Any(x => x.InFlightQuantity > 0m))
-        {<div class="alert alert-warning">Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất. Bạn vẫn có thể chủ động tạo Draft; phần vượt sẽ cần Manager/Admin xác nhận.</div>}
+        <div class="card pod-card mb-4"><div class="card-header border-bottom"><h5 class="mb-1">Nhận hàng từ đơn đặt hàng</h5><small class="text-muted">Kiểm hàng thực tế trước; tồn kho chỉ tăng sau khi quản lý duyệt phiếu.</small></div><div class="card-body">
+        @if (receivingWorkbenchEnabled && pendingReceipt != null)
+        {
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+                <div><div class="fw-semibold text-warning"><i class="bx bx-time-five me-1"></i>Phiếu @pendingReceipt.DocumentNo đang chờ quản lý duyệt</div><div class="form-text">Kiểm tra và duyệt phiếu hiện tại trước khi ghi nhận đợt hàng tiếp theo.</div></div>
+                <a class="btn btn-outline-primary" asp-controller="StockDocumentManagement" asp-action="Edit" asp-route-id="@pendingReceipt.Id"><i class="bx bx-show me-1"></i>Xem phiếu chờ duyệt</a>
+            </div>
+        }
+        else if (receivingWorkbenchEnabled && Model.CanCreateReceipt && !Model.CanResolveItems)
+        {
+            <form method="post" asp-controller="PurchaseReceiving" asp-action="Start" asp-route-purchaseOrderId="@order.Id" class="mb-3">
+                <button class="btn btn-primary" type="submit"><i class="bx bx-barcode-reader me-1"></i>@receivingActionTitle</button>
+                <div class="form-text">Quét barcode bằng máy quét hoặc camera, nhập số lượng rồi tự động lưu theo đúng đơn vị.</div>
+            </form>
+        }
+        @if (!receivingWorkbenchEnabled && Model.CanCreateReceipt && !Model.CanResolveItems)
+        {
+            @if (!receiptCandidateLines.Any(x => x.AvailableToAllocateQuantity > 0m) && receiptCandidateLines.Any(x => x.InFlightQuantity > 0m))
+            {<div class="alert alert-warning">Toàn bộ số lượng còn lại đang nằm trong phiếu nhập chưa hoàn tất. Bạn vẫn có thể chủ động tạo Draft; phần vượt sẽ cần Manager/Admin xác nhận.</div>}
             <form method="post" asp-action="CreateReceipt" asp-route-id="@order.Id">
                 @Html.AntiForgeryToken()
                 <div class="table-responsive">
@@ -266,14 +376,83 @@
                 </div>
                 <div class="row g-2"><div class="col-md-3"><input class="form-control" type="date" name="DocumentDate" value="@DateTime.Today.ToString("yyyy-MM-dd")"/></div><div class="col-md-7"><input class="form-control" name="Note" placeholder="Ghi chú phiếu nhập"/></div><div class="col-md-2"><button class="btn btn-primary w-100">Tạo phiếu nhập</button></div></div>
             </form>
+        }
         </div></div>
     }
 
-    <div class="row g-4">
-        <div class="col-xl-6"><div class="card pod-card h-100"><div class="card-header border-bottom"><h5 class="mb-0">Phiếu nhập liên quan</h5></div><div class="list-group list-group-flush">@if(!order.Receipts.Any()){<div class="p-4 text-muted text-center">Chưa có phiếu nhập.</div>}@foreach(var receipt in order.Receipts){<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" asp-controller="StockDocumentManagement" asp-action="Edit" asp-route-id="@receipt.Id"><span><strong>@receipt.DocumentNo</strong><small class="d-block text-muted">@receipt.DocumentDate.ToString("dd/MM/yyyy")</small></span><span class="text-end">@receipt.Status@if(Model.CanViewCost){<small class="d-block">@Money(receipt.TotalAmount)</small>}</span></a>}</div></div></div>
-        <div class="col-xl-6"><div class="card pod-card h-100"><div class="card-header border-bottom"><h5 class="mb-0">Lịch sử xử lý</h5></div><div class="pod-timeline">@foreach(var action in order.Actions){<div class="pod-timeline-item"><span class="dot"></span><div class="flex-grow-1"><div class="d-flex justify-content-between gap-2"><strong>@PurchaseOrderPresentation.ActionLabel(action.ActionType)</strong><small class="text-muted text-nowrap">@action.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small></div><div class="small text-muted">@action.ActorName · @PurchaseOrderPresentation.StatusLabel(action.FromStatus) → @PurchaseOrderPresentation.StatusLabel(action.ToStatus)</div>@if(!string.IsNullOrWhiteSpace(action.Note)){<div class="small mt-1">@action.Note</div>}</div></div>}</div></div></div>
+    <div class="pod-support-grid">
+        <section class="card pod-card pod-support-card">
+            <div class="pod-section-head"><div class="pod-section-icon is-green"><i class="bx bx-package"></i></div><div class="flex-grow-1"><h5>Phiếu nhập liên quan</h5><p>@order.Receipts.Count phiếu được tạo từ đơn này.</p></div></div>
+            @if(!order.Receipts.Any())
+            {
+                <div class="pod-empty"><span><i class="bx bx-package"></i></span><strong>Chưa có phiếu nhập</strong><p>Phiếu nhập sẽ xuất hiện tại đây khi bắt đầu nhận hàng.</p></div>
+            }
+            else
+            {
+                <div class="pod-receipt-list">
+                    @foreach(var receipt in order.Receipts)
+                    {
+                        <a class="pod-receipt-item" asp-controller="StockDocumentManagement" asp-action="Edit" asp-route-id="@receipt.Id">
+                            <span class="pod-receipt-icon"><i class="bx bx-file"></i></span>
+                            <span class="flex-grow-1"><strong>@receipt.DocumentNo</strong><small>@receipt.DocumentDate.ToString("dd/MM/yyyy")</small></span>
+                            <span class="text-end"><span class="pod-receipt-status">@receipt.Status</span>@if(Model.CanViewCost){<small class="d-block">@Money(receipt.TotalAmount)</small>}</span>
+                            <i class="bx bx-chevron-right"></i>
+                        </a>
+                    }
+                </div>
+            }
+        </section>
+        <section class="card pod-card pod-support-card">
+            <div class="pod-section-head"><div class="pod-section-icon is-blue"><i class="bx bx-history"></i></div><div class="flex-grow-1"><h5>Lịch sử xử lý</h5><p>Theo dõi người thực hiện và thời điểm thay đổi.</p></div></div>
+            <div class="pod-timeline">
+                @foreach(var action in order.Actions.OrderByDescending(x => x.OccurredAtUtc))
+                {
+                    <div class="pod-timeline-item"><span class="dot"></span><div class="flex-grow-1"><div class="pod-timeline-title"><strong>@PurchaseOrderPresentation.ActionLabel(action.ActionType)</strong><time>@action.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</time></div><div class="pod-timeline-meta"><span>@action.ActorName</span><span>@PurchaseOrderPresentation.StatusLabel(action.FromStatus) <i class="bx bx-right-arrow-alt"></i> @PurchaseOrderPresentation.StatusLabel(action.ToStatus)</span></div>@if(!string.IsNullOrWhiteSpace(action.Note)){<div class="pod-timeline-note">@action.Note</div>}</div></div>
+                }
+            </div>
+        </section>
     </div>
 </div>
+
+<div class="modal fade" id="purchaseOrderHelpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content pod-help-modal">
+            <div class="modal-header"><div><div class="pod-eyebrow">HƯỚNG DẪN NHANH</div><h5 class="modal-title">Xử lý đơn đặt hàng</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="pod-help-grid">
+                    <div><span>1</span><strong>Kiểm tra hàng hóa</strong><p>Đối chiếu đúng sản phẩm, đơn vị và số lượng trên từng dòng. Không cộng chung Hộp, Lốc hoặc các đơn vị khác nhau.</p></div>
+                    <div><span>2</span><strong>Quản lý chọn nhà cung cấp</strong><p>Nhà cung cấp được chọn khi duyệt đơn. Nhân viên lập đơn không cần quyết định thông tin này.</p></div>
+                    <div><span>3</span><strong>Gửi và nhận hàng</strong><p>Sau khi duyệt, đánh dấu đã gửi nhà cung cấp rồi tạo phiếu nhập khi hàng thực tế về kho.</p></div>
+                    <div><span>4</span><strong>Xử lý chênh lệch</strong><p>Phần giao thiếu có thể tiếp tục chờ, đóng thiếu hoặc mở lại; mọi thao tác đều lưu trong lịch sử.</p></div>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-between"><small class="text-muted"><kbd>F1</kbd> mở hướng dẫn · <kbd>Ctrl+Enter</kbd> thao tác chính</small><button class="btn btn-primary" type="button" data-bs-dismiss="modal">Đã hiểu</button></div>
+        </div>
+    </div>
+</div>
+
+@if (Model.CanReview && Model.IsCreatedByCurrentUser)
+{
+    <div class="modal fade" id="selfApprovalConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content pod-confirm-modal">
+                <div class="pod-confirm-visual">
+                    <span class="pod-confirm-icon"><i class="bx bx-user-check"></i></span>
+                </div>
+                <div class="modal-body text-center">
+                    <div class="pod-eyebrow">XÁC NHẬN QUYẾT ĐỊNH</div>
+                    <h4>Bạn đang duyệt đơn do mình lập</h4>
+                    <p>Hệ thống cho phép thao tác theo quyền hiện tại và sẽ lưu rõ tài khoản của bạn trong lịch sử xử lý.</p>
+                    <div class="pod-confirm-summary"><i class="bx bx-receipt"></i><span><small>Đơn đặt hàng</small><strong>@order.OrderNumber · @(string.IsNullOrWhiteSpace(order.Title) ? "Không có tiêu đề" : order.Title)</strong></span></div>
+                </div>
+                <div class="modal-footer pod-confirm-actions">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal"><i class="bx bx-arrow-back me-1"></i>Quay lại kiểm tra</button>
+                    <button type="button" class="btn btn-success" id="confirmSelfApprovalButton"><i class="bx bx-check-shield me-1"></i>Vẫn duyệt đơn</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @if (Model.CanQuickCreateProduct)
 {

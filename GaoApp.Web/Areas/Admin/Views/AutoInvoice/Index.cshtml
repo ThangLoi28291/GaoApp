@@ -1,0 +1,117 @@
+@model GaoApp.Application.DTOs.Invoices.AutoInvoiceDashboardDto
+@using GaoApp.Domain.Enums
+@using System.Globalization
+@{
+    ViewData["Title"] = "Phát hành hóa đơn tự động";
+    var tab = (string?)ViewBag.Tab ?? "today";
+    string Money(decimal value) => value.ToString("N0", CultureInfo.CurrentCulture);
+}
+
+<style>
+    .auto-card { border: 0; border-radius: 14px; box-shadow: 0 2px 12px rgba(67,89,113,.08); }
+    .auto-health { border-left: 4px solid @(Model.Worker.IsRunning ? "#198754" : "#dc3545"); }
+    .auto-metric { border-radius: 12px; padding: 16px; background: #fff; box-shadow: 0 2px 12px rgba(67,89,113,.06); height: 100%; }
+    .auto-metric strong { display:block; font-size: 26px; }
+    .auto-label { color:#697a8d; font-size:12px; }
+    .auto-table th { white-space:nowrap; font-size:12px; color:#697a8d; text-transform:uppercase; }
+    .auto-table td { vertical-align:middle; }
+</style>
+
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+        <div>
+            <h3 class="fw-bold mb-1">Phát hành hóa đơn tự động</h3>
+            <div class="text-muted">Queue SQL, gộp theo ngày, khóa chung với phát hành thủ công và trạng thái Windows Service.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <form method="post" asp-action="Toggle">
+                @Html.AntiForgeryToken()
+                <button class="btn @(Model.Settings.IsEnabled ? "btn-warning" : "btn-success")" type="submit">
+                    @(Model.Settings.IsEnabled ? "Tạm ngưng" : "Tiếp tục")
+                </button>
+            </form>
+            <form method="post" asp-action="RunOnce">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-outline-primary" type="submit">Chạy một chu kỳ</button>
+            </form>
+        </div>
+    </div>
+
+    @if (TempData["Error"] != null) { <div class="alert alert-danger">@TempData["Error"]</div> }
+    @if (TempData["Success"] != null) { <div class="alert alert-success">@TempData["Success"]</div> }
+
+    <div class="card auto-card auto-health mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between flex-wrap gap-2">
+                <div>
+                    <div class="fw-semibold">Admin: <span class="badge @(Model.Settings.IsEnabled ? "bg-success" : "bg-warning text-dark")">@(Model.Settings.IsEnabled ? "Đang bật" : "Tạm ngưng")</span></div>
+                    <div class="fw-semibold mt-1">Worker: <span class="badge @(Model.Worker.IsRunning ? "bg-success" : "bg-danger")">@(Model.Worker.IsRunning ? "Đang chạy" : "Chưa heartbeat")</span></div>
+                    <div class="text-muted small mt-1">Tạm ngưng chỉ dừng gửi Viettel; POS vẫn tạo Invoice draft.</div>
+                </div>
+                <div class="text-muted small text-end">
+                    <div>Heartbeat: @(Model.Worker.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "chưa có")</div>
+                    <div>Lần quét: @(Model.Worker.LastScanAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "chưa có")</div>
+                    <div>Đang xử lý: @(Model.Worker.CurrentInvoiceHeadId?.ToString() ?? "—")</div>
+                    <div>Lần chạy kế tiếp: @(Model.Worker.NextRunAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "—")</div>
+                    @if (!string.IsNullOrWhiteSpace(Model.Worker.LastErrorMessage)) { <div class="text-danger">@Model.Worker.LastErrorCode: @Model.Worker.LastErrorMessage</div> }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Hóa đơn hôm nay</span><strong>@Model.Summary.TodayCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chưa phát hành</span><strong>@Model.Summary.PendingCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chờ gộp</span><strong>@Model.Summary.GroupWaitingCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Cần xử lý</span><strong class="text-danger">@Model.Summary.ErrorCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chưa xác định</span><strong class="text-warning">@Model.Summary.UnknownCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Đã phát hành</span><strong class="text-success">@Model.Summary.IssuedCount</strong></div></div>
+    </div>
+
+    <ul class="nav nav-tabs mb-3">
+        @foreach (var item in new[] { ("today", "Hôm nay"), ("month", "Theo tháng"), ("groups", "Chờ gộp"), ("errors", "Cần xử lý"), ("history", "Lịch sử"), ("settings", "Cấu hình") })
+        {
+            <li class="nav-item"><a class="nav-link @(tab == item.Item1 ? "active" : "")" asp-route-tab="@item.Item1">@item.Item2</a></li>
+        }
+    </ul>
+
+    @if (tab == "settings")
+    {
+        <form method="post" asp-action="SaveSettings" class="card auto-card">
+            @Html.AntiForgeryToken()
+            <div class="card-header bg-white fw-semibold">Cấu hình phát hành tự động</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4"><label class="form-label">Thời gian tối thiểu sau tính tiền (phút)</label><input class="form-control" type="number" min="0" name="MinimumAgeMinutes" value="@Model.Settings.MinimumAgeMinutes" /></div>
+                    <div class="col-md-4"><label class="form-label">Từ số tiền phát hành riêng</label><input class="form-control" type="number" min="1" name="SeparateAmountThreshold" value="@Model.Settings.SeparateAmountThreshold" /></div>
+                    <div class="col-md-4"><label class="form-label">Tổng tiền mục tiêu nhóm</label><input class="form-control" type="number" min="1" name="GroupTargetAmount" value="@Model.Settings.GroupTargetAmount" /></div>
+                    <div class="col-md-4"><label class="form-label">Khoảng cách giữa hai lần gửi (giây)</label><input class="form-control" type="number" min="1" name="SendIntervalSeconds" value="@Model.Settings.SendIntervalSeconds" /></div>
+                    <div class="col-md-4"><label class="form-label">Giờ chốt phần dư</label><input class="form-control" type="time" name="ClosingTimeLocal" value="@Model.Settings.ClosingTimeLocal.ToString(@"hh\:mm")" /></div>
+                    <div class="col-md-4"><label class="form-label">Múi giờ</label><input class="form-control" name="TimeZoneId" value="@Model.Settings.TimeZoneId" /></div>
+                    <div class="col-md-4"><label class="form-label">Phạm vi</label><select class="form-select" name="ScopeMode"><option value="1" selected="@(Model.Settings.ScopeMode == AutoInvoiceScopeMode.Today ? "selected" : null)">Hôm nay</option><option value="2" selected="@(Model.Settings.ScopeMode == AutoInvoiceScopeMode.Month ? "selected" : null)">Theo tháng</option><option value="3" selected="@(Model.Settings.ScopeMode == AutoInvoiceScopeMode.Range ? "selected" : null)">Khoảng ngày</option></select></div>
+                    <div class="col-md-4"><label class="form-label">Ngày bắt đầu</label><input class="form-control" type="date" name="ScopeStartDateLocal" value="@Model.Settings.ScopeStartDateLocal?.ToString("yyyy-MM-dd")" /></div>
+                    <div class="col-md-4"><label class="form-label">Ngày kết thúc</label><input class="form-control" type="date" name="ScopeEndDateLocal" value="@Model.Settings.ScopeEndDateLocal?.ToString("yyyy-MM-dd")" /></div>
+                </div>
+                <div class="form-check mt-3"><input class="form-check-input" type="checkbox" name="IssueOldDayRemainder" value="true" checked="@(Model.Settings.IssueOldDayRemainder ? "checked" : null)" /><input type="hidden" name="IssueOldDayRemainder" value="false" /><label class="form-check-label">Phát hành phần dư ngày cũ dù chưa đủ ngưỡng</label></div>
+                <div class="form-check mt-2"><input class="form-check-input" type="checkbox" name="IsEnabled" value="true" checked="@(Model.Settings.IsEnabled ? "checked" : null)" /><input type="hidden" name="IsEnabled" value="false" /><label class="form-check-label">Bật phát hành tự động sau khi lưu</label></div>
+            </div>
+            <div class="card-footer bg-white text-end"><button class="btn btn-primary" type="submit">Lưu cấu hình</button></div>
+        </form>
+    }
+    else if (tab == "groups")
+    {
+        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Hóa đơn đang chờ gộp</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Group key</th><th>Ngày bán</th><th>Nguồn</th><th class="text-end">Tổng tiền</th><th>Điều kiện</th></tr></thead><tbody>@foreach (var g in Model.Groups) { <tr><td><code>@g.GroupKey</code></td><td>@g.SaleDateLocal.ToString("dd/MM/yyyy")</td><td>@string.Join(", ", g.InvoiceHeadIds.Select(x => "#" + x))</td><td class="text-end">@Money(g.TotalAmount)</td><td>@(g.IsReadyByTarget ? "Đủ ngưỡng" : g.IsReadyByClosing ? "Đã đến giờ chốt" : "Đang chờ")</td></tr>}</tbody></table></div></div>
+    }
+    else if (tab == "errors")
+    {
+        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Hóa đơn lỗi cần xử lý</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Invoice</th><th>Lỗi</th><th>Hướng xử lý</th></tr></thead><tbody>@foreach (var e in Model.Errors) { <tr><td>#@e.InvoiceHeadId<br /><small>@e.OrderNumber</small></td><td><span class="text-danger fw-semibold">@e.ErrorCode</span><br />@e.ErrorMessage</td><td>@if (e.RequiresUuidLookup) { <form method="post" asp-controller="Invoice" asp-action="SyncViettelByUuid" class="d-inline">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@e.InvoiceHeadId" /><button class="btn btn-sm btn-warning" type="submit">Tra cứu UUID</button></form> } else { <a class="btn btn-sm btn-outline-primary" asp-controller="Invoice" asp-action="ViettelPayload" asp-route-id="@e.InvoiceHeadId">Mở xử lý</a> }</td></tr>}</tbody></table></div></div>
+    }
+    else if (tab == "history")
+    {
+        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Lịch sử phát hành và nhật ký thao tác</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Operation</th><th>Loại</th><th>Trạng thái</th><th>Nguồn</th><th>Thời gian</th><th>Lỗi</th></tr></thead><tbody>@foreach (var h in Model.History) { <tr><td>#@h.OperationId</td><td>@h.Kind</td><td>@h.Status</td><td>@h.SourceCount</td><td>@h.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td><td>@h.ErrorCode<br />@h.ErrorMessage</td></tr>}</tbody></table></div></div>
+    }
+    else
+    {
+        <div class="card auto-card"><div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center"><span>@(tab == "month" ? "Hóa đơn chưa phát hành theo phạm vi tháng" : "Hóa đơn hôm nay")</span>@if (tab == "month") { <form method="get" class="d-flex gap-2"><input type="hidden" name="tab" value="month" /><input class="form-control form-control-sm" type="month" name="month" /><button class="btn btn-sm btn-outline-primary" type="submit">Chọn tháng</button></form> }</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Thứ tự bán</th><th>Invoice</th><th>Buyer</th><th>Ngày/giờ</th><th class="text-end">Tổng tiền</th><th>Trạng thái</th><th>Lỗi</th></tr></thead><tbody>@foreach (var row in Model.Queue) { <tr><td>@row.SaleAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>#@row.InvoiceHeadId<br /><small>Order #@row.OrderId</small></td><td>@row.BuyerDisplay</td><td>@row.SaleDateLocal.ToString("dd/MM/yyyy")</td><td class="text-end">@Money(row.GrandTotal)</td><td>@row.StatusName</td><td class="text-danger">@row.ErrorMessage</td></tr>}</tbody></table></div><div class="card-footer bg-white text-muted small">Thứ tự ngày bán cũ trước, trong ngày theo giờ bán. Không gộp qua ngày. Provider Viettel dùng cấu hình hiện hữu của InvoiceHead.</div></div>
+    }
+</div>

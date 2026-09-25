@@ -3,9 +3,11 @@
 
     document.addEventListener('DOMContentLoaded', function () {
         bindReceiptRows();
+        initApprovalSupplier();
         bindSelfApprovalWarning();
         initResolutionLookups();
         bindQuickCreateProduct();
+        bindPageShortcuts();
     });
 
     function bindReceiptRows() {
@@ -61,16 +63,83 @@
     }
 
     function bindSelfApprovalWarning() {
-        document.querySelectorAll('form[data-self-review="true"]').forEach(function (form) {
-            if (form.dataset.confirmBound === '1') return;
-            form.dataset.confirmBound = '1';
-            form.addEventListener('submit', function (event) {
-                if (!window.confirm(
-                    'Bạn là người lập và cũng đang duyệt đơn này. Thao tác sẽ được ghi rõ trong lịch sử. Bạn có chắc muốn tiếp tục?')) {
-                    event.preventDefault();
+        const form = document.querySelector('form[data-self-review="true"]');
+        const modalElement = document.getElementById('selfApprovalConfirmModal');
+        const confirmButton = document.getElementById('confirmSelfApprovalButton');
+        if (!form || !modalElement || !confirmButton || !window.bootstrap) return;
+
+        const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+        form.addEventListener('submit', function (event) {
+            if (event.defaultPrevented) return;
+            if (form.dataset.selfReviewConfirmed === '1') {
+                delete form.dataset.selfReviewConfirmed;
+                return;
+            }
+
+            event.preventDefault();
+            modal.show();
+        });
+
+        confirmButton.addEventListener('click', function () {
+            form.dataset.selfReviewConfirmed = '1';
+            modal.hide();
+            form.requestSubmit();
+        });
+
+        modalElement.addEventListener('shown.bs.modal', function () {
+            confirmButton.focus();
+        });
+    }
+
+    function initApprovalSupplier() {
+        const page = document.getElementById('purchaseOrderDetailsPage');
+        const form = document.getElementById('purchaseOrderApproveForm');
+        const select = document.getElementById('approvalSupplierSelect');
+        if (!page || !form || !select) return;
+
+        if (window.jQuery && jQuery.fn?.select2) {
+            jQuery(select).select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                placeholder: 'Tìm tên, mã, SĐT hoặc mã số thuế...',
+                minimumInputLength: 1,
+                ajax: {
+                    url: page.dataset.supplierLookupUrl,
+                    dataType: 'json',
+                    delay: 250,
+                    cache: true,
+                    data: function (params) {
+                        return { term: params.term || '', page: params.page || 1 };
+                    },
+                    processResults: function (data) {
+                        return {
+                            results: data.results || [],
+                            pagination: data.pagination || { more: false }
+                        };
+                    }
+                },
+                language: {
+                    inputTooShort: function () { return 'Nhập ít nhất 1 ký tự để tìm nhà cung cấp'; },
+                    searching: function () { return 'Đang tìm...'; },
+                    noResults: function () { return 'Không tìm thấy nhà cung cấp phù hợp'; },
+                    errorLoading: function () { return 'Không tải được danh sách nhà cung cấp'; }
                 }
             });
+        }
+
+        form.addEventListener('submit', function (event) {
+            if (select.value) return;
+            event.preventDefault();
+            select.nextElementSibling?.classList.add('is-invalid');
+            if (window.jQuery && jQuery.fn?.select2) jQuery(select).select2('open');
+            else select.focus();
         });
+
+        if (window.jQuery) {
+            jQuery(select).on('select2:select', function () {
+                select.nextElementSibling?.classList.remove('is-invalid');
+            });
+        }
     }
 
     function initResolutionLookups() {
@@ -221,6 +290,28 @@
             openForRow(first);
         });
         updateOtherUnitState();
+    }
+
+    function bindPageShortcuts() {
+        const helpModalElement = document.getElementById('purchaseOrderHelpModal');
+
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'F1') {
+                event.preventDefault();
+                if (helpModalElement && window.bootstrap) {
+                    bootstrap.Modal.getOrCreateInstance(helpModalElement).show();
+                }
+                return;
+            }
+
+            if (!event.ctrlKey || event.key !== 'Enter') return;
+            if (document.querySelector('.modal.show')) return;
+
+            const primaryForm = document.querySelector('[data-pod-primary-form]');
+            if (!primaryForm) return;
+            event.preventDefault();
+            primaryForm.requestSubmit();
+        });
     }
 
     function normalize(value) {

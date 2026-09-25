@@ -3,6 +3,8 @@ using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Options;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Web.Configuration;
+using GaoApp.Web.Services.Acb;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -30,16 +32,19 @@ public class TenantResolutionMiddleware
     private readonly ILogger<TenantResolutionMiddleware> _logger;
     private readonly TenantOptions _tenantOptions;
     private readonly IWebHostEnvironment _env;
+    private readonly AcbCallbackRoutingOptions _callbackRouting;
     public TenantResolutionMiddleware(
         RequestDelegate next,
         ILogger<TenantResolutionMiddleware> logger,
         IOptions<TenantOptions> tenantOptions,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        IOptions<AcbCallbackRoutingOptions>? callbackRouting = null)
     {
         _next = next;
         _logger = logger;
         _tenantOptions = tenantOptions.Value;
         _env = env;
+        _callbackRouting = callbackRouting?.Value ?? new AcbCallbackRoutingOptions();
     }
 
     public async Task InvokeAsync(
@@ -56,7 +61,7 @@ public class TenantResolutionMiddleware
 
         var host = context.Request.Host.Host?.Trim().ToLowerInvariant();
 
-        _logger.LogInformation(
+        _logger.LogDebug(
             "Tenant request info. Scheme={Scheme}, Host={Host}, RemoteIp={RemoteIp}, Path={Path}",
             context.Request.Scheme,
             context.Request.Host.Value,
@@ -73,12 +78,17 @@ public class TenantResolutionMiddleware
         }
 
         // =========================================================
-        // Cho phép localhost/127.0.0.1 chạy local không bắt tenant
-        // Giữ nguyên behavior cũ để không phá môi trường dev hiện tại
+        // Resolve cửa hàng mặc định trên mọi request local, kể cả sau redirect.
+        // Query tenant vẫn được ưu tiên để hỗ trợ kiểm thử trong Development.
         // =========================================================
         if ((host == "localhost" || host == "127.0.0.1") && _env.IsDevelopment())
         {
             var fakeTenant = context.Request.Query["tenant"].ToString();
+
+            if (string.IsNullOrWhiteSpace(fakeTenant))
+            {
+                fakeTenant = _tenantOptions.DevelopmentDefaultSubdomain;
+            }
 
             if (!string.IsNullOrWhiteSpace(fakeTenant))
             {
@@ -92,12 +102,17 @@ public class TenantResolutionMiddleware
                             x.IsActive,
                         context.RequestAborted);
 
-                if (localStore != null)
+                if (localStore == null)
                 {
-                    tenantContextWriter.SetStore(localStore.Id, normalized);
-
-                    BindStoreItems(context, localStore);
+                    await WriteProblemAsync(
+                        context,
+                        StatusCodes.Status404NotFound,
+                        $"Không tìm thấy cửa hàng đang hoạt động với subdomain '{normalized}'. Kiểm tra Tenant:DevelopmentDefaultSubdomain hoặc tham số tenant.");
+                    return;
                 }
+
+                tenantContextWriter.SetStore(localStore.Id, normalized);
+                BindStoreItems(context, localStore);
             }
 
             await _next(context);
@@ -113,6 +128,37 @@ public class TenantResolutionMiddleware
                 context,
                 StatusCodes.Status500InternalServerError,
                 "Tenant root domain chưa được cấu hình.");
+            return;
+        }
+
+        // Resolve only configured bank callback POSTs before ordinary host routing.
+        // Never change Request.Host or use body/query/header values to choose a store.
+        if (HttpMethods.IsPost(context.Request.Method) && AcbCallbackEndpoint.IsCallbackPath(context.Request.Path) &&
+            _callbackRouting.Handles(host))
+        {
+            var route = await dbContext.Set<AcbCallbackRoute>().AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Host == host, context.RequestAborted);
+            context.Items[AcbCallbackEndpoint.RoutedStoreItem] = route?.TargetStoreId;
+            if (route?.TargetStoreId is not > 0)
+            {
+                context.Items["AcbCallbackOutcome"] = "CALLBACK_STORE_NOT_SELECTED";
+                await WriteProblemAsync(context, StatusCodes.Status503ServiceUnavailable,
+                    "Chưa chọn cửa hàng nhận callback tại URL cũ hoặc cấu hình đang tạm ngưng.");
+                return;
+            }
+            var mappedStore = await dbContext.Stores.AsNoTracking().SingleOrDefaultAsync(
+                x => x.Id == route.TargetStoreId && x.IsActive, context.RequestAborted);
+            if (mappedStore == null)
+            {
+                context.Items["AcbCallbackOutcome"] = "CALLBACK_STORE_NOT_FOUND";
+                // A configured alias must never fall back to a different store on this host.
+                await WriteProblemAsync(context, StatusCodes.Status503ServiceUnavailable,
+                    "Cửa hàng nhận callback chưa tồn tại hoặc chưa hoạt động.");
+                return;
+            }
+            tenantContextWriter.SetStore(mappedStore.Id, mappedStore.SubDomainNormalized);
+            BindStoreItems(context, mappedStore);
+            await _next(context); // The existing callback controller still authenticates this store's key.
             return;
         }
 

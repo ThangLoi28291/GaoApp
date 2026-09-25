@@ -4,6 +4,7 @@ let wrPage = 1;
 let wrPageSize = 10;
 let wrFilteredReceipts = [];
 let wrReceiptFormOptions = null;
+let wrStatusFilter = 'all';
 document.addEventListener('DOMContentLoaded', function () {
     const modalEl = document.getElementById('wrCreateModal');
     if (modalEl) {
@@ -15,6 +16,8 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function bindWarehouseReceivingEvents() {
+    bindWarehouseReceivingKpiFilters();
+
     document.getElementById('btnOpenCreateReceiving')?.addEventListener('click', async function () {
         resetCreateReceivingModal();
         await loadWarehouseOptions();
@@ -56,6 +59,31 @@ function bindWarehouseReceivingEvents() {
         wrPage++;
         renderWarehouseReceivingReceipts();
     });
+}
+
+function bindWarehouseReceivingKpiFilters() {
+    document.querySelectorAll('[data-warehouse-receiving-index] .wr-kpi-filter[data-status-filter]')
+        .forEach(button => {
+            if (button.dataset.bound === '1') return;
+            button.dataset.bound = '1';
+
+            button.addEventListener('click', function () {
+                const requestedStatus = this.dataset.statusFilter || 'all';
+                wrStatusFilter = wrStatusFilter === requestedStatus ? 'all' : requestedStatus;
+                wrPage = 1;
+                syncWarehouseReceivingKpiFilters();
+                renderWarehouseReceivingReceipts();
+            });
+        });
+
+    syncWarehouseReceivingKpiFilters();
+}
+
+function syncWarehouseReceivingKpiFilters() {
+    document.querySelectorAll('[data-warehouse-receiving-index] .wr-kpi-filter[data-status-filter]')
+        .forEach(button => {
+            button.setAttribute('aria-pressed', String(button.dataset.statusFilter === wrStatusFilter));
+        });
 }
 
 async function readApiResponse(response) {
@@ -109,13 +137,16 @@ function renderWarehouseReceivingReceipts() {
     const keyword = (document.getElementById('wrSearch')?.value || '').trim().toLowerCase();
 
     wrFilteredReceipts = wrAllReceipts.filter(x => {
-        if (!keyword) return true;
-
-        return [
+        const matchesKeyword = !keyword || [
             x.documentNo,
             x.documentTitle,
             statusText(x.status)
         ].some(v => String(v || '').toLowerCase().includes(keyword));
+
+        const matchesStatus = wrStatusFilter === 'all'
+            || String(Number(x.status)) === wrStatusFilter;
+
+        return matchesKeyword && matchesStatus;
     });
 
     updateStats();
@@ -139,8 +170,12 @@ function renderWarehouseReceivingReceipts() {
 
     list.innerHTML = pageItems.map(x => {
         const status = Number(x.status);
-        const isReadonly = status === 2;
-        const actionText = isReadonly ? 'Xem' : 'Nhập';
+        const actionText = status === 2
+            ? 'Xem phiếu'
+            : (status === 4 ? 'Sửa phiếu' : 'Tiếp tục nhập');
+        const actionClass = status === 2
+            ? 'is-view'
+            : (status === 4 ? 'is-edit' : 'btn-primary');
 
         return `
             <div class="wr-card wr-status-${status}">
@@ -150,19 +185,20 @@ function renderWarehouseReceivingReceipts() {
 
                 <div class="wr-card-main">
                     <div class="wr-title">${escapeHtml(x.documentTitle || 'Chưa đặt tên phiếu')}</div>
-                   <div class="wr-code">${escapeHtml(x.documentNo || '')} · #${x.id}</div>
-<div class="wr-date">Ngày tạo: ${formatDateTime(x.createdAtUtc || x.documentDate)}</div>
+                    <div class="wr-code">${escapeHtml(x.documentNo || '-')}</div>
+                    <div class="wr-date">Ngày tạo: ${formatDateTime(x.createdAtUtc || x.documentDate)}</div>
                 </div>
 
                 <div class="wr-card-meta">
                     ${renderStatusBadge(x.status)}
-                    <div class="wr-small">
-                        ${escapeHtml(x.legalEntityName || '')} · ${escapeHtml(x.warehouseName || '')}<br />
-                        ${formatNumber(x.totalLines || 0)} dòng · ${formatNumber(x.totalProductTypes || 0)} loại SP
+                    <div class="wr-card-facts">
+                        <div>Kho: <strong>${escapeHtml(x.warehouseName || '-')}</strong></div>
+                        <div>HKD: <strong>${escapeHtml(x.legalEntityName || '-')}</strong></div>
+                        <div><strong>${formatNumber(x.totalLines || 0)}</strong> dòng hàng · <strong>${formatNumber(x.totalProductTypes || 0)}</strong> loại sản phẩm</div>
                     </div>
                 </div>
 
-                <a class="wr-open-btn ${isReadonly ? 'readonly' : ''}"
+                <a class="wr-card-action ${actionClass}"
                    href="/admin/warehouse-receiving/${x.id}">
                     ${actionText}
                 </a>

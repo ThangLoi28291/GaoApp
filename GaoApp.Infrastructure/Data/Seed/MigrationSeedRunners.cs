@@ -103,6 +103,7 @@ public sealed class MandatorySecuritySeeder : IMandatorySecuritySeeder
     public async Task SeedAsync(CancellationToken ct = default)
     {
         await SecuritySeedData.SeedPermissionsAsync(_db, ct);
+        await AdminMenuSeeder.SeedAsync(_db, ct);
         await SecuritySeedData.SeedLegalEntityAdminMenusAsync(_db, ct);
         await SecuritySeedData.SeedPurchaseAdminMenusAsync(_db, ct);
         await SecuritySeedData.SeedDefaultRolesForAllStoresAsync(_db, ct);

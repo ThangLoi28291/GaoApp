@@ -1,4 +1,4 @@
-﻿@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
 @using GaoApp.Domain.Enums
 
 @{
@@ -6,10 +6,13 @@
                || Model.Status == StockDocumentStatus.Rejected;
 
     var lines = Model.Lines ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>();
-    var totalQty = lines.Sum(x => x.Quantity);
+    var intake = Model.ProvisionalItems.Where(x => x.Status == StockDocumentProvisionalItemStatus.Unresolved && x.ProposedFactor.HasValue).ToList();
+    var totalQty = lines.Sum(x => x.Quantity) + intake.Sum(x => x.Quantity);
 }
 
-@if (!lines.Any())
+<input type="hidden" data-receiving-document-id="@Model.Id" data-receiving-row-version="@Model.RowVersion" />
+
+@if (!lines.Any() && !intake.Any())
 {
     <div class="wrd-empty">
         <div class="fw-bold">Chưa có hàng nào</div>
@@ -33,7 +36,9 @@ else
             <tbody>
                 @foreach (var line in lines.OrderBy(x => x.LineNo))
                 {
-                    <tr data-line-id="@line.Id">
+                    <tr data-line-id="@line.Id" data-receiving-key="line-@line.Id"
+                        data-receiving-conversion="@line.ProductUnitConversionId"
+                        data-receiving-quantity="@line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                         <td class="wrd-line-no">@line.LineNo</td>
 
                         <td>
@@ -55,8 +60,11 @@ else
                                     <div class="wrd-line-name">@line.ProductNameSnapshot</div>
                                     <div class="wrd-line-meta">
                                         Barcode: @(line.BarcodeSnapshot ?? line.SkuSnapshot ?? "-")
-                                        · Factor: @line.Factor.ToString("0.###")
-                                        · SL gốc: @line.BaseQuantity.ToString("0.###")
+                                        · Quy đổi: @line.Factor.ToString("0.###")
+                                        @if (!line.IsBaseUnit)
+                                        {
+                                            <span> · Tương đương: @line.BaseQuantity.ToString("0.###") @line.BaseUnitName</span>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -70,8 +78,8 @@ else
                                 <input type="number"
                                        class="form-control text-center js-receiving-qty wrd-table-qty"
                                        value="@line.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
-                                       min="0.001"
-                                       step="0.001"
+                                       min="1"
+                                       step="1"
                                        inputmode="decimal"
                                        data-line-id="@line.Id"
                                        data-unit-id="@line.UnitId"
@@ -96,6 +104,8 @@ else
                         </td>
                     </tr>
                 }
+                @await Html.PartialAsync("_ReceiptIntakeRows", new GaoApp.Web.Areas.Admin.Models.Inventory.ReceiptIntakeRowsViewModel
+                { Items = intake, CanEdit = canEdit, Compact = true, LineOffset = lines.Count })
             </tbody>
 
             <tfoot>

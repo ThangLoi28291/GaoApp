@@ -1,147 +1,125 @@
 @model GaoApp.Web.Areas.Admin.Models.Purchases.PurchaseRequestIndexViewModel
-@using GaoApp.Domain.Enums
-@using GaoApp.Web.Areas.Admin.Models.Purchases
 @{
     ViewData["Title"] = "Yêu cầu mua hàng";
-    string StatusLabel(PurchaseRequestStatus status) => status switch
-    {
-        PurchaseRequestStatus.Draft => "Nháp",
-        PurchaseRequestStatus.PendingApproval => "Chờ quản lý chốt",
-        PurchaseRequestStatus.ReturnedForRevision => "Trả sửa",
-        PurchaseRequestStatus.Rejected => "Từ chối",
-        PurchaseRequestStatus.Approved => "Đã chốt mua",
-        PurchaseRequestStatus.PartiallyConverted => "Đang tạo đơn",
-        PurchaseRequestStatus.Converted => "Đã tạo đủ đơn",
-        PurchaseRequestStatus.Cancelled => "Đã hủy",
-        _ => status.ToString()
-    };
-    string StatusClass(PurchaseRequestStatus status) => status switch
-    {
-        PurchaseRequestStatus.Draft => "bg-label-secondary",
-        PurchaseRequestStatus.PendingApproval => "bg-label-warning",
-        PurchaseRequestStatus.ReturnedForRevision => "bg-label-info",
-        PurchaseRequestStatus.Rejected or PurchaseRequestStatus.Cancelled => "bg-label-danger",
-        PurchaseRequestStatus.Approved => "bg-label-success",
-        PurchaseRequestStatus.PartiallyConverted => "bg-label-primary",
-        PurchaseRequestStatus.Converted => "bg-label-success",
-        _ => "bg-label-secondary"
-    };
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+    var initialScope = Model.ShowingOnlyMine ? "mine" : "store";
 }
 
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-    <div>
-        <div class="d-flex align-items-center gap-2 mb-1">
-            <span class="avatar avatar-sm bg-label-primary rounded"><i class="bx bx-list-check fs-5"></i></span>
-            <h4 class="mb-0">Yêu cầu mua hàng</h4>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Yêu cầu mua hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Theo dõi nhu cầu nội bộ, tiến độ chốt mua và chuyển sang đơn đặt hàng.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnPrReload"><i class="bx bx-refresh"></i><span>Tải lại</span></button>
+                @if (Model.CanCreate)
+                {
+                    <a class="btn btn-primary gds-action-button" asp-action="Create"><i class="bx bx-plus"></i><span>Tạo yêu cầu</span></a>
+                }
+            </div>
         </div>
-        <p class="text-muted mb-0">Nhân viên yêu cầu mặt hàng và số lượng; quản lý duyệt rồi chuyển thành một đơn đặt hàng.</p>
     </div>
-    @if (Model.CanCreate)
+}
+
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/purchase-request-index.css" asp-append-version="true" />
+}
+
+<div class="purchase-request-index-page gds-page"
+     data-gao-ui="modern"
+     data-purchase-request-index
+     data-data-url="@Url.Action("GetPurchaseRequestIndexData", "PurchaseRequests", new { area = "Admin" })"
+     data-requester-options-url="@Url.Action("GetPurchaseRequestRequesterOptions", "PurchaseRequests", new { area = "Admin" })"
+     data-quick-view-url="@Url.Action("GetPurchaseRequestQuickView", "PurchaseRequests", new { area = "Admin" })"
+     data-detail-base-url="/admin/purchase-requests"
+     data-initial-scope="@initialScope"
+     data-can-view-store="@Model.CanViewStore.ToString().ToLowerInvariant()">
+
+    @if (TempData["Success"] is string success)
     {
-        <a class="btn btn-primary" asp-action="Create">
-            <i class="bx bx-plus me-1"></i>Tạo yêu cầu
-        </a>
+        <div class="alert alert-success alert-dismissible mb-0" role="alert">@success<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
     }
-</div>
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger alert-dismissible mb-0" role="alert">@error<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    }
 
-@if (TempData["Success"] is string success)
-{
-    <div class="alert alert-success alert-dismissible" role="alert">@success<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-}
-@if (TempData["Error"] is string error)
-{
-    <div class="alert alert-danger alert-dismissible" role="alert">@error<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-}
+    <section aria-label="Tổng quan yêu cầu mua hàng">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col"><button type="button" class="pr-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100" data-pr-state="all" aria-pressed="true"><span class="gds-kpi-card__icon is-primary"><i class="bx bx-list-check"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng yêu cầu</span><span class="gds-kpi-card__value text-primary" id="prStatTotal">0</span><small>Mọi trạng thái</small></span></button></div>
+            <div class="col"><button type="button" class="pr-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-pr-state="working" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-info text-info"><i class="bx bx-loader-circle"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đang xử lý</span><span class="gds-kpi-card__value text-info" id="prStatWorking">0</span><small>Nháp, trả sửa, chờ chốt</small></span></button></div>
+            <div class="col"><button type="button" class="pr-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-pr-state="order-ready" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-cart-add"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Cần lập đơn</span><span class="gds-kpi-card__value text-warning" id="prStatOrderReady">0</span><small>Đã chốt hoặc đang tạo đơn</small></span></button></div>
+            <div class="col"><button type="button" class="pr-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100 w-100" data-pr-state="converted" aria-pressed="false"><span class="gds-kpi-card__icon is-success"><i class="bx bx-check-double"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đã tạo đủ đơn</span><span class="gds-kpi-card__value text-success" id="prStatConverted">0</span><small>Hoàn tất chuyển đơn</small></span></button></div>
+        </div>
+    </section>
 
-@if (Model.CanViewStore)
-{
-    <div class="nav-align-top mb-3">
-        <ul class="nav nav-pills gap-2" role="tablist">
-            <li class="nav-item">
-                <a class="nav-link @(!Model.ShowingOnlyMine ? "active" : string.Empty)" asp-action="Index">
-                    <i class="bx bx-store-alt me-1"></i>Toàn cửa hàng
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link @(Model.ShowingOnlyMine ? "active" : string.Empty)" asp-action="Index" asp-route-mine="true">
-                    <i class="bx bx-user me-1"></i>Của tôi
-                </a>
-            </li>
-        </ul>
-    </div>
-}
-
-<div class="card border-0 shadow-sm">
-    <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Yêu cầu</th>
-                    @if (Model.CanViewStore && !Model.ShowingOnlyMine)
-                    {
-                        <th>Người yêu cầu</th>
-                    }
-                    <th>Ngày cần hàng</th>
-                    <th>Số lượng yêu cầu / được duyệt</th>
-                    <th>Tiến độ</th>
-                    <th>Trạng thái</th>
-                    <th class="text-end"></th>
-                </tr>
-            </thead>
-            <tbody>
-                @if (Model.Items.Count == 0)
+    <section class="card shadow-sm border-0" aria-label="Bộ lọc yêu cầu mua hàng">
+        <div class="card-header bg-transparent border-0 pb-0"><div class="d-flex align-items-center gap-2"><span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span><div><h5 class="mb-0 text-dark">Tra cứu yêu cầu</h5><small class="text-muted">Tìm theo mã, tiêu đề, người yêu cầu, sản phẩm, SKU hoặc barcode.</small></div></div></div>
+        <div class="card-body pt-3"><div class="pr-index-filter-bar">
+            <div class="pr-index-scope-row" role="group" aria-label="Phạm vi yêu cầu">
+                @if (Model.CanViewStore)
                 {
-                    <tr>
-                        <td colspan="7" class="text-center py-5">
-                            <div class="avatar avatar-lg bg-label-secondary rounded-circle mb-3"><i class="bx bx-basket fs-3"></i></div>
-                            <h6 class="mb-1">Chưa có yêu cầu mua hàng</h6>
-                            <p class="text-muted mb-3">Tạo yêu cầu đầu tiên chỉ với tên, sản phẩm và số lượng.</p>
-                            @if (Model.CanCreate)
-                            {
-                                <a class="btn btn-sm btn-primary" asp-action="Create"><i class="bx bx-plus me-1"></i>Tạo yêu cầu</a>
-                            }
-                        </td>
-                    </tr>
+                    <button type="button" id="prScopeStore" class="pr-index-scope-button" data-pr-scope="store"><i class="bx bx-store-alt"></i>Toàn cửa hàng</button>
                 }
-                @foreach (var item in Model.Items)
+                <button type="button" id="prScopeMine" class="pr-index-scope-button" data-pr-scope="mine"><i class="bx bx-user"></i>Của tôi</button>
+            </div>
+            <div class="pr-index-search-wrap"><label for="prKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label><div class="gds-search-field"><i class="bx bx-search"></i><input type="search" id="prKeyword" class="form-control" placeholder="Mã, tiêu đề, người yêu cầu, sản phẩm, SKU, barcode..." autocomplete="off" /><button type="button" id="prClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button></div></div>
+            <div class="pr-index-desktop-filters">
+                @if (Model.CanViewStore)
                 {
-                    var hasFinalQuantity = item.Status is PurchaseRequestStatus.Approved or PurchaseRequestStatus.PartiallyConverted or PurchaseRequestStatus.Converted;
-                    var finalQuantity = hasFinalQuantity ? item.ApprovedQuantity : item.RequestedQuantity;
-                    var progress = finalQuantity <= 0 ? 0 : Math.Min(100, (int)Math.Round(item.ConvertedQuantity * 100 / finalQuantity));
-                    <tr>
-                        <td>
-                            <a class="fw-semibold d-block" asp-action="Details" asp-route-id="@item.Id">@item.Title</a>
-                            <small class="text-muted">@item.RequestNumber · @item.RequestDate.ToString("dd/MM/yyyy")</small>
-                        </td>
-                        @if (Model.CanViewStore && !Model.ShowingOnlyMine)
-                        {
-                            <td>@item.RequestedByName</td>
-                        }
-                        <td>@(item.NeedByDate?.ToString("dd/MM/yyyy") ?? "Không giới hạn")</td>
-                        <td>
-                            <div><span class="fw-medium">NV yêu cầu:</span> @PurchaseQuantityFormatter.Display(item.RequestedQuantity)</div>
-                            @if (hasFinalQuantity)
-                            {
-                                <div class="small text-success"><span class="fw-medium">QL chốt mua:</span> @PurchaseQuantityFormatter.Display(item.ApprovedQuantity)</div>
-                            }
-                            else
-                            {
-                                <div class="small text-muted">@item.LineCount mặt hàng · Chưa chốt</div>
-                            }
-                        </td>
-                        <td style="min-width:150px">
-                            <div class="d-flex justify-content-between small mb-1"><span>Đã đưa vào đơn</span><span>@progress%</span></div>
-                            <div class="progress" style="height:6px"><div class="progress-bar" style="width:@progress%"></div></div>
-                        </td>
-                        <td><span class="badge @StatusClass(item.Status)">@StatusLabel(item.Status)</span></td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-icon btn-label-secondary rounded-pill" asp-action="Details" asp-route-id="@item.Id" title="Xem chi tiết">
-                                <i class="bx bx-chevron-right"></i>
-                            </a>
-                        </td>
-                    </tr>
+                    <div><label for="prRequester" class="form-label">Người yêu cầu</label><select id="prRequester" class="form-select"><option value="">Tất cả nhân viên</option></select></div>
                 }
-            </tbody>
-        </table>
+                else
+                {
+                    <select id="prRequester" class="d-none" aria-hidden="true"><option value=""></option></select>
+                }
+                <div><label for="prStatus" class="form-label">Trạng thái</label><select id="prStatus" class="form-select"><option value="all" selected>Tất cả trạng thái</option><option value="working">Đang xử lý</option><option value="order-ready">Cần lập đơn</option><option value="converted">Đã tạo đủ đơn</option><option value="draft">Nháp</option><option value="pending">Chờ quản lý chốt</option><option value="returned">Trả sửa</option><option value="rejected">Từ chối</option><option value="approved">Đã chốt mua</option><option value="partial">Đang tạo đơn</option><option value="cancelled">Đã hủy</option></select></div>
+                <div><label for="prFromDate" class="form-label">Từ ngày</label><input type="date" id="prFromDate" class="form-control" /></div>
+                <div><label for="prToDate" class="form-label">Đến ngày</label><input type="date" id="prToDate" class="form-control" /></div>
+                <div class="pr-index-compact-filter"><label for="prPageSize" class="form-label">Số dòng / trang</label><select id="prPageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+                <button type="button" class="gds-icon-button pr-index-reset-button d-none" id="prResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
+            </div>
+            <button type="button" class="btn btn-label-primary pr-index-mobile-filter-button" id="prOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#purchaseRequestMobileFilterSheet"><i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="prActiveFilterCount">0</span></button>
+            <div class="pr-index-date-error d-none" id="prDateError" role="alert">Từ ngày không được lớn hơn đến ngày.</div>
+        </div></div>
+    </section>
+
+    <section class="gds-list-panel pr-index-results-panel" id="purchaseRequestResultsPanel" aria-label="Danh sách yêu cầu mua hàng" aria-live="polite" aria-busy="false">
+        <div class="pr-index-results-heading"><div><h5 class="mb-1 text-dark">Danh sách yêu cầu mua hàng</h5><small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh từng mặt hàng.</small></div></div>
+        <div class="pr-index-desktop-list" id="purchaseRequestDesktopList"><div class="table-responsive"><table class="table align-middle gds-table mb-0 pr-index-table"><thead><tr><th>Yêu cầu / ngày</th><th class="pr-index-requester-column">Người yêu cầu</th><th>Ngày cần hàng</th><th>Quy mô / tiến độ</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead><tbody id="prTableBody"><tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody></table></div></div>
+        <div class="pr-index-mobile-list" id="purchaseRequestMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+    <div class="gds-list-footer pr-index-list-footer"><div class="gds-list-footer__summary" id="prPagingInfo">0 kết quả</div><nav aria-label="Phân trang yêu cầu mua hàng"><ul class="pagination pagination-sm mb-0 pr-index-pagination" id="prPageNumbers"></ul></nav></div>
+
+    <div class="modal fade" id="purchaseRequestQuickViewModal" tabindex="-1" aria-labelledby="purchaseRequestQuickViewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable pr-index-quick-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><div><div class="text-primary fw-semibold small text-uppercase">Xem nhanh yêu cầu mua hàng</div><h4 class="modal-title text-dark" id="purchaseRequestQuickViewTitle">Thông tin yêu cầu</h4><div class="d-flex flex-wrap gap-2 mt-1"><span class="gds-code" id="purchaseRequestQuickNumber">—</span><span class="gds-status gds-status--dot is-neutral" id="purchaseRequestQuickState">—</span></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="purchaseRequestQuickViewBody"><div class="text-center text-muted py-5">Đang tải thông tin...</div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><a href="#" class="btn btn-primary" id="btnOpenPurchaseRequestDetail">Mở yêu cầu</a></div></div></div></div>
+
+    <div class="modal fade" id="purchaseRequestImagePreviewModal" tabindex="-1" aria-labelledby="purchaseRequestImagePreviewTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered pr-index-image-preview-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><h5 class="modal-title" id="purchaseRequestImagePreviewTitle">Ảnh sản phẩm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body pr-index-image-preview-body"><img id="purchaseRequestImagePreviewImage" alt="Ảnh sản phẩm phóng to" /></div></div></div></div>
+
+    <div class="offcanvas offcanvas-bottom pr-index-filter-sheet" tabindex="-1" id="purchaseRequestMobileFilterSheet" aria-labelledby="purchaseRequestMobileFilterTitle">
+        <div class="offcanvas-header"><div><h5 class="offcanvas-title" id="purchaseRequestMobileFilterTitle">Bộ lọc yêu cầu mua hàng</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+        <div class="offcanvas-body"><div class="row g-3">
+            <div class="col-12"><label for="prMobileScope" class="form-label">Phạm vi</label><select id="prMobileScope" class="form-select">@if (Model.CanViewStore) { <option value="store">Toàn cửa hàng</option> }<option value="mine">Của tôi</option></select></div>
+            @if (Model.CanViewStore)
+            {
+                <div class="col-12" id="prMobileRequesterWrap"><label for="prMobileRequester" class="form-label">Người yêu cầu</label><select id="prMobileRequester" class="form-select"><option value="">Tất cả nhân viên</option></select></div>
+            }
+            else
+            {
+                <select id="prMobileRequester" class="d-none" aria-hidden="true"><option value=""></option></select>
+            }
+            <div class="col-12"><label for="prMobileStatus" class="form-label">Trạng thái</label><select id="prMobileStatus" class="form-select"><option value="all">Tất cả trạng thái</option><option value="working">Đang xử lý</option><option value="order-ready">Cần lập đơn</option><option value="converted">Đã tạo đủ đơn</option><option value="draft">Nháp</option><option value="pending">Chờ quản lý chốt</option><option value="returned">Trả sửa</option><option value="rejected">Từ chối</option><option value="approved">Đã chốt mua</option><option value="partial">Đang tạo đơn</option><option value="cancelled">Đã hủy</option></select></div>
+            <div class="col-6"><label for="prMobileFromDate" class="form-label">Từ ngày</label><input type="date" id="prMobileFromDate" class="form-control" /></div>
+            <div class="col-6"><label for="prMobileToDate" class="form-label">Đến ngày</label><input type="date" id="prMobileToDate" class="form-control" /></div>
+            <div class="col-12"><label for="prMobilePageSize" class="form-label">Số dòng / trang</label><select id="prMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+        </div></div>
+        <div class="offcanvas-footer pr-index-filter-sheet__footer"><button type="button" class="btn btn-label-secondary" id="prMobileClearFilters">Xóa lọc</button><button type="button" class="btn btn-primary flex-grow-1" id="prMobileApplyFilters">Áp dụng</button></div>
     </div>
 </div>
+
+@section PageScripts {
+    <script src="~/Admin/js/purchase-request-index.js" asp-append-version="true"></script>
+}

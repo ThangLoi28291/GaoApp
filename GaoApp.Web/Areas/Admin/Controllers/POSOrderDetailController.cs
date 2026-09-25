@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Web.Security;
+using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.POSShifts;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.LegalEntities;
@@ -10,6 +11,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos/order-detail")]
+[Authorize(Policy = PermissionCodes.Pos.Order.View)]
 public class POSOrderDetailController : BasePOSPageController
 {
     private readonly IPOSService _pos;

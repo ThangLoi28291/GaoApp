@@ -27,6 +27,50 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
         _db = db;
     }
 
+    // Fresh evidence after the caller's balance lock; do not detach/reload tracked
+    // entities and discard pending writes owned by that caller's transaction.
+    private IQueryable<InventoryValuationEntry> SaleCostEvidence()
+    {
+        var storeId = _db.CurrentStoreId
+            ?? throw new InvalidOperationException("Sale cost evidence requires an explicit Store.");
+        return _db.InventoryValuationEntries
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId)
+            .Include(x => x.CostLayerAllocations);
+    }
+
+    private async Task<List<InventoryValuationEntry>> LoadSaleCostEvidenceAsync(
+        IQueryable<InventoryValuationEntry> query, CancellationToken ct)
+    {
+        var entries = await query.ToListAsync(ct);
+        if (entries.Count == 0) return entries;
+        var storeId = _db.CurrentStoreId!.Value;
+        var transactionIds = entries.Select(x => x.InventoryTransactionId).Distinct().ToList();
+        var warehouseIds = entries.Select(x => x.WarehouseId).Distinct().ToList();
+        var variantIds = entries.Select(x => x.ProductVariantId).Distinct().ToList();
+        var layerIds = entries.Where(x => x.InventoryCostLayerId.HasValue)
+            .Select(x => x.InventoryCostLayerId!.Value).Distinct().ToList();
+        // Independent lookups preserve a broken root instead of dropping it through
+        // an INNER JOIN. Missing/foreign evidence remains null for policy rejection.
+        var transactions = await _db.InventoryTransactions.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.StoreId == storeId && transactionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var warehouses = await _db.Warehouses.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.StoreId == storeId && warehouseIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var variants = await _db.ProductVariants.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.StoreId == storeId && variantIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        var layers = await _db.InventoryCostLayers.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.StoreId == storeId && layerIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        foreach (var entry in entries)
+        {
+            entry.InventoryTransaction = transactions.GetValueOrDefault(entry.InventoryTransactionId)!;
+            entry.Warehouse = warehouses.GetValueOrDefault(entry.WarehouseId)!;
+            entry.ProductVariant = variants.GetValueOrDefault(entry.ProductVariantId)!;
+            entry.InventoryCostLayer = entry.InventoryCostLayerId is int layerId ? layers.GetValueOrDefault(layerId) : null;
+        }
+        return entries;
+    }
+
     public async Task AddRangeAsync(IEnumerable<InventoryValuationEntry> entries, CancellationToken ct = default)
     {
         await _db.InventoryValuationEntries.AddRangeAsync(entries, ct);
@@ -81,7 +125,7 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
         int orderLineId,
         CancellationToken ct = default)
     {
-        return _db.InventoryValuationEntries
+        return LoadSaleCostEvidenceAsync(SaleCostEvidence()
             .Where(x => !x.IsDeleted
                         && x.ReferenceType == InventoryReferenceType.Order
                         && x.ReferenceId == orderId.ToString()
@@ -89,28 +133,25 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
                         && x.EntryType == InventoryValuationEntryType.Outbound
                         && x.Quantity < 0)
             .OrderBy(x => x.OccurredAtUtc)
-            .ThenBy(x => x.Id)
-            .ToListAsync(ct);
+            .ThenBy(x => x.Id), ct);
     }
 
     public Task<List<InventoryValuationEntry>> GetReverseEntriesBySourceEntryIdAsync(
         int sourceValuationEntryId,
         CancellationToken ct = default)
     {
-        return _db.InventoryValuationEntries
-            .Where(x => !x.IsDeleted
-                        && x.SourceValuationEntryId == sourceValuationEntryId)
+        return LoadSaleCostEvidenceAsync(SaleCostEvidence()
+            .Where(x => x.SourceValuationEntryId == sourceValuationEntryId)
             .OrderBy(x => x.OccurredAtUtc)
-            .ThenBy(x => x.Id)
-            .ToListAsync(ct);
+            .ThenBy(x => x.Id), ct);
     }
 
-    public Task<InventoryValuationEntry?> GetByIdAsync(
+    public async Task<InventoryValuationEntry?> GetByIdAsync(
         int id,
         CancellationToken ct = default)
     {
-        return _db.InventoryValuationEntries
-            .FirstOrDefaultAsync(x => !x.IsDeleted && x.Id == id, ct);
+        return (await LoadSaleCostEvidenceAsync(SaleCostEvidence()
+            .Where(x => !x.IsDeleted && x.Id == id), ct)).SingleOrDefault();
     }
 
     public Task<bool> ExistsByReferenceSubKeyAsync(
@@ -265,10 +306,8 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
     int sourceValuationEntryId,
     CancellationToken ct = default)
     {
-        return _db.InventoryValuationEntries
-            .Where(x => !x.IsDeleted
-                        && x.EntryType == InventoryValuationEntryType.Revaluation
-                        && x.RevaluationOfEntryId == sourceValuationEntryId)
-            .ToListAsync(ct);
+        return LoadSaleCostEvidenceAsync(SaleCostEvidence()
+            .Where(x => x.EntryType == InventoryValuationEntryType.Revaluation
+                        && x.RevaluationOfEntryId == sourceValuationEntryId), ct);
     }
 }

@@ -1,11 +1,27 @@
-﻿using GaoApp.Domain.Entities;
+using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Interfaces.Repositories.Brands;
 
 public interface IBrandRepository
 {
     Task<(IReadOnlyList<Brand> Items, int TotalItems)> GetPagedAsync(
-        int storeId, string? search, int page, int pageSize, CancellationToken ct = default);
+        int storeId,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(IReadOnlyList<Brand> Items, int TotalItems)> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
 
     Task<Brand?> GetByIdAsync(int storeId, int id, CancellationToken ct = default);
 
@@ -13,9 +29,11 @@ public interface IBrandRepository
     Task<bool> ExistsNameAsync(int storeId, string name, int? excludeId, CancellationToken ct = default);
 
     Task AddAsync(Brand entity, CancellationToken ct = default);
+
     /// <summary>
     /// Đánh dấu entity là Deleted để DbContext chuyển thành soft delete.
     /// </summary>
     void Remove(Brand entity);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }

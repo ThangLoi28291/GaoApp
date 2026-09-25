@@ -1,0 +1,60 @@
+@{
+    ViewData["Title"] = "Tồn hàng có hóa đơn XML";
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-input-stock.css" asp-append-version="true" />
+}
+@section header {
+    <div class="gds-page-header gds-page-header--compact w-100" data-gao-ui="modern">
+        <div class="gds-page-header__main">
+            <h3 class="gds-page-header__title">Tồn hàng có hóa đơn XML</h3>
+            <p class="gds-page-header__subtitle mb-0">Theo dõi nguồn nhập từ XML và số lượng đã dùng để phát hành hóa đơn.</p>
+        </div>
+        <div class="gds-page-header__actions">
+            <a class="btn btn-label-secondary" href="/admin/inventory-ledger">Thẻ kho</a>
+            <button class="btn btn-label-primary" id="xmlReload" type="button"><i class="bx bx-refresh" aria-hidden="true"></i> Tải lại</button>
+        </div>
+    </div>
+}
+<main class="xml-stock gds-page" data-gao-ui="modern" data-xml-stock>
+    <div class="xs-tabs" role="tablist" aria-label="Tra cứu tồn XML">
+        <button type="button" role="tab" aria-selected="true" data-view="balance" class="active"><i class="bx bx-package" aria-hidden="true"></i> Tồn hiện tại</button>
+        <button type="button" role="tab" aria-selected="false" data-view="ledger"><i class="bx bx-transfer-alt" aria-hidden="true"></i> Lịch sử tăng / giảm</button>
+    </div>
+    <section class="xs-metrics" aria-label="Tổng quan">
+        <button type="button" class="card xs-metric" data-metric="balance"><span class="xs-icon primary"><i class="bx bx-package" aria-hidden="true"></i></span><span>Sản phẩm / kho<strong id="xsProducts">—</strong></span></button>
+        <button type="button" class="card xs-metric" data-metric="increase"><span class="xs-icon success"><i class="bx bx-trending-up" aria-hidden="true"></i></span><span>Lần ghi tăng<strong id="xsIn">—</strong></span></button>
+        <button type="button" class="card xs-metric" data-metric="decrease"><span class="xs-icon danger"><i class="bx bx-trending-down" aria-hidden="true"></i></span><span>Lần ghi giảm<strong id="xsOut">—</strong></span></button>
+        <button type="button" class="card xs-metric" data-metric="hold"><span class="xs-icon warning"><i class="bx bx-time-five" aria-hidden="true"></i></span><span>Dòng đang giữ<strong id="xsHold">—</strong></span></button>
+    </section>
+    <section class="card xs-filter-card">
+        <div class="xs-section-title"><span class="xs-icon primary"><i class="bx bx-filter-alt" aria-hidden="true"></i></span><div><h5>Tra cứu tồn và chứng từ XML</h5><p>Số lượng theo đơn vị gốc. Tồn giảm khi phát hành hóa đơn.</p></div></div>
+        <form id="xsFilters" class="xs-filters">
+            <label class="xs-search">Tìm kiếm<input id="xsKeyword" class="form-control" type="search" maxlength="200" placeholder="Tên sản phẩm, mã, phiếu nhập, số XML..." /></label>
+            <label>Kho<select id="xsWarehouse" class="form-select"><option value="">Tất cả kho</option></select></label>
+            <label>Hiển thị<select id="xsKind" class="form-select"><option value="">Tất cả</option><option value="hold">Đang giữ</option><option value="negative">Khả dụng âm</option></select></label>
+            <label class="xs-date" hidden>Từ ngày<input id="xsFrom" type="date" class="form-control" /></label>
+            <label class="xs-date" hidden>Đến ngày<input id="xsTo" type="date" class="form-control" /></label>
+            <label>Số dòng<select id="xsPageSize" class="form-select"><option>10</option><option selected>20</option><option>50</option><option>100</option></select></label>
+            <div class="xs-filter-actions"><button type="submit" class="btn btn-primary">Tìm kiếm</button><button type="button" id="xsReset" class="btn btn-label-secondary" aria-label="Xóa bộ lọc"><i class="bx bx-reset" aria-hidden="true"></i></button></div>
+        </form>
+        <div id="xsDateError" class="text-danger mt-2" role="alert" hidden>Từ ngày không được lớn hơn đến ngày.</div>
+        <button id="xsClearProduct" class="btn btn-sm btn-label-primary mt-3" type="button" hidden>Bỏ lọc sản phẩm đang xem ×</button>
+    </section>
+    <div id="xsNegative" class="alert alert-warning mb-0" role="status" hidden></div>
+    <section class="card xs-results" aria-busy="true" id="xsResults">
+        <div class="xs-results-title"><div><h5 id="xsHeading">Tồn XML theo sản phẩm</h5><p id="xsHint">Nhấp đúp một dòng để xem nhanh và truy vết chứng từ.</p></div><span class="xs-count" id="xsCount">Đang tải…</span></div>
+        <div class="xs-table-wrap"><table class="table xs-table"><thead id="xsHead"></thead><tbody id="xsBody"><tr><td>Đang tải dữ liệu…</td></tr></tbody></table></div>
+        <div class="xs-footer"><span id="xsSummary" role="status"></span><div><button type="button" class="btn btn-sm btn-label-secondary" id="xsPrevious">Trang trước</button><button type="button" class="btn btn-sm btn-label-secondary" id="xsNext">Trang sau</button></div></div>
+    </section>
+    <p class="xs-explanation"><i class="bx bx-info-circle" aria-hidden="true"></i> Tồn XML = tồn đầu chuyển sang + nhập / tăng − xuất / giảm. Khả dụng = tồn XML − đang giữ. Tồn đầu là số dư được chuyển từ hệ thống cũ; không gộp vào lượng nhập.</p>
+    <dialog class="xs-dialog" id="xsDialog" aria-labelledby="xsDialogTitle">
+        <div class="xs-dialog-header"><div><span class="text-primary small fw-semibold">CHI TIẾT TỒN XML</span><h4 id="xsDialogTitle"></h4></div><button type="button" id="xsClose" class="btn btn-label-secondary" aria-label="Đóng">×</button></div>
+        <div id="xsDialogBody"></div><div class="xs-dialog-footer" id="xsDialogActions"></div>
+    </dialog>
+</main>
+@section PageScripts {
+    <script src="~/Admin/js/invoice-input-stock.js" asp-append-version="true"></script>
+}

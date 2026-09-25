@@ -47,6 +47,17 @@ public class StockDocumentLookupSelect2ItemDto
     public string UnitName { get; set; } = string.Empty;
 
     /// <summary>
+    /// Tên đơn vị gốc có thẩm quyền từ Product của variant.
+    /// Chỉ dùng để trình bày quy đổi, không tham gia tính toán.
+    /// </summary>
+    public string BaseUnitName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Đơn vị đang lookup có đúng là đơn vị gốc của Product hay không.
+    /// </summary>
+    public bool IsBaseUnit { get; set; }
+
+    /// <summary>
     /// Hệ số quy đổi về đơn vị gốc.
     /// </summary>
     public decimal Factor { get; set; }

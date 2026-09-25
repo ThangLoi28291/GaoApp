@@ -1,4 +1,4 @@
-﻿namespace GaoApp.Application.DTOs.Returns;
+namespace GaoApp.Application.DTOs.Returns;
 
 public sealed class OrderReturnEligibilityDto
 {
@@ -8,6 +8,9 @@ public sealed class OrderReturnEligibilityDto
     public decimal PaidTotal { get; set; }
     public decimal RefundedTotal { get; set; }
     public decimal RefundableRemaining { get; set; }
+    public decimal DepositRefundable { get; set; }
+    public bool IsCreditSale { get; set; }
+    public decimal BalanceDue { get; set; }
     public List<OrderReturnEligibilityLineDto> Lines { get; set; } = new();
 }
 

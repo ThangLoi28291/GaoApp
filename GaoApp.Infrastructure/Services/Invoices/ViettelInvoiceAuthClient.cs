@@ -519,6 +519,20 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                     "Viettel trả lỗi getCustomFields.");
             }
 
+            // getCustomFields has its own named payload, unlike getInvoices.
+            // Validate it before the generic success-code fallback so an invalid
+            // payload cannot become successful merely because errorCode is 200.
+            if (containers.Any(container =>
+                    ViettelClientHelper.GetUniqueDirectProperty(
+                        container.Element, "customFields", out var fields) ==
+                    DirectPropertyLookupResult.Found &&
+                    !IsValidCustomFieldsPayload(fields)))
+            {
+                return InvalidBasicAuthResponse(
+                    "Viettel.BasicAuthInvalidResponse",
+                    "Viettel trả về dữ liệu customFields không hợp lệ.");
+            }
+
             var payloadCandidates = containers
                 .Where(IsCustomFieldsPayloadCandidate)
                 .ToList();
@@ -561,6 +575,13 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
     private static bool IsCustomFieldsPayloadCandidate(
         ProviderResponseContainer container)
     {
+        if (ViettelClientHelper.GetUniqueDirectProperty(
+                container.Element, "customFields", out var fields) ==
+            DirectPropertyLookupResult.Found)
+        {
+            return IsValidCustomFieldsPayload(fields);
+        }
+
         if (container.Name.Equals(
                 "result",
                 StringComparison.OrdinalIgnoreCase))
@@ -578,6 +599,10 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
         return false;
     }
+
+    private static bool IsValidCustomFieldsPayload(JsonElement fields)
+        => fields.ValueKind == JsonValueKind.Array &&
+           fields.EnumerateArray().All(field => field.ValueKind == JsonValueKind.Object);
 
     private static bool HasDirectResultShape(JsonElement element)
     {

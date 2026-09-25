@@ -10,244 +10,115 @@ namespace GaoApp.Tests.Configuration;
 
 public sealed class MigrationRunnerOrderingTests
 {
-    [Fact]
-    public async Task Demo_seed_and_production_bootstrap_enabled_should_fail_before_database()
+    [Theory]
+    [InlineData(MigratorMode.SchemaOnly)]
+    [InlineData(MigratorMode.SecuritySeed)]
+    [InlineData(MigratorMode.Bootstrap)]
+    [InlineData(MigratorMode.DemoSeed)]
+    public async Task Explicit_mode_runs_only_requested_operation(MigratorMode mode)
     {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Synthetic-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(enabled: true),
-            Environments.Development);
+        var harness = CreateHarness(new SeedDataOptions
+        {
+            EnableDemoSeed = mode == MigratorMode.DemoSeed,
+            DemoUserPassword = "Synthetic-Demo-Password-42!"
+        }, CreateValidBootstrapOptions(mode == MigratorMode.Bootstrap), Environments.Development);
+        await harness.Runner.RunAsync(mode);
+        harness.MigrateCount.Should().Be(mode == MigratorMode.SchemaOnly ? 1 : 0);
+        harness.MandatorySeedCount.Should().Be(mode == MigratorMode.SecuritySeed ? 1 : 0);
+        harness.DemoSeedCount.Should().Be(mode == MigratorMode.DemoSeed ? 1 : 0);
+        harness.ProductionBootstrapCount.Should().Be(mode == MigratorMode.Bootstrap ? 1 : 0);
+        if (mode == MigratorMode.SchemaOnly)
+            harness.Events.Should().Equal("Preflight", "Migrate", "Preflight");
+        if (mode == MigratorMode.Bootstrap)
+            harness.Events.Should().Equal("Preflight", "BootstrapInspect", "ProvisioningTransactionBegin", "BootstrapInspect", "ProductionBootstrap", "ProvisioningTransactionCommit");
+    }
 
-        var action = () => harness.Runner.RunAsync();
-
-        var exception = await action.Should()
-            .ThrowAsync<MigratorConfigurationException>();
-        exception.Which.Message.Should()
-            .Contain("SeedData:EnableDemoSeed")
-            .And.Contain("ProductionBootstrap:Enabled");
-        harness.DatabaseAccessCount.Should().Be(0);
+    [Theory]
+    [InlineData(MigratorMode.Unspecified)]
+    [InlineData((MigratorMode)999)]
+    public async Task Invalid_mode_has_no_database_access(MigratorMode mode)
+    {
+        var harness = CreateHarness(new(), new(), Environments.Production);
+        await Assert.ThrowsAsync<MigratorConfigurationException>(() => harness.Runner.RunAsync(mode));
         harness.Events.Should().BeEmpty();
     }
 
-    [Fact]
-    public async Task Production_demo_seed_should_fail_even_when_bootstrap_disabled()
+    [Theory]
+    [InlineData(MigratorMode.SchemaOnly)]
+    [InlineData(MigratorMode.SecuritySeed)]
+    [InlineData(MigratorMode.Bootstrap)]
+    [InlineData(MigratorMode.DemoSeed)]
+    public async Task Rejected_preflight_never_enters_any_mutation(MigratorMode mode)
     {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Synthetic-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(enabled: false),
-            Environments.Production);
-
-        var action = () => harness.Runner.RunAsync();
-
-        await action.Should()
-            .ThrowAsync<MigratorConfigurationException>()
-            .WithMessage("*SeedData:EnableDemoSeed*Production*");
-        harness.DatabaseAccessCount.Should().Be(0);
-        harness.Events.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task Development_demo_seed_without_bootstrap_should_remain_allowed()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Synthetic-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(enabled: false),
-            Environments.Development);
-
-        await harness.Runner.RunAsync();
-
-        harness.Events.Should().Equal(
-            "Preflight",
-            "Migrate",
-            "ProvisioningTransactionBegin",
-            "MandatorySeed",
-            "DemoSeed",
-            "ProvisioningTransactionCommit");
-        harness.DemoSeedCount.Should().Be(1);
-        harness.ProductionBootstrapCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Production_bootstrap_without_demo_seed_should_remain_allowed()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions(),
-            CreateValidBootstrapOptions(enabled: true),
-            Environments.Production);
-
-        await harness.Runner.RunAsync();
-
-        harness.Events.Should().Equal(
-            "Preflight",
-            "Migrate",
-            "BootstrapInspect",
-            "ProvisioningTransactionBegin",
-            "BootstrapInspect",
-            "MandatorySeed",
-            "ProductionBootstrap",
-            "ProvisioningTransactionCommit");
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task Neither_optional_mode_should_run_after_mandatory_seed()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions(),
-            CreateValidBootstrapOptions(enabled: false),
-            Environments.Production);
-
-        await harness.Runner.RunAsync();
-
-        harness.Events.Should().Equal(
-            "Preflight",
-            "Migrate",
-            "ProvisioningTransactionBegin",
-            "MandatorySeed",
-            "ProvisioningTransactionCommit");
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Invalid_preflight_should_not_migrate_or_run_any_seed()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions(),
-            CreateValidBootstrapOptions(enabled: true),
-            Environments.Production,
-            preflightAllowed: false);
-
-        var action = () => harness.Runner.RunAsync();
-
-        await action.Should()
-            .ThrowAsync<DatabaseCompatibilityException>();
+        var harness = CreateHarness(new SeedDataOptions { EnableDemoSeed = mode == MigratorMode.DemoSeed, DemoUserPassword = "Synthetic-42-Password!" },
+            CreateValidBootstrapOptions(mode == MigratorMode.Bootstrap), Environments.Development, false);
+        await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(mode));
         harness.Events.Should().Equal("Preflight");
-        harness.MigrateCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, true)]
+    public async Task Schema_mode_rejects_ambient_seed_flags_before_database(bool demo, bool bootstrap, bool admin)
+    {
+        var harness = CreateHarness(new SeedDataOptions { EnableDemoSeed = demo, EnableDefaultAdminSeed = admin, DemoUserPassword = "Never-Log-42-Password!" },
+            CreateValidBootstrapOptions(bootstrap), Environments.Development);
+        var error = await Assert.ThrowsAsync<MigratorConfigurationException>(() => harness.Runner.RunAsync(MigratorMode.SchemaOnly));
+        harness.Events.Should().BeEmpty();
+        error.ToString().Should().NotContain("Never-Log-42-Password!");
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public async Task Demo_is_development_only(string environment)
+    {
+        var harness = CreateHarness(new SeedDataOptions { EnableDemoSeed = true, DemoUserPassword = "Synthetic-42-Password!" }, new(), environment);
+        await Assert.ThrowsAsync<MigratorConfigurationException>(() => harness.Runner.RunAsync(MigratorMode.DemoSeed));
+        harness.Events.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("--schema-only --security-seed")]
+    [InlineData("--schema-only --schema-only")]
+    [InlineData("--Schema-Only")]
+    [InlineData("--unknown")]
+    [InlineData("--schema-only=true")]
+    public void Missing_invalid_ambiguous_arguments_fail_closed(string command)
+        => Assert.Throws<MigratorConfigurationException>(() => MigratorCommand.Parse(command.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
+
+    [Theory]
+    [InlineData("--schema-only", MigratorMode.SchemaOnly)]
+    [InlineData("--security-seed", MigratorMode.SecuritySeed)]
+    [InlineData("--bootstrap", MigratorMode.Bootstrap)]
+    [InlineData("--demo-seed", MigratorMode.DemoSeed)]
+    public void Exact_single_mode_is_accepted(string command, MigratorMode mode)
+        => Assert.Equal(mode, MigratorCommand.Parse([command]));
+
+    [Fact]
+    public async Task Schema_verification_failure_is_failure_even_after_migration_returns()
+    {
+        var harness = CreateHarness(new(), new(), Environments.Production);
+        harness.DatabaseState = DatabaseCompatibilityState.ExistingEmpty;
+        await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(MigratorMode.SchemaOnly));
+        harness.Events.Should().Equal("Preflight", "Migrate", "Preflight");
         harness.MandatorySeedCount.Should().Be(0);
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(0);
     }
 
-    [Fact]
-    public async Task Invalid_combined_modes_with_unreachable_sql_should_not_access_database()
+    [Theory]
+    [InlineData(MigratorMode.SecuritySeed)]
+    [InlineData(MigratorMode.Bootstrap)]
+    [InlineData(MigratorMode.DemoSeed)]
+    public async Task Data_operations_refuse_empty_or_pending_schema_without_migrating(MigratorMode mode)
     {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Never-Log-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(
-                enabled: true,
-                adminPassword: "Never-Log-Admin-Password-42!"),
-            Environments.Production);
-
-        var action = () => harness.Runner.RunAsync();
-
-        var exception = await action.Should()
-            .ThrowAsync<MigratorConfigurationException>();
-        harness.DatabaseAccessCount.Should().Be(0);
-        exception.Which.ToString().Should()
-            .NotContain("Never-Log-Demo-Password-42!")
-            .And.NotContain("Never-Log-Admin-Password-42!");
-    }
-
-    [Fact]
-    public async Task Validation_error_should_not_contain_demo_or_admin_password()
-    {
-        const string demoPassword = "Do-Not-Expose-Demo-42!";
-        const string adminPassword = "Do-Not-Expose-Admin-42!";
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = demoPassword
-            },
-            CreateValidBootstrapOptions(
-                enabled: true,
-                adminPassword: adminPassword),
-            Environments.Production);
-
-        var action = () => harness.Runner.RunAsync();
-
-        var exception = await action.Should()
-            .ThrowAsync<MigratorConfigurationException>();
-        exception.Which.ToString().Should()
-            .NotContain(demoPassword)
-            .And.NotContain(adminPassword);
-    }
-
-    [Fact]
-    public async Task Invalid_mode_should_not_apply_migration_or_create_user()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Synthetic-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(enabled: true),
-            Environments.Development);
-
-        var action = () => harness.Runner.RunAsync();
-
-        await action.Should()
-            .ThrowAsync<MigratorConfigurationException>();
-        harness.MigrateCount.Should().Be(0);
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Invalid_preflight_should_not_run_demo_seed()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions
-            {
-                EnableDemoSeed = true,
-                DemoUserPassword = "Synthetic-Demo-Password-42!"
-            },
-            CreateValidBootstrapOptions(enabled: false),
-            Environments.Development,
-            preflightAllowed: false);
-
-        var action = () => harness.Runner.RunAsync();
-
-        await action.Should()
-            .ThrowAsync<DatabaseCompatibilityException>();
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Invalid_preflight_should_not_run_production_bootstrap()
-    {
-        var harness = CreateHarness(
-            new SeedDataOptions(),
-            CreateValidBootstrapOptions(enabled: true),
-            Environments.Production,
-            preflightAllowed: false);
-
-        var action = () => harness.Runner.RunAsync();
-
-        await action.Should()
-            .ThrowAsync<DatabaseCompatibilityException>();
-        harness.DemoSeedCount.Should().Be(0);
-        harness.ProductionBootstrapCount.Should().Be(0);
+        var harness = CreateHarness(new SeedDataOptions { EnableDemoSeed = mode == MigratorMode.DemoSeed, DemoUserPassword = "Synthetic-42-Password!" },
+            CreateValidBootstrapOptions(mode == MigratorMode.Bootstrap), Environments.Development);
+        harness.DatabaseState = DatabaseCompatibilityState.ExistingEmpty;
+        await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(mode));
+        harness.Events.Should().Equal("Preflight");
     }
 
     private static RunnerHarness CreateHarness(
@@ -318,6 +189,7 @@ public sealed class MigrationRunnerOrderingTests
                 _transactionRunner);
         }
 
+        public DatabaseCompatibilityState DatabaseState { get => _preflight.State; set => _preflight.State = value; }
         public MigrationExecutionPipeline Runner { get; }
         public List<string> Events { get; }
         public int DatabaseAccessCount => _preflight.Count;
@@ -339,6 +211,7 @@ public sealed class MigrationRunnerOrderingTests
             _allowed = allowed;
         }
 
+        public DatabaseCompatibilityState State { get; set; } = DatabaseCompatibilityState.CurrentBaseline;
         public int Count { get; private set; }
 
         public Task<DatabaseCompatibilityResult> InspectAsync(
@@ -348,14 +221,14 @@ public sealed class MigrationRunnerOrderingTests
             _events.Add("Preflight");
             return Task.FromResult(new DatabaseCompatibilityResult(
                 _allowed
-                    ? DatabaseCompatibilityState.ExistingEmpty
+                    ? State
                     : DatabaseCompatibilityState.UnexpectedUserTables,
                 _allowed,
                 _allowed
                     ? "ExistingEmptyDatabase"
                     : "UnexpectedUserTables",
                 1,
-                0,
+                State == DatabaseCompatibilityState.CurrentBaseline ? 1 : 0,
                 _allowed ? 0 : 1));
         }
     }

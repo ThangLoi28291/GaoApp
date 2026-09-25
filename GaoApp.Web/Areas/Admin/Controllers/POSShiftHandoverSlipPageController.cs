@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
+[GaoApp.Web.Common.POS.StoreAdminOnly]
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
 [Route("admin/pos-shift/handover-slips")]

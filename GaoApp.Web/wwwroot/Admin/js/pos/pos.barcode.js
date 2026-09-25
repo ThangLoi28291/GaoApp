@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    FILE: pos.barcode.js
    Mục đích:
    - Barcode + autocomplete
@@ -92,6 +92,7 @@ window.PosBarcode = (function () {
         barcodeSearchState.hasQtyPrefix = barcodeSearchState.hasQtyPrefix === true;
 
         const actionLocker = createActionLocker();
+        let productEnterPending = false;
         barcodeSearchState.mode = 'product';
         barcodeSearchState.customerItems = [];
         barcodeSearchState.voucherItems = [];
@@ -346,6 +347,8 @@ window.PosBarcode = (function () {
         }
 
         function hideBarcodeAutocomplete() {
+            debouncedSearch.cancel?.();
+            nextRequestSeq(); // Ignore replies already resolving when the search is dismissed.
             abortActiveSearch();
             setLoading(false);
 
@@ -939,6 +942,49 @@ window.PosBarcode = (function () {
             return flatItems[index] || null;
         }
 
+        function getCurrentProductSelection() {
+            const keyword = parseQtyPrefixedInput(txtBarcode?.value || '').keyword;
+            if (!keyword || keyword !== barcodeSearchState.keyword || barcodeSearchState.isLoading
+                || !barcodeAutocomplete || barcodeAutocomplete.style.display === 'none') return null;
+
+            // Enter follows the highlighted row, including the automatically selected first result.
+            const row = barcodeAutocomplete.querySelector('[data-autocomplete-index].active')
+                || barcodeAutocomplete.querySelector('[data-autocomplete-index]');
+            if (!row) return null;
+            const itemKey = row.getAttribute('data-item-key');
+            return (barcodeSearchState.flatItems || []).find(item => item.key === itemKey) || null;
+        }
+
+        async function confirmProductSearch() {
+            if (barcodeSearchState.isSubmitting || productEnterPending) return;
+            const rawInput = txtBarcode?.value || '';
+            const keyword = parseQtyPrefixedInput(rawInput).keyword;
+            const numericInput = /^\d+$/.test(keyword);
+            productEnterPending = true;
+            try {
+                let selected = getCurrentProductSelection();
+                if (!selected && !numericInput && keyword.length >= 2) {
+                    // Finish a pending name search instead of submitting the name as a barcode.
+                    debouncedSearch.cancel?.();
+                    await searchBarcodeAutocomplete(rawInput);
+                    if (txtBarcode?.value !== rawInput || barcodeSearchState.keyword !== keyword) return;
+                    selected = getCurrentProductSelection();
+                }
+
+                // A complete barcode must retain its exact selling unit (for example a pack).
+                const exactBarcode = numericInput && selected?.kind === 'parent'
+                    && (selected.barcode === keyword || (selected.unitOptions || []).some(unit =>
+                        (unit.barcode || unit.Barcode) === keyword));
+                if (selected && !exactBarcode) {
+                    await selectAutocompleteItem(selected);
+                    return;
+                }
+                await scanCurrentCart();
+            } finally {
+                productEnterPending = false;
+            }
+        }
+
         function buildParentItem(apiItem) {
             const unitOptions = Array.isArray(apiItem?.unitOptions) ? apiItem.unitOptions : [];
             const defaultConversionId = Number(
@@ -1267,7 +1313,7 @@ window.PosBarcode = (function () {
                 draft: options?.draft,
                 posState,
                 syncDraftToUi,
-                showSuccess,
+                showSuccess: window.PosScanFeedback?.isPending() ? null : showSuccess,
                 focusBarcodeInput,
                 successMessage: options?.successMessage || '',
                 focusBarcode: options?.focusBarcode !== false,
@@ -1279,6 +1325,9 @@ window.PosBarcode = (function () {
             const parsed = parseQtyPrefixedInput(keyword);
 
             const actualKeyword = (parsed.keyword || '').trim();
+            if (actualKeyword !== parseQtyPrefixedInput(txtBarcode?.value || '').keyword) return;
+            abortActiveSearch();
+            const currentSeq = nextRequestSeq();
 
             // Lưu lại state qty prefix
             if (parsed.hasQtyPrefix) {
@@ -1322,7 +1371,6 @@ window.PosBarcode = (function () {
             const controller = new AbortController();
             barcodeSearchState.abortController = controller;
 
-            const currentSeq = nextRequestSeq();
             setLoading(true);
             renderBarcodeAutocompleteLoading(barcodeAutocomplete, actualKeyword);
 
@@ -1378,6 +1426,23 @@ window.PosBarcode = (function () {
             }
         }
 
+        async function runScanAction(state, actionKey, handler, options) {
+            let attempt;
+            const feedback = window.PosScanFeedback;
+            const result = await runPosAction(state, actionKey, async () => {
+                attempt = feedback?.begin(state.business?.currentDraft || state.currentDraft);
+                return await handler();
+            }, { ...options,
+                onSuccess: draft => {
+                    options.onSuccess(draft);
+                    // Rendering feedback cannot turn an accepted sale into a failed command.
+                    try { feedback?.confirmed(attempt, draft); } catch (error) { console.error('POS scan presentation:', error); }
+                }
+            });
+            if (!result.ok && attempt) feedback?.failed(attempt, result.error, options.retryScan);
+            return result;
+        }
+
         async function scanCurrentCart() {
             const parsed = parseQtyPrefixedInput(txtBarcode?.value || '');
             const barcode = (parsed.keyword || parsed.raw || '').trim();
@@ -1394,9 +1459,10 @@ window.PosBarcode = (function () {
             }
 
             setSubmitting(true);
+            hideBarcodeAutocomplete();
 
             try {
-                const result = await runPosAction(
+                const result = await runScanAction(
                     posState,
                     `barcode:scanCurrentCart:${barcode}:${safeQty}`,
                     async function () {
@@ -1406,6 +1472,7 @@ window.PosBarcode = (function () {
                         });
                     },
                     {
+                        retryScan: () => { txtBarcode.value = `${safeQty}+${barcode}`; return scanCurrentCart(); },
                         fallbackMessage: 'Không thể quét barcode.',
                         scopes: ['cartMutate'],
                         blockedMessage: 'POS đang thanh toán hoặc chốt đơn, chưa thể quét sản phẩm lúc này.',
@@ -1478,7 +1545,7 @@ window.PosBarcode = (function () {
             setSubmitting(true);
 
             try {
-                return await runPosAction(
+                return await runScanAction(
                     posState,
                     `barcode:addVariant:${parsedVariantId}:${safeQty}`,
                     async function () {
@@ -1488,6 +1555,7 @@ window.PosBarcode = (function () {
                         );
                     },
                     {
+                        retryScan: () => addVariantToCurrentCart(parsedVariantId, safeQty),
                         fallbackMessage: 'Không thể thêm sản phẩm.',
                         scopes: ['cartMutate'],
                         blockedMessage: 'POS đang thanh toán hoặc chốt đơn, chưa thể thêm sản phẩm lúc này.',
@@ -1554,7 +1622,7 @@ window.PosBarcode = (function () {
             setSubmitting(true);
 
             try {
-                return await runPosAction(
+                return await runScanAction(
                     posState,
                     `barcode:addVariantUnit:${parsedVariantId}:${parsedConversionId}:${safeQty}`,
                     async function () {
@@ -1564,6 +1632,7 @@ window.PosBarcode = (function () {
                         );
                     },
                     {
+                        retryScan: () => addVariantUnitToCurrentCart(parsedVariantId, parsedConversionId, safeQty),
                         fallbackMessage: 'Không thể thêm sản phẩm theo đơn vị quy đổi.',
                         scopes: ['cartMutate'],
                         blockedMessage: 'POS đang thanh toán hoặc chốt đơn, chưa thể thêm sản phẩm lúc này.',
@@ -1636,6 +1705,7 @@ window.PosBarcode = (function () {
             if (!item) return;
 
             const qty = getCurrentRequestedQty();
+            hideBarcodeAutocomplete();
 
             if (item.kind === 'child') {
                 if (item.variantId && item.productUnitConversionId) {
@@ -1658,6 +1728,7 @@ window.PosBarcode = (function () {
             btnFocusBarcode?.addEventListener('click', focusBarcodeInput);
 
             txtBarcode?.addEventListener('keydown', async function (e) {
+                if (e.isComposing || e.keyCode === 229) return;
                 const isCustomerMode = barcodeSearchState.mode === 'customer'
                     || isCustomerCommand(txtBarcode?.value || '');
 
@@ -1762,6 +1833,8 @@ window.PosBarcode = (function () {
                     }
                 }
                 const hasAutocomplete =
+                    !!parseQtyPrefixedInput(txtBarcode?.value || '').keyword &&
+                    parseQtyPrefixedInput(txtBarcode?.value || '').keyword === barcodeSearchState.keyword &&
                     Array.isArray(barcodeSearchState.flatItems) &&
                     barcodeSearchState.flatItems.length > 0;
 
@@ -1803,33 +1876,14 @@ window.PosBarcode = (function () {
 
                 if (e.key === 'Enter') {
                     e.preventDefault();
-
-                    if (barcodeSearchState.isSubmitting) {
-                        return;
-                    }
-
-                    if (hasAutocomplete && barcodeSearchState.activeIndex >= 0) {
-                        const activeItem = getActiveFlatItem();
-                        if (activeItem) {
-                            await selectAutocompleteItem(activeItem);
-                            return;
-                        }
-                    }
-
-                    if (hasAutocomplete && barcodeSearchState.flatItems.length === 1) {
-                        const selected = barcodeSearchState.flatItems[0];
-                        if (selected) {
-                            await selectAutocompleteItem(selected);
-                            return;
-                        }
-                    }
-
-                    await scanCurrentCart();
+                    await confirmProductSearch();
                 }
             });
 
             txtBarcode?.addEventListener('input', function () {
                 const rawInput = (txtBarcode.value || '').trim();
+                // Invalidate the previous query immediately, before the 300 ms debounce.
+                hideBarcodeAutocomplete();
                 if (isCustomerCommand(rawInput)) {
                     debouncedSearch.cancel?.();
                     resetRequestedQty();

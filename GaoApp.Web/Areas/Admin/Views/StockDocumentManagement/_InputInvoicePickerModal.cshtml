@@ -1,0 +1,166 @@
+<style>
+    .input-invoice-picker-grid {
+        display: grid;
+        grid-template-columns: minmax(19rem, 35%) minmax(0, 65%);
+        min-height: 34rem;
+    }
+
+    .input-invoice-picker-list {
+        border-right: 1px solid var(--bs-border-color);
+        max-height: 66vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .input-invoice-picker-columns,
+    .input-invoice-candidate {
+        display: grid;
+        grid-template-columns: minmax(5.5rem, .9fr) minmax(4.5rem, .8fr) minmax(6rem, 1fr) minmax(7rem, 1.15fr);
+        align-items: center;
+        column-gap: .5rem;
+    }
+
+    .input-invoice-picker-columns {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        min-height: 2.25rem;
+        background: var(--bs-body-bg);
+        border-bottom: 1px solid var(--bs-border-color);
+        color: var(--bs-secondary-color);
+        font-size: .75rem;
+        font-weight: 600;
+    }
+
+    .input-invoice-candidate {
+        width: 100%;
+        min-height: 2.5rem;
+        padding: .25rem .5rem;
+        border: 0;
+        border-bottom: 1px solid var(--bs-border-color);
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+    }
+
+    .input-invoice-candidate > span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .input-invoice-candidate:hover,
+    .input-invoice-candidate:focus-visible {
+        background: var(--bs-tertiary-bg);
+    }
+
+    .input-invoice-picker-preview {
+        min-height: 34rem;
+        background: var(--bs-tertiary-bg);
+    }
+
+    .input-invoice-picker-preview iframe {
+        width: 100%;
+        min-height: 34rem;
+        border: 0;
+        background: #fff;
+    }
+
+    .input-invoice-candidate[aria-selected="true"] {
+        background: rgba(var(--bs-primary-rgb), .1);
+        box-shadow: inset .2rem 0 0 var(--bs-primary);
+        font-weight: 600;
+    }
+
+    @@media (max-width: 767.98px) {
+        .input-invoice-picker-grid { grid-template-columns: 1fr; }
+        .input-invoice-picker-list { border-right: 0; border-bottom: 1px solid var(--bs-border-color); max-height: 45vh; }
+        .input-invoice-picker-preview, .input-invoice-picker-preview iframe { min-height: 28rem; }
+    }
+</style>
+
+<div class="modal fade" id="inputInvoicePickerModal" tabindex="-1"
+     aria-labelledby="inputInvoicePickerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="inputInvoicePickerTitle">Chọn hóa đơn</h5>
+                    <div class="small text-muted" id="inputInvoicePickerSupplierContext">
+                        Nhà cung cấp và MST được cố định theo phiếu nhập.
+                    </div>
+                    <div class="small" id="inputInvoicePickerOwnerContext">
+                        Chủ thể người mua phải khớp duy nhất với chủ thể của phiếu.
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+
+            <div class="border-bottom p-3">
+                <form id="inputInvoicePickerFilters" class="row g-2 align-items-end" role="search">
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label small" for="inputInvoicePickerYear">Năm</label>
+                        <input id="inputInvoicePickerYear" name="year" type="number" class="form-control" min="2000" max="2100" />
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label small" for="inputInvoicePickerMonth">Tháng</label>
+                        <input id="inputInvoicePickerMonth" name="month" type="number" class="form-control" min="1" max="12" />
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label small" for="inputInvoicePickerFromDate">Từ ngày</label>
+                        <input id="inputInvoicePickerFromDate" name="fromDate" type="date" class="form-control" />
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label small" for="inputInvoicePickerToDate">Đến ngày</label>
+                        <input id="inputInvoicePickerToDate" name="toDate" type="date" class="form-control" />
+                    </div>
+                    <div class="col-12 col-lg-3">
+                        <label class="form-label small" for="inputInvoicePickerSearch">Ký hiệu / số hóa đơn</label>
+                        <input id="inputInvoicePickerSearch" name="search" class="form-control" maxlength="100" autocomplete="off" />
+                    </div>
+                    <div class="col-12 col-lg-1 d-grid">
+                        <button type="submit" class="btn btn-outline-primary">Lọc</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-body p-0 input-invoice-picker-grid">
+                <section class="input-invoice-picker-list" aria-label="Danh sách hóa đơn">
+                    <div class="input-invoice-picker-columns px-2" aria-hidden="true">
+                        <span>Ngày</span>
+                        <span>Ký hiệu</span>
+                        <span>Số hóa đơn</span>
+                        <span>Trạng thái</span>
+                    </div>
+                    <div id="inputInvoicePickerCandidates" role="listbox"></div>
+                </section>
+                <section class="input-invoice-picker-preview" aria-label="Xem trước hóa đơn">
+                    <div id="inputInvoicePickerPreview" class="h-100 d-flex align-items-center justify-content-center p-4 text-muted">
+                        Chọn một hóa đơn để xem trước.
+                    </div>
+                </section>
+            </div>
+
+            <div class="modal-footer">
+                <div class="me-auto flex-grow-1">
+                    <div id="inputInvoiceRelinkReasonBox" class="mb-2 d-none">
+                        <label for="inputInvoiceRelinkReason" class="form-label small mb-1">
+                            Lý do thay hóa đơn <span class="text-danger" aria-hidden="true">*</span>
+                        </label>
+                        <textarea id="inputInvoiceRelinkReason" class="form-control" maxlength="1000" rows="2"
+                                  aria-describedby="inputInvoiceRelinkReasonHelp"></textarea>
+                        <div id="inputInvoiceRelinkReasonHelp" class="form-text">
+                            Bắt buộc. Thay thế được thực hiện trong một thao tác; không hiển thị trạng thái gỡ liên kết trung gian.
+                        </div>
+                    </div>
+                    <div id="inputInvoicePickerConfirmation" class="small text-muted mb-1"></div>
+                    <div id="inputInvoicePickerLiveRegion" class="small" role="status" aria-live="polite"></div>
+                </div>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button type="button" class="btn btn-primary" id="btnSelectInputInvoice" disabled>Liên kết hóa đơn</button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -11,8 +11,54 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Tests.Purchases;
 
+// R2.4-C2 coverage: owner decisions use bounded, server-authored receipt audit evidence.
 public sealed class PurchaseReceiptAuditEventTests
 {
+    [Fact]
+    public void Split_lineage_event_types_are_schema_neutral_enum_additions()
+    {
+        Enum.IsDefined(PurchaseReceiptAuditEventType.ReceiptSplitSource).Should().BeTrue();
+        Enum.IsDefined(PurchaseReceiptAuditEventType.ReceiptSplitChild).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Input_invoice_relationship_events_are_schema_neutral_enum_values()
+    {
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceLinked).Should().Be(13);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceUnlinked).Should().Be(14);
+        Enum.TryParse<PurchaseReceiptAuditEventType>("InputInvoiceRelinked", out var relinked)
+            .Should().BeTrue();
+        ((int)relinked).Should().Be(28);
+    }
+
+    [Fact]
+    public void Input_invoice_item_mapping_events_are_schema_neutral_enum_values()
+    {
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceItemMappingConfirmed)
+            .Should().Be(19);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceItemMappingAutoApplied)
+            .Should().Be(20);
+    }
+
+    [Fact]
+    public void Reconciliation_events_are_bounded_schema_neutral_enum_values()
+    {
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceReconciliationStateChanged)
+            .Should().Be(27);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted)
+            .Should().Be(21);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceReconciliationAcceptanceInvalidated)
+            .Should().Be(22);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceXmlDetailIgnored)
+            .Should().Be(23);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceXmlDetailUnignored)
+            .Should().Be(24);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceReceiptLineExcluded)
+            .Should().Be(25);
+        ((int)PurchaseReceiptAuditEventType.InputInvoiceReceiptLineIncluded)
+            .Should().Be(26);
+    }
+
     [Fact]
     public void Canonical_allowlists_cover_sensitive_fields_without_unsafe_data()
     {

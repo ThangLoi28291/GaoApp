@@ -1,119 +1,22 @@
-﻿@model List<GaoApp.Application.DTOs.Display.DisplayPromotionDto>
-
+@model List<GaoApp.Application.DTOs.Display.DisplayPromotionDto>
 @{
     ViewData["Title"] = "Màn hình khách";
 }
-
-<div class="container-xxl flex-grow-1 container-p-y">
-
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div>
-                <h4 class="mb-1">Màn hình khách</h4>
-                <div class="text-muted">
-                    Quản lý banner, video, khuyến mãi cho Customer Display
-                </div>
-            </div>
-
-            <button type="button"
-                    class="btn btn-primary"
-                    onclick="openCreateModal()">
-                <i class="bx bx-plus me-1"></i>
-                Thêm nội dung
-            </button>
-        </div>
-
-        <div class="table-responsive text-nowrap">
-            <table class="table table-hover align-middle">
-                <thead>
-                    <tr>
-                        <th>Preview</th>
-                        <th>Nội dung</th>
-                        <th>Loại</th>
-                        <th>Thời lượng</th>
-                        <th>Thứ tự</th>
-                        <th>Trạng thái</th>
-                        <th class="text-end">Thao tác</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @foreach (var item in Model)
-                    {
-                        <tr data-row-id="@item.Id">
-                            <td style="width:150px">
-                                @if (item.MediaType == "image" && !string.IsNullOrWhiteSpace(item.MediaUrl))
-                                {
-                                    <img src="@item.MediaUrl"
-                                         class="rounded"
-                                         style="width:130px;height:74px;object-fit:cover;" />
-                                }
-                                else if (item.MediaType == "video" && !string.IsNullOrWhiteSpace(item.MediaUrl))
-                                {
-                                    <video src="@item.MediaUrl"
-                                           muted
-                                           style="width:130px;height:74px;object-fit:cover;border-radius:10px;"></video>
-                                }
-                                else
-                                {
-                                    <div class="rounded bg-label-primary d-flex align-items-center justify-content-center"
-                                         style="width:130px;height:74px;">
-                                        TEXT
-                                    </div>
-                                }
-                            </td>
-
-                            <td>
-                                <div class="fw-semibold">@item.Title</div>
-                                <div class="text-muted small text-truncate" style="max-width:420px;">
-                                    @item.Description
-                                </div>
-                                <div class="small text-muted">
-                                    @item.MediaUrl
-                                </div>
-                            </td>
-
-                            <td>
-                                <span class="badge bg-label-info">@item.MediaType</span>
-                            </td>
-
-                            <td>@item.DurationSeconds giây</td>
-
-                            <td>@item.SortOrder</td>
-
-                            <td>
-                                <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input"
-                                           type="checkbox"
-                                    @(item.IsActive ? "checked" : "")
-                                           onchange="toggleActive(@item.Id, this.checked)" />
-                                </div>
-                            </td>
-
-                            <td class="text-end">
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-primary"
-                                        onclick="openEditModal(@item.Id)">
-                                    Sửa
-                                </button>
-
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-danger"
-                                        onclick="deletePromotion(@item.Id)">
-                                    Xóa
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/display-promotion.css" asp-append-version="true" />
+}
+@section header {
+    <div class="dp-heading">
+        <div><span class="dp-eyebrow">TRẢI NGHIỆM TẠI QUẦY</span><h1>Màn hình khách</h1><p>Chào đón khách bằng những thông tin hữu ích từ cửa hàng.</p></div>
+        <a href="/admin/pos/customer-display" target="_blank" rel="noopener" class="btn btn-outline-primary"><i class="bx bx-desktop" aria-hidden="true"></i>Mở màn hình khách<i class="bx bx-link-external" aria-hidden="true"></i></a>
     </div>
-</div>
+}
+@await Html.PartialAsync("_Workspace", Model)
 
 <div class="modal fade" id="promotionModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <form id="promotionForm" class="modal-content" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
             <input type="hidden" id="promotionId" name="id" value="0" />
 
             <div class="modal-header">
@@ -122,7 +25,7 @@
                         Thêm nội dung màn hình khách
                     </h5>
                     <div class="text-muted small">
-                        Hỗ trợ text, ảnh, video cho idle screen
+                        Chuẩn bị lời chào, hình ảnh hoặc video cho khách tại quầy.
                     </div>
                 </div>
 
@@ -145,10 +48,10 @@
 
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label">Loại media</label>
+                                <label class="form-label">Loại nội dung</label>
                                 <select id="mediaType" name="MediaType" class="form-select" onchange="syncPreview()">
-                                    <option value="text">Text</option>
-                                    <option value="image">Image</option>
+                                    <option value="text">Văn bản</option>
+                                    <option value="image">Hình ảnh</option>
                                     <option value="video">Video</option>
                                 </select>
                             </div>
@@ -190,7 +93,7 @@
                                            class="form-check-input"
                                            type="checkbox"
                                            value="true" />
-                                    <label class="form-check-label">Flash Sale</label>
+                                    <label class="form-check-label" for="isFlashSale">Ưu đãi chớp nhoáng</label>
                                 </div>
                             </div>
 
@@ -201,7 +104,7 @@
                                            class="form-check-input"
                                            type="checkbox"
                                            value="true" />
-                                    <label class="form-check-label">Fullscreen</label>
+                                    <label class="form-check-label" for="isFullscreen">Toàn màn hình</label>
                                 </div>
                             </div>
                         </div>
@@ -209,7 +112,7 @@
                             <label class="form-label">File ảnh/video</label>
                             <input id="mediaFile" name="mediaFile" type="file" class="form-control" accept="image/*,video/*" onchange="previewFile(this)" />
                             <div class="form-text">
-                                Nếu không upload file mới khi sửa, hệ thống giữ media cũ.
+                                Để trống để giữ hình ảnh hoặc video hiện tại.
                             </div>
                         </div>
 
@@ -248,12 +151,12 @@
                     </div>
 
                     <div class="col-lg-5">
-                        <label class="form-label">Preview</label>
+                        <label class="form-label">Xem trước trên màn hình khách</label>
 
                         <div id="livePreview"
                              class="display-preview-box">
                             <div id="previewText" class="display-preview-text">
-                                Nội dung preview
+                                Kính chào quý khách
                             </div>
                             <img id="previewImage" class="display-preview-media d-none" />
                             <video id="previewVideo" class="display-preview-media d-none" muted controls></video>
@@ -280,294 +183,6 @@
     </div>
 </div>
 
-<style>
-    .display-preview-box {
-        min-height: 420px;
-        border-radius: 28px;
-        background: linear-gradient(135deg, #0f172a, #2563eb);
-        color: #fff;
-        padding: 28px;
-        display: grid;
-        place-items: center;
-        overflow: hidden;
-        box-shadow: 0 20px 60px rgba(15,23,42,.22);
-    }
-
-    .display-preview-text {
-        font-size: 34px;
-        line-height: 1.25;
-        font-weight: 900;
-        text-align: center;
-    }
-
-    .display-preview-media {
-        width: 100%;
-        height: 100%;
-        max-height: 380px;
-        object-fit: cover;
-        border-radius: 22px;
-    }
-</style>
-
 @section Scripts {
-    <script>
-        let promotionModal;
-
-        document.addEventListener('DOMContentLoaded', function () {
-            promotionModal = new bootstrap.Modal(document.getElementById('promotionModal'));
-
-            document.getElementById('promotionForm').addEventListener('submit', savePromotion);
-
-            ['title', 'description', 'backgroundColor', 'textColor', 'mediaType'].forEach(function (id) {
-                document.getElementById(id)?.addEventListener('input', syncPreview);
-                document.getElementById(id)?.addEventListener('change', syncPreview);
-            });
-        });
-
-               function resetForm() {
-            document.getElementById('promotionForm').reset();
-
-            document.getElementById('promotionId').value = '0';
-            document.getElementById('mediaUrl').value = '';
-            document.getElementById('mediaType').value = 'text';
-            document.getElementById('durationSeconds').value = '6';
-            document.getElementById('sortOrder').value = '0';
-            document.getElementById('priority').value = '0';
-            document.getElementById('countdownToUtc').value = '';
-            document.getElementById('isFlashSale').checked = false;
-            document.getElementById('isFullscreen').checked = false;
-            document.getElementById('isActive').checked = true;
-
-            const img = document.getElementById('previewImage');
-            const video = document.getElementById('previewVideo');
-
-            img.removeAttribute('src');
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-
-            syncPreview();
-        }
-
-        function openCreateModal() {
-            resetForm();
-            document.getElementById('promotionModalTitle').textContent = 'Thêm nội dung màn hình khách';
-            promotionModal.show();
-        }
-
-        async function openEditModal(id) {
-            resetForm();
-
-            const res = await fetch(`/admin/displaypromotion/detail?id=${id}`);
-            const result = await res.json();
-
-            if (!result.success) {
-                alert(result.message || 'Không lấy được dữ liệu.');
-                return;
-            }
-
-            const x = result.data;
-
-            document.getElementById('promotionId').value = x.id;
-            document.getElementById('title').value = x.title || '';
-            document.getElementById('description').value = x.description || '';
-            document.getElementById('mediaType').value = x.mediaType || 'text';
-            document.getElementById('mediaUrl').value = x.mediaUrl || '';
-            document.getElementById('durationSeconds').value = x.durationSeconds || 6;
-            document.getElementById('sortOrder').value = x.sortOrder || 0;
-            document.getElementById('backgroundColor').value = x.backgroundColor || '';
-            document.getElementById('textColor').value = x.textColor || '';
-            document.getElementById('isActive').checked = !!x.isActive;
-
-            document.getElementById('startAt').value = toDateTimeLocal(x.startAt);
-            document.getElementById('endAt').value = toDateTimeLocal(x.endAt);
-                    document.getElementById('priority').value = x.priority || 0;
-        document.getElementById('countdownToUtc').value = toDateTimeLocal(x.countdownToUtc);
-        document.getElementById('isFlashSale').checked = !!x.isFlashSale;
-        document.getElementById('isFullscreen').checked = !!x.isFullscreen;
-
-            document.getElementById('promotionModalTitle').textContent = 'Sửa nội dung màn hình khách';
-
-            syncPreview();
-            promotionModal.show();
-        }
-
-        async function savePromotion(e) {
-            e.preventDefault();
-
-            const id = Number(document.getElementById('promotionId').value || 0);
-            const form = document.getElementById('promotionForm');
-            const formData = new FormData(form);
-
-            formData.set('IsActive', document.getElementById('isActive').checked ? 'true' : 'false');
-                    formData.set('IsFlashSale', document.getElementById('isFlashSale').checked ? 'true' : 'false');
-        formData.set('IsFullscreen', document.getElementById('isFullscreen').checked ? 'true' : 'false');
-            const url = id > 0
-                ? `/admin/displaypromotion/update?id=${id}`
-                : '/admin/displaypromotion/create';
-
-            const btn = document.getElementById('btnSavePromotion');
-            btn.disabled = true;
-            btn.textContent = 'Đang lưu...';
-
-            try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await res.json();
-
-                if (!result.success) {
-                    alert(result.message || 'Không lưu được promotion.');
-                    return;
-                }
-
-                location.reload();
-            }
-            finally {
-                btn.disabled = false;
-                btn.textContent = 'Lưu nội dung';
-            }
-        }
-
-        async function deletePromotion(id) {
-            if (!confirm('Xóa nội dung này?')) return;
-
-            const form = new FormData();
-            form.append('id', id);
-
-            const res = await fetch('/admin/displaypromotion/delete', {
-                method: 'POST',
-                body: form
-            });
-
-            const result = await res.json();
-
-            if (result.success) {
-                location.reload();
-            }
-            else {
-                alert(result.message || 'Không xóa được.');
-            }
-        }
-
-        async function toggleActive(id, isActive) {
-            const form = new FormData();
-            form.append('id', id);
-            form.append('isActive', isActive ? 'true' : 'false');
-
-            const res = await fetch('/admin/displaypromotion/toggleactive', {
-                method: 'POST',
-                body: form
-            });
-
-            const result = await res.json();
-
-            if (!result.success) {
-                alert(result.message || 'Không cập nhật trạng thái.');
-                location.reload();
-            }
-        }
-
-                function previewFile(input) {
-            const file = input.files?.[0];
-
-            if (!file) {
-                syncPreview();
-                return;
-            }
-
-            const url = URL.createObjectURL(file);
-
-            const img = document.getElementById('previewImage');
-            const video = document.getElementById('previewVideo');
-
-            img.removeAttribute('src');
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-
-            if (file.type.startsWith('image/')) {
-                document.getElementById('mediaType').value = 'image';
-                img.setAttribute('src', url);
-            }
-            else if (file.type.startsWith('video/')) {
-                document.getElementById('mediaType').value = 'video';
-                video.setAttribute('src', url);
-                video.load();
-            }
-
-            syncPreview();
-        }
-
-               function syncPreview() {
-            const type = document.getElementById('mediaType').value;
-            const title = document.getElementById('title').value || 'Nội dung preview';
-            const desc = document.getElementById('description').value || '';
-            const mediaUrl = document.getElementById('mediaUrl').value || '';
-            const bg = document.getElementById('backgroundColor').value || '';
-            const color = document.getElementById('textColor').value || '';
-
-            const box = document.getElementById('livePreview');
-            const text = document.getElementById('previewText');
-            const img = document.getElementById('previewImage');
-            const video = document.getElementById('previewVideo');
-
-            box.style.background = bg || 'linear-gradient(135deg, #0f172a, #2563eb)';
-            box.style.color = color || '#fff';
-
-            text.classList.add('d-none');
-            img.classList.add('d-none');
-            video.classList.add('d-none');
-
-            if (type === 'image') {
-                if (mediaUrl && !img.getAttribute('src')) {
-                    img.setAttribute('src', mediaUrl);
-                }
-
-                img.classList.remove('d-none');
-                return;
-            }
-
-            if (type === 'video') {
-                if (mediaUrl && !video.getAttribute('src')) {
-                    video.setAttribute('src', mediaUrl);
-                    video.load();
-                }
-
-                video.classList.remove('d-none');
-                return;
-            }
-
-            text.innerHTML = `
-                <div>${escapeHtml(title)}</div>
-                <div style="font-size:18px;font-weight:600;margin-top:12px;opacity:.82;">
-                    ${escapeHtml(desc)}
-                </div>
-            `;
-
-            text.classList.remove('d-none');
-        }
-
-        function toDateTimeLocal(value) {
-            if (!value) return '';
-
-            const d = new Date(value);
-            if (Number.isNaN(d.getTime())) return '';
-
-            const pad = n => String(n).padStart(2, '0');
-
-            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        }
-
-        function escapeHtml(value) {
-            return String(value ?? '')
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#039;');
-        }
-    </script>
+    <script src="~/Admin/js/display-promotion.js" asp-append-version="true"></script>
 }

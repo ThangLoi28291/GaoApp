@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Common.Errors;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Auth;
@@ -106,6 +107,7 @@ public class AuthService : IAuthService
         return Result<LoginResponse>.Success(
             new LoginResponse
             {
+                SessionStamp = AuthSessionStamp.Create(user, userInStore),
                 UserId = user.Id,
                 UserName = user.UserName,
                 FullName = user.FullName,

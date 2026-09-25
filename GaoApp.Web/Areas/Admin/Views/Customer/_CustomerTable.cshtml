@@ -1,0 +1,72 @@
+@using GaoApp.Web.Areas.Admin.ViewModels.Customers
+@model CustomerIndexVM
+
+@{
+    var items = Model.Paged.Items;
+    var totalItems = Model.Paged.TotalItems;
+    var currentPage = Math.Max(1, Model.Paged.Page);
+    var totalPages = Model.Paged.TotalPages;
+    var firstItem = totalItems == 0 ? 0 : ((currentPage - 1) * Model.PageSize) + 1;
+    var lastItem = Math.Min(currentPage * Model.PageSize, totalItems);
+    var canUpdate = (bool?)(ViewData["CanUpdateCustomer"]) ?? false;
+    string Tier(string value) => value == "WHOLESALE" ? "Khách sỉ" : "Khách lẻ";
+}
+
+<div data-customer-result
+     data-total-customers="@Model.Summary.TotalCustomers"
+     data-active-customers="@Model.Summary.ActiveCustomers"
+     data-inactive-customers="@Model.Summary.InactiveCustomers"
+     data-debt-enabled-customers="@Model.Summary.DebtEnabledCustomers">
+  <section class="gds-list-panel" aria-label="Danh sách khách hàng">
+    @if (items.Count == 0)
+    {
+        <div class="gds-empty"><div class="gds-empty__icon"><i class="bx bx-user-x"></i></div><div class="fw-semibold mb-1">Chưa có khách hàng phù hợp</div><div class="gds-empty__copy">Thử thay đổi từ khóa hoặc bộ lọc.</div></div>
+    }
+    else
+    {
+      <div class="gds-desktop-list customer-desktop-list"><div class="table-responsive"><table class="table align-middle gds-table customer-table">
+        <thead><tr><th style="min-width:240px">Khách hàng</th><th style="min-width:220px">Liên hệ</th><th style="width:130px">Nhóm giá</th><th style="min-width:150px">Thuế</th><th style="width:150px">Công nợ</th><th style="width:165px">Trạng thái</th><th class="text-end" style="width:112px">Thao tác</th></tr></thead>
+        <tbody>
+        @foreach (var x in items)
+        {
+          <tr class="customer-row" data-customer-quick-view data-id="@x.Id" tabindex="0" aria-label="Xem nhanh khách hàng @x.Name">
+            <td><div class="d-flex align-items-center gap-3"><span class="customer-avatar">@x.Name.Trim().Substring(0, 1).ToUpperInvariant()</span><div class="min-w-0"><div class="gds-table__primary customer-name">@x.Name</div><div class="gds-code mt-1">@(string.IsNullOrWhiteSpace(x.Code) ? "Chưa có mã" : x.Code)</div></div></div></td>
+            <td><div class="gds-table__primary">@(string.IsNullOrWhiteSpace(x.Phone) ? "—" : x.Phone)</div><div class="gds-table__secondary text-truncate">@(string.IsNullOrWhiteSpace(x.Email) ? "Chưa có email" : x.Email)</div></td>
+            <td><span class="gds-status @(x.PriceTier == "WHOLESALE" ? "is-primary" : "is-neutral")">@Tier(x.PriceTier)</span></td>
+            <td><span class="gds-table__secondary">@(string.IsNullOrWhiteSpace(x.TaxCode) ? "Chưa có MST" : x.TaxCode)</span></td>
+            <td><span class="gds-status gds-status--dot @(x.HaveDebt ? "is-warning" : "is-neutral")">@(x.HaveDebt ? "Được phép" : "Không")</span></td>
+            <td>
+              @if (canUpdate) { <button type="button" class="gds-status gds-status--dot gds-status-button js-customer-toggle @(x.IsActive ? "is-success" : "is-neutral")" data-id="@x.Id" data-name="@x.Name" data-status="@x.IsActive.ToString().ToLowerInvariant()">@(x.IsActive ? "Đang hoạt động" : "Ngừng hoạt động")</button> }
+              else { <span class="gds-status gds-status--dot @(x.IsActive ? "is-success" : "is-neutral")">@(x.IsActive ? "Đang hoạt động" : "Ngừng hoạt động")</span> }
+            </td>
+            <td class="text-end"><div class="gds-row-actions justify-content-end"><button type="button" class="gds-icon-button gds-action-button js-customer-quick-view" data-id="@x.Id" title="Xem nhanh" aria-label="Xem nhanh @x.Name"><i class="bx bx-show"></i></button>@if (canUpdate) { <a asp-area="Admin" asp-controller="Customer" asp-action="Edit" asp-route-id="@x.Id" class="gds-icon-button gds-action-button" title="Sửa" aria-label="Sửa @x.Name"><i class="bx bx-edit"></i></a> }</div></td>
+          </tr>
+        }
+        </tbody>
+      </table></div></div>
+
+      <div class="gds-mobile-list customer-mobile-list" aria-label="Danh sách khách hàng trên thiết bị di động">
+      @foreach (var x in items)
+      {
+        <article class="gds-row-card customer-mobile-card" data-customer-quick-view data-id="@x.Id" tabindex="0">
+          <div class="gds-row-card__header"><div class="d-flex gap-3 min-w-0"><span class="customer-avatar">@x.Name.Trim().Substring(0, 1).ToUpperInvariant()</span><div class="min-w-0"><div class="gds-row-card__title">@x.Name</div><div class="gds-code mt-1">@(string.IsNullOrWhiteSpace(x.Code) ? "Chưa có mã" : x.Code)</div></div></div><span class="gds-status gds-status--dot @(x.IsActive ? "is-success" : "is-neutral")">@(x.IsActive ? "Hoạt động" : "Ngừng")</span></div>
+          <div class="gds-row-card__meta"><span><i class="bx bx-phone me-1"></i>@(string.IsNullOrWhiteSpace(x.Phone) ? "Chưa có điện thoại" : x.Phone)</span><span><i class="bx bx-envelope me-1"></i>@(string.IsNullOrWhiteSpace(x.Email) ? "Chưa có email" : x.Email)</span><span><i class="bx bx-purchase-tag me-1"></i>@Tier(x.PriceTier)</span><span><i class="bx bx-wallet me-1"></i>@(x.HaveDebt ? "Được phép công nợ" : "Không được phép công nợ")</span></div>
+          <div class="gds-row-card__actions"><button type="button" class="btn btn-sm btn-label-primary js-customer-quick-view" data-id="@x.Id"><i class="bx bx-show me-1"></i>Xem nhanh</button>@if (canUpdate) { <a asp-area="Admin" asp-controller="Customer" asp-action="Edit" asp-route-id="@x.Id" class="btn btn-sm btn-label-secondary"><i class="bx bx-edit me-1"></i>Sửa</a><button type="button" class="btn btn-sm @(x.IsActive ? "btn-label-warning" : "btn-label-success") js-customer-toggle" data-id="@x.Id" data-name="@x.Name" data-status="@x.IsActive.ToString().ToLowerInvariant()">@(x.IsActive ? "Ngừng" : "Kích hoạt")</button> }</div>
+        </article>
+      }
+      </div>
+    }
+  </section>
+
+  <div class="gds-list-footer"><div class="gds-list-footer__summary">@(totalItems == 0 ? "0 kết quả" : $"{firstItem}–{lastItem} / {totalItems} kết quả")</div>
+  @if (totalPages > 1)
+  {
+    <nav aria-label="Phân trang khách hàng"><ul class="pagination mb-0">
+      <li class="page-item @(currentPage <= 1 ? "disabled" : "")"><a href="#" class="page-link js-customer-page" data-page="@(currentPage - 1)" aria-label="Trang trước"><i class="bx bx-chevron-left"></i></a></li>
+      @{ var start = Math.Max(1, currentPage - 3); var end = Math.Min(totalPages, start + 6); start = Math.Max(1, end - 6); }
+      @for (var p = start; p <= end; p++) { <li class="page-item @(p == currentPage ? "active" : "")"><a href="#" class="page-link js-customer-page" data-page="@p">@p</a></li> }
+      <li class="page-item @(currentPage >= totalPages ? "disabled" : "")"><a href="#" class="page-link js-customer-page" data-page="@(currentPage + 1)" aria-label="Trang sau"><i class="bx bx-chevron-right"></i></a></li>
+    </ul></nav>
+  }
+  </div>
+</div>

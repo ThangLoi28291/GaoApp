@@ -3,6 +3,7 @@ using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Repositories.Products;
+using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Services.Media;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Entities;
@@ -21,15 +22,18 @@ public sealed class ProductService : IProductService
     private readonly IProductRepository _repo;
     private readonly IProductImageService _productImageService;
     private readonly IProductVariantRepository _variantRepo;
+    private readonly IAppUnitOfWork _uow;
 
     public ProductService(
         IProductRepository repo,
         IProductImageService productImageService,
-        IProductVariantRepository variantRepo)
+        IProductVariantRepository variantRepo,
+        IAppUnitOfWork uow)
     {
         _repo = repo;
         _productImageService = productImageService;
         _variantRepo = variantRepo;
+        _uow = uow;
     }
 
     public Task<PagedResult<ProductListItemDto>> GetPagedAsync(
@@ -39,6 +43,30 @@ public sealed class ProductService : IProductService
         int pageSize,
         CancellationToken ct = default)
         => _repo.GetPagedAsync(storeId, search, page, pageSize, ct);
+
+    public Task<PagedResult<ProductListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        int? categoryId,
+        bool? isActive,
+        bool? isSellable,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+        => _repo.GetPagedAsync(
+            storeId,
+            search,
+            categoryId,
+            isActive,
+            isSellable,
+            page,
+            pageSize,
+            ct);
+
+    public Task<(int TotalItems, int PosAllowedItems, int NotForPosItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
 
     /// <summary>
     /// Sinh barcode nội bộ khả dụng cho variant.
@@ -77,6 +105,16 @@ public sealed class ProductService : IProductService
     }
 
     public async Task<Result<int>> CreateAsync(
+       int storeId, ProductCreateDto dto, int? userId, CancellationToken ct = default)
+    {
+        await using var transaction = await _uow.BeginTransactionAsync(ct);
+        var result = await CreateCoreAsync(storeId, dto, userId, ct);
+        if (result.IsFailure) await transaction.RollbackAsync(ct);
+        else { _uow.EnsureCanCommit(); await transaction.CommitAsync(ct); }
+        return result;
+    }
+
+    private async Task<Result<int>> CreateCoreAsync(
        int storeId,
        ProductCreateDto dto,
        int? userId,
@@ -268,6 +306,16 @@ public sealed class ProductService : IProductService
     }
 
     public async Task<Result> UpdateAsync(
+       int storeId, UpdateProductRequest dto, int? userId, CancellationToken ct = default)
+    {
+        await using var transaction = await _uow.BeginTransactionAsync(ct);
+        var result = await UpdateCoreAsync(storeId, dto, userId, ct);
+        if (result.IsFailure) await transaction.RollbackAsync(ct);
+        else { _uow.EnsureCanCommit(); await transaction.CommitAsync(ct); }
+        return result;
+    }
+
+    private async Task<Result> UpdateCoreAsync(
        int storeId,
        UpdateProductRequest dto,
        int? userId,

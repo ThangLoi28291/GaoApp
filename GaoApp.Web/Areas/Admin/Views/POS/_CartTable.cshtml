@@ -1,12 +1,11 @@
 ﻿@* =========================================================
-   PARTIAL VIEW: _CartTable.cshtml
-   Mục đích:
-   - Khu vực giỏ hiện tại của POS
-   - Giữ nguyên các id quan trọng để JavaScript hiện tại tiếp tục render được
-   - Tối ưu cho UX production:
-     + body giỏ cuộn riêng
-     + header bảng rõ hơn
-     + không đổi nghiệp vụ
+   POS v0.2 — P2 CART & SCAN INTERACTION
+
+   Giữ nguyên các runtime hooks:
+   - currentDraftBody
+   - paymentListBox
+   - linePriceTableModal
+   - linePriceTableContent
 ========================================================= *@
 
 <div class="card pos-card pos-cart-card">
@@ -17,18 +16,34 @@
                 <table class="table align-middle pos-line-table">
                     <thead>
                         <tr>
-                            <th class="pos-col-index">#</th>
-                            <th class="pos-col-product">Sản phẩm</th>
-                            <th class="pos-col-qty">SL</th>
-                            <th class="pos-col-price">Đơn giá</th>
-                            <th class="pos-col-total">Thành tiền</th>
-                            <th class="pos-col-remove">Xóa</th>
+                            <th class="pos-col-product">
+                                Sản phẩm
+                            </th>
+
+                            <th class="pos-col-qty">
+                                SL
+                            </th>
+
+                            <th class="pos-col-price">
+                                Đơn giá
+                            </th>
+
+                            <th class="pos-col-total">
+                                Thành tiền
+                            </th>
+
+                            <th class="pos-col-actions">
+                                <span class="visually-hidden">
+                                    Tác vụ
+                                </span>
+                            </th>
                         </tr>
                     </thead>
 
                     <tbody id="currentDraftBody">
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">
+                            <td colspan="5"
+                                class="text-center text-muted py-4">
                                 Đang tải dữ liệu...
                             </td>
                         </tr>
@@ -37,15 +52,29 @@
             </div>
         </div>
 
-        <div id="paymentListBox" class="mt-3"></div>
+        <div id="paymentListBox"
+             class="mt-3"></div>
     </div>
 </div>
-<div class="modal fade" id="linePriceTableModal" tabindex="-1" aria-hidden="true">
+
+<div class="modal fade"
+     id="linePriceTableModal"
+     tabindex="-1"
+     aria-hidden="true">
+
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content pos-price-modal-content">
+
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">Bảng giá sản phẩm</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                <h5 class="modal-title fw-bold">
+                    Bảng giá sản phẩm
+                </h5>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Đóng">
+                </button>
             </div>
 
             <div class="modal-body">
@@ -53,7 +82,9 @@
             </div>
 
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal">
                     Đóng
                 </button>
             </div>

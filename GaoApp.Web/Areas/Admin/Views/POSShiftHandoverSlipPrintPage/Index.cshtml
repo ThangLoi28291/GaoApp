@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = null;
     var slipId = (int)(ViewBag.SlipId ?? 0);
 }
@@ -156,6 +156,7 @@
     </style>
 </head>
 <body>
+    @Html.AntiForgeryToken()
     <button class="btn-print" onclick="window.print()">In lại</button>
 
     <div class="receipt">
@@ -259,6 +260,7 @@
         </div>
     </div>
 
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true" data-auto-close></script>
     <script src="~/lib/jsbarcode/JsBarcode.all.min.js" asp-append-version="true"></script>
 
     <script>
@@ -300,9 +302,9 @@
         document.getElementById('warehouseText').textContent = `${slip.warehouseCode || ''} ${slip.warehouseName || ''}`.trim() || '-';
         document.getElementById('terminalText').textContent = `${slip.terminalCode || ''} ${slip.terminalName || ''}`.trim() || 'Dùng chung';
         document.getElementById('createdBy').textContent = slip.createdByUserName || `User #${slip.createdByUserId}`;
-        document.getElementById('assignedTo').textContent = slip.assignedToUserName || 'Chưa chỉ định';
+        document.getElementById('assignedTo').textContent = slip.usedByUserName || 'Ghi nhận khi nhận ca';
         document.getElementById('signCreatedBy').textContent = slip.createdByUserName || '..............';
-        document.getElementById('signAssignedTo').textContent = slip.assignedToUserName || '..............';
+        document.getElementById('signAssignedTo').textContent = slip.usedByUserName || '..............';
 
         document.getElementById('totalMoney').textContent = formatMoney(slip.openingCashTotal);
 
@@ -334,8 +336,10 @@
         });
 
         // Đánh dấu đã in, không chặn nếu lỗi.
-        fetch(`/admin/pos/shift-handover-slips/${slip.id}/mark-printed`, {
-        method: 'POST'
+        fetch(`/admin/pos/shift-handover-slips/${slip.id}/mark-printed?barcodeValue=${encodeURIComponent(slip.barcodeValue)}`, {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value }
         }).catch(() => { });
 
         setTimeout(() => {

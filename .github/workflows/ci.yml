@@ -37,8 +37,20 @@ jobs:
       - name: Run tests
         run: dotnet test GaoApp.Tests/GaoApp.Tests.csproj --configuration Release --no-build --logger "trx;LogFileName=gaoapp-tests.trx"
 
-      - name: Publish Web project
-        run: dotnet publish GaoApp.Web/GaoApp.Web.csproj --configuration Release --no-build -o ./publish-web
+      - name: Run browser script security and payment regression tests
+        run: node --test GaoApp.Tests/Ui/*.test.cjs
 
-      - name: Publish Migrator project
-        run: dotnet publish GaoApp.Migrator/GaoApp.Migrator.csproj --configuration Release --no-build -o ./publish-migrator
+      - name: Publish and verify paired staging release
+        shell: pwsh
+        run: |
+          $releaseOutput = @(./scripts/publish-staging-release.ps1)
+          $releasePath = $releaseOutput[-1]
+          "GAOAPP_TEST_RELEASE=$releasePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Verify deployment tools reject unsafe configuration
+        shell: pwsh
+        run: ./scripts/test-deployment-tools.ps1 -ReleasePath $env:GAOAPP_TEST_RELEASE
+
+      - name: Test published Production configuration and HTTPS login
+        shell: pwsh
+        run: ./scripts/test-published-production.ps1 -ReleasePath $env:GAOAPP_TEST_RELEASE -ArtifactsPath Logs/security-phase6-build

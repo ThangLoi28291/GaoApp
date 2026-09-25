@@ -10,6 +10,40 @@ namespace GaoApp.Tests.Data;
 
 public class AdminMenuPermissionTenantIsolationTests
 {
+    [Theory]
+    [InlineData("report.profit.view", "ProfitReport")]
+    [InlineData("report.sales.view", "SalesReport")]
+    [InlineData("", "")]
+    public async Task Profit_report_navigation_retains_leaf_permissions_and_store_boundary(string permission, string expected)
+    {
+        var fixture = await CreateFixtureAsync();
+        await using var context = fixture.CreateStoreContext(1);
+        var parent = new AdminMenuItem { StoreId = 1, Title = "Báo cáo", IsSystem = true };
+        context.AdminMenuItems.Add(parent); await context.SaveChangesAsync();
+        context.AdminMenuItems.AddRange(
+            new AdminMenuItem { StoreId = 1, ParentId = parent.Id, Title = "Profit", Controller = "ProfitReport", PermissionCode = "report.profit.view", IsSystem = true },
+            new AdminMenuItem { StoreId = 1, ParentId = parent.Id, Title = "Sales", Controller = "SalesReport", PermissionCode = "report.sales.view", IsSystem = true });
+        await context.SaveChangesAsync();
+        await using (var foreign = fixture.CreateStoreContext(2))
+        {
+            foreign.AdminMenuItems.Add(new AdminMenuItem { StoreId = 2, Title = "Foreign", Controller = "ForeignReport" });
+            await foreign.SaveChangesAsync();
+        }
+        var service = new GaoApp.Application.Services.AdminMenus.AdminMenuService(
+            new AdminMenuRepository(context), null!, null!, new ProfitPermissions(permission));
+        var menu = await service.GetForRenderAsync(1, 99);
+        if (expected == "") Assert.Empty(menu);
+        else Assert.Equal(expected, Assert.Single(Assert.Single(menu).Children).Controller);
+    }
+
+    private sealed class ProfitPermissions(string permission) : GaoApp.Application.Interfaces.Services.Security.ICurrentStorePermissionService
+    {
+        public Task<List<string>> GetPermissionsAsync(int storeId, int userId, CancellationToken ct = default)
+            => Task.FromResult(permission == "" ? new List<string>() : new List<string> { permission });
+        public Task<bool> HasPermissionAsync(int storeId, int userId, string code, CancellationToken ct = default)
+            => Task.FromResult(code == permission);
+    }
+
     [Fact]
     public async Task Assigned_role_lookup_should_return_only_roles_from_requested_store()
     {

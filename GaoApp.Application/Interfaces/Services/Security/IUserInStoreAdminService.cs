@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Security.UserInStores;
+using GaoApp.Application.DTOs.Security.UserInStores;
 
 namespace GaoApp.Application.Interfaces.Services.Security;
 
@@ -7,6 +7,7 @@ namespace GaoApp.Application.Interfaces.Services.Security;
 /// </summary>
 public interface IUserInStoreAdminService
 {
+    Task<bool> CanAssignExistingUsersAsync(int? actorUserId, CancellationToken ct = default);
     /// <summary>
     /// Lấy danh sách user thuộc store hiện tại.
     /// </summary>

@@ -1,19 +1,24 @@
 ﻿using GaoApp.Application.DTOs.StoreBankAccounts;
 using GaoApp.Application.Interfaces.Services.StoreBankAccounts;
+using GaoApp.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using GaoApp.Web.Areas.Admin.ViewModels.StoreBankAccounts;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
-[Authorize]
-public class StoreBankAccountsController : Controller
+[Authorize(Policy = PermissionCodes.System.BankAccount.View)]
+public class StoreBankAccountsController : BaseAdminController
 {
     private readonly IStoreBankAccountService _service;
+    private readonly IStoreBankAccountIndexReadService _indexReadService;
 
-    public StoreBankAccountsController(IStoreBankAccountService service)
+    public StoreBankAccountsController(
+        IStoreBankAccountService service,
+        IStoreBankAccountIndexReadService indexReadService)
     {
         _service = service;
+        _indexReadService = indexReadService;
     }
 
     [HttpGet]
@@ -21,6 +26,19 @@ public class StoreBankAccountsController : Controller
     {
         var model = await BuildIndexVmAsync(null, 1, 20, ct);
         return View(model);
+    }
+
+    [HttpGet("/admin/store-bank-accounts/data")]
+    public async Task<IActionResult> GetStoreBankAccountIndexData(
+        [FromQuery] StoreBankAccountIndexQueryRequest request,
+        CancellationToken ct)
+    {
+        var result = await _indexReadService.GetPageAsync(
+            CurrentStoreId,
+            request,
+            ct);
+
+        return Json(result);
     }
     [HttpGet]
     public async Task<IActionResult> Search(
@@ -34,6 +52,7 @@ public class StoreBankAccountsController : Controller
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.System.BankAccount.Manage)]
     public async Task<IActionResult> Edit(int? id, CancellationToken ct)
     {
         if (!id.HasValue)
@@ -54,6 +73,7 @@ public class StoreBankAccountsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.System.BankAccount.Manage)]
     public async Task<IActionResult> Edit(StoreBankAccountUpsertDto dto, CancellationToken ct)
     {
         if (!ModelState.IsValid)
@@ -72,6 +92,7 @@ public class StoreBankAccountsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.System.BankAccount.Manage)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct)
     {
         await _service.ToggleStatusAsync(id, ct);
@@ -80,6 +101,7 @@ public class StoreBankAccountsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.System.BankAccount.Manage)]
     public async Task<IActionResult> SetDefault(int id, CancellationToken ct)
     {
         await _service.SetDefaultAsync(id, ct);

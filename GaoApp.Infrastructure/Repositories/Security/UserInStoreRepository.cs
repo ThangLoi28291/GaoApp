@@ -21,7 +21,7 @@ public class UserInStoreRepository : IUserInStoreRepository
     CancellationToken ct = default)
     {
         return await _db.UserInStores
-            .Where(x => x.StoreId == storeId && x.UserId == userId && x.IsActive && !x.IsDeleted)
+            .Where(x => x.StoreId == storeId && x.UserId == userId && x.IsActive && !x.IsDeleted && x.User.IsActive && !x.User.IsDeleted && x.Role.StoreId == storeId && !x.Role.IsDeleted)
             .SelectMany(x => x.Role.RolePermissions.Select(rp => rp.Permission.Code))
             .Distinct()
             .ToListAsync(ct);

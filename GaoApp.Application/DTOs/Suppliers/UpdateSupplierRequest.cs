@@ -30,6 +30,15 @@ public sealed class UpdateSupplierRequest
     [StringLength(50, ErrorMessage = "Mã số thuế tối đa 50 ký tự")]
     public string? TaxCode { get; set; }
 
+    [StringLength(50, ErrorMessage = "Số tài khoản tối đa 50 ký tự")]
+    public string? BankAccountNumber { get; set; }
+
+    [StringLength(250, ErrorMessage = "Tên chủ tài khoản tối đa 250 ký tự")]
+    public string? BankAccountName { get; set; }
+
+    [StringLength(250, ErrorMessage = "Tên ngân hàng tối đa 250 ký tự")]
+    public string? BankName { get; set; }
+
     [StringLength(500, ErrorMessage = "Ghi chú tối đa 500 ký tự")]
     public string? Note { get; set; }
 

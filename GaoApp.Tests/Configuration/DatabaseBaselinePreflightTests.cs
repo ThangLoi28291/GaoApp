@@ -34,6 +34,24 @@ public sealed class DatabaseBaselinePreflightTests
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
     private const string InputInvoiceIdentityMigrationId =
         "20260817150000_AddInputInvoiceIdentityUniqueness";
+    private const string InputInvoiceSupplierResolutionMigrationId =
+        "20260822090000_AddInputInvoiceSupplierResolution";
+    private const string InputInvoiceBuyerOwnerGuardMigrationId =
+        "20260824150000_AddInputInvoiceBuyerOwnerGuard";
+    private const string InputInvoiceItemCatalogMappingMigrationId =
+        "20260826150000_AddInputInvoiceItemCatalogMapping";
+    private const string InputInvoiceReconciliationMigrationId =
+        "20260827150000_AddInputInvoiceReconciliation";
+    private const string InputInvoiceSingleActiveReceiptMigrationId =
+        "20260828150000_EnforceSingleActiveInputInvoicePerReceipt";
+    private const string ReceivingWorkbenchMigrationId =
+        "20260830112901_AddReceivingWorkbench";
+    private const string ProvisionalReceivingItemsMigrationId =
+        "20260831135031_AddProvisionalReceivingItems";
+    private const string AcbPaymentsMigrationId =
+        "20260908151919_AddStoreAcbPayments";
+    private const string AcbCallbackInboxMigrationId =
+        "20260908155844_AddAcbCallbackInbox";
 
     [Fact]
     public async Task Acceptance_connections_should_pool_and_bound_login_retries()
@@ -127,7 +145,7 @@ public sealed class DatabaseBaselinePreflightTests
             bootstrap,
             new EfCoreProvisioningTransactionRunner(db));
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.SchemaOnly);
 
         await action.Should()
             .ThrowAsync<DatabaseCompatibilityException>();
@@ -238,7 +256,7 @@ public sealed class DatabaseBaselinePreflightTests
             DatabaseCompatibilityState.SupportedPendingUpgrade);
         preflight.SafeReasonCode.Should().Be(
             "SupportedMigrationPrefix");
-        preflight.SourceMigrationCount.Should().Be(5);
+        preflight.SourceMigrationCount.Should().Be(42);
         preflight.AppliedMigrationCount.Should().Be(1);
         preflight.SchemaMismatchCategoryCount.Should().Be(0);
     }
@@ -292,7 +310,38 @@ public sealed class DatabaseBaselinePreflightTests
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
                 PurchaseReceiptCostPolicyMigrationId,
-                InputInvoiceIdentityMigrationId
+                InputInvoiceIdentityMigrationId,
+                InputInvoiceSupplierResolutionMigrationId,
+                InputInvoiceBuyerOwnerGuardMigrationId,
+                InputInvoiceItemCatalogMappingMigrationId,
+                InputInvoiceReconciliationMigrationId,
+                InputInvoiceSingleActiveReceiptMigrationId,
+                ReceivingWorkbenchMigrationId,
+                ProvisionalReceivingItemsMigrationId,
+                AcbPaymentsMigrationId,
+                AcbCallbackInboxMigrationId,
+                "20260908192844_AddAcbQrNotificationReconciliation",
+                "20260909015242_AddPosQrInstallmentLinks",
+                "20260909024821_AddAcbConfirmationAudit",
+                "20260909055844_EnforceSingleDefaultBankAccount",
+                "20260909061611_EnableSnapshotProfitReads",
+                "20260909062834_AddAcbCallbackStoreRouting",
+                "20260909080000_AddPosCollectionIdempotency", "20260909100000_AddSupplierBankFields", "20260909210000_AddPosOfflineJournal", "20260910002000_AddPosReceiptTemplates", "20260910012000_AddStoreReceiptIdentity", "20260910040620_AddProductLabelPrinting", "20260911053655_AddReceiptIntakePacking",
+                "20260912120000_AddCustomerDisplayWifi",
+                "20260912150000_AddReceivingPackagingPhoto",
+                "20260914073514_AddOrderRewardEligibilitySnapshots",
+                "20260914154923_AddPOSShiftCashReceipt",
+                "20260919095814_AddCustomerReceivables",
+                "20260919111155_AddCustomerDeposits",
+                "20260919111529_AddDepositReturnRestoration",
+                "20260919173000_MakePurchaseOrderSupplierOptional",
+                "20260919174500_AllowPurchaseOrderVariantMultipleUnits",
+                "20260920093000_OptimizeInventoryLedgerTimeline",
+"20260921100000_AddInvoiceInputStockSupplementalMovements",
+"20260923140000_AddInvoiceStockLegacyDocumentReferences",
+"20260923160000_AddLegacyInvoiceImport",
+"20260923180000_AddLegacyReturnArchive",
+"20260924100000_AddAutoInvoiceIssuance"
             ]);
     }
 
@@ -1635,9 +1684,8 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
     {
         var configured = Environment.GetEnvironmentVariable(
             TestDataSourceEnvironmentVariable);
-        var dataSource = string.IsNullOrWhiteSpace(configured)
-            ? @"(localdb)\MSSQLLocalDB"
-            : configured.Trim();
+        if (string.IsNullOrWhiteSpace(configured)) return SqlTestDataSource.Current;
+        var dataSource = configured.Trim();
 
         if (!dataSource.StartsWith(
                 @"(localdb)\",

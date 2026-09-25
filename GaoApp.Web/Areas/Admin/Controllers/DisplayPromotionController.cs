@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Display;
 using GaoApp.Application.Interfaces.Services.Display;
 using GaoApp.Web.Hubs;
@@ -15,29 +16,29 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class DisplayPromotionController : Controller
 {
     private readonly IDisplayPromotionService _service;
-    private readonly IWebHostEnvironment _env;
+    private readonly GaoApp.Application.Common.Abstractions.IFileStorageService _storage;
     private readonly IHubContext<PosHub> _hubContext;
     private readonly ITenantContext _tenantContext;
 
     public DisplayPromotionController(
         IDisplayPromotionService service,
-        IWebHostEnvironment env,
+        GaoApp.Application.Common.Abstractions.IFileStorageService storage,
         IHubContext<PosHub> hubContext,
         ITenantContext tenantContext)
     {
         _service = service;
-        _env = env;
+        _storage = storage;
         _hubContext = hubContext;
         _tenantContext = tenantContext;
     }
-    private async Task BroadcastPromotionChangedAsync()
+    private async Task BroadcastPromotionChangedAsync(string eventType = "customer_display_promotion_changed")
     {
         var storeId = _tenantContext.StoreId
             ?? throw new InvalidOperationException("Không xác định được StoreId hiện tại.");
 
         await _hubContext.Clients.Group($"store:{storeId}").SendAsync("pos:event", new
         {
-            eventType = "customer_display_promotion_changed",
+            eventType,
             payload = new
             {
                 reason = "display_promotion_changed",
@@ -45,14 +46,31 @@ public class DisplayPromotionController : Controller
             }
         });
     }
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.View)]
     public async Task<IActionResult> Index(
+        [FromServices] GaoApp.Web.Services.CustomerDisplayService display,
+        [FromServices] IAuthorizationService authorization,
         CancellationToken ct)
     {
         var items = await _service.GetListAsync(ct);
+        ViewBag.GuestWifi = await display.GetWifiAsync(ct);
+        ViewBag.CanManageWifi = (await authorization.AuthorizeAsync(User, PermissionCodes.Catalog.DisplayPromotion.Manage)).Succeeded;
 
         return View(items);
     }
+
+    [HttpPut]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.Manage)]
+    public async Task<IActionResult> SaveWifi([FromBody] GaoApp.Web.Services.SaveGuestWifiRequest request,
+        [FromServices] GaoApp.Web.Services.CustomerDisplayService display, CancellationToken ct)
+    {
+        if (!ModelState.IsValid) return ValidationProblem(ModelState);
+        var result = await display.SaveWifiAsync(request, ct);
+        await BroadcastPromotionChangedAsync("customer_display_info_changed");
+        return Ok(result);
+    }
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.View)]
     public async Task<IActionResult> Detail(
     int id,
     CancellationToken ct)
@@ -76,6 +94,7 @@ public class DisplayPromotionController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.Manage)]
     public async Task<IActionResult> ToggleActive(
         int id,
         bool isActive,
@@ -89,6 +108,7 @@ public class DisplayPromotionController : Controller
         });
     }
     [HttpGet]
+    [RequireAnyPermission(PermissionCodes.Pos.Order.View, PermissionCodes.Catalog.DisplayPromotion.View)]
     public async Task<IActionResult> ActiveForCustomerDisplay(CancellationToken ct)
     {
         var items = await _service.GetActiveForCustomerDisplayAsync(ct);
@@ -101,6 +121,9 @@ public class DisplayPromotionController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.Manage)]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 64 * 1024 * 1024)]
     public async Task<IActionResult> Create(
         UpsertDisplayPromotionDto dto,
         IFormFile? mediaFile,
@@ -127,6 +150,9 @@ public class DisplayPromotionController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.Manage)]
+    [RequestSizeLimit(64 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 64 * 1024 * 1024)]
     public async Task<IActionResult> Update(
         int id,
         UpsertDisplayPromotionDto dto,
@@ -153,6 +179,7 @@ public class DisplayPromotionController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Catalog.DisplayPromotion.Manage)]
     public async Task<IActionResult> Delete(
         int id,
         CancellationToken ct)
@@ -174,26 +201,8 @@ public class DisplayPromotionController : Controller
         var fileName =
             $"{Guid.NewGuid():N}{ext}";
 
-        var folder =
-            Path.Combine(
-                _env.WebRootPath,
-                "uploads",
-                "display");
-
-        Directory.CreateDirectory(folder);
-
-        var path = Path.Combine(folder, fileName);
-
-        await using var stream =
-            new FileStream(
-                path,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                64 * 1024,
-                useAsync: true);
-
-        await file.CopyToAsync(stream, ct);
+        await using var stream = file.OpenReadStream();
+        await _storage.SaveAsync(stream, $"uploads/display/{fileName}", ct);
 
         return $"/uploads/display/{fileName}";
     }

@@ -1,0 +1,13 @@
+﻿{
+  "Server": "YOUR_SQL_SERVER",
+  "ExpectedServer": "YOUR_SQL_SERVER",
+  "SourceDatabase": "YOUR_SOURCE_DATABASE",
+  "TargetDatabase": "YOUR_TARGET_DATABASE",
+  "StoreId": 0,
+  "WarehouseId": 0,
+  "LegalEntityId": 0,
+  "TargetContainsOnlyTestBusinessData": false,
+  "LegacyImageRoot": "C:\\PATH\\TO\\LEGACY_IMAGES",
+  "BackupDirectory": "",
+  "RunName": "example"
+}

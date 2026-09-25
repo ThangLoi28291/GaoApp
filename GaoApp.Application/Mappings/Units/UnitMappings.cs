@@ -16,7 +16,8 @@ public static class UnitMappings
             Name = source.Name,
             Status = source.IsActive,
             IsBase = source.IsBase,
-            SortOrder = source.SortOrder
+            SortOrder = source.SortOrder,
+            CreatedAtUtc = source.CreatedAtUtc
         };
     }
 

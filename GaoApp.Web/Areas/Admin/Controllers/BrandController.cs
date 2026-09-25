@@ -1,4 +1,7 @@
-﻿using GaoApp.Application.Common;
+using Microsoft.AspNetCore.Authorization;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Brands;
 using GaoApp.Application.Interfaces.Services.Brands;
 using GaoApp.Infrastructure.Tenant;
@@ -30,44 +33,45 @@ public class BrandController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.View)]
     public async Task<IActionResult> Index(
         string? search = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
-        var paged = await _service.GetPagedAsync(StoreId(), search, page, pageSize, ct);
 
-        return View(new BrandIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        });
+        var storeId = StoreId();
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
+
+        return View(CreateIndexViewModel(search, status, page, pageSize, paged, summary));
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.View)]
     public async Task<IActionResult> Search(
         string? search = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
-        var paged = await _service.GetPagedAsync(StoreId(), search, page, pageSize, ct);
 
-        return PartialView("_BrandTable", new BrandIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        });
+        var storeId = StoreId();
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
+
+        return PartialView(
+            "_BrandTable",
+            CreateIndexViewModel(search, status, page, pageSize, paged, summary));
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Create)]
     public IActionResult Create()
     {
         return View("Edit", new BrandEditViewModel
@@ -78,6 +82,7 @@ public class BrandController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Create)]
     public async Task<IActionResult> Create(
         BrandEditViewModel vm,
         CancellationToken ct = default)
@@ -108,6 +113,7 @@ public class BrandController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
         var result = await _service.GetForEditAsync(StoreId(), id, ct);
@@ -133,6 +139,7 @@ public class BrandController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Update)]
     public async Task<IActionResult> Edit(
         BrandEditViewModel vm,
         CancellationToken ct = default)
@@ -166,6 +173,7 @@ public class BrandController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         var result = await _service.ToggleStatusAsync(StoreId(), id, userId: null, ct: ct);
@@ -175,10 +183,30 @@ public class BrandController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Brand.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         var result = await _service.SoftDeleteAsync(StoreId(), id, userId: null, ct: ct);
 
         return Json(AjaxResponse.FromResult(result, "Đã xóa thương hiệu."));
     }
+
+    private static BrandIndexVM CreateIndexViewModel(
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        PagedResult<BrandListItemDto> paged,
+        (int TotalItems, int ActiveItems, int InactiveItems) summary)
+        => new()
+        {
+            SearchString = search,
+            Status = status,
+            Page = page,
+            PageSize = pageSize,
+            TotalBrandCount = summary.TotalItems,
+            ActiveBrandCount = summary.ActiveItems,
+            InactiveBrandCount = summary.InactiveItems,
+            Paged = paged
+        };
 }

@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Domain.Entities;
 
@@ -78,6 +79,18 @@ public class InputInvoiceHead : BaseStoreEntity, IAuditTrackedEntity
     [StringLength(50)]
     public string? BuyerTaxCode { get; set; }
 
+    /// <summary>Durable normalized evidence derived only from BuyerTaxCode.</summary>
+    [StringLength(50)]
+    public string? NormalizedBuyerTaxCode { get; private set; }
+
+    public InputInvoiceBuyerOwnerResolutionStatus BuyerOwnerResolutionStatus { get; set; }
+        = InputInvoiceBuyerOwnerResolutionStatus.NotEvaluated;
+
+    public int? ResolvedBuyerLegalEntityId { get; set; }
+    public LegalEntity? ResolvedBuyerLegalEntity { get; set; }
+
+    public DateTime? BuyerOwnerResolutionUpdatedAtUtc { get; set; }
+
     [StringLength(300)]
     public string? BuyerName { get; set; }
 
@@ -114,7 +127,22 @@ public class InputInvoiceHead : BaseStoreEntity, IAuditTrackedEntity
     [StringLength(1000)]
     public string? Note { get; set; }
 
+    /// <summary>
+    /// Canonical historical Supplier for this invoice identity. It is not
+    /// re-resolved when Supplier master data later changes.
+    /// </summary>
+    public int? ResolvedSupplierId { get; set; }
+    public Supplier? ResolvedSupplier { get; set; }
+
+    public InputInvoiceSupplierResolutionStatus SupplierResolutionStatus { get; set; }
+        = InputInvoiceSupplierResolutionStatus.NotEvaluated;
+
+    public DateTime? SupplierResolutionUpdatedAtUtc { get; set; }
+
     public ICollection<InputInvoiceDetail> Details { get; set; } = new List<InputInvoiceDetail>();
 
     public ICollection<StockDocumentInputInvoiceMap> StockDocumentMaps { get; set; } = new List<StockDocumentInputInvoiceMap>();
+
+    public ICollection<InputInvoiceSupplierResolutionEvent> SupplierResolutionEvents { get; set; }
+        = new List<InputInvoiceSupplierResolutionEvent>();
 }

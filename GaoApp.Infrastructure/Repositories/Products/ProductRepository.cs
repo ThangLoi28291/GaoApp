@@ -9,6 +9,9 @@ namespace GaoApp.Infrastructure.Repositories.Products;
 
 public sealed class ProductRepository : IProductRepository
 {
+    private const string AccentInsensitiveSearchCollation =
+        "Latin1_General_100_CI_AI";
+
     private readonly AppDbContext _db;
 
     public ProductRepository(AppDbContext db)
@@ -22,16 +25,90 @@ public sealed class ProductRepository : IProductRepository
         int page,
         int pageSize,
         CancellationToken ct = default)
+        => await GetPagedAsync(
+            storeId,
+            search,
+            categoryId: null,
+            isActive: null,
+            isSellable: null,
+            page,
+            pageSize,
+            ct);
+
+    public async Task<PagedResult<ProductListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        int? categoryId,
+        bool? isActive,
+        bool? isSellable,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 200) pageSize = 200;
+
         var q = _db.Products
             .AsNoTracking()
-            .Where(x => x.StoreId == storeId);
+            .Where(x => x.StoreId == storeId && !x.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            search = search.Trim();
-            q = q.Where(x => x.Name.Contains(search) || x.Alias.Contains(search));
+            var normalizedSearch = search.Trim();
+
+            if (_db.Database.IsRelational())
+            {
+                var accentInsensitiveSearch = normalizedSearch
+                    .Replace('Đ', 'D')
+                    .Replace('đ', 'd');
+
+                q = q.Where(x =>
+                    EF.Functions.Collate(
+                        x.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Alias
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    x.Variants.Any(variant =>
+                        variant.StoreId == storeId &&
+                        (variant.Sku.Contains(normalizedSearch) ||
+                         variant.UnitConversions.Any(conversion =>
+                             conversion.StoreId == storeId &&
+                             conversion.Barcodes.Any(barcode =>
+                                 barcode.StoreId == storeId &&
+                                 barcode.IsActive &&
+                                 barcode.Barcode.Contains(normalizedSearch))))));
+            }
+            else
+            {
+                q = q.Where(x =>
+                    x.Name.Contains(normalizedSearch) ||
+                    x.Alias.Contains(normalizedSearch) ||
+                    x.Variants.Any(variant =>
+                        variant.StoreId == storeId &&
+                        (variant.Sku.Contains(normalizedSearch) ||
+                         variant.UnitConversions.Any(conversion =>
+                             conversion.StoreId == storeId &&
+                             conversion.Barcodes.Any(barcode =>
+                                 barcode.StoreId == storeId &&
+                                 barcode.IsActive &&
+                                 barcode.Barcode.Contains(normalizedSearch))))));
+            }
         }
+
+        if (categoryId.HasValue)
+            q = q.Where(x => x.CategoryId == categoryId.Value);
+
+        if (isActive.HasValue)
+            q = q.Where(x => x.IsActive == isActive.Value);
+
+        if (isSellable.HasValue)
+            q = q.Where(x => x.IsSellable == isSellable.Value);
 
         var total = await q.CountAsync(ct);
 
@@ -50,9 +127,12 @@ public sealed class ProductRepository : IProductRepository
 
                 CategoryName = x.Category.Name,
                 SupplierName = x.Supplier.Name,
+                BrandName = x.Brand == null ? null : x.Brand.Name,
+                TaxName = x.Tax == null ? null : x.Tax.Name,
                 BaseUnitName = x.BaseUnit.Name,
 
                 HasVariants = x.Variants.Any(),
+                VariantCount = x.Variants.Count(),
 
                 ImageCount = x.ProductImages.Count(pi => !pi.IsDeleted),
 
@@ -72,6 +152,41 @@ public sealed class ProductRepository : IProductRepository
             TotalItems = total,
             Items = items
         };
+    }
+
+    public async Task<(int TotalItems, int PosAllowedItems, int NotForPosItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        var counts = await _db.Products
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId && !x.IsDeleted)
+            .GroupBy(x => new { x.IsActive, x.IsSellable })
+            .Select(group => new
+            {
+                group.Key.IsActive,
+                group.Key.IsSellable,
+                Count = group.Count()
+            })
+            .ToListAsync(ct);
+
+        var posAllowedItems = counts
+            .Where(x => x.IsActive && x.IsSellable)
+            .Sum(x => x.Count);
+
+        var notForPosItems = counts
+            .Where(x => x.IsActive && !x.IsSellable)
+            .Sum(x => x.Count);
+
+        var inactiveItems = counts
+            .Where(x => !x.IsActive)
+            .Sum(x => x.Count);
+
+        return (
+            posAllowedItems + notForPosItems + inactiveItems,
+            posAllowedItems,
+            notForPosItems,
+            inactiveItems);
     }
 
     public Task<Product?> GetDetailAsync(int storeId, int id, CancellationToken ct = default)

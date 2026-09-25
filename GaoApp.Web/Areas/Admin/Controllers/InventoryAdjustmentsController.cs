@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/api/inventory-adjustments")]
-[Authorize]
+[Authorize(Policy = PermissionCodes.Inventory.Adjustment.View)]
 [ApiController]
 [AutoValidateAntiforgeryToken]
 public class InventoryAdjustmentsController : ControllerBase
@@ -30,6 +31,9 @@ public class InventoryAdjustmentsController : ControllerBase
     /// Backend sẽ tự quy đổi về số lượng gốc.
     /// </summary>
     [HttpPost]
+    // This endpoint posts immediately; draft/create permission alone is insufficient.
+    [Authorize(Policy = PermissionCodes.Inventory.Adjustment.Create)]
+    [Authorize(Policy = PermissionCodes.Inventory.Adjustment.Approve)]
     public async Task<IActionResult> Create([FromBody] CreateStockAdjustmentRequest request, CancellationToken ct)
     {
         var result = await _inventoryAdjustmentService.CreateAsync(request, ct);

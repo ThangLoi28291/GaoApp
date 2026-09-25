@@ -3,6 +3,7 @@ using GaoApp.Application.DTOs.Media;
 using GaoApp.Application.Interfaces.Repositories.Media;
 using GaoApp.Application.Interfaces.Services.Media;
 using System.Security.Cryptography;
+using GaoApp.Application.Common.Options;
 
 namespace GaoApp.Application.Services.Media;
 
@@ -10,11 +11,13 @@ public sealed class TempUploadService : ITempUploadService
 {
     private readonly IMediaAssetRepository _repo;
     private readonly IFileStorageService _storage;
+    private readonly MediaCleanupOptions _options;
 
-    public TempUploadService(IMediaAssetRepository repo, IFileStorageService storage)
+    public TempUploadService(IMediaAssetRepository repo, IFileStorageService storage, MediaCleanupOptions options)
     {
         _repo = repo;
         _storage = storage;
+        _options = options;
     }
 
     public async Task<string> UploadAsync(TempUploadRequest req, int storeId, int? userId, CancellationToken ct = default)
@@ -25,26 +28,31 @@ public sealed class TempUploadService : ITempUploadService
         var safeName = SafeFileName(req.FileName);
         var now = DateTime.UtcNow;
 
-        var relativePath = $"uploads/_temp/{now:yyyy/MM/dd}/{token}/{safeName}";
-
-        // ✅ đúng signature của bạn: (content, path)
-        await _storage.SaveAsync(req.Content, relativePath, ct);
+        // Immutable, unique path: promoting an upload changes database state only.
+        // A failed/stale product save must never move or overwrite another image.
+        var relativePath = $"uploads/products/{storeId}/{now:yyyy/MM/dd}/{token}/{safeName}";
 
         var asset = new Domain.Entities.MediaAsset
         {
             StoreId = storeId,
             IsTemp = true,
-            TempToken = token,
+            TempToken = null, // Not claimable/cancellable until the file is ready.
             StoragePath = relativePath,
             OriginalFileName = req.FileName,
             ContentType = req.ContentType,
             SizeBytes = req.SizeBytes,
             CreatedAtUtc = DateTime.UtcNow,
-            ExpireAtUtc = DateTime.UtcNow.AddHours(6),
+            ExpireAtUtc = now.AddHours(_options.TempLifetimeHours),
             CreatedBy = userId
         };
 
         await _repo.AddAsync(asset, ct);
+        await _repo.SaveChangesAsync(ct);
+
+        // Register first: an interrupted upload always has an expiring record.
+        await _storage.SaveAsync(req.Content, relativePath, ct);
+        asset.TempToken = token;
+        _repo.Update(asset);
         await _repo.SaveChangesAsync(ct);
 
         return token;
@@ -57,9 +65,10 @@ public sealed class TempUploadService : ITempUploadService
         var asset = await _repo.GetTempByTokenAsync(tempToken.Trim(), storeId, ct);
         if (asset == null) return false;
 
-        await _storage.DeleteAsync(asset.StoragePath, ct);
-
-        _repo.Remove(asset);
+        // Invalidate the token first; physical deletion is retried by the cleanup worker.
+        asset.TempToken = null;
+        asset.ExpireAtUtc = DateTime.UtcNow;
+        _repo.Update(asset);
         await _repo.SaveChangesAsync(ct);
 
         return true;

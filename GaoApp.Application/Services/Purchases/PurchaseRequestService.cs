@@ -502,8 +502,12 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                     throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1} có dòng sản phẩm bị trùng.");
                 ValidateOrderDates(input, groupIndex + 1);
 
-                var supplier = await _repository.GetSupplierAsync(input.SupplierId, ct)
-                    ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: nhà cung cấp không hợp lệ.");
+                Supplier? supplier = null;
+                if (input.SupplierId is > 0)
+                {
+                    supplier = await _repository.GetSupplierAsync(input.SupplierId.Value, ct)
+                        ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: nhà cung cấp không hợp lệ.");
+                }
                 var warehouse = await _repository.GetWarehouseAsync(input.ExpectedWarehouseId, ct)
                     ?? throw new BusinessRuleException($"Nhóm đơn {groupIndex + 1}: kho nhận không hợp lệ.");
                 var legalEntity = await _repository.GetLegalEntityAsync(input.LegalEntityId, ct)
@@ -516,11 +520,11 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 var order = new PurchaseOrder
                 {
                     OrderNumber = $"PO-{input.OrderDate:yyyyMMdd}-{sequence:D4}",
-                    Title = NormalizeTitle(input.Title) ?? ComposeOrderTitle(entity.Title, supplier.Name),
+                    Title = NormalizeTitle(input.Title) ?? ComposeOrderTitle(entity.Title, supplier?.Name ?? "Chưa chọn nhà cung cấp"),
                     SourcePurchaseRequestId = entity.Id,
                     SourcePurchaseRequest = entity,
                     SourceConversionKey = keys[groupIndex],
-                    SupplierId = supplier.Id,
+                    SupplierId = supplier?.Id,
                     ExpectedWarehouseId = warehouse.Id,
                     LegalEntityId = legalEntity.Id,
                     OrderDate = input.OrderDate.Date,
@@ -615,7 +619,9 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                     ToStatus = targetRequestStatus,
                     ActorUserId = RequireCurrentUserId(),
                     OccurredAtUtc = DateTime.UtcNow,
-                    Note = $"Tạo đơn đặt hàng {order.OrderNumber} cho {supplier.Name}.",
+                    Note = supplier is null
+                        ? $"Tạo đơn đặt hàng {order.OrderNumber}; nhà cung cấp sẽ do quản lý xác nhận khi duyệt."
+                        : $"Tạo đơn đặt hàng {order.OrderNumber} cho {supplier.Name}.",
                     PurchaseOrder = order
                 });
                 createdOrders.Add(order);
@@ -657,7 +663,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
     {
         var ids = productUnitConversionIds.Where(x => x > 0).Distinct().ToArray();
         var values = await _repository.GetProductOptionsByIdsAsync(ids, ct);
-        return values.Where(x => x.IsActive && x.ProductVariant.IsActive && x.ProductVariant.Product.IsActive)
+        var products = values.Where(x => x.IsActive && x.ProductVariant.IsActive && x.ProductVariant.Product.IsActive)
             .Select(x => new PurchaseRequestProductLookupDto
             {
                 ProductVariantId = x.ProductVariantId,
@@ -672,6 +678,15 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 ImageUrl = NormalizeImageUrl(x.ProductVariant.PrimaryProductImage?.MediaAsset?.StoragePath)
             })
             .OrderBy(x => x.Text).ThenBy(x => x.UnitName).ToList();
+        var inventory = await _repository.GetInventoryContextAsync(
+            RequireStoreId(), products.Select(x => x.ProductVariantId).Distinct().ToArray(), ct);
+        foreach (var product in products)
+        {
+            if (!inventory.TryGetValue(product.ProductVariantId, out var context)) continue;
+            product.CurrentStockBaseQuantity = context.CurrentStockBaseQuantity;
+            product.IncomingBaseQuantity = context.IncomingBaseQuantity;
+        }
+        return products;
     }
 
     private async Task ReviewTransitionAsync(
@@ -966,7 +981,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                     Id = o.Id,
                     OrderNumber = o.OrderNumber,
                     Title = o.Title,
-                    SupplierName = o.Supplier.Name,
+                    SupplierName = o.Supplier?.Name ?? "Chưa chọn nhà cung cấp",
                     Status = o.Status,
                     TotalAfterVat = includeCost ? o.TotalAfterVat : 0m
                 }).ToList()

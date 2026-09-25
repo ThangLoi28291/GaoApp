@@ -26,6 +26,8 @@ public interface IOrderRepository
         int pageSize,
         CancellationToken ct = default);
 
+    Task<HashSet<int>> GetBankTransferOrderIdsAsync(IReadOnlyCollection<int> orderIds, CancellationToken ct = default);
+
     Task<bool> ExistsDraftByShiftAsync(int shiftId, CancellationToken ct = default);
 
     Task<int> CountDraftByShiftAsync(int shiftId, CancellationToken ct = default);

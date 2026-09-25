@@ -28,12 +28,31 @@ public sealed class DatabaseSchemaManifestTests
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
     private const string InputInvoiceIdentityMigrationId =
         "20260817150000_AddInputInvoiceIdentityUniqueness";
+    private const string InputInvoiceSupplierResolutionMigrationId =
+        "20260822090000_AddInputInvoiceSupplierResolution";
+    private const string InputInvoiceBuyerOwnerGuardMigrationId =
+        "20260824150000_AddInputInvoiceBuyerOwnerGuard";
+    private const string InputInvoiceItemCatalogMappingMigrationId =
+        "20260826150000_AddInputInvoiceItemCatalogMapping";
+    private const string InputInvoiceReconciliationMigrationId =
+        "20260827150000_AddInputInvoiceReconciliation";
+    private const string InputInvoiceSingleActiveReceiptMigrationId =
+        "20260828150000_EnforceSingleActiveInputInvoicePerReceipt";
+    private const string ReceivingWorkbenchMigrationId =
+        "20260830112901_AddReceivingWorkbench";
+    private const string ProvisionalReceivingItemsMigrationId =
+        "20260831135031_AddProvisionalReceivingItems";
+    private const string AcbPaymentsMigrationId =
+        "20260908151919_AddStoreAcbPayments";
+    private const string AcbCallbackInboxMigrationId =
+        "20260908155844_AddAcbCallbackInbox";
 
     [Fact]
     public async Task Current_model_and_migration_snapshot_have_no_differences()
     {
-        await using var database = new PreflightAcceptanceDatabase();
-        await using var db = database.CreateContext();
+        // Metadata-only check: do not connect to SQL Server just to clean up
+        // a database which this test never creates.
+        await using var db = new PreflightAcceptanceDatabase().CreateContext();
         var currentModel = db.GetService<IDesignTimeModel>()
             .Model.GetRelationalModel();
         var snapshot = db.GetService<IMigrationsAssembly>().ModelSnapshot!;
@@ -186,6 +205,51 @@ public sealed class DatabaseSchemaManifestTests
               AND [IsDeleted] = 1;
             """);
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("CREATE INDEX [IX_InventoryTransactions_LedgerTimeline] ON [dbo].[InventoryTransactions] ([StoreId], [OccurredAtUtc], [Id] DESC) INCLUDE ([QuantityChange], [AfterQty]) WHERE [IsDeleted] = 0;")]
+    [InlineData("CREATE INDEX [IX_InventoryTransactions_LedgerTimeline] ON [dbo].[InventoryTransactions] ([StoreId], [OccurredAtUtc] DESC, [Id] DESC) INCLUDE ([QuantityChange]) WHERE [IsDeleted] = 0;")]
+    [InlineData("CREATE INDEX [IX_InventoryTransactions_LedgerTimeline] ON [dbo].[InventoryTransactions] ([StoreId], [OccurredAtUtc] DESC, [Id] DESC) INCLUDE ([QuantityChange], [AfterQty]) WHERE [IsDeleted] = 1;")]
+    public Task Current_history_missing_or_changed_timeline_index_should_be_rejected(string replacementSql)
+        => AssertCorruptionRejectedAsync(
+            "DROP INDEX [IX_InventoryTransactions_LedgerTimeline] ON [dbo].[InventoryTransactions]; "
+            + replacementSql,
+            expectedChangedIndex: "ix_inventorytransactions_ledgertimeline");
+
+    [Fact]
+    public async Task Timeline_index_matches_sql_server_metadata()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        await new EfCoreDatabaseMigrationExecutor(db).MigrateAsync();
+        await db.Database.OpenConnectionAsync();
+        var snapshot = await new SqlServerSchemaSnapshotReader(db)
+            .ReadAsync(await database.ReadMigrationHistoryAsync());
+        var index = snapshot.Tables.Single(table => table.Identity
+                == new DatabaseObjectIdentity("dbo", "InventoryTransactions"))
+            .Indexes.Single(item => item.Name == "ix_inventorytransactions_ledgertimeline");
+        index.KeyColumns.Should().Equal(
+            new DatabaseIndexColumnSchema("storeid", false),
+            new DatabaseIndexColumnSchema("occurredatutc", true),
+            new DatabaseIndexColumnSchema("id", true));
+        index.IncludedColumns.Should().BeEquivalentTo(new[] { "quantitychange", "afterqty" });
+        index.Filter.Should().Be(DatabaseSchemaNormalization.NormalizeSqlExpression("[IsDeleted] = 0"));
+        index.IsUnique.Should().BeFalse();
+        index.IsClustered.Should().BeFalse();
+        index.IsDisabled.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("'Apply'")]
+    [InlineData("'Apply','Void','Restore'")]
+    public Task Current_history_changed_deposit_filter_values_should_be_rejected(string kinds)
+        => AssertCorruptionRejectedAsync(
+            "DROP INDEX [IX_CustomerDepositEntries_StoreId_OrderId_Kind] ON [dbo].[CustomerDepositEntries]; "
+            + "CREATE UNIQUE INDEX [IX_CustomerDepositEntries_StoreId_OrderId_Kind] "
+            + "ON [dbo].[CustomerDepositEntries] ([StoreId], [OrderId], [Kind]) "
+            + $"WHERE [OrderId] IS NOT NULL AND [Kind] IN ({kinds});",
+            expectedChangedIndex: "ix_customerdepositentries_storeid_orderid_kind");
+
     [Fact]
     public Task Current_history_wrong_inventory_idempotency_index_filter_should_be_rejected()
         => AssertOnlyIndexCorruptionRejectedAsync("""
@@ -326,7 +390,17 @@ public sealed class DatabaseSchemaManifestTests
 
         var result = await CreatePreflight(db).InspectAsync();
 
-        result.IsAllowed.Should().BeTrue();
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        var expected = new EfCoreDatabaseSchemaManifestCatalog(db).GetCurrentManifest();
+        await db.Database.OpenConnectionAsync();
+        var actual = await new SqlServerSchemaSnapshotReader(db).ReadAsync(applied);
+        await db.Database.CloseConnectionAsync();
+        var expectedChecks = DatabaseSchemaCanonicalizer.CreateCategoryRecords(expected).All;
+        var actualChecks = DatabaseSchemaCanonicalizer.CreateCategoryRecords(actual).All;
+        var checkDifference = string.Join(" || ",
+            expectedChecks.Except(actualChecks).Select(x => $"expected-only:{x}")
+                .Concat(actualChecks.Except(expectedChecks).Select(x => $"actual-only:{x}")));
+        result.IsAllowed.Should().BeTrue("the current schema must match; schema differences: {0}", checkDifference);
         result.State.Should().Be(DatabaseCompatibilityState.CurrentBaseline);
         result.SchemaMismatchCategoryCount.Should().Be(0);
     }
@@ -379,7 +453,32 @@ public sealed class DatabaseSchemaManifestTests
             InventoryPostingMigrationId,
             PurchaseReceiptAuditMigrationId,
             PurchaseReceiptCostPolicyMigrationId,
-            InputInvoiceIdentityMigrationId);
+            InputInvoiceIdentityMigrationId,
+            InputInvoiceSupplierResolutionMigrationId,
+            InputInvoiceBuyerOwnerGuardMigrationId,
+            InputInvoiceItemCatalogMappingMigrationId,
+            InputInvoiceReconciliationMigrationId,
+            InputInvoiceSingleActiveReceiptMigrationId,
+            ReceivingWorkbenchMigrationId,
+            ProvisionalReceivingItemsMigrationId, AcbPaymentsMigrationId, AcbCallbackInboxMigrationId,
+            "20260908192844_AddAcbQrNotificationReconciliation", "20260909015242_AddPosQrInstallmentLinks", "20260909024821_AddAcbConfirmationAudit", "20260909055844_EnforceSingleDefaultBankAccount", "20260909061611_EnableSnapshotProfitReads", "20260909062834_AddAcbCallbackStoreRouting", "20260909080000_AddPosCollectionIdempotency", "20260909100000_AddSupplierBankFields",
+            "20260909210000_AddPosOfflineJournal", "20260910002000_AddPosReceiptTemplates",
+            "20260910012000_AddStoreReceiptIdentity", "20260910040620_AddProductLabelPrinting",
+            "20260911053655_AddReceiptIntakePacking", "20260912120000_AddCustomerDisplayWifi",
+            "20260912150000_AddReceivingPackagingPhoto",
+            "20260914073514_AddOrderRewardEligibilitySnapshots",
+            "20260914154923_AddPOSShiftCashReceipt",
+            "20260919095814_AddCustomerReceivables",
+            "20260919111155_AddCustomerDeposits",
+            "20260919111529_AddDepositReturnRestoration",
+            "20260919173000_MakePurchaseOrderSupplierOptional",
+            "20260919174500_AllowPurchaseOrderVariantMultipleUnits",
+           "20260920093000_OptimizeInventoryLedgerTimeline",
+"20260921100000_AddInvoiceInputStockSupplementalMovements",
+"20260923140000_AddInvoiceStockLegacyDocumentReferences",
+"20260923160000_AddLegacyInvoiceImport",
+"20260923180000_AddLegacyReturnArchive",
+"20260924100000_AddAutoInvoiceIssuance");
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(
@@ -444,7 +543,7 @@ public sealed class DatabaseSchemaManifestTests
                 "ix_purchasereceiptauditevents_store_document_occurred_id" &&
             index.KeyColumns.Select(column => column.Name).SequenceEqual(
                 new[] { "storeid", "stockdocumentid", "occurredatutc", "id" }));
-        receiptAudit.ForeignKeys.Should().HaveCount(3);
+        receiptAudit.ForeignKeys.Should().HaveCount(4);
         receiptAudit.ForeignKeys.Should().OnlyContain(
             foreignKey => foreignKey.DeleteAction == "no_action");
     }
@@ -477,13 +576,34 @@ public sealed class DatabaseSchemaManifestTests
     private static async Task AssertCorruptionRejectedAsync(
         string corruptionSql,
         Action<DatabaseSchemaMismatchCounts>? assertMismatches = null,
-        int? expectedMismatchCategoryCount = null)
+        int? expectedMismatchCategoryCount = null,
+        string? expectedChangedIndex = null)
     {
         await using var database = new PreflightAcceptanceDatabase();
         await using var db = database.CreateContext();
         await new EfCoreDatabaseMigrationExecutor(db).MigrateAsync();
         var historyBefore = await database.ReadMigrationHistoryAsync();
+        string? expectedIndexRecord = null;
+        if (expectedChangedIndex is not null)
+        {
+            expectedIndexRecord = DatabaseSchemaCanonicalizer.CreateCategoryRecords(
+                    new EfCoreDatabaseSchemaManifestCatalog(db).GetCurrentManifest())
+                .Indexes.Single(record => record.Contains($"|{expectedChangedIndex}|", StringComparison.Ordinal));
+            await db.Database.OpenConnectionAsync();
+            var before = await new SqlServerSchemaSnapshotReader(db).ReadAsync(historyBefore);
+            await db.Database.CloseConnectionAsync();
+            DatabaseSchemaCanonicalizer.CreateCategoryRecords(before).Indexes
+                .Should().Contain(expectedIndexRecord, "the target index must match before corruption");
+        }
         await database.ExecuteAsync(corruptionSql);
+        if (expectedIndexRecord is not null)
+        {
+            await db.Database.OpenConnectionAsync();
+            var after = await new SqlServerSchemaSnapshotReader(db).ReadAsync(historyBefore);
+            await db.Database.CloseConnectionAsync();
+            DatabaseSchemaCanonicalizer.CreateCategoryRecords(after).Indexes
+                .Should().NotContain(expectedIndexRecord, "the corruption must change the target index itself");
+        }
         var corruptFingerprint = await ReadFingerprintAsync(db);
         var migration = new CountingMigrationExecutor();
         var mandatory = new CountingMandatorySeeder();
@@ -502,7 +622,7 @@ public sealed class DatabaseSchemaManifestTests
             bootstrap,
             transaction);
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.SchemaOnly);
 
         var exception = await action.Should()
             .ThrowAsync<DatabaseCompatibilityException>();

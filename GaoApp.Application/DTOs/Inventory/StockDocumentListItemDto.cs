@@ -11,6 +11,9 @@ public class StockDocumentListItemDto
     public string LegalEntityName { get; set; } = default!;
     public string WarehouseName { get; set; } = default!;
     public string? SupplierName { get; set; }
+    public int? PurchaseOrderId { get; set; }
+    public string? PurchaseOrderNumber { get; set; }
+    public string? PurchaseOrderTitle { get; set; }
     public StockDocumentStatus Status { get; set; }
     public decimal TotalAmount { get; set; }
 

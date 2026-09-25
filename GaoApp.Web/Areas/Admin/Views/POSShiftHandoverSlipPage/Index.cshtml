@@ -136,7 +136,7 @@
                         <i class="bx bx-receipt"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title">TẠO PHIẾU NHẬN CA</h5>
+                        <h5 id="createSlipTitle" class="modal-title">TẠO PHIẾU NHẬN CA</h5>
                         <div class="shift-modal-subtitle">
                             Quản lý nhập số tiền theo mệnh giá để in phiếu cho nhân viên nhận ca
                         </div>
@@ -147,6 +147,7 @@
             </div>
 
             <div class="modal-body shift-open-cashier-body">
+                <div id="editSlipNotice" class="alert alert-warning" hidden>Sau khi lưu, hãy in lại phiếu. Mã vạch trên bản in cũ sẽ không còn dùng được.</div>
                 <div class="shift-open-cashier-layout">
                     <div class="shift-open-left">
                         <div class="shift-open-block">
@@ -160,6 +161,13 @@
                             </select>
                         </div>
 
+                        <div class="shift-open-block">
+                            <label for="ddlCreateSlipTerminal" class="shift-form-label">Quầy nhận ca</label>
+                            <select id="ddlCreateSlipTerminal" class="form-select shift-open-select" required>
+                                <option value="">-- Chọn quầy --</option>
+                            </select>
+                            <div class="small text-muted mt-2">Nhân viên được ghi nhận khi quét phiếu và xác nhận nhận ca tại quầy này.</div>
+                        </div>
                         <div class="shift-open-divider"></div>
 
                         <div class="shift-open-block">
@@ -223,7 +231,7 @@
                                 LƯU Ý
                             </div>
                             <div>Phiếu tạo xong có thể in barcode</div>
-                            <div>Nhân viên quét mã để nhận ca</div>
+                            <div>Nhân viên quét mã để nhận ca tại quầy đã chọn</div>
                             <div>Phiếu đã dùng sẽ không dùng lại được</div>
                         </div>
                     </div>
@@ -238,7 +246,7 @@
 
                 <button id="btnCreateSlipConfirm" type="button" class="btn shift-open-confirm-btn">
                     <i class="bx bx-check-circle"></i>
-                    OK - Tạo phiếu
+                    <span id="saveSlipLabel">OK - Tạo phiếu</span>
                 </button>
             </div>
         </div>

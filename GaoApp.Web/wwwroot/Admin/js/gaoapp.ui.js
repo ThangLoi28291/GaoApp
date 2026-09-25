@@ -92,6 +92,7 @@
     function configureNotifications() {
         if (window.toastr) {
             Object.assign(window.toastr.options, {
+                escapeHtml: true,
                 closeButton: true,
                 progressBar: true,
                 newestOnTop: true,
@@ -113,7 +114,7 @@
                 return null;
             }
 
-            return window.toastr[type](message, title, options);
+            return window.toastr[type](message, title, Object.assign({}, options, { escapeHtml: true }));
         }
 
         window.GaoAppNotify = {

@@ -1,191 +1,197 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.StoreBankAccounts
+@using GaoApp.Web.Areas.Admin.ViewModels.StoreBankAccounts
 @model StoreBankAccountIndexVM
 
 @{
     ViewData["Title"] = "Tài khoản ngân hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 }
 
-@section Header {
-    <div class="py-2">
-        <h3 class="mb-0 fw-bold">Danh sách tài khoản ngân hàng</h3>
-    </div>
-}
-
-<div class="card">
-    <div class="card-body">
-
-        <div class="row g-3 align-items-end mb-3">
-            <div class="col-md-5">
-                <label class="form-label">Tìm kiếm</label>
-
-                <div class="position-relative">
-                    <input id="txtSearch"
-                           class="form-control pe-5"
-                           placeholder="Ngân hàng / STK / chủ tài khoản..."
-                           autocomplete="off"
-                           value="@Model.SearchString" />
-
-                    <button type="button"
-                            id="btnClearSearch"
-                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
-                            title="Xóa tìm kiếm"
-                            style="border:0; background:transparent;">
-                        <i class="bx bx-x fs-4"></i>
-                    </button>
-                </div>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Tài khoản ngân hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Quản lý tài khoản nhận chuyển khoản và cấu hình QR tại POS.</p>
             </div>
-
-            <div class="col-md-3">
-                <label class="form-label">Số dòng / trang</label>
-                <select id="ddlPageSize" class="form-select">
-                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
-                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
-                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
-                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
-                </select>
-            </div>
-
-            <div class="col-md-4 text-md-end">
-                <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Edit" class="btn btn-primary">
-                    <i class="bx bx-plus me-1"></i> Thêm ngân hàng
+            <div class="gds-page-header__actions">
+                <a href="/admin/acb/settings" class="btn btn-outline-primary">Cài đặt ACB tự động</a>
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="storeBankReload">
+                    <i class="bx bx-refresh"></i><span>Tải lại</span>
+                </button>
+                <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Edit" class="btn btn-primary gds-action-button">
+                    <i class="bx bx-plus"></i><span>Thêm tài khoản</span>
                 </a>
             </div>
         </div>
+    </div>
+}
 
-        <form id="antiForgeryForm" method="post">
-            @Html.AntiForgeryToken()
-        </form>
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/store-bank-account-index.css" asp-append-version="true" />
+}
 
-        <div id="bankTableWrapper">
-            @await Html.PartialAsync("_StoreBankAccountTable", Model)
+<div class="store-bank-account-index-page gds-page"
+     data-gao-ui="modern"
+     data-store-bank-account-index
+     data-data-url="@Url.Action("GetStoreBankAccountIndexData", "StoreBankAccounts", new { area = "Admin" })"
+     data-edit-url="@Url.Action("Edit", "StoreBankAccounts", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleStatus", "StoreBankAccounts", new { area = "Admin" })"
+     data-default-url="@Url.Action("SetDefault", "StoreBankAccounts", new { area = "Admin" })">
+
+    @if (TempData["Success"] is string success)
+    {
+        <div class="alert alert-success alert-dismissible mb-0" role="alert">
+            @success
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger alert-dismissible mb-0" role="alert">
+            @error
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
 
+    <section aria-label="Tổng quan tài khoản ngân hàng">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col">
+                <button type="button" class="store-bank-account-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-bank-kpi="total" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-primary"><i class="bx bx-building-house"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng tài khoản</span><span class="gds-kpi-card__value text-primary" id="storeBankStatTotal">0</span><small>Trong phạm vi tra cứu</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="store-bank-account-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-bank-kpi="active" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-success"><i class="bx bx-check-shield"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đang hoạt động</span><span class="gds-kpi-card__value text-success" id="storeBankStatActive">0</span><small>Có thể được sử dụng</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="store-bank-account-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-bank-kpi="inactive" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-secondary text-secondary"><i class="bx bx-pause-circle"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Ngưng hoạt động</span><span class="gds-kpi-card__value text-secondary" id="storeBankStatInactive">0</span><small>Đang tạm ngưng</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="store-bank-account-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-bank-kpi="default" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-star"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Mặc định POS</span><span class="gds-kpi-card__value text-warning" id="storeBankStatDefault">0</span><small>Tài khoản được ưu tiên</small></span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <div class="alert alert-warning store-bank-account-health d-none mb-0" id="storeBankHealthWarning" role="status">
+        <i class="bx bx-error-circle"></i><span id="storeBankHealthMessage"></span>
+    </div>
+
+    <section class="card shadow-sm border-0 store-bank-account-filter-panel" aria-label="Bộ lọc tài khoản ngân hàng">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <div class="d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span>
+                <div><h5 class="mb-0 text-dark">Tra cứu tài khoản</h5><small class="text-muted">Tìm theo ngân hàng, số tài khoản, chủ tài khoản hoặc nhà cung cấp.</small></div>
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="store-bank-account-filter-bar">
+                <div class="store-bank-account-search-wrap">
+                    <label for="storeBankKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label>
+                    <div class="gds-search-field">
+                        <i class="bx bx-search"></i>
+                        <input type="search" id="storeBankKeyword" class="form-control" placeholder="Tên ngân hàng, mã, số tài khoản, chủ tài khoản..." autocomplete="off" />
+                        <button type="button" id="storeBankClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button>
+                    </div>
+                </div>
+                <div class="store-bank-account-desktop-filters">
+                    <div><label for="storeBankQrMode" class="form-label">Cách tạo QR</label><select id="storeBankQrMode" class="form-select"><option value="all">Tất cả cách tạo</option><option value="local-emv-qr">VietQR tạo tại hệ thống</option><option value="vietqr-quick-link">Liên kết ảnh VietQR</option><option value="provider-api">API nhà cung cấp</option></select></div>
+                    <div><label for="storeBankConfirmMode" class="form-label">Cách xác nhận</label><select id="storeBankConfirmMode" class="form-select"><option value="all">Tất cả cách xác nhận</option><option value="manual">Nhân viên xác nhận</option><option value="callback">Nhà cung cấp gửi xác nhận</option><option value="polling">Hệ thống tự kiểm tra</option></select></div>
+                    <div><label for="storeBankLifecycle" class="form-label">Trạng thái</label><select id="storeBankLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngưng hoạt động</option></select></div>
+                    <div><label for="storeBankDefaultRole" class="form-label">Vai trò POS</label><select id="storeBankDefaultRole" class="form-select"><option value="all">Tất cả tài khoản</option><option value="default">Mặc định POS</option><option value="not-default">Không mặc định</option></select></div>
+                    <div class="store-bank-account-compact-filter"><label for="storeBankPageSize" class="form-label">Số dòng / trang</label><select id="storeBankPageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select></div>
+                    <button type="button" class="gds-icon-button store-bank-account-reset-button d-none" id="storeBankResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
+                </div>
+                <button type="button" class="btn btn-label-primary store-bank-account-mobile-filter-button" id="storeBankOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#storeBankMobileFilterSheet">
+                    <i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="storeBankActiveFilterCount">0</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="gds-list-panel store-bank-account-results-panel" id="storeBankResultsPanel" aria-label="Danh sách tài khoản ngân hàng" aria-live="polite" aria-busy="false">
+        <div class="store-bank-account-results-heading">
+            <div><h5 class="mb-1 text-dark">Danh sách tài khoản</h5><small class="text-muted">Nhấp đúp một dòng hoặc chọn biểu tượng mắt để xem nhanh cấu hình.</small></div>
+            <span class="store-bank-account-default-scope"><i class="bx bx-list-check"></i> Mặc định: Tất cả</span>
+        </div>
+        <div class="store-bank-account-desktop-list" id="storeBankDesktopList">
+            <div class="table-responsive">
+                <table class="table align-middle gds-table mb-0 store-bank-account-table">
+                    <thead><tr><th>Ngân hàng</th><th>Tài khoản</th><th>Tạo QR</th><th>Xác nhận</th><th>Trạng thái</th><th>Mặc định POS</th><th class="text-end">Thao tác</th></tr></thead>
+                    <tbody id="storeBankTableBody"><tr><td colspan="7" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="store-bank-account-mobile-list" id="storeBankMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+
+    <div class="gds-list-footer store-bank-account-list-footer">
+        <div class="gds-list-footer__summary" id="storeBankPagingInfo">0 kết quả</div>
+        <nav aria-label="Phân trang tài khoản ngân hàng"><ul class="pagination pagination-sm mb-0 store-bank-account-pagination" id="storeBankPageNumbers"></ul></nav>
+    </div>
+
+    <form id="storeBankAntiforgery" class="d-none" method="post">
+        @Html.AntiForgeryToken()
+    </form>
+
+    <div class="offcanvas offcanvas-bottom store-bank-account-filter-sheet" tabindex="-1" id="storeBankMobileFilterSheet" aria-labelledby="storeBankMobileFilterTitle">
+        <div class="offcanvas-header"><div><h5 class="offcanvas-title" id="storeBankMobileFilterTitle">Bộ lọc tài khoản</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+        <div class="offcanvas-body">
+            <div class="row g-3">
+                <div class="col-12"><label for="storeBankMobileQrMode" class="form-label">Cách tạo QR</label><select id="storeBankMobileQrMode" class="form-select"><option value="all">Tất cả cách tạo</option><option value="local-emv-qr">VietQR tạo tại hệ thống</option><option value="vietqr-quick-link">Liên kết ảnh VietQR</option><option value="provider-api">API nhà cung cấp</option></select></div>
+                <div class="col-12"><label for="storeBankMobileConfirmMode" class="form-label">Cách xác nhận</label><select id="storeBankMobileConfirmMode" class="form-select"><option value="all">Tất cả cách xác nhận</option><option value="manual">Nhân viên xác nhận</option><option value="callback">Nhà cung cấp gửi xác nhận</option><option value="polling">Hệ thống tự kiểm tra</option></select></div>
+                <div class="col-12"><label for="storeBankMobileLifecycle" class="form-label">Trạng thái</label><select id="storeBankMobileLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngưng hoạt động</option></select></div>
+                <div class="col-12"><label for="storeBankMobileDefaultRole" class="form-label">Vai trò POS</label><select id="storeBankMobileDefaultRole" class="form-select"><option value="all">Tất cả tài khoản</option><option value="default">Mặc định POS</option><option value="not-default">Không mặc định</option></select></div>
+                <div class="col-12"><label for="storeBankMobilePageSize" class="form-label">Số dòng / trang</label><select id="storeBankMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select></div>
+            </div>
+        </div>
+        <div class="offcanvas-footer store-bank-account-filter-sheet__footer"><button type="button" class="btn btn-label-secondary" id="storeBankMobileClearFilters">Xóa lọc</button><button type="button" class="btn btn-primary flex-grow-1" id="storeBankMobileApplyFilters">Áp dụng</button></div>
+    </div>
+
+    <div class="modal fade store-bank-account-quick-sheet" id="storeBankQuickView" tabindex="-1" aria-labelledby="storeBankQuickTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header border-0"><div><h5 class="modal-title" id="storeBankQuickTitle">Thông tin tài khoản</h5><small class="text-muted">Cấu hình chỉ đọc đang áp dụng tại cửa hàng.</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="store-bank-account-profile-head"><div class="store-bank-account-avatar is-large" id="storeBankQuickAvatar">NH</div><div class="store-bank-account-profile-copy"><h4 id="storeBankQuickBankName">—</h4><span id="storeBankQuickBankCode">—</span><div class="mt-2 d-flex flex-wrap gap-2" id="storeBankQuickBadges"></div></div></div>
+                    <div class="store-bank-account-quick-grid">
+                        <div class="store-bank-account-quick-item"><span>Số tài khoản</span><strong id="storeBankQuickAccountNumber">—</strong></div>
+                        <div class="store-bank-account-quick-item"><span>Chủ tài khoản</span><strong id="storeBankQuickAccountName">—</strong></div>
+                        <div class="store-bank-account-quick-item"><span>Cách tạo QR</span><strong id="storeBankQuickQrMode">—</strong></div>
+                        <div class="store-bank-account-quick-item"><span>Cách xác nhận</span><strong id="storeBankQuickConfirmMode">—</strong></div>
+                        <div class="store-bank-account-quick-item"><span>Nhà cung cấp</span><strong id="storeBankQuickProvider">—</strong></div>
+                        <div class="store-bank-account-quick-item"><span>BIN VietQR</span><strong id="storeBankQuickBin">—</strong></div>
+                        <div class="store-bank-account-quick-item is-wide"><span>Mẫu nội dung chuyển khoản</span><strong id="storeBankQuickTemplate">—</strong></div>
+                        <div class="store-bank-account-readiness is-wide" id="storeBankQuickReadiness"></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><button type="button" class="btn btn-label-primary" id="storeBankQuickCopy"><i class="bx bx-copy"></i> Sao chép số tài khoản</button><a class="btn btn-primary" id="storeBankQuickEdit" href="#"><i class="bx bx-edit-alt"></i> Sửa thông tin</a></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade store-bank-account-confirmation-sheet" id="storeBankConfirmation" tabindex="-1" aria-labelledby="storeBankConfirmationTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header border-0"><div><h5 class="modal-title" id="storeBankConfirmationTitle">Xác nhận thay đổi</h5><small class="text-muted" id="storeBankConfirmationIdentity">—</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body"><div class="alert mb-0" id="storeBankConfirmationMessage"></div></div>
+                <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="button" class="btn" id="storeBankConfirmationSubmit">Xác nhận</button></div>
+            </div>
+        </div>
     </div>
 </div>
 
 @section PageScripts {
-    <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const txtSearch = document.getElementById('txtSearch');
-            const btnClearSearch = document.getElementById('btnClearSearch');
-            const ddlPageSize = document.getElementById('ddlPageSize');
-            const wrapper = document.getElementById('bankTableWrapper');
-
-            let typingTimer = null;
-
-            function getToken() {
-                const el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
-                return el ? el.value : '';
-            }
-
-            function updateClearButtonVisibility() {
-                btnClearSearch.classList.toggle('d-none', !(txtSearch.value || '').trim());
-            }
-
-            function toast(success, message) {
-                if (window.toastr) toastr[success ? "success" : "error"](message);
-                else alert(message);
-            }
-
-            function loadBanks(page) {
-                const search = txtSearch.value || '';
-                const pageSize = ddlPageSize.value || 20;
-
-                const url = '@Url.Action("Search", "StoreBankAccounts", new { area = "Admin" })'
-                    + '?search=' + encodeURIComponent(search)
-                    + '&page=' + (page || 1)
-                    + '&pageSize=' + encodeURIComponent(pageSize);
-
-                fetch(url)
-                    .then(r => r.text())
-                    .then(html => {
-                        wrapper.innerHTML = html;
-                        bindAllTableEvents();
-                    });
-            }
-
-            function debounceLoad() {
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => loadBanks(1), 300);
-            }
-
-            function bindPaginationEvents() {
-                wrapper.querySelectorAll('.js-page-link').forEach(a => {
-                    a.onclick = function (e) {
-                        e.preventDefault();
-                        const p = this.getAttribute('data-page');
-                        if (p) loadBanks(parseInt(p));
-                    };
-                });
-            }
-
-            function bindToggleEvents() {
-                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
-                    btn.onclick = async function () {
-                        const id = this.dataset.id;
-                        const token = getToken();
-
-                        const res = await fetch('@Url.Action("ToggleStatus", "StoreBankAccounts", new { area = "Admin" })', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
-                        });
-
-                        const data = await res.json();
-                        toast(data.success, data.message || 'Đã xử lý.');
-                        if (data.success) loadBanks(1);
-                    };
-                });
-            }
-
-            function bindDefaultEvents() {
-                wrapper.querySelectorAll('.js-set-default').forEach(btn => {
-                    btn.onclick = async function () {
-                        const id = this.dataset.id;
-                        const token = getToken();
-
-                        const res = await fetch('@Url.Action("SetDefault", "StoreBankAccounts", new { area = "Admin" })', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                            body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
-                        });
-
-                        const data = await res.json();
-                        toast(data.success, data.message || 'Đã xử lý.');
-                        if (data.success) loadBanks(1);
-                    };
-                });
-            }
-
-            function bindAllTableEvents() {
-                bindPaginationEvents();
-                bindToggleEvents();
-                bindDefaultEvents();
-
-                if (window.bootstrap) {
-                    wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-                        try { new bootstrap.Tooltip(el); } catch (e) { }
-                    });
-                }
-            }
-
-            txtSearch.addEventListener('input', function () {
-                updateClearButtonVisibility();
-                debounceLoad();
-            });
-
-            btnClearSearch.addEventListener('click', function () {
-                txtSearch.value = '';
-                updateClearButtonVisibility();
-                loadBanks(1);
-                txtSearch.focus();
-            });
-
-            ddlPageSize.addEventListener('change', () => loadBanks(1));
-
-            updateClearButtonVisibility();
-            bindAllTableEvents();
-        });
-    </script>
+    <script src="~/Admin/js/store-bank-account-index.js" asp-append-version="true"></script>
 }

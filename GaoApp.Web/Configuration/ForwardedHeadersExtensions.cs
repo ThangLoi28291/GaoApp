@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 
@@ -18,6 +18,13 @@ public static class ForwardedHeadersExtensions
     {
         services.Configure<ForwardedHeadersOptions>(options =>
         {
+            var proxyOptions = configuration
+                .GetSection(ProxyOptions.SectionName)
+                .Get<ProxyOptions>() ?? new ProxyOptions();
+
+            ProxyTrustValidation.Validate(proxyOptions);
+            if (!proxyOptions.EnableForwardedHeaders) return;
+
             options.ForwardedHeaders =
                 ForwardedHeaders.XForwardedFor |
                 ForwardedHeaders.XForwardedProto |
@@ -27,11 +34,9 @@ public static class ForwardedHeadersExtensions
             options.KnownProxies.Clear();
             options.KnownNetworks.Clear();
 
-            var proxyOptions = configuration
-                .GetSection(ProxyOptions.SectionName)
-                .Get<ProxyOptions>() ?? new ProxyOptions();
 
-            foreach (var proxy in proxyOptions.KnownProxies)
+
+            foreach (var proxy in proxyOptions.KnownProxies ?? [])
             {
                 if (IPAddress.TryParse(proxy, out var ip))
                 {
@@ -39,7 +44,7 @@ public static class ForwardedHeadersExtensions
                 }
             }
 
-            foreach (var network in proxyOptions.KnownNetworks)
+            foreach (var network in proxyOptions.KnownNetworks ?? [])
             {
                 var parts = network.Split('/', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length != 2)

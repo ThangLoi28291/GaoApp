@@ -126,4 +126,15 @@ public sealed class PurchasePricingPolicyTests
     [Fact]
     public void Quantity_rounding_should_use_three_decimals_away_from_zero()
         => PurchasePricingPolicy.RoundQuantity(1.2345m).Should().Be(1.235m);
+
+    [Fact]
+    public void Generic_weighted_money_allocation_should_reuse_money_rounding_and_final_residual()
+    {
+        var result = PurchasePricingPolicy.AllocateByWeight(
+            100m,
+            new[] { (1, 1m), (2, 1m), (3, 1m) });
+
+        result.Values.Should().Equal(33.33m, 33.33m, 33.34m);
+        result.Values.Sum().Should().Be(100m);
+    }
 }

@@ -63,6 +63,19 @@ public static class WebOptionsRegistration
                 "Storage:UploadRoot không được để trống.")
             .ValidateOnStart();
 
+        services.AddOptions<InputInvoiceLibraryOptions>()
+            .Bind(configuration.GetSection(InputInvoiceLibraryOptions.SectionName))
+            .Validate(
+                x => !x.Enabled || !string.IsNullOrWhiteSpace(x.RootPath),
+                "InputInvoiceLibrary:RootPath là bắt buộc khi thư viện hóa đơn được bật.")
+            .Validate(
+                x => x.MaxMonthPartitions is >= 1 and <= 12,
+                "InputInvoiceLibrary:MaxMonthPartitions phải từ 1 đến 12.")
+            .Validate(
+                x => x.MaxCandidates is >= 1 and <= 200,
+                "InputInvoiceLibrary:MaxCandidates phải từ 1 đến 200.")
+            .ValidateOnStart();
+
         // =========================================================
         // SeedData
         // =========================================================

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "parameters": "--vulnerable --include-transitive",
+  "sources": [
+    "https://api.nuget.org/v3/index.json",
+    "C:/Program Files (x86)/Microsoft SDKs/NuGetPackages/"
+  ],
+  "projects": [
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Domain/GaoApp.Domain.csproj"
+    },
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Application/GaoApp.Application.csproj"
+    },
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Infrastructure/GaoApp.Infrastructure.csproj"
+    },
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Web/GaoApp.Web.csproj"
+    },
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Migrator/GaoApp.Migrator.csproj"
+    },
+    {
+      "path": "D:/GaoApp/GAOAPP-SA-20260819-01/GaoApp.Tests/GaoApp.Tests.csproj"
+    }
+  ]
+}

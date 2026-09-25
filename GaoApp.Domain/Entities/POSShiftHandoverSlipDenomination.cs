@@ -40,6 +40,6 @@ public class POSShiftHandoverSlipDenomination : BaseStoreEntity, IAuditTrackedEn
         if (Quantity < 0)
             Quantity = 0;
 
-        Amount = DenominationValue * Quantity;
+        Amount = (decimal)DenominationValue * Quantity;
     }
 }

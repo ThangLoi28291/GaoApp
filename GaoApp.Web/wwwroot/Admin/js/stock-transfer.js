@@ -16,11 +16,18 @@ let actionStockTransferModalInstance = null;
 let stockTransferHeaderSaveTimer = null;
 let stockTransferIndexSearchTimer = null;
 let stockTransferLineModalInstance = null;
+let stockTransferIndexAbortController = null;
+let stockTransferIndexRequestSequence = 0;
+let stockTransferIndexImageHoverPreview = null;
+let stockTransferImagePreviewModalInstance = null;
+const stockTransferDefaultScopeLabel = 'Nháp + Chờ duyệt';
 const stockTransferUiState = {
     index: {
         page: 1,
         pageSize: 20,
         totalItems: 0,
+        totalPages: 1,
+        state: 'open',
         items: []
     },
     currentDetail: null,
@@ -34,8 +41,7 @@ document.addEventListener('DOMContentLoaded', function () {
     bindStockTransferGlobalKeyboard();
 
     if (window.stockTransferPage.mode === 'index') {
-        bindStockTransferIndexEvents();
-        loadStockTransferList();
+        initStockTransferModernIndex();
     }
 
     if (window.stockTransferPage.mode === 'detail') {
@@ -152,6 +158,7 @@ function initStockTransferModalInstances() {
     const deleteModal = document.getElementById('deleteStockTransferLineModal');
     const actionModal = document.getElementById('stockTransferActionConfirmModal');
     const lineModal = document.getElementById('stockTransferLineModal');
+    const imagePreviewModal = document.getElementById('stockTransferImagePreviewModal');
     if (lineModal) stockTransferLineModalInstance = new bootstrap.Modal(lineModal);
 
     if (createModal) createStockTransferModalInstance = new bootstrap.Modal(createModal);
@@ -160,6 +167,7 @@ function initStockTransferModalInstances() {
     if (rejectModal) rejectStockTransferModalInstance = new bootstrap.Modal(rejectModal);
     if (deleteModal) deleteStockTransferLineModalInstance = new bootstrap.Modal(deleteModal);
     if (actionModal) actionStockTransferModalInstance = new bootstrap.Modal(actionModal);
+    if (imagePreviewModal) stockTransferImagePreviewModalInstance = new bootstrap.Modal(imagePreviewModal);
 }
 
 /* =========================================================
@@ -309,6 +317,467 @@ function bindStockTransferGlobalKeyboard() {
 /* =========================================================
    INDEX
 ========================================================= */
+
+function initStockTransferModernIndex() {
+    bindStockTransferModernIndexEvents();
+    loadStockTransferIndexWarehouses();
+    updateStockTransferFilterUi();
+    loadStockTransferModernIndex();
+}
+
+function getStockTransferIndexRoot() {
+    return document.querySelector('[data-stock-transfer-index]');
+}
+
+function bindStockTransferModernIndexEvents() {
+    document.getElementById('btnReloadStockTransferList')
+        ?.addEventListener('click', function () {
+            stockTransferUiState.index.page = 1;
+            loadStockTransferModernIndex();
+        });
+
+    document.getElementById('btnOpenCreateStockTransferModal')
+        ?.addEventListener('click', async function () {
+            await loadTransferWarehouseOptionsForCreate();
+            resetCreateStockTransferForm();
+            createStockTransferModalInstance?.show();
+        });
+
+    document.getElementById('createStockTransferModal')
+        ?.addEventListener('shown.bs.modal', function () {
+            setTimeout(() => {
+                document.getElementById('createTransferDocumentName')?.focus();
+            }, 150);
+        });
+
+    document.getElementById('btnCreateStockTransfer')
+        ?.addEventListener('click', createStockTransferDocument);
+
+    const keyword = document.getElementById('stKeyword');
+    keyword?.addEventListener('input', function () {
+        updateStockTransferFilterUi();
+        clearTimeout(stockTransferIndexSearchTimer);
+        stockTransferIndexSearchTimer = setTimeout(function () {
+            stockTransferUiState.index.page = 1;
+            loadStockTransferModernIndex();
+        }, 350);
+    });
+
+    document.getElementById('stClearSearch')?.addEventListener('click', function () {
+        if (keyword) keyword.value = '';
+        stockTransferUiState.index.page = 1;
+        updateStockTransferFilterUi();
+        loadStockTransferModernIndex();
+        keyword?.focus();
+    });
+
+    ['stFromWarehouseFilter', 'stToWarehouseFilter', 'stStatus', 'stFromDate', 'stToDate', 'stPageSize']
+        .forEach(id => document.getElementById(id)?.addEventListener('change', function () {
+            if (id === 'stStatus') {
+                stockTransferUiState.index.state = this.value || 'open';
+            }
+
+            stockTransferUiState.index.page = 1;
+            updateStockTransferFilterUi();
+
+            if (stockTransferIndexDatesAreValid()) {
+                loadStockTransferModernIndex();
+            }
+        }));
+
+    document.getElementById('stResetFilters')?.addEventListener('click', resetStockTransferIndexFilters);
+
+    document.querySelectorAll('.st-index-kpi[data-st-state]').forEach(button => {
+        button.addEventListener('click', function () {
+            const requestedState = this.dataset.stState || 'all';
+            stockTransferUiState.index.state = stockTransferUiState.index.state === requestedState
+                ? 'all'
+                : requestedState;
+
+            const status = document.getElementById('stStatus');
+            if (status) status.value = stockTransferUiState.index.state;
+
+            stockTransferUiState.index.page = 1;
+            syncStockTransferDesktopToMobileFilters();
+            updateStockTransferFilterUi();
+            loadStockTransferModernIndex();
+        });
+    });
+
+    document.getElementById('stockTransferPagination')?.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-page]');
+        if (!button || button.disabled) return;
+
+        const page = Number(button.dataset.page || 0);
+        if (page < 1 || page > stockTransferUiState.index.totalPages) return;
+
+        stockTransferUiState.index.page = page;
+        loadStockTransferModernIndex();
+    });
+
+    document.getElementById('stockTransferMobileFilterSheet')
+        ?.addEventListener('show.bs.offcanvas', syncStockTransferDesktopToMobileFilters);
+
+    document.getElementById('stMobileApplyFilters')?.addEventListener('click', function () {
+        syncStockTransferMobileToDesktopFilters();
+        if (!stockTransferIndexDatesAreValid()) return;
+
+        bootstrap.Offcanvas.getInstance(document.getElementById('stockTransferMobileFilterSheet'))?.hide();
+        stockTransferUiState.index.page = 1;
+        updateStockTransferFilterUi();
+        loadStockTransferModernIndex();
+    });
+
+    document.getElementById('stMobileClearFilters')?.addEventListener('click', function () {
+        resetStockTransferIndexFilters();
+        syncStockTransferDesktopToMobileFilters();
+    });
+}
+
+function buildStockTransferModernIndexQuery() {
+    const params = new URLSearchParams();
+    const keyword = document.getElementById('stKeyword')?.value?.trim() || '';
+    const fromWarehouseId = document.getElementById('stFromWarehouseFilter')?.value || '';
+    const toWarehouseId = document.getElementById('stToWarehouseFilter')?.value || '';
+    const fromDate = document.getElementById('stFromDate')?.value || '';
+    const toDate = document.getElementById('stToDate')?.value || '';
+    const pageSize = Number(document.getElementById('stPageSize')?.value || 20);
+
+    stockTransferUiState.index.pageSize = pageSize;
+    stockTransferUiState.index.state = document.getElementById('stStatus')?.value || 'open';
+
+    params.set('page', String(stockTransferUiState.index.page));
+    params.set('pageSize', String(pageSize));
+    params.set('state', stockTransferUiState.index.state);
+    if (keyword) params.set('keyword', keyword);
+    if (fromWarehouseId) params.set('fromWarehouseId', fromWarehouseId);
+    if (toWarehouseId) params.set('toWarehouseId', toWarehouseId);
+    if (fromDate) params.set('fromDate', fromDate);
+    if (toDate) params.set('toDate', toDate);
+
+    return params.toString();
+}
+
+async function loadStockTransferModernIndex() {
+    if (!stockTransferIndexDatesAreValid()) return;
+
+    const root = getStockTransferIndexRoot();
+    if (!root) return;
+
+    const panel = document.getElementById('stockTransferResultsPanel');
+    panel?.setAttribute('aria-busy', 'true');
+    setStockTransferModernLoading();
+
+    stockTransferIndexAbortController?.abort();
+    stockTransferIndexAbortController = new AbortController();
+    const requestSequence = ++stockTransferIndexRequestSequence;
+
+    try {
+        const response = await fetch(
+            `${root.dataset.dataUrl}?${buildStockTransferModernIndexQuery()}`,
+            { signal: stockTransferIndexAbortController.signal });
+        const api = await readStockTransferApiResponse(response);
+
+        if (requestSequence !== stockTransferIndexRequestSequence) return;
+        if (!api.ok) throw new Error(api.data?.message || 'Không tải được danh sách phiếu chuyển kho.');
+
+        const payload = api.data || {};
+        stockTransferUiState.index.items = payload.items || [];
+        stockTransferUiState.index.page = Number(payload.page || 1);
+        stockTransferUiState.index.pageSize = Number(payload.pageSize || 20);
+        stockTransferUiState.index.totalItems = Number(payload.totalItems || 0);
+        stockTransferUiState.index.totalPages = Math.max(1, Number(payload.totalPages || 1));
+
+        renderStockTransferExactSummary(payload.summary || {});
+        renderStockTransferDesktopRows(stockTransferUiState.index.items);
+        renderStockTransferMobileCards(stockTransferUiState.index.items);
+        renderStockTransferCircularPagination();
+        bindStockTransferModernRows();
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        setStockTransferModernError(error?.message || 'Không tải được danh sách phiếu chuyển kho.');
+    } finally {
+        if (requestSequence === stockTransferIndexRequestSequence) {
+            panel?.setAttribute('aria-busy', 'false');
+        }
+    }
+}
+
+function renderStockTransferExactSummary(summary) {
+    document.getElementById('sumTotalTransfers').textContent = stockTransferFormatNumber(summary.totalItems || 0);
+    document.getElementById('sumWorkingTransfers').textContent = stockTransferFormatNumber(summary.workingItems || 0);
+    document.getElementById('sumPendingTransfers').textContent = stockTransferFormatNumber(summary.pendingItems || 0);
+    document.getElementById('sumConfirmedTransfers').textContent = stockTransferFormatNumber(summary.confirmedItems || 0);
+}
+
+function renderStockTransferDesktopRows(items) {
+    const body = document.getElementById('stockTransferIndexBody');
+    if (!body) return;
+
+    if (!items.length) {
+        body.innerHTML = '<tr><td colspan="6" class="gds-empty">Không có phiếu chuyển kho phù hợp.</td></tr>';
+        return;
+    }
+
+    body.innerHTML = items.map(item => `
+        <tr class="st-index-row" data-document-id="${Number(item.documentId)}" tabindex="0">
+            <td>
+                <div class="st-index-doc-no">${stockTransferEscapeHtml(item.documentNo || '')}</div>
+                <div class="st-index-muted">${stockTransferFormatDate(item.documentDate)}</div>
+            </td>
+            <td>
+                <div class="st-index-route">
+                    <span>${stockTransferEscapeHtml(item.fromWarehouseName || '')}</span>
+                    <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+                    <span>${stockTransferEscapeHtml(item.toWarehouseName || '')}</span>
+                </div>
+            </td>
+            <td>
+                <div class="fw-semibold text-dark">${stockTransferFormatNumber(item.totalLines)} dòng</div>
+                <div class="st-index-muted">${stockTransferFormatNumber(item.totalQuantity)} đơn vị chuyển</div>
+            </td>
+            <td>${stockTransferStatusBadge(item.status)}</td>
+            <td><div class="st-index-note">${stockTransferEscapeHtml(item.note || '—')}</div></td>
+            <td class="text-end">
+                <div class="d-inline-flex gap-2">
+                    <button type="button" class="gds-icon-button st-index-quick-button" aria-label="Xem nhanh" title="Xem nhanh">
+                        <i class="bx bx-show" aria-hidden="true"></i>
+                    </button>
+                    <a href="/admin/stock-transfers/${Number(item.documentId)}" class="btn btn-sm btn-primary">Mở phiếu</a>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderStockTransferMobileCards(items) {
+    const list = document.getElementById('stockTransferMobileList');
+    if (!list) return;
+
+    if (!items.length) {
+        list.innerHTML = '<div class="gds-empty">Không có phiếu chuyển kho phù hợp.</div>';
+        return;
+    }
+
+    list.innerHTML = items.map(item => `
+        <article class="st-index-mobile-card" data-document-id="${Number(item.documentId)}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="min-w-0">
+                    <div class="st-index-doc-no">${stockTransferEscapeHtml(item.documentNo || '')}</div>
+                    <div class="st-index-muted">${stockTransferFormatDate(item.documentDate)}</div>
+                </div>
+                ${stockTransferStatusBadge(item.status)}
+            </div>
+            <div class="st-index-mobile-route">
+                <span><small>Kho nguồn</small>${stockTransferEscapeHtml(item.fromWarehouseName || '')}</span>
+                <i class="bx bx-down-arrow-alt" aria-hidden="true"></i>
+                <span><small>Kho đích</small>${stockTransferEscapeHtml(item.toWarehouseName || '')}</span>
+            </div>
+            <div class="st-index-mobile-metrics">
+                <span><strong>${stockTransferFormatNumber(item.totalLines)}</strong> dòng</span>
+                <span><strong>${stockTransferFormatNumber(item.totalQuantity)}</strong> đơn vị chuyển</span>
+            </div>
+            ${item.note ? `<div class="st-index-mobile-note">${stockTransferEscapeHtml(item.note)}</div>` : ''}
+            <div class="d-flex gap-2 mt-3">
+                <button type="button" class="btn btn-label-primary flex-grow-1 st-index-quick-button">
+                    <i class="bx bx-show me-1" aria-hidden="true"></i>Xem nhanh
+                </button>
+                <a href="/admin/stock-transfers/${Number(item.documentId)}" class="btn btn-primary">Mở phiếu</a>
+            </div>
+        </article>
+    `).join('');
+}
+
+function bindStockTransferModernRows() {
+    document.querySelectorAll('[data-document-id]').forEach(item => {
+        item.querySelector('.st-index-quick-button')?.addEventListener('click', function () {
+            openStockTransferQuickDetail(Number(item.dataset.documentId || 0));
+        });
+
+        item.addEventListener('dblclick', function (event) {
+            if (event.target.closest('a,button')) return;
+            openStockTransferQuickDetail(Number(item.dataset.documentId || 0));
+        });
+
+        item.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' || event.target.closest('a,button')) return;
+            event.preventDefault();
+            openStockTransferQuickDetail(Number(item.dataset.documentId || 0));
+        });
+    });
+}
+
+function renderStockTransferCircularPagination() {
+    const pagination = document.getElementById('stockTransferPagination');
+    const info = document.getElementById('stPaginationInfo');
+    if (!pagination || !info) return;
+
+    const page = stockTransferUiState.index.page;
+    const totalPages = stockTransferUiState.index.totalPages;
+    const total = stockTransferUiState.index.totalItems;
+    const first = total === 0 ? 0 : ((page - 1) * stockTransferUiState.index.pageSize) + 1;
+    const last = Math.min(total, page * stockTransferUiState.index.pageSize);
+
+    info.textContent = total === 0
+        ? '0 kết quả'
+        : `${stockTransferFormatNumber(first)}–${stockTransferFormatNumber(last)} / ${stockTransferFormatNumber(total)} phiếu`;
+
+    const pages = getStockTransferVisiblePages(page, totalPages);
+    pagination.innerHTML = `
+        ${stockTransferPageButton(page - 1, '<i class="bx bx-chevron-left"></i>', page <= 1, 'Trang trước')}
+        ${pages.map(value => value === '…'
+            ? '<li class="page-item disabled"><span class="page-link">…</span></li>'
+            : stockTransferPageButton(value, String(value), false, `Trang ${value}`, value === page)).join('')}
+        ${stockTransferPageButton(page + 1, '<i class="bx bx-chevron-right"></i>', page >= totalPages, 'Trang sau')}
+    `;
+}
+
+function getStockTransferVisiblePages(page, totalPages) {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+    if (page <= 3) return [1, 2, 3, 4, '…', totalPages];
+    if (page >= totalPages - 2) return [1, '…', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [1, '…', page - 1, page, page + 1, '…', totalPages];
+}
+
+function stockTransferPageButton(page, content, disabled, label, active = false) {
+    return `<li class="page-item${disabled ? ' disabled' : ''}${active ? ' active' : ''}">
+        <button type="button" class="page-link" data-page="${page}" aria-label="${label}"${disabled ? ' disabled' : ''}>${content}</button>
+    </li>`;
+}
+
+function setStockTransferModernLoading() {
+    const body = document.getElementById('stockTransferIndexBody');
+    const mobile = document.getElementById('stockTransferMobileList');
+    if (body) body.innerHTML = '<tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr>';
+    if (mobile) mobile.innerHTML = '<div class="gds-empty">Đang tải dữ liệu...</div>';
+}
+
+function setStockTransferModernError(message) {
+    const safe = stockTransferEscapeHtml(message);
+    const body = document.getElementById('stockTransferIndexBody');
+    const mobile = document.getElementById('stockTransferMobileList');
+    if (body) body.innerHTML = `<tr><td colspan="6" class="gds-empty text-danger">${safe}</td></tr>`;
+    if (mobile) mobile.innerHTML = `<div class="gds-empty text-danger">${safe}</div>`;
+    showStockTransferToast('danger', 'Không tải được dữ liệu', message);
+}
+
+async function loadStockTransferIndexWarehouses() {
+    const root = getStockTransferIndexRoot();
+    if (!root) return;
+
+    try {
+        const response = await fetch(root.dataset.warehouseUrl || '/admin/api/warehouses/select2?term=');
+        const api = await readStockTransferApiResponse(response);
+        if (!api.ok) return;
+
+        const items = api.data?.results || [];
+        const targets = [
+            ['stFromWarehouseFilter', 'Tất cả kho nguồn'],
+            ['stToWarehouseFilter', 'Tất cả kho đích'],
+            ['stMobileFromWarehouse', 'Tất cả kho nguồn'],
+            ['stMobileToWarehouse', 'Tất cả kho đích']
+        ];
+
+        targets.forEach(([id, emptyLabel]) => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const selected = select.value;
+            select.innerHTML = `<option value="">${emptyLabel}</option>`
+                + items.map(item => `<option value="${Number(item.id)}">${stockTransferEscapeHtml(item.text || '')}</option>`).join('');
+            select.value = selected;
+        });
+    } catch {
+        // The list remains usable without warehouse option hydration.
+    }
+}
+
+function stockTransferIndexDatesAreValid() {
+    const fromDate = document.getElementById('stFromDate')?.value || '';
+    const toDate = document.getElementById('stToDate')?.value || '';
+    const error = document.getElementById('stDateError');
+    const valid = !fromDate || !toDate || fromDate <= toDate;
+    error?.classList.toggle('d-none', valid);
+    return valid;
+}
+
+function updateStockTransferFilterUi() {
+    const keyword = document.getElementById('stKeyword')?.value?.trim() || '';
+    document.getElementById('stClearSearch')?.classList.toggle('d-none', !keyword);
+
+    const activeCount = [
+        keyword,
+        document.getElementById('stFromWarehouseFilter')?.value,
+        document.getElementById('stToWarehouseFilter')?.value,
+        document.getElementById('stFromDate')?.value,
+        document.getElementById('stToDate')?.value,
+        (document.getElementById('stStatus')?.value || 'open') !== 'open' ? 'state' : ''
+    ].filter(Boolean).length;
+
+    document.getElementById('stResetFilters')?.classList.toggle('d-none', activeCount === 0);
+    const badge = document.getElementById('stActiveFilterCount');
+    if (badge) {
+        badge.textContent = String(activeCount);
+        badge.classList.toggle('d-none', activeCount === 0);
+    }
+
+    document.querySelectorAll('.st-index-kpi[data-st-state]').forEach(button => {
+        const active = button.dataset.stState === stockTransferUiState.index.state;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+}
+
+function resetStockTransferIndexFilters() {
+    const defaults = {
+        stKeyword: '', stFromWarehouseFilter: '', stToWarehouseFilter: '',
+        stStatus: 'open', stFromDate: '', stToDate: '', stPageSize: '20'
+    };
+
+    Object.entries(defaults).forEach(([id, value]) => {
+        const element = document.getElementById(id);
+        if (element) element.value = value;
+    });
+
+    stockTransferUiState.index.page = 1;
+    stockTransferUiState.index.state = 'open';
+    syncStockTransferDesktopToMobileFilters();
+    updateStockTransferFilterUi();
+    stockTransferIndexDatesAreValid();
+    loadStockTransferModernIndex();
+}
+
+function syncStockTransferDesktopToMobileFilters() {
+    const pairs = [
+        ['stFromWarehouseFilter', 'stMobileFromWarehouse'],
+        ['stToWarehouseFilter', 'stMobileToWarehouse'],
+        ['stStatus', 'stMobileStatus'],
+        ['stFromDate', 'stMobileFromDate'],
+        ['stToDate', 'stMobileToDate'],
+        ['stPageSize', 'stMobilePageSize']
+    ];
+    pairs.forEach(([desktopId, mobileId]) => {
+        const desktop = document.getElementById(desktopId);
+        const mobile = document.getElementById(mobileId);
+        if (desktop && mobile) mobile.value = desktop.value;
+    });
+}
+
+function syncStockTransferMobileToDesktopFilters() {
+    const pairs = [
+        ['stMobileFromWarehouse', 'stFromWarehouseFilter'],
+        ['stMobileToWarehouse', 'stToWarehouseFilter'],
+        ['stMobileStatus', 'stStatus'],
+        ['stMobileFromDate', 'stFromDate'],
+        ['stMobileToDate', 'stToDate'],
+        ['stMobilePageSize', 'stPageSize']
+    ];
+    pairs.forEach(([mobileId, desktopId]) => {
+        const mobile = document.getElementById(mobileId);
+        const desktop = document.getElementById(desktopId);
+        if (mobile && desktop) desktop.value = mobile.value;
+    });
+    stockTransferUiState.index.state = document.getElementById('stStatus')?.value || 'open';
+}
 
 function bindStockTransferIndexEvents() {
     document.getElementById('btnReloadStockTransferList')
@@ -492,6 +961,167 @@ function bindStockTransferIndexRows() {
 }
 
 async function openStockTransferQuickDetail(id) {
+    if (!id) return;
+
+    const root = getStockTransferIndexRoot();
+    const body = document.getElementById('stockTransferQuickDetailBody');
+    const openBtn = document.getElementById('btnOpenStockTransferDetail');
+    const title = document.getElementById('stockTransferQuickDetailTitle');
+    const date = document.getElementById('stockTransferQuickDate');
+    const state = document.getElementById('stockTransferQuickState');
+
+    if (!root || !body) return;
+    if (openBtn) openBtn.href = `/admin/stock-transfers/${id}`;
+    if (title) title.textContent = 'Thông tin phiếu';
+    if (date) date.textContent = '—';
+    if (state) state.textContent = 'Đang tải';
+    body.innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải thông tin...</div>';
+    quickDetailStockTransferModalInstance?.show();
+
+    try {
+        const response = await fetch(`${root.dataset.quickViewUrl}?documentId=${encodeURIComponent(id)}`);
+        const api = await readStockTransferApiResponse(response);
+        if (!api.ok) throw new Error(api.data?.message || 'Không tải được chi tiết phiếu chuyển kho.');
+
+        const detail = api.data || {};
+        const lines = detail.lines || [];
+        if (title) title.textContent = detail.documentNo || 'Phiếu chuyển kho';
+        if (date) date.textContent = stockTransferFormatDate(detail.documentDate);
+        if (state) {
+            state.className = `st-status ${stockTransferStatusClass(detail.status)}`;
+            state.textContent = detail.statusLabel || stockTransferStatusText(detail.status);
+        }
+
+        body.innerHTML = `
+            <div class="st-index-quick-overview">
+                <div class="st-index-quick-route">
+                    <div><small>Kho nguồn</small><strong>${stockTransferEscapeHtml(detail.fromWarehouseName || '')}</strong></div>
+                    <i class="bx bx-right-arrow-alt" aria-hidden="true"></i>
+                    <div><small>Kho đích</small><strong>${stockTransferEscapeHtml(detail.toWarehouseName || '')}</strong></div>
+                </div>
+                <div class="st-index-quick-metrics">
+                    <div><small>Số dòng</small><strong>${stockTransferFormatNumber(detail.totalLines)}</strong></div>
+                    <div><small>Tổng số lượng chuyển</small><strong>${stockTransferFormatNumber(detail.totalQuantity)}</strong></div>
+                </div>
+            </div>
+
+            <div class="st-index-quick-timeline">
+                ${stockTransferTimelineItem('Gửi duyệt', detail.submittedAtUtc)}
+                ${stockTransferTimelineItem(Number(detail.status) === 2 ? 'Từ chối' : 'Xử lý duyệt', detail.approvedAtUtc)}
+                ${stockTransferTimelineItem('Xác nhận', detail.confirmedAtUtc)}
+            </div>
+
+            <div class="st-index-quick-note">
+                <small>Ghi chú</small>
+                <div>${stockTransferEscapeHtml(detail.note || 'Không có ghi chú.')}</div>
+            </div>
+
+            <div class="st-index-quick-lines">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0 text-dark">Sản phẩm chuyển kho</h5>
+                    <span class="text-muted small">${stockTransferFormatNumber(lines.length)} dòng</span>
+                </div>
+                ${lines.length ? lines.map(renderStockTransferQuickLine).join('') : '<div class="gds-empty">Phiếu chưa có dòng sản phẩm.</div>'}
+            </div>
+        `;
+
+        bindStockTransferQuickImages();
+    } catch (error) {
+        body.innerHTML = `<div class="gds-empty text-danger">${stockTransferEscapeHtml(error?.message || 'Không tải được chi tiết phiếu.')}</div>`;
+    }
+}
+
+function renderStockTransferQuickLine(line) {
+    const image = line.imageUrl
+        ? `<button type="button" class="st-index-line-image st-index-preview-trigger" data-image-url="${stockTransferEscapeHtml(line.imageUrl)}" data-image-title="${stockTransferEscapeHtml(line.productName || 'Sản phẩm')}">
+                <img src="${stockTransferEscapeHtml(line.imageUrl)}" alt="${stockTransferEscapeHtml(line.productName || 'Sản phẩm')}" loading="lazy" />
+           </button>`
+        : '<span class="st-index-line-image is-empty"><i class="bx bx-image" aria-hidden="true"></i></span>';
+
+    return `
+        <article class="st-index-quick-line">
+            ${image}
+            <div class="st-index-quick-product">
+                <strong>${stockTransferEscapeHtml(line.productName || 'Sản phẩm')}</strong>
+                <div class="st-index-muted">
+                    ${line.sku ? `SKU: ${stockTransferEscapeHtml(line.sku)}` : ''}
+                    ${line.barcode ? ` · Barcode: ${stockTransferEscapeHtml(line.barcode)}` : ''}
+                </div>
+            </div>
+            <div class="st-index-quick-unit">
+                <small>Đơn vị</small>
+                <strong>${stockTransferEscapeHtml(line.unitName || '—')}</strong>
+            </div>
+            <div class="st-index-quick-quantity">
+                <small>Số lượng</small>
+                <strong>${stockTransferFormatNumber(line.quantity)}</strong>
+                ${Number(line.baseQuantity) !== Number(line.quantity)
+                    ? `<span>${stockTransferFormatNumber(line.baseQuantity)} đơn vị gốc</span>`
+                    : ''}
+            </div>
+        </article>
+    `;
+}
+
+function stockTransferTimelineItem(label, value) {
+    if (!value) return '';
+    return `<div><small>${label}</small><strong>${stockTransferFormatDateTime(value)}</strong></div>`;
+}
+
+function bindStockTransferQuickImages() {
+    document.querySelectorAll('.st-index-preview-trigger').forEach(button => {
+        button.addEventListener('pointerenter', function () {
+            if (window.matchMedia('(hover: hover)').matches) {
+                showStockTransferImageHoverPreview(this);
+            }
+        });
+        button.addEventListener('pointerleave', hideStockTransferImageHoverPreview);
+        button.addEventListener('focus', function () {
+            if (window.matchMedia('(hover: hover)').matches) {
+                showStockTransferImageHoverPreview(this);
+            }
+        });
+        button.addEventListener('blur', hideStockTransferImageHoverPreview);
+        button.addEventListener('click', function () {
+            openStockTransferImagePreview(this.dataset.imageUrl, this.dataset.imageTitle);
+        });
+    });
+}
+
+function showStockTransferImageHoverPreview(trigger) {
+    hideStockTransferImageHoverPreview();
+    const url = trigger.dataset.imageUrl;
+    if (!url) return;
+
+    stockTransferIndexImageHoverPreview = document.createElement('div');
+    stockTransferIndexImageHoverPreview.className = 'st-index-image-hover-preview';
+    stockTransferIndexImageHoverPreview.innerHTML = `<img src="${stockTransferEscapeHtml(url)}" alt="Ảnh sản phẩm phóng to" />`;
+    document.body.appendChild(stockTransferIndexImageHoverPreview);
+
+    const rect = trigger.getBoundingClientRect();
+    const previewWidth = 260;
+    const left = Math.min(window.innerWidth - previewWidth - 16, rect.right + 12);
+    const top = Math.max(16, Math.min(window.innerHeight - previewWidth - 16, rect.top - 80));
+    stockTransferIndexImageHoverPreview.style.left = `${Math.max(16, left)}px`;
+    stockTransferIndexImageHoverPreview.style.top = `${top}px`;
+}
+
+function hideStockTransferImageHoverPreview() {
+    stockTransferIndexImageHoverPreview?.remove();
+    stockTransferIndexImageHoverPreview = null;
+}
+
+function openStockTransferImagePreview(url, productName) {
+    if (!url) return;
+    hideStockTransferImageHoverPreview();
+    const image = document.getElementById('stockTransferImagePreviewImage');
+    const title = document.getElementById('stockTransferImagePreviewTitle');
+    if (image) image.src = url;
+    if (title) title.textContent = productName || 'Ảnh sản phẩm';
+    stockTransferImagePreviewModalInstance?.show();
+}
+
+async function openStockTransferQuickDetailLegacy(id) {
     const body = document.getElementById('stockTransferQuickDetailBody');
     const openBtn = document.getElementById('btnOpenStockTransferDetail');
 

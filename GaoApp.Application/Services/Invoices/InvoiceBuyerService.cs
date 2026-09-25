@@ -224,10 +224,10 @@ public class InvoiceBuyerService : IInvoiceBuyerService
         }
 
         var buyerTargets = new List<InvoiceHead> { invoiceHead };
-        if (invoiceHead.LegalEntityId.HasValue && !invoiceHead.OriginalInvoiceHeadId.HasValue)
+        if (invoiceHead.OrderId.HasValue && invoiceHead.LegalEntityId.HasValue && !invoiceHead.OriginalInvoiceHeadId.HasValue)
         {
             var siblingHeads = await _invoiceRepository
-                .GetOriginalInvoiceHeadsWithDetailsByOrderIdAsync(invoiceHead.OrderId, ct);
+                .GetOriginalInvoiceHeadsWithDetailsByOrderIdAsync(invoiceHead.OrderId.Value, ct);
             buyerTargets = siblingHeads
                 .Where(x =>
                     x.LegalEntityId.HasValue &&

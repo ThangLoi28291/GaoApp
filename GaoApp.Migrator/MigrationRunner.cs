@@ -15,6 +15,6 @@ public sealed class MigrationRunner
         _pipeline = pipeline;
     }
 
-    public Task RunAsync(CancellationToken ct = default)
-        => _pipeline.RunAsync(ct);
+    public Task RunAsync(MigratorMode mode, CancellationToken ct = default)
+        => _pipeline.RunAsync(mode, ct);
 }

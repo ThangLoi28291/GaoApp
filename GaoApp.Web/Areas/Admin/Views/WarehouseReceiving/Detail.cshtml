@@ -1,9 +1,11 @@
-﻿@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
 @using GaoApp.Domain.Enums
 @using GaoApp.Application.DTOs.Purchases
 
 @{
     ViewData["Title"] = "Nhập hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 
     var canEdit = Model.Status == StockDocumentStatus.Draft
@@ -17,8 +19,9 @@
         _ => Model.Status.ToString()
     };
 
-    var totalLines = Model.Lines?.Count ?? 0;
-    var totalQty = Model.Lines?.Sum(x => x.Quantity) ?? 0;
+    var receivedIntake = Model.ProvisionalItems.Where(x => x.Status == StockDocumentProvisionalItemStatus.Unresolved && x.ProposedFactor.HasValue).ToList();
+    var totalLines = (Model.Lines?.Count ?? 0) + receivedIntake.Count;
+    var totalQty = (Model.Lines?.Sum(x => x.Quantity) ?? 0) + receivedIntake.Sum(x => x.Quantity);
     var canQuickCreateProduct = ViewBag.CanQuickCreateProduct as bool? ?? false;
     var canCreateUnit = ViewBag.CanCreateUnit as bool? ?? false;
     var quickCreateOptions = ViewBag.ProcurementQuickCreateOptions as ProcurementQuickCreateOptionsDto
@@ -28,11 +31,16 @@
 @section VendorStyles {
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
-    <link href="~/admin/css/warehouse-receiving-detail.css" rel="stylesheet" />
+    <link href="~/admin/css/warehouse-receiving-detail.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/admin/css/warehouse-receiving-mobile.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/admin/css/warehouse-receiving-feedback.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/admin/css/warehouse-receiving-app.css" rel="stylesheet" asp-append-version="true" />
 }
 
-<div class="container-xxl flex-grow-1 container-p-y wrd-page">
+<div class="wrd-page">
+    @await Html.PartialAsync("_ReceivingApp", Model)
     <input type="hidden" id="StockDocumentId" value="@Model.Id" />
+    @await Html.PartialAsync("_ReceiptIntake", Model.Id)
     <input type="hidden" id="CanEditReceiving" value="@canEdit.ToString().ToLower()" />
     <div class="d-none" id="warehouseReceivingAntiforgery">@Html.AntiForgeryToken()</div>
     @if (canEdit)
@@ -138,16 +146,17 @@
                 <div class="wrd-panel wrd-scan-panel">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
                         <div class="wrd-panel-title mb-0">Quét mã vạch / tìm sản phẩm</div>
-                        @if (canQuickCreateProduct)
-                        {
-                            <button type="button" class="btn btn-sm btn-outline-warning" id="btnReceivingQuickCreateProduct">
-                                <i class="bx bx-plus-circle me-1"></i>Hàng mới <span class="ms-1 opacity-75">F4</span>
-                            </button>
-                        }
                     </div>
-                    <select id="quickLookupInput" class="form-select"></select>
+                    @await Html.PartialAsync("_MobileCapture")
+                    <div class="wrd-desktop-lookup"><select id="quickLookupInput" class="form-select" aria-label="Tìm sản phẩm"></select></div>
+                    @await Html.PartialAsync("_ScanFeedback")
                     <div class="wrd-hint">Quét barcode hoặc gõ tên sản phẩm, Enter để chọn. Không tìm thấy thì bấm F4 để tạo hàng chờ hoàn thiện.</div>
                 </div>
+            }
+
+            @if (!canEdit)
+            {
+                <div class="wrd-panel wrd-scan-panel">@await Html.PartialAsync("_ScanFeedback")</div>
             }
 
             <div class="wrd-panel">
@@ -221,10 +230,10 @@
                 <input type="hidden" id="popupProductVariantId" />
                 <input type="hidden" id="popupUnitId" />
 
-                <div class="row g-3 align-items-start">
-                    <div class="col-md-3">
+                <div class="row g-3 align-items-start wrd-popup-product">
+                    <div class="col-md-3 wrd-popup-photo">
                         <div class="wrd-product-img-box">
-                            <img id="popupProductImage" class="wrd-product-img d-none" src="" />
+                            <img id="popupProductImage" class="wrd-product-img d-none" alt="Ảnh sản phẩm đang nhập" />
                             <div id="popupProductNoImage" class="wrd-no-img">
                                 <i class="bx bx-image fs-1"></i>
                                 <div>Chưa có ảnh</div>
@@ -232,7 +241,7 @@
                         </div>
                     </div>
 
-                    <div class="col-md-9">
+                    <div class="col-md-9 wrd-popup-details">
                         <h5 id="popupProductName" class="wrd-product-title">-</h5>
 
                         <div class="wrd-popup-grid">
@@ -247,12 +256,12 @@
                             </div>
 
                             <div class="wrd-popup-box">
-                                <div class="wrd-info-label">Factor</div>
+                                <div class="wrd-info-label">Quy đổi</div>
                                 <div class="wrd-info-value" id="popupFactor">1</div>
                             </div>
 
-                            <div class="wrd-popup-box">
-                                <div class="wrd-info-label">SL gốc dự kiến</div>
+                            <div class="wrd-popup-box" id="popupBaseQuantityBox">
+                                <div class="wrd-info-label">Tương đương</div>
                                 <div class="wrd-info-value" id="popupBaseQty">1</div>
                             </div>
                         </div>
@@ -262,14 +271,14 @@
                         </div>
                         <div class="mt-3">
                             <label class="form-label fw-bold">Số lượng nhập</label>
-                            <input type="number"
+                            <div class="wrd-qty-stepper"><button type="button" data-popup-step="-1" aria-label="Giảm số lượng nhập">−</button><input type="number"
                                    id="popupQuickQty"
                                    class="form-control form-control-lg wrd-qty-input"
                                    value="1"
                                    min="0.001"
                                    step="0.001"
                                    inputmode="decimal"
-                                   autocomplete="off" />
+                                   autocomplete="off" /><button type="button" data-popup-step="1" aria-label="Tăng số lượng nhập">+</button></div>
                         </div>
 
                         <div class="text-danger small mt-2" id="popupQuickMessage"></div>
@@ -282,6 +291,7 @@
                 <button type="button" class="btn btn-primary px-4" id="btnPopupQuickAddLine">
                     Thêm dòng
                 </button>
+                <button type="button" class="btn btn-success" id="wrdAddAndScan">Thêm &amp; quét tiếp</button>
             </div>
         </div>
     </div>
@@ -490,13 +500,20 @@
     </div>
 </div>
 @section PageScripts {
+    <script src="~/Admin/js/receipt-barcode-proposals.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/receipt-intake.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/receipt-quantity-controls.js" asp-append-version="true"></script>
     <script>
         window.warehouseReceivingDetail = {
             documentId: @Model.Id,
-            rowVersion: '@Model.RowVersion'
+            rowVersion: @Json.Serialize(Model.RowVersion)
         };
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    <script src="~/admin/js/warehouse-receiving-detail.js"></script>
+    <script src="~/admin/js/warehouse-receiving-detail.js" asp-append-version="true"></script>
+    <script src="~/admin/js/warehouse-receiving-feedback.js" asp-append-version="true"></script>
+    <script src="~/admin/js/warehouse-receiving-mobile.js" asp-append-version="true"></script>
+    <script src="~/admin/js/warehouse-receiving-quantity.js" asp-append-version="true"></script>
+    <script src="~/admin/js/warehouse-receiving-app.js" asp-append-version="true"></script>
 }

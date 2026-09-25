@@ -1,4 +1,4 @@
-﻿namespace GaoApp.Application.Common.Security;
+namespace GaoApp.Application.Common.Security;
 
 /// <summary>
 /// Trung tâm định nghĩa toàn bộ permission code chuẩn của hệ thống.
@@ -10,6 +10,20 @@
 /// </summary>
 public static class PermissionCodes
 {
+    public static class CustomerDeposit
+    {
+        public const string View = "customer.deposit.view";
+        public const string Receive = "customer.deposit.receive";
+        public const string Use = "customer.deposit.use";
+        public const string Refund = "customer.deposit.refund";
+    }
+    public static class CustomerDebt
+    {
+        public const string View = "customer.debt.view";
+        public const string Sell = "customer.debt.sell";
+        public const string Collect = "customer.debt.collect";
+    }
+
     public static class Admin
     {
         public const string DashboardView = "admin.dashboard.view";
@@ -17,6 +31,25 @@ public static class PermissionCodes
 
     public static class Catalog
     {
+        public static class Tax
+        {
+            public const string View = "catalog.tax.view";
+            public const string Create = "catalog.tax.create";
+            public const string Update = "catalog.tax.update";
+            public const string Delete = "catalog.tax.delete";
+        }
+
+        public static class Promotion
+        {
+            public const string View = "catalog.promotion.view";
+            public const string Manage = "catalog.promotion.manage";
+        }
+
+        public static class DisplayPromotion
+        {
+            public const string View = "catalog.displaypromotion.view";
+            public const string Manage = "catalog.displaypromotion.manage";
+        }
         public static class Category
         {
             public const string View = "catalog.category.view";
@@ -100,6 +133,7 @@ public static class PermissionCodes
         /// </summary>
         public static class Customer
         {
+            public const string ManageRewards = "catalog.customer.managerewards";
             public const string View = "catalog.customer.view";
             public const string Create = "catalog.customer.create";
             public const string Update = "catalog.customer.update";
@@ -421,6 +455,23 @@ public static class PermissionCodes
 
     public static class System
     {
+        public static class ReceiptTemplate
+        {
+            public const string Manage = "system.receipttemplate.manage";
+        }
+
+        public static class ProductLabel
+        {
+            public const string Manage = "system.productlabel.manage";
+            public const string Print = "system.productlabel.print";
+        }
+
+        public static class BankAccount
+        {
+            public const string View = "system.bankaccount.view";
+            public const string Manage = "system.bankaccount.manage";
+        }
+
         public static class Store
         {
             public const string View = "system.store.view";

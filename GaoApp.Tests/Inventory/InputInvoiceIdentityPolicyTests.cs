@@ -1,4 +1,5 @@
 using FluentAssertions;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
@@ -78,6 +79,19 @@ public sealed class InputInvoiceIdentityPolicyTests
             " 031.277-0607\t\r\n/001 ");
 
         normalized.Should().Be("0312770607/001");
+    }
+
+    [Theory]
+    [InlineData(" 031.277-0607\t\r\n/001 ", "0312770607/001")]
+    [InlineData("000-001", "000001")]
+    [InlineData("đvt-01", "ĐVT01")]
+    [InlineData(" . - \t\r\n ", null)]
+    public void Shared_tax_code_normalizer_should_preserve_c1_output(
+        string input,
+        string? expected)
+    {
+        TaxCodeIdentityNormalizer.Normalize(input).Should().Be(expected);
+        InputInvoiceIdentityPolicy.NormalizeTaxCode(input).Should().Be(expected);
     }
 
     [Fact]

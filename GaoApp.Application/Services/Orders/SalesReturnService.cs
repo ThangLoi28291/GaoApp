@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Returns;
@@ -34,8 +34,11 @@ public sealed class SalesReturnService : ISalesReturnService
     {
         public required SalesReturnLine Line { get; init; }
         public required IReadOnlyList<ReturnCostAllocationDto> Allocations { get; init; }
+        public required IReadOnlyList<ReturnableValuationFragmentDto> Fragments { get; init; }
     }
 
+    private readonly ICustomerDepositService? _deposits;
+    private readonly ICustomerReceivableService? _receivables;
     private readonly IUnitOfWork _uow;
     private readonly IOrderRepository _orders;
     private readonly ISalesReturnRepository _salesReturns;
@@ -70,8 +73,11 @@ public sealed class SalesReturnService : ISalesReturnService
         ICustomerRewardLedgerRepository rewardLedgers,
         IOrderRewardCalculator orderRewardCalculator,
         IOrderLegalEntityReversalService legalEntityReversalService,
-        IDraftInvoiceReturnSyncService draftInvoiceReturnSyncService)
+        IDraftInvoiceReturnSyncService draftInvoiceReturnSyncService,
+        ICustomerReceivableService? receivables = null, ICustomerDepositService? deposits = null)
     {
+        _deposits = deposits;
+        _receivables = receivables;
         _uow = uow;
         _orders = orders;
         _salesReturns = salesReturns;
@@ -128,6 +134,7 @@ public sealed class SalesReturnService : ISalesReturnService
             // =====================================================
             // 1. Load order gốc
             // =====================================================
+            if (_receivables != null) await _receivables.LockOrderAsync(request.OrderId, ct);
             var order = await _orders.GetByIdWithDetailsAsync(request.OrderId, ct)
                 ?? throw new InvalidOperationException("Không tìm thấy order.");
 
@@ -159,7 +166,11 @@ public sealed class SalesReturnService : ISalesReturnService
             // 3. Kiểm tra giới hạn số tiền còn được refund
             // =====================================================
             var alreadyRefunded = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
-            var requestedRefund = request.Payments.Sum(x => x.Amount);
+            var requestedRefund = request.Payments.Sum(x => x.Amount) + request.DepositRefundAmount;
+            if (request.DepositRefundAmount < 0 || request.DepositRefundAmount != decimal.Truncate(request.DepositRefundAmount))
+                throw new GaoApp.Application.Common.Exceptions.BusinessRuleException("Số hoàn vào cọc không hợp lệ.");
+            if (request.DepositRefundAmount > 0 && (_deposits == null || request.DepositRefundAmount > await _deposits.GetReturnableAsync(order, ct)))
+                throw new GaoApp.Application.Common.Exceptions.BusinessRuleException("Số hoàn vào cọc vượt phần cọc còn có thể hoàn.");
             var maxRefundable = order.PaidTotal;
 
             if (requestedRefund < 0)
@@ -304,12 +315,17 @@ public sealed class SalesReturnService : ISalesReturnService
 
             entity.ReturnSubtotal = entity.Lines.Sum(x => x.RefundLineTotal);
             entity.RefundTotal = entity.Payments.Sum(x => x.Amount);
+            entity.DepositRestoredTotal = request.DepositRefundAmount;
+            if (order.DepositAmount > 0 && entity.RefundTotal + entity.DepositRestoredTotal > Math.Max(0, entity.ReturnSubtotal - order.BalanceDue))
+                throw new GaoApp.Application.Common.Exceptions.BusinessRuleException("Tiền hoàn vượt giá trị hàng trả sau khi trừ công nợ.");
 
             // =====================================================
             // 7. Lưu phiếu trước để có ID
             // =====================================================
             await _salesReturns.AddAsync(entity, ct);
             await _salesReturns.SaveChangesAsync(ct);
+            if (_receivables != null) await _receivables.PostReturnAsync(order, entity, ct);
+            if (_deposits != null) await _deposits.RestoreReturnAsync(order, entity, ct);
 
             // =====================================================
             // 8. Chỉ các dòng Restock mới được:
@@ -382,16 +398,17 @@ public sealed class SalesReturnService : ISalesReturnService
                     new LegacyRestockPlan
                     {
                         Line = line,
-                        Allocations = allocations
+                        Allocations = allocations,
+                        Fragments = fragments
                     });
             }
 
             var balanceKeys = legalEntityBatch.LockKeys
-                .Concat(legacyPlansByLineId.Values.Select(x =>
+                .Concat(legacyPlansByLineId.Values.SelectMany(x => x.Fragments.Select(fragment =>
                     new InventoryPostingLockKey(
                         order.StoreId,
-                        warehouse.Id,
-                        x.Line.VariantId)))
+                        fragment.WarehouseId,
+                        fragment.ProductVariantId))))
                 .Distinct()
                 .ToList();
             if (balanceKeys.Count > 0)
@@ -423,7 +440,15 @@ public sealed class SalesReturnService : ISalesReturnService
                     continue;
                 }
 
-                var allocations = legacyPlan.Allocations;
+                var freshFragments = await _returnableValuationFragmentService.GetForOrderLineAsync(
+                    order.Id, line.OrderLineId, ct);
+                var allocations = _returnCostAllocator.Allocate(freshFragments, line.ReturnBaseQuantity);
+                if (!legacyPlan.Allocations.Select(x => (x.SourceValuationEntryId, x.Quantity))
+                        .SequenceEqual(allocations.Select(x => (x.SourceValuationEntryId, x.Quantity))) ||
+                    freshFragments.Any(x => !balanceKeys.Contains(new InventoryPostingLockKey(
+                        order.StoreId, x.WarehouseId, x.ProductVariantId))))
+                    throw new InvalidOperationException("Restock source plan changed after locking; retry the operation.");
+                var sourceById = freshFragments.ToDictionary(x => x.SourceValuationEntryId);
                 line.LineCostTotal = allocations
                     .Sum(x => x.Quantity * x.UnitCost);
                 line.UnitCostSnapshot = line.ReturnBaseQuantity > 0
@@ -437,10 +462,13 @@ public sealed class SalesReturnService : ISalesReturnService
                 for (var i = 0; i < allocations.Count; i++)
                 {
                     var allocation = allocations[i];
+                    var sourceFragment = sourceById[allocation.SourceValuationEntryId];
+                    if (sourceFragment.ProductVariantId != line.VariantId)
+                        throw new InvalidOperationException("Restock source variant mismatch.");
                     var referenceSubKey =
                         $"RET:{line.Id}:ALLOC:{i + 1}:SRC:{allocation.SourceValuationEntryId}";
                     var movement = _inventoryMovementFactory.CreateSaleRefund(
-                        warehouse.Id,
+                        sourceFragment.WarehouseId,
                         line.VariantId,
                         entity.Id,
                         line.Id,
@@ -499,9 +527,9 @@ public sealed class SalesReturnService : ISalesReturnService
             // =====================================================
             // 10. Nếu sau phiếu này order đã refund đủ tiền thì set PaymentStatus
             // =====================================================
-            if (entity.RefundTotal > 0)
+            if (entity.RefundTotal + entity.DepositRestoredTotal > 0)
             {
-                var totalRefundedAfterThis = alreadyRefunded + entity.RefundTotal;
+                var totalRefundedAfterThis = alreadyRefunded + entity.RefundTotal + entity.DepositRestoredTotal;
 
                 if (totalRefundedAfterThis >= order.PaidTotal)
                 {
@@ -611,6 +639,9 @@ public sealed class SalesReturnService : ISalesReturnService
             GrandTotal = order.GrandTotal,
             PaidTotal = order.PaidTotal,
             RefundedTotal = refundedTotal,
+            DepositRefundable = _deposits != null ? await _deposits.GetReturnableAsync(order, ct) : 0,
+            IsCreditSale = order.IsCreditSale,
+            BalanceDue = order.BalanceDue,
             RefundableRemaining = order.PaidTotal - refundedTotal
         };
 
@@ -668,6 +699,7 @@ public sealed class SalesReturnService : ISalesReturnService
             Note = entity.Note,
             ReturnSubtotal = entity.ReturnSubtotal,
             RefundTotal = entity.RefundTotal,
+            DepositRestoredTotal = entity.DepositRestoredTotal,
             CreatedAtUtc = entity.CreatedAtUtc,
             Lines = entity.Lines.Select(x => new SalesReturnLineDto
             {
@@ -704,11 +736,11 @@ public sealed class SalesReturnService : ISalesReturnService
 
     /// <summary>
     /// Sinh mã phiếu return.
-    /// Có thể đổi sang sequence nếu sau này cần unique mạnh hơn.
+    /// Include a random suffix so separate returns in the same second cannot reuse the timestamp number.
     /// </summary>
     private Task<string> GenerateReturnNumberAsync(CancellationToken ct)
     {
-        return Task.FromResult($"RTN-{DateTime.Now:yyyyMMddHHmmss}");
+        return Task.FromResult($"RTN-{DateTime.Now:yyyyMMdd}-{Guid.NewGuid():N}"[..29]);
     }
     private async Task ApplyRewardDeductionForSalesReturnAsync(
     Order order,
@@ -729,16 +761,20 @@ public sealed class SalesReturnService : ISalesReturnService
         if (existed)
             return;
 
-        var calculation = await _orderRewardCalculator.CalculateAsync(order.Id, ct);
+        var earned = await _rewardLedgers.GetOrderLedgerAmountAsync(order.Id, CustomerRewardLedgerType.SaleEarned, ct);
+        if (earned <= 0) return;
+        var calculation = await _orderRewardCalculator.CalculateForReturnAsync(order.Id, ct);
 
-        var rewardableOrderLineIds = calculation.Lines
-            .Where(x => x.IsRewardable)
-            .Select(x => x.OrderLineId)
-            .ToHashSet();
+        var rewardableLines = calculation.Lines
+            .Where(x => x.IsRewardable && x.Quantity > 0)
+            .ToDictionary(x => x.OrderLineId);
 
         var deductAmount = salesReturn.Lines
-            .Where(x => rewardableOrderLineIds.Contains(x.OrderLineId))
-            .Sum(x => x.RefundLineTotal);
+            .Where(x => rewardableLines.ContainsKey(x.OrderLineId))
+            .Sum(x => Math.Round(rewardableLines[x.OrderLineId].RewardableAmount
+                * x.ReturnQuantity / rewardableLines[x.OrderLineId].Quantity, 2, MidpointRounding.AwayFromZero));
+        var alreadyDeducted = await _rewardLedgers.GetOrderLedgerAmountAsync(order.Id, CustomerRewardLedgerType.ReturnDeducted, ct);
+        deductAmount = Math.Min(deductAmount, Math.Max(0, earned + alreadyDeducted));
 
         if (deductAmount <= 0)
             return;

@@ -33,6 +33,9 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
                 Error.NotFound("Không tìm thấy hóa đơn."));
         }
 
+        if (original.LegacyReadOnly)
+            return Result<InvoiceCorrectionCreateInfoDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu."));
+
         var validate = ValidateOriginalInvoice(
             original,
             type);
@@ -124,6 +127,9 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             return Result<CreateInvoiceCorrectionResultDto>.Failure(
                 Error.NotFound("Không tìm thấy hóa đơn."));
         }
+
+        if (original.LegacyReadOnly)
+            return Result<CreateInvoiceCorrectionResultDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu."));
 
         var validate = ValidateOriginalInvoice(
             original,

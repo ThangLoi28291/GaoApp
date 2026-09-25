@@ -1,0 +1,5 @@
+{
+  "PackageId": "GSTORE-03-RETURN-ARCHIVE-V1",
+  "SourceTables": ["Order", "OrderDetail", "User"],
+  "TargetTables": ["LegacyReturnArchives"]
+}

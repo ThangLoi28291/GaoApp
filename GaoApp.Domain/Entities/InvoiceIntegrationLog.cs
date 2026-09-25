@@ -12,6 +12,8 @@ public class InvoiceIntegrationLog : BaseStoreEntity
 
     public InvoiceHead InvoiceHead { get; set; } = default!;
 
+    public int? AutoInvoiceOperationId { get; set; }
+
     public InvoiceIntegrationActionType ActionType { get; set; }
 
     [StringLength(500)]

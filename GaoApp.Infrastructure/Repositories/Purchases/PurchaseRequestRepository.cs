@@ -192,63 +192,150 @@ public sealed class PurchaseRequestRepository : IPurchaseRequestRepository
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
-        var query = _db.ProductUnitConversions.AsNoTracking().Where(x =>
-            x.StoreId == storeId && x.IsActive && x.ProductVariant.IsActive && x.ProductVariant.Product.IsActive);
+        term = string.IsNullOrWhiteSpace(term) ? null : term.Trim();
+        var openStatuses = new[]
+        {
+            PurchaseRequestStatus.PendingApproval,
+            PurchaseRequestStatus.Approved,
+            PurchaseRequestStatus.PartiallyConverted
+        };
+        var query = _db.ProductVariants.AsNoTracking().Where(x =>
+            x.StoreId == storeId && x.IsActive && x.Product.IsActive &&
+            x.UnitConversions.Any(c => c.IsActive));
 
-        if (!string.IsNullOrWhiteSpace(term))
+        if (term != null)
         {
             query = query.Where(x =>
-                x.ProductVariant.Product.Name.Contains(term) ||
-                (x.ProductVariant.ProductVariantName != null && x.ProductVariant.ProductVariantName.Contains(term)) ||
-                (x.ProductVariant.ProductVariantNameNormalized != null && x.ProductVariant.ProductVariantNameNormalized.Contains(term)) ||
-                x.ProductVariant.Sku.Contains(term) ||
-                x.Barcodes.Any(b => b.IsActive && b.Barcode.Contains(term)));
+                x.Product.Name.Contains(term) ||
+                (x.ProductVariantName != null && x.ProductVariantName.Contains(term)) ||
+                (x.ProductVariantNameNormalized != null && x.ProductVariantNameNormalized.Contains(term)) ||
+                x.Sku.Contains(term) ||
+                x.UnitConversions.Any(c => c.IsActive && c.Barcodes.Any(b => b.IsActive && b.Barcode.Contains(term))) ||
+                _db.ProductVariantBarcodeHistories.Any(h =>
+                    h.StoreId == storeId && !h.IsDeleted && h.ProductVariantId == x.Id &&
+                    (h.OldBarcode == term || h.NewBarcode == term)));
         }
 
-        var items = await query
-            .OrderBy(x => x.ProductVariant.Product.Name)
-            .ThenBy(x => x.ProductVariant.ProductVariantName)
-            .ThenBy(x => x.SortOrder)
+        var ordered = term == null
+            ? query.OrderBy(x => x.Product.Name).ThenBy(x => x.ProductVariantName)
+            : query
+                .OrderByDescending(x => x.UnitConversions.Any(c =>
+                    c.IsActive && c.Barcodes.Any(b => b.IsActive && b.Barcode == term)))
+                .ThenByDescending(x => x.Sku == term)
+                .ThenByDescending(x => _db.ProductVariantBarcodeHistories.Any(h =>
+                    h.StoreId == storeId && !h.IsDeleted && h.ProductVariantId == x.Id &&
+                    (h.OldBarcode == term || h.NewBarcode == term)))
+                .ThenBy(x => x.Product.Name)
+                .ThenBy(x => x.ProductVariantName);
+
+        var items = await ordered
             .ThenBy(x => x.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize + 1)
             .Select(x => new PurchaseRequestProductLookupDto
             {
-                ProductVariantId = x.ProductVariantId,
-                ProductUnitConversionId = x.Id,
-                UnitId = x.UnitId,
-                Text = string.IsNullOrWhiteSpace(x.ProductVariant.ProductVariantName)
-                    ? x.ProductVariant.Product.Name
-                    : x.ProductVariant.ProductVariantName!,
-                Sku = x.ProductVariant.Sku,
-                UnitName = x.Unit.Name,
-                Factor = x.Factor,
-                Barcode = x.Barcodes.Where(b => b.IsActive).OrderByDescending(b => b.IsPrimary)
-                    .ThenBy(b => b.Id).Select(b => b.Barcode).FirstOrDefault(),
-                ImageUrl = x.ProductVariant.PrimaryProductImage != null
-                    ? x.ProductVariant.PrimaryProductImage.MediaAsset.StoragePath
+                ProductVariantId = x.Id,
+                Text = string.IsNullOrWhiteSpace(x.ProductVariantName)
+                    ? x.Product.Name
+                    : x.ProductVariantName!,
+                Sku = x.Sku,
+                ImageUrl = x.PrimaryProductImage != null
+                    ? x.PrimaryProductImage.MediaAsset.StoragePath
                     : null,
                 CurrentStockBaseQuantity = _db.InventoryBalances
-                    .Where(b => b.ProductVariantId == x.ProductVariantId)
+                    .Where(b => b.ProductVariantId == x.Id)
                     .Sum(b => (decimal?)b.OnHandQty) ?? 0m,
                 IncomingBaseQuantity = _db.PurchaseOrderLines
-                    .Where(l => l.ProductVariantId == x.ProductVariantId &&
+                    .Where(l => l.ProductVariantId == x.Id &&
                         (l.PurchaseOrder.Status == PurchaseOrderStatus.Approved ||
                          l.PurchaseOrder.Status == PurchaseOrderStatus.SentToSupplier ||
                          l.PurchaseOrder.Status == PurchaseOrderStatus.PartiallyReceived))
                     .Sum(l => (decimal?)((l.OrderedQuantity - l.ReceivedQuantity - l.ShortClosedQuantity) * l.ConversionFactor)) ?? 0m,
                 HasOpenRequest = _db.PurchaseRequestLines.Any(l =>
-                    l.ProductVariantId == x.ProductVariantId &&
-                    (l.PurchaseRequest.Status == PurchaseRequestStatus.PendingApproval ||
-                     l.PurchaseRequest.Status == PurchaseRequestStatus.Approved ||
-                     l.PurchaseRequest.Status == PurchaseRequestStatus.PartiallyConverted))
+                    l.ProductVariantId == x.Id && openStatuses.Contains(l.PurchaseRequest.Status)),
+                OpenRequestCount = _db.PurchaseRequestLines
+                    .Where(l => l.ProductVariantId == x.Id && openStatuses.Contains(l.PurchaseRequest.Status))
+                    .Select(l => l.PurchaseRequestId)
+                    .Distinct()
+                    .Count(),
+                OpenRequestBaseQuantity = _db.PurchaseRequestLines
+                    .Where(l => l.ProductVariantId == x.Id && openStatuses.Contains(l.PurchaseRequest.Status))
+                    .Sum(l => (decimal?)(l.RequestedQuantity * l.ConversionFactor)) ?? 0m,
+                OpenRequestNumber = _db.PurchaseRequestLines
+                    .Where(l => l.ProductVariantId == x.Id && openStatuses.Contains(l.PurchaseRequest.Status))
+                    .OrderByDescending(l => l.PurchaseRequest.CreatedAtUtc)
+                    .Select(l => l.PurchaseRequest.RequestNumber)
+                    .FirstOrDefault()
             })
             .ToListAsync(ct);
 
+        var hasMore = items.Count > pageSize;
+        items = items.Take(pageSize).ToList();
+        var variantIds = items.Select(x => x.ProductVariantId).ToArray();
+        var unitOptions = await _db.ProductUnitConversions.AsNoTracking()
+            .Where(x => x.StoreId == storeId && x.IsActive && variantIds.Contains(x.ProductVariantId))
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.Id)
+            .Select(x => new
+            {
+                ProductVariantId = x.ProductVariantId,
+                Option = new PurchaseRequestProductUnitOptionDto
+                {
+                    ProductUnitConversionId = x.Id,
+                    UnitId = x.UnitId,
+                    UnitName = x.Unit.Name,
+                    Factor = x.Factor,
+                    Barcode = x.Barcodes.Where(b => b.IsActive)
+                        .OrderByDescending(b => term != null && b.Barcode == term)
+                        .ThenByDescending(b => b.IsPrimary)
+                        .ThenBy(b => b.Id)
+                        .Select(b => b.Barcode)
+                        .FirstOrDefault(),
+                    IsBaseUnit = x.IsBaseUnit,
+                    IsDefaultForSale = x.IsDefaultForSale,
+                    IsBarcodeMatch = term != null && x.Barcodes.Any(b => b.IsActive && b.Barcode == term)
+                }
+            })
+            .ToListAsync(ct);
+
+        HashSet<int> historicalMatches = new();
+        if (term != null && variantIds.Length > 0)
+        {
+            historicalMatches = (await _db.ProductVariantBarcodeHistories.AsNoTracking()
+                .Where(x => x.StoreId == storeId && !x.IsDeleted && variantIds.Contains(x.ProductVariantId) &&
+                    (x.OldBarcode == term || x.NewBarcode == term))
+                .Select(x => x.ProductUnitConversionId)
+                .Distinct()
+                .ToListAsync(ct)).ToHashSet();
+        }
+
+        var optionsByVariant = unitOptions
+            .GroupBy(x => x.ProductVariantId)
+            .ToDictionary(x => x.Key, x => x.Select(y => y.Option).ToList());
+        foreach (var item in items)
+        {
+            item.UnitOptions = optionsByVariant.GetValueOrDefault(item.ProductVariantId) ?? new();
+            foreach (var option in item.UnitOptions)
+                option.IsHistoricalBarcodeMatch = historicalMatches.Contains(option.ProductUnitConversionId) && !option.IsBarcodeMatch;
+
+            var selected = item.UnitOptions
+                .OrderByDescending(x => x.IsBarcodeMatch)
+                .ThenByDescending(x => x.IsHistoricalBarcodeMatch)
+                .ThenByDescending(x => x.IsDefaultForSale)
+                .ThenByDescending(x => x.IsBaseUnit)
+                .FirstOrDefault();
+            if (selected == null) continue;
+            item.ProductUnitConversionId = selected.ProductUnitConversionId;
+            item.UnitId = selected.UnitId;
+            item.UnitName = selected.UnitName;
+            item.Factor = selected.Factor;
+            item.Barcode = selected.Barcode;
+        }
+
         return new PurchaseLookupPageDto<PurchaseRequestProductLookupDto>
         {
-            HasMore = items.Count > pageSize,
-            Items = items.Take(pageSize).ToList()
+            HasMore = hasMore,
+            Items = items
         };
     }
 

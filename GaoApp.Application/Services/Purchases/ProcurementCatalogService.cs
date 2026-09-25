@@ -122,6 +122,15 @@ public sealed class ProcurementCatalogService : IProcurementCatalogService
         }
     }
 
+    public Task<ProcurementCreatedProductDto> CreateProductWithinTransactionAsync(
+        QuickCreateProcurementProductRequest request,
+        bool canCreateUnit,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return CreateProductCoreAsync(request, canCreateUnit, ct);
+    }
+
     public async Task<ProcurementCreatedProductDto> QuickCreateAndResolvePurchaseOrderLineAsync(
         int purchaseOrderId,
         int purchaseOrderLineId,

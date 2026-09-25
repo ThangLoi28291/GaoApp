@@ -136,8 +136,22 @@ public class BrandServiceCancellationTests
             int page,
             int pageSize,
             CancellationToken ct = default)
+            => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+        public Task<(IReadOnlyList<Brand> Items, int TotalItems)> GetPagedAsync(
+            int storeId,
+            string? search,
+            bool? status,
+            int page,
+            int pageSize,
+            CancellationToken ct = default)
             => Task.FromResult<(IReadOnlyList<Brand>, int)>(
                 (Array.Empty<Brand>(), 0));
+
+        public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+            int storeId,
+            CancellationToken ct = default)
+            => Task.FromResult((0, 0, 0));
 
         public Task<Brand?> GetByIdAsync(
             int storeId,

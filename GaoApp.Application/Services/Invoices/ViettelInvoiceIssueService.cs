@@ -6,6 +6,7 @@ using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Security.Cryptography;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -59,6 +60,12 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
+        if (invoice.LegacyReadOnly)
+            return Result<ViettelInvoiceIssueResultDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu, không được phát hành."));
+        var useCurrentSetting = LegacyInvoiceIssueConfiguration.UseCurrent(invoice);
+        if (invoice.LegacySourceId.HasValue && !invoice.InvoiceProviderSettingId.HasValue && !IsAlreadyIssued(invoice) && !useCurrentSetting)
+            return Result<ViettelInvoiceIssueResultDto>.Failure(Error.Validation("Invoice.LegacyProviderUnmapped", "Chưa ánh xạ cấu hình phát hành của hóa đơn GaoStore. Cần kiểm tra chủ thể và cấu hình trước khi phát hành."));
+
         var correctionCase = await GetCorrectionCaseIfAnyAsync(invoice, ct);
 
         if (IsAlreadyIssued(invoice))
@@ -101,15 +108,41 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             return Result<ViettelInvoiceIssueResultDto>.Failure(detailValidation.Error!);
         }
 
-        if (string.IsNullOrWhiteSpace(invoice.TransactionUuid))
+        InvoiceProviderSetting? setting;
+        try
         {
-            invoice.TransactionUuid = Guid.NewGuid().ToString("D");
+            setting = await _settingRepository.GetForInvoiceAsync(
+                invoice.StoreId,
+                useCurrentSetting ? null : invoice.InvoiceProviderSettingId,
+                ct);
         }
-
-        var setting = await _settingRepository.GetForInvoiceAsync(
-            invoice.StoreId,
-            invoice.InvoiceProviderSettingId,
-            ct);
+        catch (CryptographicException ex)
+        {
+            // A draft can contain a historical provider-setting snapshot. If
+            // that row was encrypted by a key which is no longer available,
+            // use the current store configuration only when its invoice
+            // identity still matches the draft. This does not rewrite the old
+            // draft or silently change its MST/template/series.
+            try
+            {
+                var current = await _settingRepository.GetForInvoiceAsync(
+                    invoice.StoreId,
+                    null,
+                    ct);
+                if (current != null && MatchesInvoiceIdentity(invoice, current))
+                {
+                    setting = current;
+                }
+                else
+                {
+                    return await FailCredentialReadAsync(invoice, ex, current?.Id, ct);
+                }
+            }
+            catch (CryptographicException currentException)
+            {
+                return await FailCredentialReadAsync(invoice, currentException, null, ct, ex);
+            }
+        }
 
         if (setting == null)
         {
@@ -125,7 +158,9 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
                     "Chưa có cấu hình Viettel đang dùng."));
         }
 
-        var payloadResult = await _payloadBuilder.BuildAsync(invoiceHeadId, ct);
+        var transactionUuid = string.IsNullOrWhiteSpace(invoice.TransactionUuid)
+            ? Guid.NewGuid().ToString("D") : invoice.TransactionUuid;
+        var payloadResult = await _payloadBuilder.BuildForIssueAsync(invoiceHeadId, setting, transactionUuid, ct);
 
         if (!payloadResult.IsSuccess)
         {
@@ -141,7 +176,7 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
         var payloadData = payloadResult.Value;
 
         var supplierTaxCode = FirstNonEmpty(
-            invoice.SupplierTaxCode,
+            useCurrentSetting ? setting.SupplierTaxCode : invoice.SupplierTaxCode,
             payloadData.SupplierTaxCode,
             setting.SupplierTaxCode);
 
@@ -162,6 +197,12 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
         var reservationResult = await ReserveInputStockAndMarkIssuingAsync(
             invoice,
             correctionCase,
+            () =>
+            {
+                if (useCurrentSetting)
+                    LegacyInvoiceIssueConfiguration.Apply(invoice, setting);
+                invoice.TransactionUuid = transactionUuid;
+            },
             ct);
 
         if (!reservationResult.IsSuccess)
@@ -281,6 +322,7 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
     private async Task<Result<bool>> ReserveInputStockAndMarkIssuingAsync(
         InvoiceHead invoice,
         InvoiceCorrectionCase? correctionCase,
+        Action applySubmissionIdentity,
         CancellationToken ct)
     {
         await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
@@ -310,6 +352,7 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
 
             // Issuing đồng thời là reservation của tồn có hóa đơn. Việc ghi trạng thái
             // nằm trong cùng transaction với store lock để hai request không cấp trùng.
+            applySubmissionIdentity();
             invoice.ProviderStatus = InvoiceProviderStatus.Issuing;
             invoice.LastErrorCode = null;
             invoice.LastErrorMessage = null;
@@ -338,7 +381,7 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
             .Select(x =>
                 $"{x.ItemName}: cần {FormatQuantity(x.RequiredBaseQuantity)}, "
                 + $"khả dụng {FormatQuantity(Math.Max(0m, x.AvailableBaseQuantity))}, "
-                + $"thiếu {FormatQuantity(x.ShortageBaseQuantity)} (kho #{x.WarehouseId})")
+                + $"thiếu {FormatQuantity(x.ShortageBaseQuantity)} ({FormatWarehouse(x.WarehouseId)})")
             .ToList();
 
         var suffix = availability.Lines.Count(x => !x.IsSufficient) > shortages.Count
@@ -353,6 +396,9 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
 
     private static string FormatQuantity(decimal quantity)
         => quantity.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string FormatWarehouse(int warehouseId)
+        => warehouseId > 0 ? $"kho #{warehouseId}" : "kho bán chưa được xác định";
 
     private async Task<InvoiceCorrectionCase?> GetCorrectionCaseIfAnyAsync(
         InvoiceHead invoice,
@@ -530,6 +576,46 @@ public class ViettelInvoiceIssueService : IViettelInvoiceIssueService
 
         return false;
     }
+
+    private async Task<Result<ViettelInvoiceIssueResultDto>> FailCredentialReadAsync(
+        InvoiceHead invoice,
+        CryptographicException exception,
+        int? currentSettingId,
+        CancellationToken ct,
+        CryptographicException? historicalException = null)
+    {
+        const string code = "InvoiceProvider.CredentialKeyUnavailable";
+        var message =
+            "Không đọc được mật khẩu Viettel của cấu hình hóa đơn. " +
+            $"InvoiceProviderSettingId={invoice.InvoiceProviderSettingId?.ToString() ?? "null"}; " +
+            $"cấu hình hiện hành={currentSettingId?.ToString() ?? "không có"}. " +
+            $"Chi tiết: {exception.Message}" +
+            (historicalException == null
+                ? string.Empty
+                : $" Cấu hình cũ: {historicalException.Message}") +
+            " Hãy bảo đảm Web và Worker dùng chung DataProtection:KeysPath và lưu lại cấu hình Viettel.";
+        invoice.LastErrorCode = code;
+        invoice.LastErrorMessage = message;
+        invoice.LastSyncedAtUtc = DateTime.UtcNow;
+        await _invoiceRepository.SaveChangesAsync(ct);
+        return Result<ViettelInvoiceIssueResultDto>.Failure(Error.Validation(code, message));
+    }
+
+    private static bool MatchesInvoiceIdentity(
+        InvoiceHead invoice,
+        InvoiceProviderSetting setting)
+    {
+        return Matches(invoice.ProviderCode, setting.ProviderCode) &&
+               Matches(invoice.SupplierTaxCode, setting.SupplierTaxCode) &&
+               Matches(invoice.InvoiceType, setting.InvoiceType) &&
+               Matches(invoice.TemplateCode, setting.TemplateCode) &&
+               Matches(invoice.InvoiceSeries, setting.InvoiceSeries);
+    }
+
+    private static bool Matches(string? snapshot, string current)
+        => string.IsNullOrWhiteSpace(snapshot) ||
+           string.Equals(snapshot.Trim(), current.Trim(), StringComparison.OrdinalIgnoreCase);
+
     private static string? FirstNonEmpty(params string?[] values)
     {
         foreach (var value in values)

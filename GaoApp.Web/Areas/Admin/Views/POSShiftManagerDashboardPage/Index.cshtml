@@ -1,4 +1,4 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@using GaoApp.Web.Areas.Admin.ViewModels.POS
 @{
     ViewData["Title"] = "Dashboard quản lý ca POS";
     Layout = "_ContentNavbarLayout";
@@ -308,11 +308,15 @@
             font-weight: 950;
         }
 
+        .manager-card, .manager-grid > *, .manager-filter-grid > * { min-width: 0; }
+        .manager-card-head { flex-wrap: wrap; }
+        .manager-popup-value, #detailTitle, #detailSub { overflow-wrap: anywhere; }
+        .manager-dashboard .table-responsive { max-width: 100%; }
         @@media (max-width: 1199.98px) {
             .manager-filter-grid,
             .kpi-grid,
             .manager-grid {
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
@@ -321,7 +325,7 @@
             .kpi-grid,
             .manager-grid,
             .manager-popup-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr);
             }
         }
     </style>
@@ -355,6 +359,10 @@
 
 <div class="manager-dashboard">
     @Html.AntiForgeryToken()
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="/admin/pos-shift/handover-slips" class="btn btn-outline-primary">Tạo / quản lý phiếu nhận ca</a>
+        <a href="/admin/pos-shift" class="btn btn-outline-secondary">Nhận / chốt ca</a>
+    </div>
 
     <div class="manager-filter-card">
         <div class="manager-filter-grid">
@@ -536,7 +544,16 @@
                 <h5 class="manager-card-title">Danh sách ca theo bộ lọc</h5>
                 <div class="manager-card-sub">Bấm chi tiết để xem số liệu từng ca</div>
             </div>
-            <div id="shiftTotalText" class="fw-bold text-muted">0 ca</div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <label for="filterCashReceipt" class="visually-hidden">Bàn giao tiền</label>
+                <select id="filterCashReceipt" class="form-select" style="width:auto">
+                    <option value="">Tất cả bàn giao</option>
+                    <option value="pending">Chờ admin nhận tiền</option>
+                    <option value="received">Đã nhận tiền / Đã duyệt</option>
+                </select>
+                <span id="cashReceiptPendingCount" class="text-warning fw-bold"></span>
+                <span id="shiftTotalText" class="fw-bold text-muted">0 ca</span>
+            </div>
         </div>
 
         <div class="manager-card-body">
@@ -549,7 +566,7 @@
                             <th>Trạng thái</th>
                             <th class="text-end">Doanh thu</th>
                             <th class="text-end">Tiền mặt</th>
-                            <th class="text-end">Refund</th>
+                            <th>Bàn giao tiền</th>
                             <th class="text-end">Lệch quỹ</th>
                             <th></th>
                         </tr>
@@ -593,7 +610,19 @@
             </div>
 
             <div class="modal-body">
-                <div id="detailContent"></div>
+                <form id="cashReceiptForm" class="border rounded-3 p-3 mt-3" hidden>
+                    <h6 class="fw-bold">Admin nhận tiền và duyệt chốt ca</h6>
+                    <p class="small text-muted">Kiểm đếm tiền nhân viên bàn giao trước khi xác nhận. Số tiền đã xác nhận được lưu cố định.</p>
+                    <div id="cashReceiptSummary" class="alert alert-info py-2"></div>
+                    <label for="cashReceivedAmount" class="form-label">Số tiền admin thực nhận (đ)</label>
+                    <input id="cashReceivedAmount" class="form-control" type="number" min="0" step="1" max="9999999999999999" required inputmode="numeric" autocomplete="off" />
+                    <div id="cashReceiptDifference" class="small mt-2" aria-live="polite"></div>
+                    <label for="cashReceiptNote" class="form-label mt-3">Ghi chú / lý do chênh lệch</label>
+                    <textarea id="cashReceiptNote" class="form-control" rows="2" maxlength="500"></textarea>
+                    <div id="cashReceiptError" class="text-danger mt-2" role="alert"></div>
+                    <button id="btnConfirmCashReceipt" type="submit" class="btn btn-success mt-3">Xác nhận đã nhận tiền / Duyệt ca</button>
+                </form>
+                <div id="detailContent" class="mt-3"></div>
             </div>
 
             <div class="modal-footer">
@@ -609,5 +638,6 @@
 </div>
 
 @section PageScripts {
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos-shift-manager-dashboard.js" asp-append-version="true"></script>
 }

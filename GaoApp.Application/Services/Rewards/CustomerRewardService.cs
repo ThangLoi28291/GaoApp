@@ -22,7 +22,15 @@ public sealed class CustomerRewardService : ICustomerRewardService
         _settingsRepository = settingsRepository;
         _voucherRepository = voucherRepository;
     }
+    public async Task<bool> IsProgramEnabledAsync(
+    CancellationToken ct = default)
+    {
+        var settings =
+            await _settingsRepository.GetCurrentAsync(
+                ct);
 
+        return settings?.IsEnabled == true;
+    }
     public async Task<CustomerRewardBalanceDto> GetBalanceAsync(
         int customerId,
         CancellationToken ct = default)
@@ -33,8 +41,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
         var settings = await _settingsRepository.GetCurrentAsync(ct)
             ?? throw new InvalidOperationException("Chưa cấu hình tích điểm cho cửa hàng.");
 
-        if (!settings.IsEnabled)
-            throw new InvalidOperationException("Chức năng tích điểm đang tắt.");
+
 
         if (settings.MoneyPerPoint <= 0)
             throw new InvalidOperationException("Cấu hình tiền quy đổi điểm không hợp lệ.");
@@ -118,8 +125,6 @@ public sealed class CustomerRewardService : ICustomerRewardService
         var settings = await _settingsRepository.GetCurrentAsync(ct)
             ?? throw new InvalidOperationException("Chưa cấu hình tích điểm cho cửa hàng.");
 
-        if (!settings.IsEnabled)
-            throw new InvalidOperationException("Chức năng tích điểm đang tắt.");
 
         var requiredAmountPerVoucher = settings.MoneyPerPoint * settings.PointsPerVoucher;
         var totalRequiredAmount = requiredAmountPerVoucher * request.VoucherCount;

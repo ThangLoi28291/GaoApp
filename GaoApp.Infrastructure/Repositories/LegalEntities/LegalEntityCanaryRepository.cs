@@ -1,4 +1,4 @@
-using GaoApp.Application.DTOs.LegalEntities;
+﻿using GaoApp.Application.DTOs.LegalEntities;
 using GaoApp.Application.Interfaces.Repositories.LegalEntities;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -76,7 +76,7 @@ public sealed class LegalEntityCanaryRepository : ILegalEntityCanaryRepository
                     x.StoreId == storeId &&
                     !x.IsDeleted &&
                     x.OriginalInvoiceHeadId == null &&
-                    x.Order.LegalEntityAllocatedAtUtc.HasValue &&
+                    x.Order != null && x.Order.LegalEntityAllocatedAtUtc.HasValue &&
                     x.Order.LegalEntityAllocatedAtUtc.Value >= sinceUtc &&
                     x.ProviderStatus == InvoiceProviderStatus.IssueFailed,
                     ct),

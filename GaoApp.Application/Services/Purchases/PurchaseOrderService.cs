@@ -217,6 +217,12 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             throw new InvalidOperationException(
                 "Current store context is unavailable.");
         if (request.Lines.Count == 0) throw new BusinessRuleException("Đơn đặt hàng phải có ít nhất một dòng.");
+        if (request.Lines
+            .Where(x => x.ItemKind == PurchaseItemKind.Catalog && x.ProductVariantId.HasValue)
+            .GroupBy(x => x.ProductVariantId!.Value)
+            .Any(x => x.Count() > 1))
+            throw new BusinessRuleException(
+                "Mỗi sản phẩm chỉ được xuất hiện một lần trong đơn đặt hàng. Hãy dùng đơn vị đặt hàng phù hợp.");
         if (request.ExpectedDeliveryDate.HasValue && request.ExpectedDeliveryDate.Value.Date < request.OrderDate.Date)
             throw new BusinessRuleException("Ngày dự kiến giao không được trước ngày đặt hàng.");
 
@@ -339,7 +345,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
                     if (conversion.ProductVariantId != variant.Id || !conversion.IsActive)
                         throw new BusinessRuleException($"Dòng {rowNumber}: đơn vị mua không thuộc sản phẩm đã chọn.");
                     if (!itemKeys.Add($"catalog:{conversion.Id}"))
-                        throw new BusinessRuleException($"Dòng {rowNumber}: sản phẩm và đơn vị mua đã bị trùng.");
+                        throw new BusinessRuleException(
+                            $"Dòng {rowNumber}: sản phẩm và đơn vị mua đã bị trùng trong đơn đặt hàng.");
 
                     line.ItemKind = PurchaseItemKind.Catalog;
                     line.ProductVariantId = variant.Id;
@@ -435,9 +442,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         PurchaseOrderWorkflowPolicy.EnsureCommerciallyEditable(order.Status);
         EnsureRowVersion(order.RowVersion, request.RowVersion);
 
-        var supplier = await _repository.GetSupplierAsync(request.SupplierId, ct)
-            ?? throw new BusinessRuleException(
-                "Nhà cung cấp không tồn tại trong cửa hàng hiện tại.");
+        Supplier? supplier = null;
+        if (request.SupplierId is > 0)
+        {
+            supplier = await _repository.GetSupplierAsync(request.SupplierId.Value, ct)
+                ?? throw new BusinessRuleException(
+                    "Nhà cung cấp không tồn tại trong cửa hàng hiện tại.");
+        }
         var warehouse = await _repository.GetWarehouseAsync(request.ExpectedWarehouseId, ct)
             ?? throw new BusinessRuleException(
                 "Kho dự kiến nhận không tồn tại trong cửa hàng hiện tại.");
@@ -472,7 +483,8 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
             line.LineTotalAfterVat = 0m;
         }
 
-        order.SupplierId = supplier.Id;
+        order.SupplierId = supplier?.Id;
+        order.Supplier = supplier;
         order.Title = string.IsNullOrWhiteSpace(request.Title) ? null : request.Title.Trim();
         order.ExpectedWarehouseId = warehouse.Id;
         order.LegalEntityId = legalEntity.Id;
@@ -495,13 +507,34 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         => TransitionAsync(id, request, new[] { PurchaseOrderStatus.Draft, PurchaseOrderStatus.ReturnedForRevision },
             PurchaseOrderStatus.PendingApproval, PurchaseOrderActionType.Submitted, ct);
 
-    public Task ApproveAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default)
-        => ReviewTransitionAsync(
-            id,
-            request,
-            PurchaseOrderStatus.Approved,
-            PurchaseOrderActionType.Approved,
-            ct);
+    public async Task ApproveAsync(
+        int id,
+        ApprovePurchaseOrderRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var supplier = await _repository.GetSupplierAsync(request.SupplierId, ct)
+            ?? throw new BusinessRuleException(
+                "Vui lòng chọn nhà cung cấp hợp lệ trước khi duyệt đơn.");
+        var order = await _repository.GetDetailAsync(id, true, ct)
+            ?? throw new BusinessRuleException("Đơn đặt hàng không tồn tại.");
+        EnsureRowVersion(order.RowVersion, request.RowVersion);
+        EnsureReviewer(order);
+
+        var now = DateTime.UtcNow;
+        var from = order.Status;
+        order.SupplierId = supplier.Id;
+        order.Supplier = supplier;
+        order.Status = PurchaseOrderStatus.Approved;
+        order.WorkflowNote = request.Note?.Trim();
+        order.ApprovedAtUtc = now;
+        order.ApprovedByUserId = _currentUser.UserId;
+        var auditNote = string.IsNullOrWhiteSpace(request.Note)
+            ? $"Xác nhận nhà cung cấp: {supplier.Name}."
+            : $"Xác nhận nhà cung cấp: {supplier.Name}. {request.Note.Trim()}";
+        AddAction(order, PurchaseOrderActionType.Approved, from, order.Status, auditNote);
+        await _repository.SaveChangesAsync(ct);
+    }
 
     public Task ReturnForRevisionAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default)
         => ReviewTransitionAsync(
@@ -945,7 +978,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         Title = x.Title,
         SourcePurchaseRequestId = x.SourcePurchaseRequestId,
         OrderDate = x.OrderDate,
-        SupplierName = x.Supplier.Name,
+        SupplierName = x.Supplier?.Name ?? "Chưa chọn nhà cung cấp",
         WarehouseName = x.ExpectedWarehouse.Name,
         LegalEntityName = x.LegalEntity.Name,
         Status = x.Status,
@@ -1009,13 +1042,13 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
         Title = x.Title,
         SourcePurchaseRequestId = x.SourcePurchaseRequestId,
         SupplierId = x.SupplierId,
-        SupplierName = x.Supplier.Name,
-        SupplierCode = x.Supplier.Code,
-        SupplierPhone = x.Supplier.Phone,
-        SupplierEmail = x.Supplier.Email,
-        SupplierAddress = x.Supplier.Address,
-        SupplierContactName = x.Supplier.ContactName,
-        SupplierTaxCode = x.Supplier.TaxCode,
+        SupplierName = x.Supplier?.Name ?? "Chưa chọn nhà cung cấp",
+        SupplierCode = x.Supplier?.Code ?? string.Empty,
+        SupplierPhone = x.Supplier?.Phone,
+        SupplierEmail = x.Supplier?.Email,
+        SupplierAddress = x.Supplier?.Address,
+        SupplierContactName = x.Supplier?.ContactName,
+        SupplierTaxCode = x.Supplier?.TaxCode,
         ExpectedWarehouseId = x.ExpectedWarehouseId,
         WarehouseName = x.ExpectedWarehouse.Name,
         WarehouseCode = x.ExpectedWarehouse.Code,

@@ -39,6 +39,7 @@ public sealed class SalesReturnConfiguration : IEntityTypeConfiguration<SalesRet
         // Indexes
         // =========================================================
         builder.HasIndex(x => new { x.StoreId, x.OrderId });
+        builder.HasIndex(x => new { x.StoreId, x.CompletedAtUtc });
         builder.HasIndex(x => new { x.StoreId, x.POSShiftId });
         builder.HasIndex(x => new { x.StoreId, x.ReturnNumber }).IsUnique();
 

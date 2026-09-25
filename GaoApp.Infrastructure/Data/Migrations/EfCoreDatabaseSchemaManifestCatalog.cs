@@ -1,5 +1,7 @@
 using System.Data;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -14,11 +16,34 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
     private const string InputInvoiceIdentityMigrationId =
         "20260817150000_AddInputInvoiceIdentityUniqueness";
+    private const string InputInvoiceBuyerOwnerGuardMigrationId =
+        "20260824150000_AddInputInvoiceBuyerOwnerGuard";
+    private const string InputInvoiceBuyerOwnerGuardSqlSha256 =
+        "917b4697378ca73b5428b1f607799117249edd7b20b6996a5e5ae8b217146441";
+    private const string InputInvoiceItemCatalogMappingMigrationId =
+        "20260826150000_AddInputInvoiceItemCatalogMapping";
+    private const string InputInvoiceItemCatalogMappingSqlSha256 =
+        "8e29947021883255050b73905bc4f02e3dcc6d8188e6d70d5695420cab511875";
+    private const string InputInvoiceReconciliationMigrationId =
+        "20260827150000_AddInputInvoiceReconciliation";
+    private const string ReceivingWorkbenchMigrationId =
+        "20260830112901_AddReceivingWorkbench";
+    private static readonly HashSet<string> ReceivingWorkbenchSqlSha256 =
+    [
+        "bd1bd38a8320d73b03bd1d15583f11064ebf3e6f4e3de80ad50705a6fc5d8cac",
+        "590430dfa5331ca428de54ddb37adee4f6f0d4c5f503dbcf4f5b040f047c7477"
+    ];
     private const string SqlServerValueGenerationStrategy =
         "SqlServer:ValueGenerationStrategy";
     private const string SqlServerIdentity = "SqlServer:Identity";
     private const string SqlServerClustered = "SqlServer:Clustered";
     private const string SqlServerInclude = "SqlServer:Include";
+    private const string InventoryLedgerTimelineMigrationId =
+        "20260920093000_OptimizeInventoryLedgerTimeline";
+    private const string InventoryLedgerTimelineIndexName =
+        "IX_InventoryTransactions_LedgerTimeline";
+    private const string ReviewedInventoryLedgerTimelineSql =
+        "CREATE INDEX [IX_InventoryTransactions_LedgerTimeline] ON [dbo].[InventoryTransactions] ([StoreId], [OccurredAtUtc] DESC, [Id] DESC) INCLUDE ([QuantityChange], [AfterQty]) WHERE [IsDeleted] = 0;";
 
     private readonly AppDbContext _db;
     private DatabaseSchemaManifest? _currentManifest;
@@ -130,13 +155,38 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 ApplyCreateIndex(createIndex, tables, defaultSchema);
                 break;
 
+            case DropIndexOperation dropIndex:
+                ApplyDropIndex(dropIndex, tables, defaultSchema);
+                break;
+
             case AddColumnOperation addColumn:
                 ApplyAddColumn(addColumn, tables, defaultSchema);
+                break;
+
+            case AlterColumnOperation alterColumn:
+                ApplyAlterColumn(alterColumn, tables, defaultSchema);
                 break;
 
             case AddForeignKeyOperation addForeignKey:
                 ApplyAddForeignKey(
                     addForeignKey,
+                    tables,
+                    defaultSchema);
+                break;
+
+            case DropForeignKeyOperation dropForeignKey:
+                ApplyDropForeignKey(dropForeignKey, tables, defaultSchema);
+                break;
+
+            case AddCheckConstraintOperation addCheckConstraint:
+                ApplyAddCheckConstraint(
+                    addCheckConstraint,
+                    tables,
+                    defaultSchema);
+                break;
+            case DropCheckConstraintOperation dropCheckConstraint:
+                ApplyDropCheckConstraint(
+                    dropCheckConstraint,
                     tables,
                     defaultSchema);
                 break;
@@ -159,7 +209,11 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 break;
 
             case SqlOperation sqlOperation:
-                EnsureReviewedDataOnlySql(migrationId, sqlOperation.Sql);
+                if (!TryApplyReviewedSchemaSql(
+                        migrationId, sqlOperation, tables, defaultSchema))
+                {
+                    EnsureReviewedDataOnlySql(migrationId, sqlOperation.Sql);
+                }
                 break;
 
             default:
@@ -168,8 +222,58 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         }
     }
 
+    private static bool TryApplyReviewedSchemaSql(
+        string migrationId,
+        SqlOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        // This immutable migration contains DDL: accepting it as data-only SQL
+        // would omit the index from both current and migration-prefix manifests.
+        if (!string.Equals(migrationId, InventoryLedgerTimelineMigrationId,
+                StringComparison.Ordinal))
+            return false;
+
+        var normalized = string.Join(
+            ' ', operation.Sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (operation.SuppressTransaction || !string.Equals(
+                normalized, ReviewedInventoryLedgerTimelineSql, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The inventory timeline migration contains an unreviewed schema SQL operation.");
+        }
+
+        var identity = new DatabaseObjectIdentity("dbo", "InventoryTransactions");
+        if (tables.TryGetValue(identity, out var table)
+            && table.Indexes.Any(index => string.Equals(
+                index.Name,
+                DatabaseSchemaNormalization.NormalizeIdentifier(InventoryLedgerTimelineIndexName),
+                StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "The inventory timeline index already exists in the schema manifest.");
+        }
+
+        var createIndex = new CreateIndexOperation
+        {
+            Schema = "dbo",
+            Table = "InventoryTransactions",
+            Name = InventoryLedgerTimelineIndexName,
+            Columns = ["StoreId", "OccurredAtUtc", "Id"],
+            IsDescending = [false, true, true],
+            Filter = "[IsDeleted] = 0"
+        };
+        createIndex.AddAnnotation(SqlServerInclude, new[] { "QuantityChange", "AfterQty" });
+        ApplyCreateIndex(createIndex, tables, defaultSchema);
+        return true;
+    }
+
     private static void EnsureReviewedDataOnlySql(string migrationId, string sql)
     {
+        if (string.Equals(migrationId, InputInvoiceReconciliationMigrationId,
+                StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "The reconciliation migration is schema-only and must not contain raw SQL.");
         var normalized = string.Join(
             ' ',
             sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -194,8 +298,55 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 InputInvoiceIdentityMigrationId,
                 StringComparison.Ordinal)
             && reviewedInputInvoiceIdentityStatements.Contains(normalized);
-        if (!isReviewedCostPolicySql
-            && !isReviewedInputInvoiceIdentitySql)
+        var isReviewedInputInvoiceBuyerOwnerGuardSql = string.Equals(
+                migrationId,
+                InputInvoiceBuyerOwnerGuardMigrationId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                Convert.ToHexString(SHA256.HashData(
+                        Encoding.UTF8.GetBytes(normalized)))
+                    .ToLowerInvariant(),
+                InputInvoiceBuyerOwnerGuardSqlSha256,
+                StringComparison.Ordinal);
+        var isReviewedInputInvoiceItemCatalogMappingSql = string.Equals(
+                migrationId,
+                InputInvoiceItemCatalogMappingMigrationId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                Convert.ToHexString(SHA256.HashData(
+                        Encoding.UTF8.GetBytes(normalized)))
+                    .ToLowerInvariant(),
+                InputInvoiceItemCatalogMappingSqlSha256,
+                StringComparison.Ordinal);
+        var isReviewedReceivingWorkbenchSql = string.Equals(
+                migrationId,
+                ReceivingWorkbenchMigrationId,
+                StringComparison.Ordinal)
+            && ReceivingWorkbenchSqlSha256.Contains(
+                Convert.ToHexString(SHA256.HashData(
+                        Encoding.UTF8.GetBytes(normalized)))
+                    .ToLowerInvariant());
+        // Reviewed ACB backfill copies existing receipt JSON into reconciliation rows; it performs no DDL.
+        var isReviewedAcbReconciliationSql = string.Equals(
+                migrationId, "20260908192844_AddAcbQrNotificationReconciliation", StringComparison.Ordinal)
+            && string.Equals(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized))).ToLowerInvariant(),
+                "7afc10c799b9883d2445ab743cc244f69ea8e466a67637cff6961bd8e91d13a6", StringComparison.Ordinal);
+        var isReviewedBankDefaultGuardSql = string.Equals(
+                migrationId, "20260909055844_EnforceSingleDefaultBankAccount", StringComparison.Ordinal)
+            && string.Equals(normalized,
+                "IF EXISTS (SELECT StoreId FROM StoreBankAccounts WHERE IsDefault = 1 AND IsDeleted = 0 GROUP BY StoreId HAVING COUNT(*) > 1) THROW 51001, 'Multiple default bank accounts exist in a store. Select one default per store before retrying migration.', 1;",
+                StringComparison.Ordinal);
+        var isReviewedSnapshotOptionSql = string.Equals(
+                migrationId, "20260909061611_EnableSnapshotProfitReads", StringComparison.Ordinal)
+            && string.Equals(normalized, "ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;", StringComparison.Ordinal);
+        if (!isReviewedSnapshotOptionSql
+            && !isReviewedAcbReconciliationSql
+            && !isReviewedBankDefaultGuardSql
+            && !isReviewedCostPolicySql
+            && !isReviewedInputInvoiceIdentitySql
+            && !isReviewedInputInvoiceBuyerOwnerGuardSql
+            && !isReviewedInputInvoiceItemCatalogMappingSql
+            && !isReviewedReceivingWorkbenchSql)
         {
             throw new InvalidOperationException(
                 "The schema manifest encountered an unreviewed SQL migration operation.");
@@ -220,6 +371,29 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         table.Columns.Add(CreateColumn(operation));
     }
 
+    private static void ApplyAlterColumn(
+        AlterColumnOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema,
+            operation.Table);
+        if (!tables.TryGetValue(identity, out var table))
+            throw new InvalidOperationException(
+                "Migration column alteration references a table absent from the schema manifest.");
+
+        var normalizedName = DatabaseSchemaNormalization.NormalizeIdentifier(operation.Name);
+        var index = table.Columns.FindIndex(column => string.Equals(
+            column.Name, normalizedName, StringComparison.Ordinal));
+        if (index < 0 || table.Columns.Count(column => string.Equals(
+                column.Name, normalizedName, StringComparison.Ordinal)) != 1)
+            throw new InvalidOperationException(
+                "Migration column alteration must identify exactly one schema-manifest column.");
+
+        table.Columns[index] = CreateColumn(operation);
+    }
+
     private static void ApplyAddForeignKey(
         AddForeignKeyOperation operation,
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
@@ -235,7 +409,14 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 "Migration foreign key references a table absent from the schema manifest.");
         }
 
-        table.ForeignKeys.Add(new DatabaseForeignKeySchema(
+        AddForeignKeyToTable(table, operation, defaultSchema);
+    }
+
+    private static void AddForeignKeyToTable(
+        MutableTable table, AddForeignKeyOperation operation, string defaultSchema)
+    {
+        var name = DatabaseSchemaNormalization.NormalizeIdentifier(operation.Name);
+        var foreignKey = new DatabaseForeignKeySchema(
             NormalizeIdentifiers(operation.Columns),
             new DatabaseObjectIdentity(
                 operation.PrincipalSchema ?? defaultSchema,
@@ -244,9 +425,101 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
             DatabaseSchemaNormalization.NormalizeDeleteAction(
                 operation.OnDelete.ToString()),
             IsDisabled: false,
-            IsNotTrusted: false));
+            IsNotTrusted: false);
+        if (!table.ForeignKeys.TryAdd(name, foreignKey))
+        {
+            throw new InvalidOperationException(
+                "Migration foreign key duplicates a schema-manifest constraint name.");
+        }
     }
 
+    private static void ApplyDropForeignKey(
+        DropForeignKeyOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema, operation.Table);
+        if (!tables.TryGetValue(identity, out var table))
+        {
+            throw new InvalidOperationException(
+                "Migration foreign key references a table absent from the schema manifest.");
+        }
+
+        var name = DatabaseSchemaNormalization.NormalizeIdentifier(operation.Name);
+        if (!table.ForeignKeys.Remove(name))
+        {
+            throw new InvalidOperationException(
+                "Migration foreign key removal must identify exactly one schema-manifest constraint.");
+        }
+    }
+
+    private static void ApplyAddCheckConstraint(
+        AddCheckConstraintOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema,
+            operation.Table);
+
+        if (!tables.TryGetValue(identity, out var table))
+        {
+            throw new InvalidOperationException(
+                "Migration check constraint references a table absent from the schema manifest.");
+        }
+
+        var normalizedName =
+            DatabaseSchemaNormalization.NormalizeIdentifier(
+                operation.Name);
+        if (table.CheckConstraints.Any(check => string.Equals(
+                check.Name,
+                normalizedName,
+                StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "Migration check constraint duplicates a schema-manifest constraint.");
+        }
+
+        table.CheckConstraints.Add(new DatabaseCheckConstraintSchema(
+            normalizedName,
+            DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(
+                operation.Sql)
+            ?? string.Empty,
+            IsDisabled: false,
+            IsNotTrusted: false));
+    }
+    private static void ApplyDropCheckConstraint(
+    DropCheckConstraintOperation operation,
+    IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+    string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema,
+            operation.Table);
+
+        if (!tables.TryGetValue(identity, out var table))
+        {
+            throw new InvalidOperationException(
+                "Migration check constraint references a table absent from the schema manifest.");
+        }
+
+        var normalizedName =
+            DatabaseSchemaNormalization.NormalizeIdentifier(
+                operation.Name);
+
+        var removed = table.CheckConstraints.RemoveAll(
+            check => string.Equals(
+                check.Name,
+                normalizedName,
+                StringComparison.Ordinal));
+
+        if (removed != 1)
+        {
+            throw new InvalidOperationException(
+                "Migration check constraint removal must identify exactly one schema-manifest constraint.");
+        }
+    }
     private static void ApplyCreateTable(
         CreateTableOperation operation,
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
@@ -297,17 +570,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
 
         foreach (var foreignKey in operation.ForeignKeys)
         {
-            table.ForeignKeys.Add(new DatabaseForeignKeySchema(
-                NormalizeIdentifiers(foreignKey.Columns),
-                new DatabaseObjectIdentity(
-                    foreignKey.PrincipalSchema ?? defaultSchema,
-                    foreignKey.PrincipalTable),
-                NormalizeIdentifiers(
-                    foreignKey.PrincipalColumns ?? []),
-                DatabaseSchemaNormalization.NormalizeDeleteAction(
-                    foreignKey.OnDelete.ToString()),
-                IsDisabled: false,
-                IsNotTrusted: false));
+            AddForeignKeyToTable(table, foreignKey, defaultSchema);
         }
 
         foreach (var check in operation.CheckConstraints)
@@ -316,7 +579,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 new DatabaseCheckConstraintSchema(
                     DatabaseSchemaNormalization.NormalizeIdentifier(
                         check.Name),
-                    DatabaseSchemaNormalization.NormalizeSqlExpression(
+                    DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(
                         check.Sql)
                     ?? string.Empty,
                     IsDisabled: false,
@@ -376,8 +639,43 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 operation.Filter)));
     }
 
+    private static void ApplyDropIndex(
+        DropIndexOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(
+            operation.Schema ?? defaultSchema,
+            operation.Table
+            ?? throw new InvalidOperationException(
+                "Migration index table is required."));
+
+        if (!tables.TryGetValue(identity, out var table))
+        {
+            throw new InvalidOperationException(
+                "Migration index references a table absent from the schema manifest.");
+        }
+
+        var normalizedName =
+            DatabaseSchemaNormalization.NormalizeIdentifier(
+                operation.Name);
+        var matches = table.Indexes
+            .Where(index => string.Equals(
+                index.Name,
+                normalizedName,
+                StringComparison.Ordinal))
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            throw new InvalidOperationException(
+                "Migration index removal must identify exactly one schema-manifest index.");
+        }
+
+        table.Indexes.Remove(matches[0]);
+    }
+
     private static DatabaseColumnSchema CreateColumn(
-        AddColumnOperation operation)
+        ColumnOperation operation)
     {
         var storeType =
             DatabaseSchemaNormalization.NormalizeStoreType(
@@ -399,6 +697,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
             ?.ToString();
         var hasIdentityAnnotation =
             operation.FindAnnotation(SqlServerIdentity)?.Value is not null;
+        var isComputed = !string.IsNullOrWhiteSpace(operation.ComputedColumnSql);
 
         return new DatabaseColumnSchema(
             DatabaseSchemaNormalization.NormalizeIdentifier(
@@ -407,18 +706,32 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
             facets.MaxLength ?? operation.MaxLength,
             facets.Precision ?? operation.Precision,
             facets.Scale ?? operation.Scale,
-            operation.IsNullable,
+            isComputed || operation.IsNullable,
             hasIdentityAnnotation
                 || generationStrategy?.Contains(
                     "IdentityColumn",
                     StringComparison.OrdinalIgnoreCase) == true,
-            !string.IsNullOrWhiteSpace(operation.ComputedColumnSql),
+            isComputed,
             operation.IsRowVersion
                 || storeType is "rowversion" or "timestamp",
             hasDefault,
             defaultExpression,
-            DatabaseSchemaNormalization.NormalizeSqlExpression(
-                operation.ComputedColumnSql));
+            NormalizeComputedColumnExpression(operation.ComputedColumnSql));
+    }
+
+    private static string? NormalizeComputedColumnExpression(string? expression)
+    {
+        var normalized = DatabaseSchemaNormalization.NormalizeSqlExpression(expression);
+        if (normalized is null)
+            return null;
+
+        // SQL Server persists NCHAR numeric arguments with an additional set
+        // of parentheses. Canonicalize migration-operation metadata to the
+        // same representation used by sys.computed_columns.
+        return normalized
+            .Replace("nchar9", "nchar(9)", StringComparison.Ordinal)
+            .Replace("nchar10", "nchar(10)", StringComparison.Ordinal)
+            .Replace("nchar13", "nchar(13)", StringComparison.Ordinal);
     }
 
     private static StoreTypeFacets ParseStoreTypeFacets(
@@ -515,7 +828,10 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         public DatabaseObjectIdentity Identity { get; }
         public List<DatabaseColumnSchema> Columns { get; } = [];
         public DatabasePrimaryKeySchema? PrimaryKey { get; set; }
-        public List<DatabaseForeignKeySchema> ForeignKeys { get; } = [];
+        // Names are needed while replaying DropForeignKey operations, but are
+        // deliberately not part of the structural schema fingerprint contract.
+        public Dictionary<string, DatabaseForeignKeySchema> ForeignKeys { get; } =
+            new(StringComparer.Ordinal);
         public List<DatabaseIndexSchema> Indexes { get; } = [];
         public List<DatabaseCheckConstraintSchema> CheckConstraints { get; } =
             [];
@@ -527,7 +843,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                     .OrderBy(column => column.Name, StringComparer.Ordinal)
                     .ToArray(),
                 PrimaryKey,
-                ForeignKeys
+                ForeignKeys.Values
                     .OrderBy(
                         foreignKey =>
                             string.Join(",", foreignKey.Columns),

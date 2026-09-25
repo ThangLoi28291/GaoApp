@@ -70,6 +70,17 @@ public class ProductVariantRowDto
     public string? BaseUnitName { get; set; }
 
     /// <summary>
+    /// Tổng số đơn vị quy đổi hiện có (đang hoạt động hoặc không), kể cả đơn vị gốc.
+    /// Dùng cho nhanh: hiển thị tiến độ "đang có đơn vị hay chưa".
+    /// </summary>
+    public int UnitConversionCount { get; set; } = 0;
+
+    /// <summary>
+    /// Tổng số barcode đang hoạt động hiện có trên toàn bộ các đơn vị quy đổi.
+    /// </summary>
+    public int ActiveBarcodeCount { get; set; } = 0;
+
+    /// <summary>
     /// Variant có đang hoạt động hay không.
     /// </summary>
     public bool IsActive { get; set; } = true;

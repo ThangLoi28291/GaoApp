@@ -20,6 +20,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public sealed class PurchaseRequestsController : Controller
 {
     private readonly IPurchaseRequestService _service;
+    private readonly IPurchaseRequestIndexReadService _indexReadService;
     private readonly IPurchaseOrderService _purchaseOrderService;
     private readonly IUnitService _unitService;
     private readonly ICurrentStore _currentStore;
@@ -27,12 +28,14 @@ public sealed class PurchaseRequestsController : Controller
 
     public PurchaseRequestsController(
         IPurchaseRequestService service,
+        IPurchaseRequestIndexReadService indexReadService,
         IPurchaseOrderService purchaseOrderService,
         IUnitService unitService,
         ICurrentStore currentStore,
         IAuthorizationService authorization)
     {
         _service = service;
+        _indexReadService = indexReadService;
         _purchaseOrderService = purchaseOrderService;
         _unitService = unitService;
         _currentStore = currentStore;
@@ -49,11 +52,72 @@ public sealed class PurchaseRequestsController : Controller
         var onlyMine = !canViewStore || mine;
         return View(new PurchaseRequestIndexViewModel
         {
-            Items = await _service.GetListAsync(onlyMine, ct),
+            Items = new List<PurchaseRequestListItemDto>(),
             CanCreate = await HasPermissionAsync(PermissionCodes.Purchase.Request.Create),
             CanViewStore = canViewStore,
             ShowingOnlyMine = onlyMine
         });
+    }
+
+    [HttpGet("data")]
+    public async Task<IActionResult> GetPurchaseRequestIndexData(
+        [FromQuery] PurchaseRequestIndexQueryRequest request,
+        CancellationToken ct)
+    {
+        var canViewStore = await HasPermissionAsync(PermissionCodes.Purchase.Request.ViewStore);
+        var canViewOwn = await HasPermissionAsync(PermissionCodes.Purchase.Request.ViewOwn);
+        if (!canViewStore && !canViewOwn) return Forbid();
+
+        var currentUserId = GetCurrentUserId();
+        if (!currentUserId.HasValue) return Forbid();
+
+        var onlyMine = !canViewStore
+                       || string.Equals(
+                           request.Scope,
+                           PurchaseRequestIndexScopes.Mine,
+                           StringComparison.OrdinalIgnoreCase);
+
+        var result = await _indexReadService.GetPageAsync(
+            request,
+            onlyMine ? currentUserId.Value : null,
+            ct);
+
+        return Ok(result);
+    }
+
+    [HttpGet("requester-options")]
+    public async Task<IActionResult> GetPurchaseRequestRequesterOptions(
+        CancellationToken ct)
+    {
+        if (!await HasPermissionAsync(PermissionCodes.Purchase.Request.ViewStore))
+            return Forbid();
+
+        return Ok(await _indexReadService.GetRequesterOptionsAsync(ct));
+    }
+
+    [HttpGet("quick-view")]
+    public async Task<IActionResult> GetPurchaseRequestQuickView(
+        [FromQuery] int requestId,
+        CancellationToken ct)
+    {
+        if (requestId <= 0)
+            return BadRequest(new { message = "Yêu cầu mua hàng cần xem không hợp lệ." });
+
+        var canViewStore = await HasPermissionAsync(PermissionCodes.Purchase.Request.ViewStore);
+        var canViewOwn = await HasPermissionAsync(PermissionCodes.Purchase.Request.ViewOwn);
+        if (!canViewStore && !canViewOwn) return Forbid();
+
+        var currentUserId = GetCurrentUserId();
+        if (!currentUserId.HasValue) return Forbid();
+
+        var result = await _indexReadService.GetQuickViewAsync(
+            requestId,
+            canViewStore ? null : currentUserId.Value,
+            ct);
+
+        return result is null
+            ? NotFound(new { message = "Không tìm thấy yêu cầu mua hàng." })
+            : Ok(result);
     }
 
     [HttpGet("create")]
@@ -127,7 +191,22 @@ public sealed class PurchaseRequestsController : Controller
                 x.ImageUrl,
                 x.CurrentStockBaseQuantity,
                 x.IncomingBaseQuantity,
-                x.HasOpenRequest
+                x.HasOpenRequest,
+                x.OpenRequestCount,
+                x.OpenRequestBaseQuantity,
+                x.OpenRequestNumber,
+                unitOptions = x.UnitOptions.Select(unit => new
+                {
+                    unit.ProductUnitConversionId,
+                    unit.UnitId,
+                    unit.UnitName,
+                    unit.Factor,
+                    unit.Barcode,
+                    unit.IsBaseUnit,
+                    unit.IsDefaultForSale,
+                    unit.IsBarcodeMatch,
+                    unit.IsHistoricalBarcodeMatch
+                })
             }),
             pagination = new { more = result.HasMore }
         });
@@ -200,9 +279,12 @@ public sealed class PurchaseRequestsController : Controller
 
         try
         {
-            await _service.ConvertAsync(id, request, ct);
+            var result = await _service.ConvertAsync(id, request, ct);
             TempData["Success"] = "Đã tạo một đơn đặt hàng nháp từ yêu cầu mua.";
-            return RedirectToAction(nameof(Details), new { id });
+            var purchaseOrderId = result.PurchaseOrderIds.SingleOrDefault();
+            return purchaseOrderId > 0
+                ? RedirectToAction("Details", "PurchaseOrders", new { id = purchaseOrderId })
+                : RedirectToAction(nameof(Details), new { id });
         }
         catch (BusinessRuleException ex)
         {
@@ -442,14 +524,6 @@ public sealed class PurchaseRequestsController : Controller
         var remainingLines = preparation.Lines
             .Where(x => x.ApprovedQuantity > 0)
             .ToList();
-        var suggestedSuppliers = remainingLines
-            .Where(x => x.SuggestedSupplierId.HasValue && !string.IsNullOrWhiteSpace(x.SuggestedSupplierName))
-            .Select(x => new { x.SuggestedSupplierId, x.SuggestedSupplierName })
-            .Distinct()
-            .ToList();
-        var suggestedSupplier = suggestedSuppliers.Count == 1
-            ? suggestedSuppliers[0]
-            : null;
         var title = preparation.Title.Length <= 250
             ? preparation.Title
             : preparation.Title[..250];
@@ -458,7 +532,7 @@ public sealed class PurchaseRequestsController : Controller
             // Unique per rendered form and posted back unchanged for idempotent retry.
             ClientGroupKey = $"pr-{preparation.PurchaseRequestId}-{Guid.NewGuid():N}",
             Title = title,
-            SupplierId = suggestedSupplier?.SuggestedSupplierId ?? 0,
+            SupplierId = null,
             LegalEntityId = legalEntityId,
             ExpectedWarehouseId = warehouseId,
             OrderDate = DateTime.Today,

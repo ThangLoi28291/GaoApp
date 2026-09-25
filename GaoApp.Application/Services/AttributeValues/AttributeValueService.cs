@@ -54,6 +54,11 @@ public sealed class AttributeValueService : IAttributeValueService
         };
     }
 
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
+
     public async Task<Result<AttributeValueEditDto>> GetForEditAsync(
         int storeId,
         int id,

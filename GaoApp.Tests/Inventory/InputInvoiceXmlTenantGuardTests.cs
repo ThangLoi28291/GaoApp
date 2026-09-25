@@ -2,6 +2,7 @@ using FluentAssertions;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Inventory.InputInvoices;
+using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -9,6 +10,7 @@ using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Infrastructure.Tenant;
 using GaoApp.Tests.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection;
 
 namespace GaoApp.Tests.Inventory;
 
@@ -22,6 +24,32 @@ public sealed class InputInvoiceXmlTenantGuardTests
     private const int ReceiptId = 100;
     private const int ReceiptLineId = 101;
     private const int DetailId = 301;
+
+    [Fact]
+    public async Task Normal_receipt_without_XML_has_no_item_mapping_requirement_or_mutation()
+    {
+        await using var context = CreateContext(out var tenant);
+        SeedReceipt(
+            context,
+            StoreId,
+            ReceiptId,
+            ReceiptLineId,
+            warehouseId: 11,
+            legalEntityId: PrimaryLegalEntityId);
+        await context.SaveChangesAsync();
+        tenant.SetStore(StoreId, "no-xml-item-map");
+        context.ChangeTracker.Clear();
+        var repository = new InputInvoiceRepository(context);
+        var service = new InputInvoiceItemCatalogMappingService(
+            repository, new TestCurrentUser());
+
+        var result = await service.ResolveForReceiptAsync(StoreId, ReceiptId);
+
+        result.Should().BeEmpty();
+        (await context.StockDocumentLines.SingleAsync(x => x.Id == ReceiptLineId))
+            .ProductVariantId.Should().Be(1);
+        (await context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+    }
 
     [Fact]
     public async Task GetInputInvoiceDetailAsync_CrossStoreDetail_ReturnsNull()
@@ -346,7 +374,12 @@ public sealed class InputInvoiceXmlTenantGuardTests
         SetTenantStore(context, tenant);
         var map = await context.StockDocumentLineInputInvoiceMaps.SingleAsync();
 
-        var service = new InputInvoiceXmlService(new InputInvoiceRepository(context));
+        var reconciliation = DispatchProxy.Create<
+            IInputInvoiceReconciliationService, RecordingReconciliationProxy>();
+        var recording = (RecordingReconciliationProxy)(object)reconciliation;
+        var service = new InputInvoiceXmlService(
+            new InputInvoiceRepository(context),
+            reconciliationService: reconciliation);
         var request = new UpdateStockDocumentLineInputInvoiceMapRequest
         {
             StockDocumentLineId = ReceiptLineId,
@@ -363,6 +396,116 @@ public sealed class InputInvoiceXmlTenantGuardTests
         map.AmountDifference.Should().Be(0m);
         map.Note.Should().BeNull();
         context.Entry(map).State.Should().Be(EntityState.Unchanged);
+        recording.RefreshCalls.Should().Be(1);
+        (await context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Remember_rejects_cross_store_xml_conversion_but_association_only_remains_available()
+    {
+        await using var context = CreateContext(out var tenant);
+        SeedReceipt(context, StoreId, ReceiptId, ReceiptLineId,
+            warehouseId: 11, legalEntityId: PrimaryLegalEntityId);
+        SeedInvoice(context, StoreId, headId: 200, detailId: DetailId);
+        SeedInvoiceLink(context, StoreId, ReceiptId, headId: 200);
+        SeedLineMap(context);
+        SeedStore(context, OtherStoreId);
+        context.Units.Add(new Unit
+        {
+            Id = 500, StoreId = OtherStoreId, Code = "THUNG",
+            Name = "Thùng", IsActive = true, RowVersion = []
+        });
+        context.ProductUnitConversions.Add(new ProductUnitConversion
+        {
+            Id = 501, StoreId = OtherStoreId, ProductVariantId = 1,
+            UnitId = 500, Factor = 48m, IsActive = true, RowVersion = []
+        });
+        await context.SaveChangesAsync();
+        SetTenantStore(context, tenant);
+        var repository = new InputInvoiceRepository(context);
+        var mapping = new InputInvoiceItemCatalogMappingService(
+            repository, new TestCurrentUser());
+        var service = new InputInvoiceXmlService(
+            repository, itemCatalogMappingService: mapping);
+
+        var remember = () => service.UpdateLineMapAsync(StoreId, ReceiptId, new()
+        {
+            StockDocumentLineId = ReceiptLineId,
+            UseInputInvoice = true,
+            InputInvoiceDetailId = DetailId,
+            RememberItemCatalogMapping = true
+        });
+
+        await remember.Should().ThrowAsync<BusinessRuleException>();
+        (await context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+        (await context.StockDocumentLineInputInvoiceMaps.SingleAsync())
+            .InputInvoiceDetailId.Should().BeNull();
+
+        await service.UpdateLineMapAsync(StoreId, ReceiptId, new()
+        {
+            StockDocumentLineId = ReceiptLineId,
+            UseInputInvoice = true,
+            InputInvoiceDetailId = DetailId,
+            RememberItemCatalogMapping = false
+        });
+        (await context.StockDocumentLineInputInvoiceMaps.SingleAsync())
+            .InputInvoiceDetailId.Should().Be(DetailId);
+    }
+
+    [Fact]
+    public async Task Draft_employee_cannot_mutate_manager_item_mapping()
+    {
+        await using var context = CreateContext(out var tenant);
+        SeedReceipt(context, StoreId, ReceiptId, ReceiptLineId,
+            warehouseId: 11, legalEntityId: PrimaryLegalEntityId,
+            status: StockDocumentStatus.Draft);
+        SeedLineMap(context);
+        await context.SaveChangesAsync();
+        SetTenantStore(context, tenant);
+        var service = new InputInvoiceXmlService(new InputInvoiceRepository(context));
+
+        var action = () => service.UpdateLineMapAsync(StoreId, ReceiptId, new()
+        {
+            StockDocumentLineId = ReceiptLineId,
+            UseInputInvoice = false,
+            ExclusionReason = "Manager-only mapping"
+        });
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*chờ duyệt*");
+        var map = await context.StockDocumentLineInputInvoiceMaps.SingleAsync();
+        map.UseInputInvoice.Should().BeFalse();
+        map.InputInvoiceDetailId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Excluding_receipt_line_requires_reason_and_preserves_existing_map_on_failure()
+    {
+        await using var context = CreateContext(out var tenant);
+        SeedReceipt(context, StoreId, ReceiptId, ReceiptLineId,
+            warehouseId: 11, legalEntityId: PrimaryLegalEntityId);
+        SeedInvoice(context, StoreId, headId: 200, detailId: DetailId);
+        SeedInvoiceLink(context, StoreId, ReceiptId, headId: 200);
+        var map = SeedLineMap(context);
+        map.UseInputInvoice = true;
+        map.InputInvoiceDetailId = DetailId;
+        map.MatchStatus = InputInvoiceMatchStatus.Matched;
+        await context.SaveChangesAsync();
+        SetTenantStore(context, tenant);
+        var service = new InputInvoiceXmlService(new InputInvoiceRepository(context));
+
+        var action = () => service.UpdateLineMapAsync(StoreId, ReceiptId, new()
+        {
+            StockDocumentLineId = ReceiptLineId,
+            UseInputInvoice = false,
+            ExclusionReason = " "
+        });
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*nhập lý do*");
+        map.UseInputInvoice.Should().BeTrue();
+        map.InputInvoiceDetailId.Should().Be(DetailId);
+        map.MatchStatus.Should().Be(InputInvoiceMatchStatus.Matched);
     }
 
     private static InMemoryAppDbContext CreateContext(out TenantContext tenant)
@@ -431,7 +574,8 @@ public sealed class InputInvoiceXmlTenantGuardTests
         int documentId,
         int lineId,
         int warehouseId,
-        int legalEntityId)
+        int legalEntityId,
+        StockDocumentStatus status = StockDocumentStatus.PendingApproval)
     {
         SeedLegalEntity(context, storeId, legalEntityId);
 
@@ -454,6 +598,7 @@ public sealed class InputInvoiceXmlTenantGuardTests
             StoreId = storeId,
             DocumentNo = $"PN-{documentId}",
             Type = StockDocumentType.Receipt,
+            Status = status,
             WarehouseId = warehouseId,
             RowVersion = new byte[8]
         });
@@ -494,6 +639,8 @@ public sealed class InputInvoiceXmlTenantGuardTests
             InputInvoiceHeadId = headId,
             LineNo = 1,
             ItemName = "XML item",
+            UnitName = "Thùng",
+            NormalizedUnitName = "THÙNG",
             Quantity = 10m,
             UnitPrice = 10m,
             LineAmount = 100m,
@@ -533,6 +680,23 @@ public sealed class InputInvoiceXmlTenantGuardTests
         };
         context.StockDocumentLineInputInvoiceMaps.Add(map);
         return map;
+    }
+
+    private class RecordingReconciliationProxy : DispatchProxy
+    {
+        public int RefreshCalls { get; private set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name == nameof(IInputInvoiceReconciliationService
+                    .RefreshWithinTransactionAsync))
+            {
+                RefreshCalls++;
+                return Task.FromResult(new InputInvoiceReconciliationDto());
+            }
+
+            throw new NotSupportedException(targetMethod?.Name);
+        }
     }
 
     private static async Task AssertStoreAndLegalEntityAsync(

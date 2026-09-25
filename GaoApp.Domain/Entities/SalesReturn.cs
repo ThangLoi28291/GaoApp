@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -50,6 +50,7 @@ public class SalesReturn : BaseStoreEntity, IAuditTrackedEntity
     /// Tổng tiền refund thực tế đã hoàn ra.
     /// </summary>
     public decimal RefundTotal { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column(TypeName = "decimal(18,2)")] public decimal DepositRestoredTotal { get; set; }
 
     public int CreatedByUserId { get; set; }
 

@@ -1,0 +1,131 @@
+@model GaoApp.Web.Services.Acb.AcbSettingsForm
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = "Cài đặt thanh toán ACB";
+}
+<div class="card"><div class="card-body">
+    <h3>Cài đặt thanh toán ACB</h3>
+    <a href="/admin/acb/reconciliation" class="btn btn-outline-primary mb-3">Đối soát danh sách giao dịch QR</a>
+    <p>Cấu hình áp dụng cho cửa hàng đang đăng nhập. QR tự động áp dụng khi tất cả hàng, kể cả hàng tặng, có hóa đơn đầu vào. Số tiền mặc định là phần còn thiếu; có thể chia thành nhiều lần chuyển khoản.</p>
+    @if (TempData["Success"] is string success) { <div class="alert alert-success">@success</div> }
+    @if (TempData["Error"] is string error) { <div class="alert alert-danger" role="alert">@error</div> }
+    @if (ViewBag.CallbackIsLocal == true)
+    {
+        <div class="alert alert-info">Đang chạy local: có thể gọi API ACB để thử lấy token, tạo, tra cứu và hủy QR. Để ACB gửi callback về máy này, cần URL HTTPS công khai đã đăng ký với ACB và chuyển tiếp vào đúng cửa hàng.</div>
+    }
+    <div class="alert alert-info">
+        <div>Callback gần nhất: @(ViewBag.CallbackLastReceivedAt is DateTime receivedAt ? receivedAt.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss") : "Chưa nhận callback")</div>
+        <div>Đang chờ máy chủ xử lý: @ViewBag.CallbackPendingCount · Cần đối chiếu: @ViewBag.CallbackReviewCount</div>
+    </div>
+    <details class="mb-4">
+        <summary class="fw-semibold">Chẩn đoán callback và 20 lần nhận gần nhất</summary>
+        <div class="mt-3">
+            <p>Header đã đăng ký: <code>x-api-key</code>. Nhật ký trên host: <code>App_Data/Logs/acb-callback/callback-YYYYMMDD.jsonl</code>. Phản hồi HTTP có <code>X-Acb-Diagnostic-Id</code> để đối chiếu lỗi. Log không chứa API key hoặc token.</p>
+            <p class="text-muted">Nếu ACB không gọi tới ứng dụng thì không có log callback; cần đối chiếu URL, HTTPS và log IIS/reverse proxy. Callback hợp lệ được lưu trước khi trả thành công, rồi máy chủ xử lý và tự thử lại nếu ACB tạm lỗi.</p>
+            <div class="table-responsive"><table class="table table-sm">
+                <thead><tr><th>Mã nhận</th><th>Loại</th><th>Nhận lúc</th><th>Trang</th><th>Số lần xử lý</th><th>Kết quả</th><th>Mã chẩn đoán</th></tr></thead>
+                <tbody>
+                @foreach (var receipt in (IReadOnlyList<GaoApp.Web.Services.Acb.AcbCallbackReceiptSummary>)ViewBag.CallbackReceipts)
+                {
+                    <tr><td>#@receipt.Id</td><td>@(receipt.RequestCode == "TRANSACTION_HISTORY" ? "Cuối ngày" : "Tức thời")</td><td>@receipt.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</td><td>@receipt.Page / @receipt.TotalPages</td><td>@receipt.Attempts</td><td>@(receipt.NeedsReview ? "Cần đối chiếu QR" : receipt.ProcessedAtUtc.HasValue ? "Đã xử lý" : "Đang chờ / thử lại")</td><td><code>@(receipt.LastErrorCode ?? "—")</code></td></tr>
+                }
+                </tbody>
+            </table></div>
+        </div>
+    </details>
+    <form method="post" autocomplete="off">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+        <div class="form-check mb-3"><input asp-for="Enabled" class="form-check-input" /><label asp-for="Enabled" class="form-check-label">Bật QR ACB xác nhận tự động</label></div>
+        <div class="mb-3">
+            <label asp-for="BankAccountId" class="form-label">Tài khoản nhận tiền của cửa hàng <span class="text-danger">*</span></label>
+            <select asp-for="BankAccountId" asp-items="ViewBag.BankAccounts" class="form-select" required aria-describedby="acb-bank-help"><option value="">Chọn tài khoản ACB</option></select>
+            <span asp-validation-for="BankAccountId" class="text-danger"></span>
+            <div id="acb-bank-help" class="form-text">Chọn tài khoản ACB đã khai báo cho cửa hàng này.</div>
+            @if (ViewBag.HasAcbBankAccounts != true)
+            {
+                <div class="alert alert-warning mt-2">
+                    Cửa hàng chưa có tài khoản ACB đang hoạt động. Hãy thêm tài khoản với mã ngân hàng ACB và bật trạng thái hoạt động, sau đó quay lại trang này để chọn.
+                    <a asp-area="Admin" asp-controller="StoreBankAccounts" asp-action="Edit" asp-route-tenant="@Context.Request.Query["tenant"]" target="_blank" rel="noopener">Thêm tài khoản ACB</a>
+                </div>
+            }
+        </div>
+        <div class="row g-3">
+        @foreach (var field in GaoApp.Web.Services.Acb.AcbSettingsForm.TextFields)
+        {
+            <div class="col-md-6"><label for="@field" class="form-label">@field</label>@Html.TextBox(field, null, new { @class = "form-control", maxlength = field.EndsWith("Endpoint") || field == "ApiBaseUrl" ? 500 : 200 })</div>
+        }
+        <div class="col-md-6"><label asp-for="ClientSecret" class="form-label">Client secret</label><input asp-for="ClientSecret" type="password" class="form-control" autocomplete="new-password" /><small>@(Model.HasClientSecret ? "Đã lưu. Để trống để giữ nguyên." : "Chưa cấu hình.")</small></div>
+        </div>
+        <fieldset class="border rounded-3 p-4 my-4 bg-light">
+            <legend class="float-none w-auto px-2 fs-5 mb-1">Callback ACB · Xác nhận tự động</legend>
+            <p class="text-muted mb-3">ACB gửi thông báo thanh toán về địa chỉ này và dùng khóa bên dưới để xác thực cho cửa hàng.</p>
+            <div class="mb-3">
+                <label for="acbCallbackUrl" class="form-label">URL nhận callback của cửa hàng hiện tại</label>
+                <input id="acbCallbackUrl" class="form-control" type="url" value="@ViewBag.CallbackUrl" readonly />
+                <div class="form-text">Đường dẫn cố định: <code>/Admin/api-callback</code>. Nếu đã cấu hình URL cũ bên dưới, ACB có thể tiếp tục gửi về URL cũ.</div>
+                @if (ViewBag.CallbackAliasUrls is string[] aliasUrls && aliasUrls.Length > 0)
+                {
+                    <div class="alert alert-info mt-2 mb-0">
+                        <strong>URL cũ nhận callback cho StoreId @ViewBag.CallbackStoreId</strong>
+                        @foreach (var aliasUrl in aliasUrls)
+                        {
+                            <div class="mt-1"><code>@aliasUrl</code></div>
+                        }
+                        <div class="mt-2">Dùng khóa x-api-key của cửa hàng này. Máy chủ phải chuyển yêu cầu tại URL cũ vào ứng dụng; cấu hình ánh xạ không chứng minh ACB đã gọi thành công. Xem Callback gần nhất và Chẩn đoán callback để kiểm tra.</div>
+                    </div>
+                }
+                @if (ViewBag.CallbackIsLocal == true)
+                {
+                    <div class="alert alert-info mt-2 mb-0">Cửa hàng chính đã đăng ký với ACB: <code>https://www.gaomart.com.vn/Admin/api-callback</code>. ACB chưa gửi trực tiếp tới localhost; sẽ kiểm tra nhận callback khi đưa ứng dụng lên host.</div>
+                }
+            </div>
+            @if (ViewBag.CanManageCallbackRouting == true)
+            {
+                <div class="mb-3"><a asp-controller="AcbCallbackRouting" asp-action="Index" class="btn btn-outline-primary">Chọn cửa hàng nhận callback từ URL cũ</a></div>
+            }
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="acbCallbackHeader" class="form-label">Tên header xác thực</label>
+                    <input id="acbCallbackHeader" class="form-control" value="x-api-key" readonly />
+                </div>
+                <div class="col-md-8">
+                    <label asp-for="CallbackApiKey" class="form-label">Giá trị x-api-key</label>
+                    <span class="badge @(Model.HasCallbackApiKey ? "bg-label-success" : "bg-label-warning") ms-2">@(Model.HasCallbackApiKey ? "Đã lưu khóa" : "Chưa lưu khóa")</span>
+                    <input asp-for="CallbackApiKey" type="password" class="form-control" autocomplete="new-password" maxlength="500" aria-describedby="acb-callback-key-help" placeholder="@(Model.HasCallbackApiKey ? "Để trống để giữ khóa đang dùng" : "Nhập khóa đã thống nhất với ACB")" />
+                    <span asp-validation-for="CallbackApiKey" class="text-danger"></span>
+                    <div id="acb-callback-key-help" class="form-text">Nhập đúng giá trị ACB gửi trong header <code>x-api-key</code>, rồi bấm <strong>Lưu cài đặt</strong>. Khóa được lưu mã hóa, không hiển thị lại và không đặt trong URL.</div>
+                </div>
+            </div>
+            <p class="form-text mt-3 mb-0">Dịch vụ đăng ký: <strong>Thông báo trạng thái giao dịch QR Code</strong> và <strong>Thông báo danh sách giao dịch QR Code</strong> (tức thời / cuối ngày), xác thực <strong>API key</strong>. Việc lưu ở đây không tự đăng ký hoặc đổi URL, khóa bên ACB. Mỗi cửa hàng dùng cấu hình riêng.</p>
+        </fieldset>
+        <button class="btn btn-primary" type="submit">Lưu cài đặt</button>
+        <a href="/Admin/StoreBankAccounts" class="btn btn-outline-secondary">Tài khoản ngân hàng</a>
+    </form>
+    <form asp-action="TestConnection" asp-route-tenant="@Context.Request.Query["tenant"]" method="post" class="mt-3">
+        @Html.AntiForgeryToken()
+        <button class="btn btn-outline-primary" type="submit" disabled="@(ViewBag.CanTestConnection != true)">Kiểm tra kết nối ACB</button>
+        <small class="d-block mt-1">Dùng cấu hình đã lưu để thử lấy token. Không tạo QR, không ghi thanh toán và không hiển thị token.</small>
+    </form>
+    <p class="mt-3">Môi trường đã lưu: <strong>@ViewBag.AcbEnvironment</strong>.</p>
+    @if (ViewBag.AcbEnvironment == "Production")
+    {
+        <form asp-action="TestProduction" asp-route-tenant="@Context.Request.Query["tenant"]" method="post" class="mt-3">
+            @Html.AntiForgeryToken()
+            <label for="acbProductionTerminal" class="form-label">Máy dùng cho phép thử Production</label>
+            <select name="terminalId" id="acbProductionTerminal" asp-items="ViewBag.TestTerminals" class="form-select mb-2" required><option value="">Chọn máy</option></select>
+            <button class="btn btn-outline-primary" type="submit" disabled="@(ViewBag.CanTestConnection != true)">Thử tạo → tra cứu → hủy QR Production 1.000đ</button>
+            <small class="d-block mt-1">Gọi ACB thật để tạo một QR 1.000đ rồi hủy. Không chuyển tiền, không tạo đơn bán hàng hoặc ghi nhận thanh toán. Kết quả cho biết ACB đã xác nhận hủy hay cần tra cứu lại.</small>
+        </form>
+    }
+    @if (ViewBag.AcbEnvironment == "Sandbox")
+    {
+    <form asp-action="TestSandbox" asp-route-tenant="@Context.Request.Query["tenant"]" method="post" class="mt-4">
+        @Html.AntiForgeryToken()
+        <label for="acbTestTerminal" class="form-label">Máy dùng cho phép thử Sandbox</label>
+        <select name="terminalId" id="acbTestTerminal" asp-items="ViewBag.TestTerminals" class="form-select mb-2" required><option value="">Chọn máy</option></select>
+        <button class="btn btn-outline-primary" type="submit" disabled="@(ViewBag.CanTestConnection != true)">Thử tạo → tra cứu → hủy QR Sandbox</button>
+        <small class="d-block mt-1">Tạo QR thử 1.000đ tại ACB Sandbox rồi hủy. Chỉ chấp nhận endpoint Sandbox; không tạo đơn bán hàng, ghi payment hoặc in bill.</small>
+    </form>
+    }
+</div></div>

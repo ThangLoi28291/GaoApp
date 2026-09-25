@@ -7,6 +7,7 @@
     let currentPage = 1;
     let totalItems = 0;
     let selectedSlipId = null;
+    let editingSlip = null;
 
     const btnShowCreateSlipModal = document.getElementById('btnShowCreateSlipModal');
     const btnReloadSlips = document.getElementById('btnReloadSlips');
@@ -29,6 +30,7 @@
     const slipDetailModal = slipDetailModalEl ? new bootstrap.Modal(slipDetailModalEl) : null;
 
     const ddlCreateSlipWarehouse = document.getElementById('ddlCreateSlipWarehouse');
+    const ddlCreateSlipTerminal = document.getElementById('ddlCreateSlipTerminal');
     const txtCreateSlipNote = document.getElementById('txtCreateSlipNote');
     const createSlipDenomGrid = document.getElementById('createSlipDenomGrid');
     const createSlipTotalText = document.getElementById('createSlipTotalText');
@@ -45,6 +47,16 @@
     function getToken() {
         const el = document.querySelector('input[name="__RequestVerificationToken"]');
         return el ? el.value : '';
+    }
+
+    function escapeHtml(value) {
+        const node = document.createElement('span');
+        node.textContent = value == null ? '' : String(value);
+        return node.innerHTML;
+    }
+
+    function receiverText(slip) {
+        return slip.usedByUserName || 'Chờ nhận ca';
     }
 
     function formatMoney(value) {
@@ -217,6 +229,19 @@
             .filter(x => x.denominationValue > 0 && x.quantity > 0);
     }
 
+    async function loadAssignments() {
+        const data = await fetchJson('/admin/pos/shift-handover-slips/assignments');
+        for (const [select, items, label] of [
+            [ddlCreateSlipTerminal, data.terminals, '-- Chọn quầy --']
+        ]) {
+            const current = select.value;
+            select.replaceChildren(new Option(label, ''));
+            (items || []).forEach(x => select.add(new Option(x.name, x.id)));
+            select.value = current;
+            if (!select.value && items.length === 1) select.value = items[0].id;
+        }
+    }
+
     async function loadWarehouses() {
         const list = await fetchJson('/admin/api/warehouses');
 
@@ -292,11 +317,11 @@
                         <div class="small text-muted">${x.barcodeValue || ''}</div>
                     </td>
                     <td>
-                        <span class="handover-status ${stClass}">${statusText(x.status)}</span>
+                        <span class="handover-status ${stClass}">${x.requiresReprint ? 'Đã sửa · Cần in lại' : statusText(x.status)}</span>
                     </td>
                     <td>${[x.warehouseCode, x.warehouseName].filter(Boolean).join(' - ') || '-'}</td>
                     <td>${[x.terminalCode, x.terminalName].filter(Boolean).join(' - ') || 'Dùng chung'}</td>
-                    <td>${x.assignedToUserName || 'Chưa chỉ định'}</td>
+                    <td>${escapeHtml(receiverText(x))}</td>
                     <td class="text-end fw-bold">${formatMoneyText(x.openingCashTotal)}</td>
                     <td>${formatDateTime(x.createdAtUtc)}</td>
                     <td>
@@ -304,6 +329,7 @@
                             <button type="button" class="btn btn-outline-primary handover-action-btn" data-view-slip="${x.id}">
                                 Xem
                             </button>
+                            ${stClass === 'draft' || stClass === 'printed' ? `<button type="button" class="btn btn-outline-primary handover-action-btn" data-edit-slip="${x.id}">Sửa</button>` : ''}
                             <button type="button" class="btn btn-outline-success handover-action-btn" data-print-slip="${x.id}">
                                 In
                             </button>
@@ -330,8 +356,43 @@
         if (btnSlipNext) btnSlipNext.disabled = currentPage >= totalPages;
     }
 
-    function openCreateModal() {
+    function setSlipFormMode(slip) {
+        editingSlip = slip;
+        document.getElementById('createSlipTitle').textContent = slip ? 'SỬA PHIẾU ' + slip.slipCode : 'TẠO PHIẾU NHẬN CA';
+        document.getElementById('saveSlipLabel').textContent = slip ? 'Lưu & in lại' : 'OK - Tạo phiếu';
+        document.getElementById('editSlipNotice').hidden = !slip;
+    }
+
+    async function openEditModal(id) {
+        try {
+            await loadAssignments();
+            const slip = await fetchJson(`/admin/pos/shift-handover-slips/${id}`);
+            if (!['draft', 'printed'].includes(statusClass(slip.status))) {
+                showError('Chỉ sửa được phiếu chưa nhận và chưa hủy.');
+                return;
+            }
+            resetSlipDenoms();
+            setSlipFormMode(slip);
+            ddlCreateSlipWarehouse.value = String(slip.warehouseId);
+            ddlCreateSlipTerminal.value = slip.terminalId ? String(slip.terminalId) : '';
+            txtCreateSlipNote.value = slip.note || '';
+            (slip.denominations || []).forEach(x => {
+                const input = document.getElementById('slipQty_' + x.denominationValue);
+                if (input) input.value = x.quantity;
+            });
+            calcSlipTotal();
+            if (createSlipModal) createSlipModal.show();
+        } catch (err) {
+            if (window.PosError) window.PosError.handle(err);
+            else showError(err.message);
+        }
+    }
+
+    async function openCreateModal() {
+        try { await loadAssignments(); }
+        catch (err) { showError(err.message); return; }
         resetSlipDenoms();
+        setSlipFormMode(null);
 
         if (txtCreateSlipNote) txtCreateSlipNote.value = '';
 
@@ -354,6 +415,11 @@
             return;
         }
 
+        const terminalId = Number(ddlCreateSlipTerminal.value);
+        if (!terminalId) {
+            showError('Vui lòng chọn quầy nhận ca.');
+            return;
+        }
         const denominations = getDenominationPayload();
 
         if (!denominations.length) {
@@ -363,15 +429,17 @@
 
         await withButtonLoading(btnCreateSlipConfirm, async () => {
             try {
-                const slip = await postJson('/admin/pos/shift-handover-slips', {
+                const isEdit = !!editingSlip;
+                const url = isEdit ? `/admin/pos/shift-handover-slips/${editingSlip.id}/update` : '/admin/pos/shift-handover-slips';
+                const slip = await postJson(url, {
                     warehouseId,
-                    terminalId: null,
-                    assignedToUserId: null,
+                    terminalId,
+                    rowVersion: editingSlip?.rowVersion,
                     note: txtCreateSlipNote ? txtCreateSlipNote.value : null,
                     denominations
                 });
 
-                showSuccess('Đã tạo phiếu nhận ca.');
+                showSuccess(isEdit ? 'Đã sửa phiếu. Hãy dùng bản in mới để nhận ca.' : 'Đã tạo phiếu nhận ca.');
 
                 if (createSlipModal) createSlipModal.hide();
 
@@ -385,7 +453,7 @@
                 if (window.PosError) window.PosError.handle(err);
                 else showError(err.message);
             }
-        }, 'Đang tạo');
+        }, editingSlip ? 'Đang lưu' : 'Đang tạo');
     }
 
     async function viewSlip(id) {
@@ -434,7 +502,7 @@
                 </div>
                 <div class="handover-detail-item">
                     <div class="handover-detail-label">Người nhận</div>
-                    <div class="handover-detail-value">${slip.assignedToUserName || 'Chưa chỉ định'}</div>
+                    <div class="handover-detail-value">${escapeHtml(receiverText(slip))}</div>
                 </div>
                 <div class="handover-detail-item">
                     <div class="handover-detail-label">Tổng tiền</div>
@@ -467,7 +535,7 @@
                 </tbody>
             </table>
 
-            ${slip.note ? `<div class="shift-note-box mt-3"><div class="shift-note-label">Ghi chú</div><div class="shift-note-text">${slip.note}</div></div>` : ''}
+            ${slip.note ? `<div class="shift-note-box mt-3"><div class="shift-note-label">Ghi chú</div><div class="shift-note-text">${escapeHtml(slip.note)}</div></div>` : ''}
         `;
     }
 
@@ -583,6 +651,9 @@
                 input.select();
                 return;
             }
+
+            const editBtn = e.target.closest('[data-edit-slip]');
+            if (editBtn) { openEditModal(Number(editBtn.dataset.editSlip)); return; }
 
             const viewBtn = e.target.closest('[data-view-slip]');
             if (viewBtn) {

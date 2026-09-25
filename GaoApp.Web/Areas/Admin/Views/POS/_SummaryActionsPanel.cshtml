@@ -1,11 +1,14 @@
 ﻿@* =========================================================
-   PARTIAL VIEW: _SummaryActionsPanel.cshtml
-   Thanh action cố định dưới màn hình POS
+   POS v0.2 P1
+   State-driven Next Action area.
+
+   Business handlers remain owned by existing POS JavaScript.
 ========================================================= *@
 
-<div class="pos-bottom-action-inner">
+<div class="pos-cockpit-action-shell">
+
     <div id="posSummaryActionGrid"
-         class="pos-action-grid pos-action-grid--smart pos-action-grid--bottom is-empty">
+         class="pos-action-grid pos-action-grid--smart pos-cockpit-actions is-empty">
 
         <button id="btnNewCart"
                 type="button"
@@ -15,31 +18,49 @@
             Tạo giỏ mới
         </button>
 
-        <button id="btnOpenPayment"
-                class="btn btn-info text-white pos-action-btn pos-action-btn--payment"
-                type="button">
-            <span>Thanh toán</span>
-            <span class="badge bg-light text-dark shortcut-badge">F3</span>
-        </button>
+        <div class="pos-cockpit-primary-actions">
 
-        <button id="btnFinalizeCart"
-                class="btn btn-success pos-action-btn pos-action-btn--finalize"
-                type="button">
-            <span>Chốt đơn</span>
-            <span class="badge bg-light text-dark shortcut-badge">F4</span>
-        </button>
+            <button id="btnOpenPayment"
+                    class="btn pos-action-btn pos-action-btn--payment"
+                    type="button">
 
-        <button id="btnHoldCart"
-                class="btn btn-warning pos-action-btn pos-action-btn--secondary"
-                type="button">
-            <span>Giữ đơn</span>
-            <span class="badge bg-light text-dark shortcut-badge">F2</span>
-        </button>
+                <span>Thanh toán</span>
 
-        <button id="btnCancelCart"
-                class="btn btn-outline-danger pos-action-btn pos-action-btn--danger-soft"
-                type="button">
-            <span>Hủy giỏ</span>
-        </button>
+                <span class="shortcut-badge">
+                    F3
+                </span>
+            </button>
+
+            <button id="btnFinalizeCart"
+                    class="btn pos-action-btn pos-action-btn--finalize"
+                    type="button">
+
+                <span>Chốt đơn</span>
+
+                <span class="shortcut-badge">
+                    F4
+                </span>
+            </button>
+        </div>
+
+        <div class="pos-cockpit-secondary-actions">
+
+            <button id="btnHoldCart"
+                    class="btn pos-action-btn pos-action-btn--secondary"
+                    type="button">
+
+                <span>Giữ đơn</span>
+
+                <span class="shortcut-badge">
+                    F2
+                </span>
+            </button>
+
+            <button id="btnCancelCart"
+                    class="btn pos-action-btn pos-action-btn--danger-soft"
+                    type="button">
+                Hủy giỏ
+            </button>
+        </div>
     </div>
 </div>

@@ -1,4 +1,4 @@
-using GaoApp.Application.Common;
+﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.LegalEntities;
 using GaoApp.Application.Interfaces.Repositories.LegalEntities;
 using GaoApp.Domain.Enums;
@@ -332,8 +332,8 @@ public sealed class LegalEntityReconciliationRepository : ILegalEntityReconcilia
                 x.StoreId == storeId &&
                 !x.IsDeleted &&
                 x.OriginalInvoiceHeadId == null &&
-                orderIdsQuery.Contains(x.OrderId))
-            .GroupBy(x => x.OrderId)
+                x.OrderId.HasValue && orderIdsQuery.Contains(x.OrderId.Value))
+            .GroupBy(x => x.OrderId!.Value)
             .Select(x => new
             {
                 OrderId = x.Key,
@@ -396,8 +396,8 @@ public sealed class LegalEntityReconciliationRepository : ILegalEntityReconcilia
                 !x.IsDeleted &&
                 x.OriginalInvoiceHeadId == null &&
                 x.LegalEntityId.HasValue &&
-                orderIdsQuery.Contains(x.OrderId))
-            .GroupBy(x => new { x.OrderId, LegalEntityId = x.LegalEntityId!.Value })
+                x.OrderId.HasValue && orderIdsQuery.Contains(x.OrderId.Value))
+            .GroupBy(x => new { OrderId = x.OrderId!.Value, LegalEntityId = x.LegalEntityId!.Value })
             .Select(x => new
             {
                 x.Key.OrderId,

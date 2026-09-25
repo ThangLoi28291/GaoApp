@@ -2,15 +2,52 @@
     'use strict';
 
     let manualFreightAllocation = false;
+    let commercialReconciliationPreviewTimer = null;
+    let commercialReconciliationPreviewAbortController = null;
+    let previewRequestVersion = 0;
 
     // Expose this before DOMContentLoaded so the generic receipt page can
     // delegate without depending on script event-handler order.
     window.GaoAppPurchaseReceiptApproval = {
         submit: submitCommercialApproval,
-        open: openCommercialApprovalConfirmation
+        open: openCommercialApprovalConfirmation,
+        prepareConfirmation: prepareCommercialApprovalConfirmation,
+        refreshReconciliationPreview: refreshCommercialReconciliationPreview,
+        refreshAfterIntake: refreshAfterIntake
     };
 
     document.addEventListener('DOMContentLoaded', initCommercialApproval);
+
+    async function refreshAfterIntake() {
+        const current = document.getElementById('commercialApprovalWorkbench');
+        if (!current) return;
+        const response = await fetch(window.location.href, { cache: 'no-store', headers: { Accept: 'text/html' } });
+        if (!response.ok) throw new Error('Đã lưu hàng nhận nhưng chưa tải được phần duyệt phiếu. Vui lòng tải lại trang.');
+        const fresh = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const next = fresh.getElementById('commercialApprovalWorkbench');
+        if (!next) throw new Error('Phiếu vừa đổi trạng thái. Vui lòng tải lại trang.');
+        // Keep prices/settlement currently being entered. Quantities and the item list come from the server.
+        const selectorFor = element => {
+            if (element.id) return '#' + CSS.escape(element.id);
+            const row = element.closest('[data-line-id]');
+            const field = [...element.classList].find(x => x.startsWith('commercial-'));
+            return row && field && !field.includes('quantity') ? `[data-line-id="${row.dataset.lineId}"] .${CSS.escape(field)}` : null;
+        };
+        for (const field of current.querySelectorAll('input,select,textarea')) {
+            const selector = selectorFor(field), target = selector ? next.querySelector(selector) : null;
+            if (!target) continue;
+            if (field.tagName === 'SELECT' && ![...target.options].some(x => x.value === field.value))
+                for (const option of field.selectedOptions) target.append(option.cloneNode(true));
+            target.value = field.value; target.checked = field.checked;
+        }
+        current.replaceWith(next);
+        const summary = document.querySelector('.sd-manager-summary'), freshSummary = fresh.querySelector('.sd-manager-summary');
+        if (summary && freshSummary) summary.replaceWith(freshSummary);
+        const openButton = document.getElementById('btnOpenApproveModal'), freshButton = fresh.getElementById('btnOpenApproveModal');
+        if (openButton && freshButton) openButton.disabled = freshButton.disabled;
+        window.initStockDocumentWorkbenchTabs?.();
+        initCommercialApproval();
+    }
 
     function initCommercialApproval() {
         const workbench = document.getElementById('commercialApprovalWorkbench');
@@ -37,6 +74,7 @@
         syncVatState();
         syncFreightState(false);
         recalculateCommercialTotals();
+        if (!readOnly) scheduleCommercialReconciliationPreview();
     }
 
     function initCommercialSupplierLookup(element) {
@@ -105,6 +143,7 @@
                 autoAllocateFreight();
                 recalculateCommercialTotals();
             }
+            scheduleCommercialReconciliationPreview();
         });
 
         document.getElementById('includeVatInInventoryCost')?.addEventListener('change', recalculateCommercialTotals);
@@ -144,6 +183,7 @@
                     autoAllocateFreight();
                     recalculateCommercialTotals();
                 }
+                scheduleCommercialReconciliationPreview();
             };
             input.addEventListener('input', refresh);
             input.addEventListener('change', refresh);
@@ -168,6 +208,88 @@
         syncSettlementState();
     }
 
+    function scheduleCommercialReconciliationPreview() {
+        if (!document.getElementById('inputInvoiceReconciliationPanel')) return;
+        if (commercialReconciliationPreviewTimer) {
+            window.clearTimeout(commercialReconciliationPreviewTimer);
+        }
+        const requestVersion = ++previewRequestVersion;
+        commercialReconciliationPreviewTimer = window.setTimeout(function () {
+            requestCommercialReconciliationPreview(requestVersion);
+        }, 350);
+    }
+
+    async function refreshCommercialReconciliationPreview() {
+        const workbench = document.getElementById('commercialApprovalWorkbench');
+        if (!workbench || workbench.dataset.readonly === 'true') return;
+        if (commercialReconciliationPreviewTimer) {
+            window.clearTimeout(commercialReconciliationPreviewTimer);
+            commercialReconciliationPreviewTimer = null;
+        }
+        const requestVersion = ++previewRequestVersion;
+        await requestCommercialReconciliationPreview(requestVersion);
+    }
+
+    async function requestCommercialReconciliationPreview(requestVersion) {
+        const documentId = Number(window.stockDocumentPage?.documentId || 0);
+        const rowVersion = String(window.stockDocumentPage?.rowVersion || '');
+        const hasVat = document.getElementById('commercialHasVat')?.checked === true;
+        const lines = getCommercialRows().map(function (row) {
+            const tax = row.querySelector('.commercial-tax');
+            return {
+                stockDocumentLineId: Number(row.dataset.lineId),
+                unitPriceBeforeVat: roundMoney(
+                    readNumber(row.querySelector('.commercial-unit-price'))),
+                taxId: hasVat && tax?.value ? Number(tax.value) : null
+            };
+        });
+        const ready = documentId > 0 && rowVersion && lines.length > 0 &&
+            lines.every(function (line) {
+                return line.stockDocumentLineId > 0 &&
+                    Number.isFinite(line.unitPriceBeforeVat) &&
+                    line.unitPriceBeforeVat > 0 &&
+                    (!hasVat || Number.isInteger(line.taxId) && line.taxId > 0);
+        });
+        if (!ready || requestVersion !== previewRequestVersion) return;
+
+        const reconciliationRenderGeneration =
+            window.beginInputInvoiceReconciliationRenderRequest?.();
+        if (!Number.isInteger(reconciliationRenderGeneration)) return;
+
+        commercialReconciliationPreviewAbortController?.abort();
+        const controller = new AbortController();
+        commercialReconciliationPreviewAbortController = controller;
+        try {
+            const response = await fetch(
+                `/admin/api/stock-documents/${documentId}/input-invoices/reconciliation/preview`,
+                {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: controller.signal,
+                    body: JSON.stringify({
+                        stockDocumentId: documentId,
+                        rowVersion: rowVersion,
+                        hasVat: hasVat,
+                        lines: lines
+                    })
+                });
+            const api = await readJsonResponse(response);
+            if (requestVersion !== previewRequestVersion) return;
+            if (!api.ok) throw new Error(api.data?.message ||
+                'Không thể xem trước đối chiếu XML.');
+            window.renderInputInvoiceReconciliationPreview?.(api.data, reconciliationRenderGeneration);
+        } catch (error) {
+            if (error?.name !== 'AbortError' && requestVersion === previewRequestVersion) {
+                console.warn('Không thể cập nhật xem trước đối chiếu XML.', error);
+            }
+        } finally {
+            if (commercialReconciliationPreviewAbortController === controller) {
+                commercialReconciliationPreviewAbortController = null;
+            }
+        }
+    }
+
     function bindCommercialActions(canApprove, readOnly) {
         if (readOnly || !canApprove) return;
 
@@ -188,10 +310,34 @@
     }
 
     function openCommercialApprovalConfirmation() {
-        if (!validateCommercialApproval(true, false)) return;
+        // The shared button handler prepares every entry point before showing the modal.
+        document.getElementById('btnOpenApproveModal')?.click();
+    }
+
+    function prepareCommercialApprovalConfirmation() {
+        const workbench = document.getElementById('commercialApprovalWorkbench');
+        if (workbench?.dataset.hasPendingOutside === 'true') {
+            window.activateStockDocumentWorkbenchTab?.('goods');
+            const blocker = document.getElementById('managerApprovalBlockerSummary');
+            fail('Còn hàng Ngoài PO chưa được Manager xử lý.', blocker, true);
+            return false;
+        }
+        if (workbench?.dataset.hasUnresolvedProvisional === 'true') {
+            window.activateStockDocumentWorkbenchTab?.('goods');
+            const blocker = document.getElementById('managerApprovalBlockerSummary');
+            fail('Còn sản phẩm chưa có trong danh mục cần xử lý.', blocker, true);
+            return false;
+        }
+        if (workbench?.dataset.hasCatalogReview === 'true') {
+            window.activateStockDocumentWorkbenchTab?.('goods');
+            const blocker = document.getElementById('managerApprovalBlockerSummary');
+            fail('Còn sản phẩm tạm cần hoàn thiện tên trong danh mục.', blocker, true);
+            return false;
+        }
+        if (!validateCommercialApproval(true, false)) return false;
         renderPriceVarianceAcceptance();
         updateApproveModalSummary();
-        document.getElementById('btnOpenApproveModal')?.click();
+        return true;
     }
 
     async function submitCommercialApproval() {
@@ -226,6 +372,7 @@
             }
 
             hideApproveModal();
+            if (await window.GaoLabels?.afterApproval(documentId)) return;
             if (typeof window.showStockDocumentToast === 'function') {
                 window.showStockDocumentToast(
                     'success',
@@ -368,6 +515,8 @@
     }
 
     function fail(message, element, focusInvalid) {
+        const tabName = element?.closest?.('[data-workbench-panel]')?.dataset.workbenchPanel;
+        if (tabName) window.activateStockDocumentWorkbenchTab?.(tabName);
         const box = document.getElementById('commercialValidationMessage');
         if (box) {
             box.textContent = message;
@@ -443,6 +592,9 @@
             input.disabled = readOnly || !capitalized;
             if (!capitalized && resetWhenDisabled) input.value = '0';
         });
+        document.querySelectorAll('.commercial-line-freight').forEach(function (panel) {
+            panel.classList.toggle('d-none', !capitalized);
+        });
         if (!enabled && resetWhenDisabled) {
             const total = document.getElementById('commercialFreightTotal');
             if (total) total.value = '0';
@@ -486,7 +638,12 @@
         setText(document.getElementById('commercialLandedTotal'), formatMoney(inventoryValue));
         setText(document.getElementById('commercialApprovalModalMerchandiseTotal'), formatMoney(merchandiseTotal));
         const headerTotal = document.getElementById('txtTotalAmount');
-        if (headerTotal) headerTotal.value = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(merchandiseTotal);
+        if (headerTotal) {
+            const formatted = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 })
+                .format(merchandiseTotal);
+            if ('value' in headerTotal) headerTotal.value = formatted;
+            else headerTotal.textContent = `${formatted} đ`;
+        }
         renderAllocationStatus(freight, hasFreight, capitalizeFreightInInventoryCost);
         clearCommercialError();
     }
@@ -597,7 +754,7 @@
         if (!modal) return;
         const summary = modal.querySelector('.alert-success');
         if (summary) {
-            summary.innerHTML = '<strong>Thao tác nguyên tử:</strong> hệ thống sẽ chốt giá/VAT/phí, cộng tồn kho, tạo lớp FIFO và ghi công nợ đúng một lần.';
+            summary.textContent = 'Tồn kho, FIFO/cost và công nợ sẽ được ghi một lần.';
         }
     }
 

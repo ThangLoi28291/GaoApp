@@ -8,6 +8,10 @@
 
     let warehouses = [];
     let legalEntities = [];
+    let filteredWarehouses = [];
+    let warehousePage = 1;
+    let warehousePageSize = 10;
+    let warehouseKpiFilter = "all";
     let modal;
 
     document.addEventListener("DOMContentLoaded", function () {
@@ -15,9 +19,74 @@
 
         document.getElementById("btnCreateWarehouse")?.addEventListener("click", openCreateModal);
         document.getElementById("warehouseForm")?.addEventListener("submit", saveWarehouse);
+        bindWarehouseIndexEvents();
 
         loadLegalEntities().then(loadWarehouses);
     });
+
+    function bindWarehouseIndexEvents() {
+        bindWarehouseIndexKpiFilters();
+
+        document.getElementById("warehouseSearch")?.addEventListener("input", function () {
+            warehousePage = 1;
+            applyWarehouseIndexFilters();
+        });
+
+        document.getElementById("warehouseLegalEntityFilter")?.addEventListener("change", function () {
+            warehousePage = 1;
+            applyWarehouseIndexFilters();
+        });
+
+        document.getElementById("warehouseLifecycleFilter")?.addEventListener("change", function () {
+            warehousePage = 1;
+            applyWarehouseIndexFilters();
+        });
+
+        document.getElementById("warehousePageSize")?.addEventListener("change", function () {
+            warehousePageSize = Number(this.value || 10);
+            warehousePage = 1;
+            applyWarehouseIndexFilters();
+        });
+
+        document.getElementById("warehousePrevPage")?.addEventListener("click", function () {
+            if (warehousePage <= 1) return;
+            warehousePage--;
+            renderWarehouseIndexPage();
+        });
+
+        document.getElementById("warehouseNextPage")?.addEventListener("click", function () {
+            if (warehousePage >= getWarehouseTotalPages()) return;
+            warehousePage++;
+            renderWarehouseIndexPage();
+        });
+    }
+
+    function bindWarehouseIndexKpiFilters() {
+        document.querySelectorAll("[data-warehouse-management-index] .warehouse-kpi-filter[data-kpi-filter]")
+            .forEach(button => {
+                if (button.dataset.bound === "1") return;
+                button.dataset.bound = "1";
+
+                button.addEventListener("click", function () {
+                    const requestedFilter = this.dataset.kpiFilter || "all";
+                    warehouseKpiFilter = warehouseKpiFilter === requestedFilter
+                        ? "all"
+                        : requestedFilter;
+                    warehousePage = 1;
+                    syncWarehouseIndexKpiFilters();
+                    applyWarehouseIndexFilters();
+                });
+            });
+
+        syncWarehouseIndexKpiFilters();
+    }
+
+    function syncWarehouseIndexKpiFilters() {
+        document.querySelectorAll("[data-warehouse-management-index] .warehouse-kpi-filter[data-kpi-filter]")
+            .forEach(button => {
+                button.setAttribute("aria-pressed", String(button.dataset.kpiFilter === warehouseKpiFilter));
+            });
+    }
 
     async function loadLegalEntities() {
         try {
@@ -35,8 +104,10 @@
                 name: x.name ?? x.Name ?? "",
                 isDefaultForPurchase: toBool(x.isDefaultForPurchase ?? x.IsDefaultForPurchase)
             })) : [];
+            renderWarehouseLegalEntityFilter();
         } catch (error) {
             legalEntities = [];
+            renderWarehouseLegalEntityFilter();
             showToastOrAlert(error.message);
         }
     }
@@ -46,10 +117,15 @@
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="9" class="text-center text-muted py-4">
+                <td colspan="6" class="text-center text-muted py-4">
                     Đang tải dữ liệu...
                 </td>
             </tr>`;
+
+        const mobileList = document.getElementById("warehouseMobileList");
+        if (mobileList) {
+            mobileList.innerHTML = `<div class="text-center text-muted py-4">Đang tải dữ liệu...</div>`;
+        }
 
         try {
             const response = await fetch(apiUrl, {
@@ -65,113 +141,244 @@
             const data = await response.json();
             warehouses = Array.isArray(data) ? data.map(normalizeWarehouse) : [];
 
-            renderTable();
             renderStatistics();
+            warehousePage = 1;
+            applyWarehouseIndexFilters();
         } catch (error) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="text-center text-danger py-4">
+                    <td colspan="6" class="text-center text-danger py-4">
                         ${escapeHtml(error.message)}
                     </td>
                 </tr>`;
+            const mobileList = document.getElementById("warehouseMobileList");
+            if (mobileList) {
+                mobileList.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(error.message)}</div>`;
+            }
         }
     }
 
-    function renderTable() {
-        const tbody = document.querySelector("#warehouseTable tbody");
+    function renderWarehouseLegalEntityFilter() {
+        const select = document.getElementById("warehouseLegalEntityFilter");
+        if (!select) return;
 
-        if (!warehouses.length) {
+        const currentValue = select.value || "all";
+        select.innerHTML = `<option value="all">Tất cả HKD</option>` + legalEntities.map(x =>
+            `<option value="${x.id}">${escapeHtml(x.code)} - ${escapeHtml(x.name)}</option>`
+        ).join("");
+
+        select.value = Array.from(select.options).some(x => x.value === currentValue)
+            ? currentValue
+            : "all";
+    }
+
+    function normalizeWarehouseSearchText(value) {
+        return String(value ?? "")
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replaceAll("đ", "d");
+    }
+
+    function applyWarehouseIndexFilters() {
+        const keyword = normalizeWarehouseSearchText(
+            document.getElementById("warehouseSearch")?.value);
+        const legalEntityId = document.getElementById("warehouseLegalEntityFilter")?.value || "all";
+        const lifecycle = document.getElementById("warehouseLifecycleFilter")?.value || "all";
+
+        filteredWarehouses = warehouses.filter(x => {
+            const matchesKeyword = !keyword || [
+                x.name,
+                x.code,
+                x.legalEntityName,
+                x.location
+            ].some(value => normalizeWarehouseSearchText(value).includes(keyword));
+
+            const matchesLegalEntity = legalEntityId === "all"
+                || String(x.legalEntityId) === legalEntityId;
+            const matchesLifecycle = lifecycle === "all"
+                || (lifecycle === "active" ? x.isActive : !x.isActive);
+            const matchesKpi = warehouseKpiFilter === "all"
+                || (warehouseKpiFilter === "active" && x.isActive)
+                || (warehouseKpiFilter === "negative" && x.allowNegativeInventory)
+                || (warehouseKpiFilter === "default" && x.isDefault);
+
+            return matchesKeyword && matchesLegalEntity && matchesLifecycle && matchesKpi;
+        });
+
+        const totalPages = getWarehouseTotalPages();
+        if (warehousePage > totalPages) warehousePage = totalPages;
+
+        syncWarehouseIndexKpiFilters();
+        renderWarehouseIndexPage();
+    }
+
+    function renderWarehouseIndexPage() {
+        const totalItems = filteredWarehouses.length;
+        const totalPages = getWarehouseTotalPages();
+        const startIndex = (warehousePage - 1) * warehousePageSize;
+        const pageItems = filteredWarehouses.slice(startIndex, startIndex + warehousePageSize);
+
+        renderTable(pageItems);
+        renderWarehouseMobileCards(pageItems);
+        updateWarehousePagination(totalItems, startIndex, pageItems.length, totalPages);
+    }
+
+    function renderTable(items) {
+        const tbody = document.querySelector("#warehouseTable tbody");
+        if (!tbody) return;
+
+        if (!items.length) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="9" class="text-center text-muted py-4">
-                        Chưa có kho nào.
+                    <td colspan="6" class="text-center text-muted py-4">
+                        Không có kho phù hợp.
                     </td>
                 </tr>`;
             return;
         }
 
-        tbody.innerHTML = warehouses.map(x => `
+        tbody.innerHTML = items.map(x => `
             <tr>
-              <td>
-    <div class="warehouse-code">
-        ${escapeHtml(x.code)}
-    </div>
-</td>
-
-               <td>
-    <div class="warehouse-name">
-        ${escapeHtml(x.name)}
-    </div>
-                    ${x.isDefault ? `<div class="warehouse-default-badge">
-    <i class="bx bx-star"></i>
-    Kho mặc định
-</div>` : ``}
-                </td>
-
                 <td>
-                    <div class="fw-semibold">${escapeHtml(x.legalEntityName || "")}</div>
+                    <div class="warehouse-name">
+                        ${escapeHtml(x.name || "Chưa đặt tên")}
+                        ${x.isDefault ? `<span class="warehouse-default-badge"><i class="bx bx-star" aria-hidden="true"></i> Kho mặc định</span>` : ""}
+                    </div>
+                    <div class="warehouse-code">${escapeHtml(x.code || "-")}</div>
                 </td>
-
-                <td>${escapeHtml(x.location || "")}</td>
-
-                <td class="text-center">
-                    <div class="form-check form-switch d-flex justify-content-center">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               ${x.isDefault ? "checked" : ""}
-                               ${!x.isActive || !permissions.canUpdate ? "disabled" : ""}
-                               onchange="WarehousePage.confirmSetDefault(${x.id}, this)" />
+                <td>
+                    <div class="fw-semibold text-dark">${escapeHtml(x.legalEntityName || "-")}</div>
+                </td>
+                <td>
+                    <div class="warehouse-place-note">
+                        <strong>${escapeHtml(x.location || "Chưa cập nhật vị trí")}</strong>
+                        <span>${escapeHtml(x.note || "Không có ghi chú")}</span>
                     </div>
                 </td>
-
-                <td class="text-center">
-                    <div class="form-check form-switch d-flex justify-content-center">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               ${x.allowNegativeInventory ? "checked" : ""}
-                               ${!permissions.canUpdate ? "disabled" : ""}
-                               onchange="WarehousePage.confirmToggleNegative(${x.id}, this.checked, this)" />
-                    </div>
+                <td>
+                    ${renderWarehouseConfigControls(x)}
                 </td>
-
-                <td class="text-center">
-                    <div class="form-check form-switch d-flex justify-content-center">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               ${x.isActive ? "checked" : ""}
-                               ${!permissions.canUpdate ? "disabled" : ""}
-                               onchange="WarehousePage.confirmToggleActive(${x.id}, this.checked, this)" />
-                    </div>
+                <td>
+                    ${renderWarehouseActiveControl(x)}
                 </td>
-
-                <td>${escapeHtml(x.note || "")}</td>
-
                 <td class="text-end">
-                    ${permissions.canUpdate ? `<button type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            onclick="WarehousePage.openEditModal(${x.id})">
-                        Sửa
-                    </button>` : ``}
+                    ${renderWarehouseEditAction(x, false)}
                 </td>
             </tr>
         `).join("");
     }
+
+    function renderWarehouseMobileCards(items) {
+        const list = document.getElementById("warehouseMobileList");
+        if (!list) return;
+
+        if (!items.length) {
+            list.innerHTML = `<div class="text-center text-muted py-4">Không có kho phù hợp.</div>`;
+            return;
+        }
+
+        list.innerHTML = items.map(x => `
+            <article class="warehouse-mobile-card">
+                <div class="warehouse-mobile-card__header">
+                    <div>
+                        <div class="warehouse-name">${escapeHtml(x.name || "Chưa đặt tên")}</div>
+                        <div class="warehouse-code">${escapeHtml(x.code || "-")}</div>
+                    </div>
+                    ${x.isDefault ? `<span class="warehouse-default-badge"><i class="bx bx-star" aria-hidden="true"></i> Kho mặc định</span>` : ""}
+                </div>
+                <div class="warehouse-mobile-card__facts">
+                    <div><span>HKD sở hữu</span><strong>${escapeHtml(x.legalEntityName || "-")}</strong></div>
+                    <div><span>Vị trí</span><strong>${escapeHtml(x.location || "Chưa cập nhật")}</strong></div>
+                    <div><span>Ghi chú</span><strong>${escapeHtml(x.note || "Không có")}</strong></div>
+                </div>
+                <div class="warehouse-mobile-card__controls">
+                    ${renderWarehouseConfigControls(x)}
+                    ${renderWarehouseActiveControl(x)}
+                    ${renderWarehouseEditAction(x, true)}
+                </div>
+            </article>
+        `).join("");
+    }
+
+    function renderWarehouseConfigControls(x) {
+        return `
+            <div class="warehouse-config-controls">
+                <label class="form-check form-switch warehouse-switch-control">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           aria-label="Đặt ${escapeHtml(x.name)} làm kho mặc định"
+                           ${x.isDefault ? "checked" : ""}
+                           ${!x.isActive || !permissions.canUpdate ? "disabled" : ""}
+                           onchange="WarehousePage.confirmSetDefault(${x.id}, this)" />
+                    <span class="warehouse-switch-label">Mặc định</span>
+                </label>
+                <label class="form-check form-switch warehouse-switch-control">
+                    <input class="form-check-input"
+                           type="checkbox"
+                           aria-label="Cho phép âm kho ${escapeHtml(x.name)}"
+                           ${x.allowNegativeInventory ? "checked" : ""}
+                           ${!permissions.canUpdate ? "disabled" : ""}
+                           onchange="WarehousePage.confirmToggleNegative(${x.id}, this.checked, this)" />
+                    <span class="warehouse-switch-label is-danger">Âm kho</span>
+                </label>
+            </div>`;
+    }
+
+    function renderWarehouseActiveControl(x) {
+        return `
+            <label class="form-check form-switch warehouse-switch-control">
+                <input class="form-check-input"
+                       type="checkbox"
+                       aria-label="Trạng thái kho ${escapeHtml(x.name)}"
+                       ${x.isActive ? "checked" : ""}
+                       ${!permissions.canUpdate ? "disabled" : ""}
+                       onchange="WarehousePage.confirmToggleActive(${x.id}, this.checked, this)" />
+                <span class="warehouse-switch-label ${x.isActive ? "is-success" : ""}">
+                    ${x.isActive ? "Đang hoạt động" : "Ngưng hoạt động"}
+                </span>
+            </label>`;
+    }
+
+    function renderWarehouseEditAction(x, isMobile) {
+        if (!permissions.canUpdate) return "";
+
+        return `<button type="button"
+                        class="btn btn-sm btn-outline-primary ${isMobile ? "warehouse-mobile-card__action" : ""}"
+                        onclick="WarehousePage.openEditModal(${x.id})">
+                    <i class="bx bx-edit-alt" aria-hidden="true"></i>
+                    Sửa
+                </button>`;
+    }
+
+    function updateWarehousePagination(totalItems, startIndex, currentCount, totalPages) {
+        const info = document.getElementById("warehousePaginationInfo");
+        const current = document.getElementById("warehouseCurrentPage");
+        const prev = document.getElementById("warehousePrevPage");
+        const next = document.getElementById("warehouseNextPage");
+        const from = totalItems === 0 ? 0 : startIndex + 1;
+        const to = totalItems === 0 ? 0 : startIndex + currentCount;
+
+        if (info) info.textContent = `Hiển thị ${from} - ${to} / ${totalItems} kho`;
+        if (current) current.textContent = `${warehousePage} / ${totalPages}`;
+        if (prev) prev.disabled = warehousePage <= 1;
+        if (next) next.disabled = warehousePage >= totalPages;
+    }
+
+    function getWarehouseTotalPages() {
+        return Math.max(1, Math.ceil(filteredWarehouses.length / warehousePageSize));
+    }
+
     function renderStatistics() {
-
-        document.getElementById("totalWarehouseCount").innerText =
-            warehouses.length;
-
+        document.getElementById("totalWarehouseCount").innerText = warehouses.length;
         document.getElementById("activeWarehouseCount").innerText =
             warehouses.filter(x => x.isActive).length;
-
         document.getElementById("negativeWarehouseCount").innerText =
             warehouses.filter(x => x.allowNegativeInventory).length;
 
-        const defaultWarehouse =
-            warehouses.find(x => x.isDefault);
-
-        document.getElementById("defaultWarehouseName").innerText =
-            defaultWarehouse?.name || "--";
+        const defaultWarehouse = warehouses.find(x => x.isDefault);
+        document.getElementById("defaultWarehouseName").innerText = defaultWarehouse?.name || "--";
     }
     function openCreateModal() {
         if (!permissions.canCreate) return;
@@ -436,7 +643,8 @@
                     : x
             );
 
-            renderTable();
+            renderStatistics();
+            applyWarehouseIndexFilters();
         } catch (error) {
             checkbox.checked = rollbackValue;
             showToastOrAlert(error.message);

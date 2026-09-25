@@ -64,6 +64,21 @@ public class InventoryTransactionConfiguration : IEntityTypeConfiguration<Invent
         });
 
         builder.HasIndex(x => new
+            {
+                x.StoreId,
+                x.OccurredAtUtc,
+                x.Id
+            })
+            .HasDatabaseName("IX_InventoryTransactions_LedgerTimeline")
+            .IsDescending(false, true, true)
+            .IncludeProperties(x => new
+            {
+                x.QuantityChange,
+                x.AfterQty
+            })
+            .HasFilter("[IsDeleted] = 0");
+
+        builder.HasIndex(x => new
         {
             x.StoreId,
             x.ReferenceType,

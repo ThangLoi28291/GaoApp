@@ -1,12 +1,13 @@
 ﻿using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.Interfaces.Services.Audit;
+using GaoApp.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
-[Authorize]
+[Authorize(Policy = PermissionCodes.System.AuditLog.View)]
 [ApiController]
 [Route("admin/api/audit-logs")]
 public class AuditLogsApiController : ControllerBase

@@ -1,0 +1,135 @@
+@model GaoApp.Application.DTOs.Inventory.PurchaseReceiptSplitWorkspaceDto
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Tách phiếu nhập";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
+}
+
+<div class="container-fluid flex-grow-1 container-p-y" id="splitReceiptWorkspace"
+     data-source-id="@Model.SourceReceiptId"
+     data-api-base="/admin/api/stock-documents">
+    @Html.AntiForgeryToken()
+    <div class="d-flex justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h3 class="mb-1">Tách phiếu nhập @Model.SourceDocumentNo</h3>
+            <div class="text-muted">
+                Phân bổ toàn bộ số lượng nguồn sang ít nhất hai phiếu kết quả. Chưa có dữ liệu nào được thay đổi cho tới khi xác nhận cuối.
+            </div>
+        </div>
+        <a class="btn btn-outline-secondary"
+           href="@Url.Action("Edit", "StockDocumentManagement", new { area = "Admin", id = Model.SourceReceiptId })">
+            Quay lại phiếu
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3"><span class="text-muted">Ngày chứng từ</span><div class="fw-semibold">@Model.DocumentDate.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</div></div>
+                <div class="col-md-3"><span class="text-muted">Số dòng</span><div class="fw-semibold">@Model.Lines.Count</div></div>
+                <div class="col-md-3"><span class="text-muted">Phí vận chuyển</span><div class="fw-semibold">@Model.FreightTotal.ToString("N0", CultureInfo.GetCultureInfo("vi-VN")) đ</div></div>
+                <div class="col-md-3"><span class="text-muted">Hóa đơn nguồn</span><div class="fw-semibold">@(Model.SourceInvoiceLabel ?? "Chưa liên kết")</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+                <h5 class="mb-0">Còn lại theo dòng nguồn</h5>
+                <small class="text-muted">Mọi dòng phải về đúng 0 trước khi gửi.</small>
+            </div>
+            <button type="button" class="btn btn-outline-primary" id="btnAddSplitTarget">Thêm phiếu kết quả</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Dòng</th><th>Hàng hóa</th><th>SL nguồn</th><th>Còn lại</th></tr></thead>
+                <tbody id="splitRemainingRows"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="splitTargetCards" class="d-grid gap-4"></div>
+
+    <div class="card mt-4">
+        <div class="card-body d-flex justify-content-between align-items-center gap-3 flex-wrap">
+            <div>
+                <div class="fw-semibold">Xác nhận cuối</div>
+                <small class="text-muted">Hệ thống sẽ khóa lại phiếu nguồn, kiểm tra snapshot và thực hiện toàn bộ thao tác trong một transaction.</small>
+            </div>
+            <button type="button" class="btn btn-primary" id="btnSubmitSplitReceipt">Xác nhận tách phiếu</button>
+        </div>
+    </div>
+
+    <div id="splitReceiptMessage" class="mt-3" aria-live="polite"></div>
+    <div id="splitReceiptResultLinks" class="mt-3"></div>
+</div>
+
+<template id="splitTargetTemplate">
+    <section class="card split-target-card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 split-target-title"></h5>
+            <button type="button" class="btn btn-sm btn-outline-danger split-remove-target">Xóa phiếu</button>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-lg-4">
+                    <label class="form-label">Nhà cung cấp</label>
+                    <select class="form-select split-supplier"></select>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label">Kho</label>
+                    <select class="form-select split-warehouse"></select>
+                </div>
+                <div class="col-lg-4">
+                    <label class="form-label">Ngày nhập kho dự kiến</label>
+                    <input class="form-control split-warehouse-date" readonly />
+                    <div class="form-text">Theo ngày hóa đơn XML; nếu không có XML thì theo ngày chứng từ nguồn.</div>
+                </div>
+            </div>
+            <div class="border rounded p-3 mb-3 split-payment-box">
+                <div class="form-check mb-2">
+                    <input class="form-check-input split-payment-confirm" type="checkbox" />
+                    <label class="form-check-label">Xác nhận trạng thái thanh toán khi đổi Nhà cung cấp</label>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-4 form-check ms-2 mt-4">
+                        <input class="form-check-input split-paid" type="checkbox" />
+                        <label class="form-check-label">Đã thanh toán tiền hàng</label>
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Người nhận tiền</label>
+                        <input class="form-control split-payee" maxlength="250" />
+                    </div>
+                </div>
+            </div>
+            <div class="border rounded p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                    <div><strong>Hóa đơn đầu vào</strong><div class="small text-muted split-invoice-label">Chưa chọn</div></div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary split-browse-invoice">Chọn hóa đơn</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary split-clear-invoice">Bỏ chọn</button>
+                    </div>
+                </div>
+                <div class="split-invoice-browser"></div>
+                <div class="split-invoice-preview mt-2"></div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Dòng nguồn</th><th>SL nguồn</th><th>Phân bổ BaseQuantity</th></tr></thead>
+                    <tbody class="split-allocation-rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</template>
+
+<script>
+    window.purchaseReceiptSplitWorkspace = @Json.Serialize(Model);
+</script>
+<script src="~/Admin/js/split-receipt.js" asp-append-version="true"></script>

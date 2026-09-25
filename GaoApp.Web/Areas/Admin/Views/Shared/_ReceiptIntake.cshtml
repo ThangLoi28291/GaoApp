@@ -1,0 +1,64 @@
+@model int
+<link rel="stylesheet" href="~/Admin/css/receipt-intake.css" asp-append-version="true" />
+<div id="receiptIntake" data-document-id="@Model">
+    <div class="d-none">@Html.AntiForgeryToken()</div>
+    <details id="receiptIntakePending" class="ri-pending" hidden>
+        <summary><i class="bx bx-task" aria-hidden="true"></i><strong>Cần xử lý: <span id="riPendingCount">0</span> mục</strong><span>Xem mã hàng, quy cách và sản phẩm mới</span><i class="bx bx-chevron-down" aria-hidden="true"></i></summary>
+        <div id="riPendingMessage" role="status" class="small"></div>
+        <div id="riPendingItems"></div>
+        @await Html.PartialAsync("_ReceiptBarcodeProposals", Model)
+    </details>
+    <div id="riPageMessage" role="status" class="small text-danger"></div>
+    <details id="riPhotoEvidence" class="ri-photo-evidence" hidden><summary>Ảnh bao bì đã nhận <span id="riPhotoCount"></span></summary><div id="riPhotoItems"></div></details>
+</div>
+<div class="modal fade" id="receiptIntakeModal" tabindex="-1" aria-labelledby="riTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content ri-modal">
+        <div class="modal-header"><div><h5 id="riTitle" class="modal-title">Nhận hàng từ mã mới</h5><p class="small text-muted mb-0">Chọn sản phẩm và khai báo đúng quy cách trên bao bì.</p></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <label for="riBarcode" class="form-label">Mã vừa quét <span class="text-muted fw-normal">· để trống nếu không có barcode</span></label>
+            <input id="riBarcode" class="form-control ri-code" maxlength="64" autocomplete="off" spellcheck="false" />
+            <div class="ri-tabs" role="tablist" aria-label="Loại hàng nhận">
+                <button id="riExistingTab" type="button" role="tab" aria-selected="true" aria-controls="riExistingPanel" data-intake-tab="existing"><i class="bx bx-package" aria-hidden="true"></i>Sản phẩm có sẵn</button>
+                <button id="riNewTab" type="button" role="tab" aria-selected="false" aria-controls="riNewPanel" tabindex="-1" data-intake-tab="new"><i class="bx bx-plus-circle" aria-hidden="true"></i>Sản phẩm mới</button>
+            </div>
+            <div id="riExistingPanel" role="tabpanel" aria-labelledby="riExistingTab">
+                <label for="riProduct" class="form-label">Tìm sản phẩm</label>
+                <select id="riProduct" class="form-select" style="width:100%"><option></option></select>
+                <div id="riProductCard" class="ri-product" hidden>
+                    <div class="ri-product-heading"><img id="riProductImage" alt="" hidden /><i id="riImageFallback" class="bx bx-package" aria-hidden="true"></i><div><strong id="riProductName"></strong><small id="riProductBase"></small></div></div>
+                    <p class="form-label mb-2">Đơn vị của mã vừa quét</p>
+                    <div id="riUnitCards" class="ri-unit-cards" role="group" aria-label="Chọn đơn vị nhận"></div>
+                </div>
+            </div>
+            <div id="riNewPanel" role="tabpanel" aria-labelledby="riNewTab" hidden>
+                <label for="riNewName" class="form-label">Tên sản phẩm <span class="text-danger">*</span></label>
+                <input id="riNewName" class="form-control mb-3" maxlength="200" autocomplete="off" placeholder="Ví dụ: Sữa tươi ít đường 180 ml" />
+                <div class="row g-3">
+                    <div class="col-sm-6"><label for="riBaseUnit" class="form-label">Đơn vị gốc <span class="text-danger">*</span></label><select id="riBaseUnit" class="form-select"></select></div>
+                    <div class="col-sm-6"><label for="riCategory" class="form-label">Danh mục <span class="text-muted fw-normal">· có thể bổ sung khi duyệt</span></label><select id="riCategory" class="form-select"></select></div>
+                </div>
+            </div>
+            <div id="riPacking" class="ri-packing" hidden>
+                <div class="row g-3">
+                    <div class="col-sm-6"><label for="riReceiveUnit" class="form-label">Đơn vị nhận <span class="text-danger">*</span></label><select id="riReceiveUnit" class="form-select"></select></div>
+                    <div class="col-sm-6"><label for="riFactor" class="form-label">Quy đổi về đơn vị gốc <span class="text-danger">*</span></label><div class="input-group"><span class="input-group-text">1 <span id="riReceivingLabel" class="ms-1">đơn vị</span> =</span><input id="riFactor" class="form-control" type="number" min="0.001" step="0.001" inputmode="decimal" /><span id="riBaseLabel" class="input-group-text">đơn vị gốc</span></div></div>
+                </div>
+                <small class="text-muted d-block mt-2">Nhập quy đổi rồi lưu để nhận hàng ngay. Quản lý đối chiếu khi duyệt phiếu.</small>
+            </div>
+            <div class="ri-quantity"><div><label for="riQuantity" class="form-label">Số lượng thực nhận <span class="text-danger">*</span></label><input id="riQuantity" class="form-control" type="number" min="1" step="1" inputmode="decimal" value="1" /></div><div id="riEquivalent" class="ri-equivalent" aria-live="polite">Chọn sản phẩm và đơn vị nhận.</div></div>
+            <label for="riNote" class="form-label">Ghi chú</label><textarea id="riNote" class="form-control" rows="2" maxlength="500" placeholder="Thông tin trên bao bì cần quản lý lưu ý"></textarea>
+            <div class="ri-photo-tools"><label for="riPhoto">Ảnh bao bì <span class="text-muted fw-normal">· không bắt buộc</span></label><input id="riPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" /><small class="d-block text-muted mt-2">Chụp rõ tên hàng và quy cách để quản lý đối chiếu. Ảnh được thu nhỏ trước khi lưu.</small><img id="riPhotoPreview" class="ri-photo-preview" alt="Ảnh bao bì vừa chọn" hidden /><button id="riPhotoRemove" type="button" class="btn btn-sm btn-outline-secondary mt-2" hidden>Bỏ ảnh</button><div id="riPhotoStatus" class="small mt-2" role="status"></div></div>
+            <label id="riApproveWrap" class="ri-approve" hidden><input id="riApproveNow" class="form-check-input" type="checkbox" /> Duyệt và thêm vào danh mục ngay</label>
+            <div id="riError" class="text-danger mt-3" role="alert"></div>
+        </div>
+        <div class="modal-footer"><small class="text-muted me-auto">Ctrl+Enter: lưu · Esc: đóng</small><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button id="riSave" type="button" class="btn btn-primary">Lưu hàng nhận</button></div>
+    </div></div>
+</div>
+<div class="modal fade" id="receiptIntakeReviewModal" tabindex="-1" aria-labelledby="riReviewTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content ri-modal">
+        <div class="modal-header"><h5 id="riReviewTitle" class="modal-title">Duyệt khai báo nhận hàng</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body"><div id="riReviewFacts"></div><div id="riReviewCategoryWrap" class="mt-3"><label for="riReviewCategory" class="form-label">Danh mục sản phẩm <span class="text-danger">*</span></label><select id="riReviewCategory" class="form-select"></select></div><div id="riReviewError" class="text-danger mt-3" role="alert"></div></div>
+        <div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><button id="riReject" type="button" class="btn btn-outline-danger">Loại khỏi phiếu</button><button id="riApprove" type="button" class="btn btn-primary">Duyệt khai báo</button></div>
+    </div></div>
+</div>
+<script src="~/Admin/js/receipt-intake-photo.js" asp-append-version="true" defer></script>

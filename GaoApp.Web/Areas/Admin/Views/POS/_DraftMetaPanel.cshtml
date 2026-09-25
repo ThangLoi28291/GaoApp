@@ -1,42 +1,40 @@
-﻿@* =========================================================
-   PARTIAL VIEW: _DraftMetaPanel.cshtml
-   Mục đích:
-   - Gộp thông tin phụ của đơn vào 1 card gọn
-   - Chứa Tạm tính / Giảm giá / Đã thanh toán
-   - Giữ ghi chú và giảm giá đơn dạng mở rộng
+@* =========================================================
+   POS v0.2 P5-A3
+   Compact order tools inside the unified Checkout Panel.
+
+   Presentation only:
+   - Keep canonical DOM ids and data hooks.
+   - Financial subtotal/discount presentation belongs to Summary.
+   - Note / order-discount editors keep existing behavior.
 ========================================================= *@
 
-<div class="card pos-card pos-order-info-card mb-3">
-    <div class="card-body">
-        <div class="pos-section-title mb-2">Thông tin đơn</div>
+<section class="pos-cockpit-section pos-cockpit-order-section pos-cockpit-order-tools">
 
-        <div class="pos-order-money-list">
-            <div class="pos-order-money-row">
-                <span>Tạm tính</span>
-                <strong id="sumSubtotal">0</strong>
-            </div>
+    <div class="pos-cockpit-section__eyebrow">
+        CÔNG CỤ ĐƠN
+    </div>
 
-            <div class="pos-order-money-row">
-                <span>Giảm giá</span>
-                <strong id="sumDiscount">0</strong>
-            </div>
+    <div class="pos-order-tools-grid">
 
-        </div>
+        <div class="pos-meta-section pos-order-tool is-collapsed"
+             data-meta-section="note">
 
-        <div class="pos-order-divider"></div>
-
-        <div class="pos-meta-section is-collapsed" data-meta-section="note">
             <div class="pos-meta-section__header">
                 <div>
-                    <div class="pos-meta-section__title">Ghi chú đơn</div>
-                    <div id="metaOrderNoteSummary" class="pos-meta-summary text-muted small">
+                    <div class="pos-meta-section__title">
+                        Ghi chú
+                    </div>
+
+                    <div id="metaOrderNoteSummary"
+                         class="pos-meta-summary text-muted small">
                         Chưa có ghi chú
                     </div>
                 </div>
 
                 <button type="button"
                         class="btn btn-sm btn-light pos-meta-toggle"
-                        data-toggle-meta="note">
+                        data-toggle-meta="note"
+                        aria-label="Sửa ghi chú đơn">
                     Sửa
                 </button>
             </div>
@@ -57,20 +55,25 @@
             </div>
         </div>
 
-        <div class="pos-order-divider"></div>
+        <div class="pos-meta-section pos-order-tool is-collapsed"
+             data-meta-section="discount">
 
-        <div class="pos-meta-section is-collapsed" data-meta-section="discount">
             <div class="pos-meta-section__header">
                 <div>
-                    <div class="pos-meta-section__title">Giảm giá đơn</div>
-                    <div id="metaOrderDiscountSummary" class="pos-meta-summary text-muted small">
+                    <div class="pos-meta-section__title">
+                        Giảm giá đơn
+                    </div>
+
+                    <div id="metaOrderDiscountSummary"
+                         class="pos-meta-summary text-muted small">
                         0
                     </div>
                 </div>
 
                 <button type="button"
                         class="btn btn-sm btn-light pos-meta-toggle"
-                        data-toggle-meta="discount">
+                        data-toggle-meta="discount"
+                        aria-label="Sửa giảm giá đơn">
                     Sửa
                 </button>
             </div>
@@ -102,5 +105,6 @@
                 </div>
             </div>
         </div>
+
     </div>
-</div>
+</section>

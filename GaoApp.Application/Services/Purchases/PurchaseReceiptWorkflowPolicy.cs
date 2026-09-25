@@ -16,4 +16,16 @@ public static class PurchaseReceiptWorkflowPolicy
                 "Chỉ phiếu nháp hoặc phiếu đã được trả về chỉnh sửa mới được sửa thông tin nhận hàng.");
         }
     }
+
+    public static bool CanManageInputInvoiceMapping(StockDocumentStatus status)
+        => status == StockDocumentStatus.PendingApproval;
+
+    public static void EnsureInputInvoiceMappingEditable(StockDocumentStatus status)
+    {
+        if (!CanManageInputInvoiceMapping(status))
+        {
+            throw new BusinessRuleException(
+                "Chỉ quản lý được cập nhật mapping hóa đơn XML khi phiếu đang chờ duyệt.");
+        }
+    }
 }

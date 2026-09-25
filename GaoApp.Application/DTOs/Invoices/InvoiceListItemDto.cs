@@ -4,7 +4,11 @@ public class InvoiceListItemDto
 {
     public int Id { get; set; }
 
-    public int OrderId { get; set; }
+    public int? OrderId { get; set; }
+    public long? LegacySourceId { get; set; }
+    public long? LegacyOrderCategoryId { get; set; }
+    public string? LegacyMergeId { get; set; }
+    public bool LegacyReadOnly { get; set; }
 
     public int? LegalEntityId { get; set; }
 

@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Media;
 using GaoApp.Application.Interfaces.Services.Media;
 using GaoApp.Web.Security;
@@ -23,6 +24,7 @@ public class MediaController : Controller
 
     [HttpPost("temp")]
     [ValidateAntiForgeryToken]
+    [RequireAnyPermission(PermissionCodes.Catalog.Product.Create, PermissionCodes.Catalog.Product.Update, PermissionCodes.Catalog.ProductVariant.Update)]
     public async Task<IActionResult> TempUpload(CancellationToken ct)
     {
         // 1) check store
@@ -57,6 +59,7 @@ public class MediaController : Controller
 
     [HttpDelete("temp")]
     [ValidateAntiForgeryToken]
+    [RequireAnyPermission(PermissionCodes.Catalog.Product.Create, PermissionCodes.Catalog.Product.Update, PermissionCodes.Catalog.ProductVariant.Update)]
     public async Task<IActionResult> TempRevert(CancellationToken ct)
     {
         using var reader = new StreamReader(Request.Body);
@@ -69,6 +72,7 @@ public class MediaController : Controller
         return ok ? Ok() : NotFound();
     }
     [HttpGet("test")]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
     public IActionResult Test()
     {
         return View();

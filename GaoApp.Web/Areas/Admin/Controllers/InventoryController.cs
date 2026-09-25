@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Services.Inventory;
 using Microsoft.AspNetCore.Authorization;
@@ -24,30 +26,19 @@ public class InventoryController : ControllerBase
     }
 
     [HttpPost("transactions")]
-    public async Task<IActionResult> CreateTransaction(
-       [FromBody] CreateInventoryTransactionRequest request,
-       CancellationToken ct)
+    [Authorize(Policy = PermissionCodes.Inventory.Adjustment.Approve)]
+    public IActionResult CreateTransaction()
     {
-        var movementRequest = new CreateInventoryMovementRequest
+        // This old generic API could invent sale/receipt/adjustment references.
+        // All supported UI flows post through their own validated documents.
+        return StatusCode(StatusCodes.Status410Gone, new
         {
-            WarehouseId = request.WarehouseId,
-            ProductVariantId = request.ProductVariantId,
-            QuantityChange = request.QuantityChange,
-            TransactionType = request.TransactionType,
-            ReferenceType = request.ReferenceType,
-            ReferenceId = request.ReferenceId,
-            ReferenceLineId = null, // nếu DTO cũ chưa có thì để null
-            OccurredAtUtc = request.OccurredAtUtc,
-            Note = request.Note,
-            SkipIfExists = false
-        };
-
-        var result = await _inventoryMovementService.CreateAsync(movementRequest, ct);
-
-        return Ok(result);
+            code = "INVENTORY_DOCUMENT_REQUIRED",
+            message = "API ghi biến động tồn trực tiếp đã đóng. Hãy dùng chứng từ kho hoặc luồng POS tương ứng."
+        });
     }
-
     [HttpGet("balances/by-variant/{productVariantId:int}")]
+    [Authorize(Policy = PermissionCodes.Inventory.Balance.View)]
     public async Task<IActionResult> GetBalancesByVariant(int productVariantId, CancellationToken ct)
     {
         var result = await _inventoryService.GetBalancesByVariantAsync(productVariantId, ct);
@@ -55,6 +46,7 @@ public class InventoryController : ControllerBase
     }
 
     [HttpGet("transactions/by-variant/{productVariantId:int}")]
+    [Authorize(Policy = PermissionCodes.Inventory.Transaction.View)]
     public async Task<IActionResult> GetTransactionsByVariant(int productVariantId, CancellationToken ct)
     {
         var result = await _inventoryService.GetTransactionsByVariantAsync(productVariantId, ct);
@@ -62,6 +54,7 @@ public class InventoryController : ControllerBase
     }
 
     [HttpGet("negative-balances")]
+    [Authorize(Policy = PermissionCodes.Inventory.Balance.View)]
     public async Task<IActionResult> GetNegativeBalances(CancellationToken ct)
     {
         var result = await _inventoryService.GetNegativeBalancesAsync(ct);
@@ -69,6 +62,7 @@ public class InventoryController : ControllerBase
     }
 
     [HttpGet("negative-logs")]
+    [Authorize(Policy = PermissionCodes.Inventory.Transaction.View)]
     public async Task<IActionResult> GetNegativeLogs(CancellationToken ct)
     {
         var result = await _inventoryService.GetNegativeLogsAsync(ct);
@@ -76,12 +70,14 @@ public class InventoryController : ControllerBase
     }
 
     [HttpGet("adjustment-history")]
+    [Authorize(Policy = PermissionCodes.Inventory.Adjustment.View)]
     public async Task<IActionResult> GetAdjustmentHistory(CancellationToken ct)
     {
         var result = await _inventoryService.GetAdjustmentHistoryAsync(ct);
         return Ok(result);
     }
     [HttpGet("balance-item")]
+    [RequireAnyPermission(PermissionCodes.Inventory.Balance.View, PermissionCodes.Inventory.Adjustment.View)]
     public async Task<IActionResult> GetBalanceItem([FromQuery] int warehouseId, [FromQuery] int productVariantId, CancellationToken ct)
     {
         if (warehouseId <= 0)
@@ -99,6 +95,7 @@ public class InventoryController : ControllerBase
     /// Phase 5.6.1
     /// </summary>
     [HttpGet("current-balances")]
+    [Authorize(Policy = PermissionCodes.Inventory.Balance.View)]
     public async Task<IActionResult> GetCurrentBalances(
         [FromQuery] InventoryBalanceQueryRequest request,
         CancellationToken ct)
@@ -112,6 +109,7 @@ public class InventoryController : ControllerBase
     /// Phase 5.6.2
     /// </summary>
     [HttpGet("ledger")]
+    [Authorize(Policy = PermissionCodes.Inventory.Transaction.View)]
     public async Task<IActionResult> GetLedger(
         [FromQuery] InventoryLedgerQueryRequest request,
         CancellationToken ct)

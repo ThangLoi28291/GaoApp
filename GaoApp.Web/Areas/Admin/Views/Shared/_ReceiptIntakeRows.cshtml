@@ -1,0 +1,38 @@
+@model GaoApp.Web.Areas.Admin.Models.Inventory.ReceiptIntakeRowsViewModel
+@{ var index = Model.LineOffset; }
+@foreach (var item in Model.Items)
+{
+    <tr class="ri-received-row" data-intake-item-id="@item.Id" data-receiving-key="intake-@item.Id"
+        data-receiving-quantity="@item.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+        <td>@(++index)</td>
+        <td>
+            <strong>@item.Name</strong>
+            <span class="badge bg-label-info ms-1">@(item.ProposedProductVariantId.HasValue ? "Quy cách mới" : "Sản phẩm mới")</span>
+            <small class="d-block text-muted mt-1">@(item.RawBarcode ?? "Không có barcode") · 1 @item.UnitName = @item.ProposedFactor?.ToString("0.###") @item.ProposedBaseUnitName</small>
+            @if (!string.IsNullOrWhiteSpace(item.Note)) { <small class="d-block text-muted">@item.Note</small> }
+            <small class="ri-quantity-error text-danger d-block" role="alert"></small>
+        </td>
+        <td class="fw-semibold">@item.UnitName</td>
+        @if (!Model.Compact) { <td class="text-end">@item.ProposedFactor?.ToString("0.###")</td> }
+        <td>
+            <input type="number" class="form-control text-center ri-received-quantity @(Model.Compact ? "wrd-table-qty" : "")" min="1" step="1" inputmode="decimal"
+                   value="@item.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
+                   data-intake-quantity="@item.Id" aria-label="Số lượng @item.Name (@item.UnitName)" readonly="@(!Model.CanEdit)" />
+        </td>
+        @if (!Model.Compact)
+        {
+            <td class="text-end">@((item.Quantity * item.ProposedFactor)?.ToString("0.###"))</td>
+            @if (Model.CanViewCost) { <td class="text-muted text-end">—</td><td class="text-muted text-end">—</td> }
+            @if (Model.HasInvoiceColumn) { <td></td> }
+        }
+        @if (Model.CanEdit || Model.Compact)
+        {
+            <td class="text-center">
+                @if (Model.CanEdit)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-intake-remove="@item.Id">Xóa</button>
+                }
+            </td>
+        }
+    </tr>
+}

@@ -1,0 +1,93 @@
+@model List<GaoApp.Application.DTOs.Display.DisplayPromotionDto>
+@{
+    var wifi = ViewBag.GuestWifi as GaoApp.Web.Services.GuestWifiSettings;
+    var canManage = ViewBag.CanManageWifi == true;
+    var hasWifi = !string.IsNullOrEmpty(wifi?.Name);
+}
+<div class="display-promotion-page">
+    <form id="guestWifiForm" class="dp-wifi-card" data-version="@wifi?.RowVersion">
+        @Html.AntiForgeryToken()
+        <div class="dp-wifi-editor">
+            <div class="dp-section-heading">
+                <span class="dp-section-icon"><i class="bx bx-wifi" aria-hidden="true"></i></span>
+                <div><h2>Wi-Fi cho khách</h2><p>Một kết nối nhỏ, thêm tiện lợi cho khách ghé tiệm.</p></div>
+                <span id="wifiSavedBadge" class="dp-badge @(hasWifi ? "dp-badge-active" : "dp-badge-muted")">@(hasWifi ? "Đã thiết lập" : "Chưa thiết lập")</span>
+            </div>
+            <div class="dp-wifi-fields">
+                <div><label for="guestWifiName">Tên Wi-Fi</label>
+                    <div class="dp-input-wrap"><i class="bx bx-wifi" aria-hidden="true"></i><input id="guestWifiName" class="form-control" maxlength="128" value="@wifi?.Name" readonly="@(!canManage)" autocomplete="off" placeholder="Ví dụ: Gạo Store Khách Hàng" /></div></div>
+                <div><label for="guestWifiPassword">Mật khẩu</label>
+                    <div class="dp-input-wrap"><i class="bx bx-lock-alt" aria-hidden="true"></i><input id="guestWifiPassword" class="form-control" maxlength="128" value="@wifi?.Password" readonly="@(!canManage)" autocomplete="off" spellcheck="false" placeholder="Để trống nếu không cần mật khẩu" /></div></div>
+            </div>
+            <div class="dp-wifi-footer">
+                <p><i class="bx bx-info-circle" aria-hidden="true"></i><span>Hiển thị ở tất cả quầy trong cửa hàng.<br />Xóa cả hai ô để ẩn Wi-Fi trên màn hình khách.</span></p>
+                @if (canManage)
+                {
+                    <button class="btn btn-primary dp-save-wifi" type="submit"><i class="bx bx-check" aria-hidden="true"></i>Lưu Wi-Fi</button>
+                }
+            </div>
+            <div id="guestWifiStatus" role="status" aria-live="polite"></div>
+        </div>
+        <aside class="dp-wifi-preview" aria-label="Xem trước thông tin Wi-Fi">
+            <div class="dp-preview-caption"><span class="dp-preview-dot"></span>TRÊN MÀN HÌNH KHÁCH</div>
+            <i class="bx bx-wifi dp-preview-wifi-icon" aria-hidden="true"></i>
+            <span class="dp-preview-label">Wi-Fi miễn phí</span>
+            <strong id="wifiPreviewName">@(hasWifi ? wifi?.Name : "Tên Wi-Fi của cửa hàng")</strong>
+            <div class="dp-preview-password"><span>Mật khẩu</span><strong id="wifiPreviewPassword">@(hasWifi ? (string.IsNullOrEmpty(wifi?.Password) ? "Không cần mật khẩu" : wifi.Password) : "Chưa thiết lập")</strong></div>
+        </aside>
+    </form>
+
+    <section class="dp-content-card" aria-label="Nội dung trình chiếu">
+        <div class="dp-collection-heading">
+            <div><h2>Nội dung trình chiếu <span class="dp-count">@Model.Count</span></h2><p>Hình ảnh, video và lời chào trên màn hình tại quầy.</p></div>
+            @if (canManage)
+            {
+                <button type="button" class="btn btn-primary" onclick="openCreateModal()"><i class="bx bx-plus" aria-hidden="true"></i>Thêm nội dung</button>
+            }
+        </div>
+        @if (Model.Count == 0)
+        {
+            <div class="dp-empty"><span><i class="bx bx-slideshow" aria-hidden="true"></i></span><h3>Thêm lời chào đầu tiên cho tiệm</h3><p>Một hình ảnh đẹp, video ngắn hoặc ưu đãi hôm nay<br />sẽ giúp khách khám phá thêm trong lúc chờ thanh toán.</p>
+                @if (canManage) { <button type="button" class="btn btn-outline-primary" onclick="openCreateModal()"><i class="bx bx-plus" aria-hidden="true"></i>Tạo nội dung đầu tiên</button> }
+            </div>
+        }
+        else
+        {
+            <div class="dp-list-summary"><span><i class="dp-dot"></i><b id="promotionActiveCount">@Model.Count(x => x.IsActive)</b> đang bật</span><span><i class="dp-dot dp-dot-muted"></i><b id="promotionHiddenCount">@Model.Count(x => !x.IsActive)</b> tạm ẩn</span><span class="dp-list-hint">Sắp xếp theo thứ tự trình chiếu</span></div>
+            <div class="dp-table-wrap">
+                <table class="dp-table">
+                    <thead><tr><th>Nội dung</th><th>Trình chiếu</th><th>Thứ tự</th><th>Hiển thị</th><th class="text-end">Thao tác</th></tr></thead>
+                    <tbody>
+                    @foreach (var item in Model)
+                    {
+                        var kind = item.MediaType == "image" ? "Hình ảnh" : item.MediaType == "video" ? "Video" : "Văn bản";
+                        var kindIcon = item.MediaType == "image" ? "bx-image" : item.MediaType == "video" ? "bx-video" : "bx-text";
+                        <tr data-row-id="@item.Id" class="@(item.IsActive ? "" : "is-inactive")">
+                            <td class="dp-content-cell"><div class="dp-content-item">
+                                <div class="dp-thumbnail">
+                                    @if (item.MediaType == "image" && !string.IsNullOrWhiteSpace(item.MediaUrl))
+                                    { <img src="@item.MediaUrl" alt="" loading="lazy" /> }
+                                    else if (item.MediaType == "video" && !string.IsNullOrWhiteSpace(item.MediaUrl))
+                                    { <video src="@item.MediaUrl" muted preload="metadata" aria-label="Video @item.Title"></video><span class="dp-video-mark"><i class="bx bx-play" aria-hidden="true"></i></span> }
+                                    else
+                                    { <span class="dp-text-thumbnail"><i class="bx bx-text" aria-hidden="true"></i><small>Lời nhắn từ tiệm</small></span> }
+                                </div>
+                                <div class="dp-content-copy"><h3>@item.Title</h3><p>@(string.IsNullOrWhiteSpace(item.Description) ? (item.MediaType == "image" ? "Hình ảnh trên màn hình khách" : item.MediaType == "video" ? "Video trên màn hình khách" : "Lời chào và thông tin từ cửa hàng") : item.Description)</p>
+                                    @if (item.IsFlashSale) { <span class="dp-content-note"><i class="bx bx-bolt-circle" aria-hidden="true"></i>Ưu đãi chớp nhoáng</span> }
+                                </div>
+                            </div></td>
+                            <td class="dp-playback-cell"><span class="dp-kind"><i class="bx @kindIcon" aria-hidden="true"></i>@kind</span><span class="dp-duration"><i class="bx bx-time-five" aria-hidden="true"></i>@item.DurationSeconds giây / lượt</span></td>
+                            <td class="dp-order-cell" data-label="Thứ tự"><span class="dp-order">@item.SortOrder</span></td>
+                            <td class="dp-state-cell"><label class="dp-state-control"><input class="form-check-input" type="checkbox" checked="@item.IsActive" disabled="@(!canManage)" aria-label="Bật hiển thị @item.Title" onchange="toggleActive(@item.Id, this.checked)" /><span class="dp-state-text">@(item.IsActive ? "Đang bật" : "Tạm ẩn")</span></label></td>
+                            <td class="dp-actions-cell"><div class="dp-row-actions">
+                                <button type="button" class="btn dp-edit" disabled="@(!canManage)" onclick="openEditModal(@item.Id)" aria-label="Sửa @item.Title"><i class="bx bx-edit-alt" aria-hidden="true"></i><span>Sửa</span></button>
+                                <button type="button" class="btn dp-delete" disabled="@(!canManage)" onclick="deletePromotion(@item.Id)" aria-label="Xóa @item.Title" title="Xóa nội dung"><i class="bx bx-trash" aria-hidden="true"></i></button>
+                            </div></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>

@@ -1,4 +1,4 @@
-﻿@using GaoApp.Application.Common
+@using GaoApp.Application.Common
 @using GaoApp.Application.Common.Security
 @using GaoApp.Application.DTOs.Categories
 @using GaoApp.Application.Interfaces.Services.Security
@@ -8,6 +8,7 @@
 @model CategoryEditDto
 
 @{
+    var isCreate = Model.Id == 0;
     ViewData["Title"] = Model.Id == 0 ? "Thêm danh mục" : "Cập nhật danh mục";
     Layout = "_ContentNavbarLayout";
     var parents = (List<(int Id, string Name)>)(ViewBag.ParentOptions ?? new List<(int, string)>());
@@ -31,107 +32,101 @@
     var canSave = Model.Id == 0 ? canCreate : canUpdate;
 }
 
-@section Header {
-    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
-        <h4 class="fw-bold mb-0">
-            <a asp-area="Admin" asp-controller="Category" asp-action="Index" class="text-muted fw-light">
-                Danh mục /
-            </a>
-            @ViewData["Title"]
-        </h4>
-    </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/catalog-editor.css" asp-append-version="true" />
 }
+<div class="catalog-editor">
+    <nav class="ce-breadcrumb" aria-label="Đường dẫn">
+        <a asp-area="Admin" asp-controller="Category" asp-action="Index">Danh mục</a>
+        <i class="bx bx-chevron-right" aria-hidden="true"></i>
+        <span>@(isCreate ? "Tạo mới" : "Chỉnh sửa")</span>
+    </nav>
+    <header class="ce-header">
+        <div><span class="ce-eyebrow">DANH MỤC SẢN PHẨM</span><h1>@ViewData["Title"]</h1><p>Sắp xếp sản phẩm thành những nhóm dễ tìm và dễ quản lý.</p></div>
+        <a asp-area="Admin" asp-controller="Category" asp-action="Index" class="ce-back"><i class="bx bx-arrow-back" aria-hidden="true"></i> Quay lại danh sách</a>
+    </header>
+    <form asp-area="Admin" asp-controller="Category" asp-action="@(isCreate ? "Create" : "Edit")" method="post" >
+        @Html.AntiForgeryToken()
+        @Html.HiddenFor(x => x.Id)
 
-<div class="row justify-content-center">
-    <div class="col-md-10 col-lg-8">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Thông tin chi tiết</h5>
-                <small class="text-muted float-end">* là bắt buộc</small>
-            </div>
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="ce-layout">
+            <section class="ce-card" aria-labelledby="ce-details-title">
+                <div class="ce-section-heading">
+                    <span class="ce-icon"><i class="bx bx-category" aria-hidden="true"></i></span>
+                    <div><h2 id="ce-details-title">Thông tin danh mục</h2><p>Các trường có dấu <span class="ce-required">*</span> là bắt buộc.</p></div>
+                </div>
+                <div class="ce-fields">
+                    <div class="ce-field ce-full">
+                        <label asp-for="Name">Tên danh mục <span class="ce-required">*</span></label>
+                        <input asp-for="Name" class="form-control" placeholder="Ví dụ: Gạo thơm" autocomplete="off" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
 
-            <div class="card-body">
-                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
-
-                <form asp-area="Admin"
-                      asp-controller="Category"
-                      asp-action="@(Model.Id == 0 ? "Create" : "Edit")"
-                      method="post">
-
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" asp-for="Id" />
-
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Mã</label>
-                            @if (Model.Id == 0)
-                            {
-                                <input asp-for="Code" class="form-control text-uppercase" placeholder="(Tự sinh nếu để trống)" />
-                            }
-                            else
-                            {
-                                <input asp-for="Code" class="form-control text-uppercase" readonly />
-                            }
-                            <span asp-validation-for="Code" class="text-danger"></span>
-                        </div>
-
-                        <div class="col-md-8">
-                            <label class="form-label">Tên</label> <span class="text-danger">*</span>
-                            <input asp-for="Name" class="form-control" placeholder="Nhập tên danh mục..." autofocus />
-                            <span asp-validation-for="Name" class="text-danger"></span>
-                        </div>
                     </div>
-
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label">Danh mục cha</label>
-                            <select class="form-select" asp-for="ParentId">
-                                <option value="">-- Không chọn --</option>
-                                @foreach (var p in parents)
-                                {
-                                    <option value="@p.Id" selected="@(Model.ParentId == p.Id)">@p.Name</option>
-                                }
-                            </select>
-                            <span asp-validation-for="ParentId" class="text-danger"></span>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label class="form-label">Thứ tự (Sort)</label>
-                            <input asp-for="SortOrder" type="number" class="form-control" />
-                            <span asp-validation-for="SortOrder" class="text-danger"></span>
-                        </div>
-                    </div>
-
-                    <div class="mb-4">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" asp-for="IsActive" />
-                            <label class="form-check-label" asp-for="IsActive">Đang hoạt động</label>
-                        </div>
-                    </div>
-
-                    <div class="text-end">
-                        <a asp-area="Admin"
-                               asp-controller="Category"
-                               asp-action="Index"
-                               class="btn btn-label-secondary me-2">
-                            Hủy bỏ
-                        </a>
-
-                        @if (canSave)
+<div class="ce-field ce-full">
+                        <label asp-for="Code">Mã danh mục</label>
+                        @if (isCreate)
                         {
-                            <button type="submit" class="btn btn-primary">
-                                <i class="bx bx-save me-1"></i> Lưu thông tin
-                            </button>
+                            <input asp-for="Code" class="form-control text-uppercase" placeholder="Tự động tạo nếu để trống" autocomplete="off" />
                         }
+                        else
+                        {
+                            <input asp-for="Code" class="form-control text-uppercase" readonly />
+                        }
+                        <span asp-validation-for="Code" class="text-danger"></span>
+                        <p class="ce-field-help">@(isCreate ? "Bạn có thể để trống để hệ thống tự sinh mã." : "Mã được giữ cố định sau khi tạo.")</p>
                     </div>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="ce-field ce-full">
+                        <label asp-for="ParentId">Danh mục cha</label>
+                        <select asp-for="ParentId" class="form-select">
+                            <option value="">Không có — danh mục cấp cao nhất</option>
+                            @foreach (var p in parents)
+                            {
+                                <option value="@p.Id" selected="@(Model.ParentId == p.Id)">@p.Name</option>
+                            }
+                        </select>
+                        <span asp-validation-for="ParentId" class="text-danger"></span>
 
+                    </div>
+<div class="ce-field ce-full">
+                        <label asp-for="SortOrder">Thứ tự hiển thị</label>
+                        <input asp-for="SortOrder" class="form-control" type="number"  />
+                        <span asp-validation-for="SortOrder" class="text-danger"></span>
+
+                    </div>
+                </div>
+            </section>
+            <aside class="ce-side">
+                <section class="ce-card ce-guide" aria-labelledby="ce-guide-title">
+                    <span class="ce-icon"><i class="bx bx-category" aria-hidden="true"></i></span>
+                    <span class="ce-eyebrow">GỢI Ý THIẾT LẬP</span>
+                    <h2 id="ce-guide-title">Danh mục có cấu trúc</h2><p>Chọn danh mục cha để tạo nhóm con. Để trống nếu đây là danh mục cấp cao nhất.</p><div class="ce-example">Danh mục cha → Danh mục con</div>
+                </section>
+                <section class="ce-card ce-status-card">
+                    <div class="ce-status-top"><h2>Đang hoạt động</h2>
+                        <div class="form-check form-switch">
+                            <input asp-for="IsActive" class="form-check-input" type="checkbox" role="switch" aria-describedby="ce-IsActive-help" />
+                            <label asp-for="IsActive" class="visually-hidden">Đang hoạt động</label>
+                        </div>
+                    </div>
+                    <p id="ce-IsActive-help">Bật khi đang sử dụng. Tắt khi tạm ngừng sử dụng danh mục này.</p>
+                </section>
+            </aside>
+        </div>
+        <footer class="ce-actions">
+            <span>Kiểm tra thông tin trước khi lưu.</span>
+            <div>
+                <a asp-area="Admin" asp-controller="Category" asp-action="Index" class="btn ce-cancel">Hủy bỏ</a>
+                @if (canSave)
+                {
+                    <button type="submit" class="btn ce-save"><i class="bx bx-check" aria-hidden="true"></i> @(isCreate ? "Tạo danh mục" : "Lưu thay đổi")</button>
+                }
+            </div>
+        </footer>
+    </form>
+
+</div>
 @section Scripts {
-    @{
-        await Html.RenderPartialAsync("_ValidationScriptsPartial");
-    }
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
 }

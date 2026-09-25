@@ -44,7 +44,7 @@ public sealed class UpdateSourcePurchaseOrderCommercialLineRequest
 public sealed class UpdateSourcePurchaseOrderCommercialRequest
 {
     [StringLength(250)] public string? Title { get; set; }
-    [Range(1, int.MaxValue)] public int SupplierId { get; set; }
+    public int? SupplierId { get; set; }
     [Range(1, int.MaxValue)] public int ExpectedWarehouseId { get; set; }
     [Range(1, int.MaxValue)] public int LegalEntityId { get; set; }
     public DateTime OrderDate { get; set; }
@@ -175,7 +175,7 @@ public sealed class PurchaseOrderDetailDto
     public string OrderNumber { get; set; } = string.Empty;
     public string? Title { get; set; }
     public int? SourcePurchaseRequestId { get; set; }
-    public int SupplierId { get; set; }
+    public int? SupplierId { get; set; }
     public string SupplierName { get; set; } = string.Empty;
     public string SupplierCode { get; set; } = string.Empty;
     public string? SupplierPhone { get; set; }
@@ -310,10 +310,15 @@ public sealed class PurchaseOrderFormOptionsDto
     public List<PurchaseProductOptionDto> Products { get; set; } = new();
 }
 
-public sealed class PurchaseWorkflowRequest
+public class PurchaseWorkflowRequest
 {
     [StringLength(1000)] public string? Note { get; set; }
     public string? RowVersion { get; set; }
+}
+
+public sealed class ApprovePurchaseOrderRequest : PurchaseWorkflowRequest
+{
+    [Range(1, int.MaxValue)] public int SupplierId { get; set; }
 }
 
 public sealed class ManagePurchaseOrderOutstandingRequest

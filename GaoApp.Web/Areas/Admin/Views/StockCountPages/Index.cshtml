@@ -1,295 +1,94 @@
-﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Application.Common.Security
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService AuthorizationService
 
 @{
     ViewData["Title"] = "Phiếu kiểm kê kho";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
+    var canCreate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Inventory.StockCount.Create)).Succeeded;
+}
 
-    // =========================================================
-    // PHÂN QUYỀN UI
-    // - Backend/API vẫn phải check policy riêng.
-    // - View chỉ ẩn/hiện nút cho đẹp UX.
-    // =========================================================
-    var canCreate = (await AuthorizationService.AuthorizeAsync(
-        User,
-        PermissionCodes.Inventory.StockCount.Create)).Succeeded;
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Phiếu kiểm kê kho</h3>
+                <p class="gds-page-header__subtitle mb-0">Theo dõi tiến độ kiểm kê và chênh lệch tồn theo từng kho.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnReloadStockCountList"><i class="bx bx-refresh"></i><span>Tải lại</span></button>
+                @if (canCreate)
+                {
+                    <button type="button" class="btn btn-primary gds-action-button" id="btnOpenCreateStockCountModal"><i class="bx bx-plus"></i><span>Tạo phiếu kiểm kê</span></button>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @section VendorStyles {
     <link href="~/Admin/css/stock-count.css" rel="stylesheet" asp-append-version="true" />
 }
 
-<div class="container-xxl flex-grow-1 container-p-y sc-page">
-
-    <!-- =====================================================
-         PAGE HEADER
-    ====================================================== -->
-    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-4">
-        <div>
-            <h4 class="mb-1 sc-page-title">Phiếu kiểm kê kho</h4>
-            <div class="sc-page-subtitle">
-                Quản lý phiếu kiểm kê, lọc trạng thái, theo dõi chênh lệch và duyệt xác nhận tồn kho.
-            </div>
+<div class="stock-count-index-page gds-page"
+     data-gao-ui="modern"
+     data-stock-count-index
+     data-data-url="@Url.Action("GetData", "StockCountPages", new { area = "Admin" })"
+     data-options-url="@Url.Action("GetWarehouseOptions", "StockCountPages", new { area = "Admin" })"
+     data-quick-view-url="@Url.Action("GetQuickView", "StockCountPages", new { area = "Admin" })">
+    <section aria-label="Tổng quan phiếu kiểm kê">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col"><button type="button" class="sc-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100" data-sc-state="all" aria-pressed="false"><span class="gds-kpi-card__icon is-primary"><i class="bx bx-clipboard"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng phiếu</span><span class="gds-kpi-card__value text-primary" id="sumTotalDocuments">0</span></span></button></div>
+            <div class="col"><button type="button" class="sc-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-sc-state="working" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-info text-info"><i class="bx bx-edit"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Cần hoàn thiện</span><span class="gds-kpi-card__value text-info" id="sumWorkingDocuments">0</span></span></button></div>
+            <div class="col"><button type="button" class="sc-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-sc-state="pending" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-time-five"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Chờ duyệt</span><span class="gds-kpi-card__value text-warning" id="sumPendingDocuments">0</span></span></button></div>
+            <div class="col"><button type="button" class="sc-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100 w-100" data-sc-state="confirmed" aria-pressed="false"><span class="gds-kpi-card__icon is-success"><i class="bx bx-check-shield"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đã xác nhận</span><span class="gds-kpi-card__value text-success" id="sumConfirmedDocuments">0</span></span></button></div>
         </div>
+    </section>
 
-        <div class="d-flex gap-2 flex-wrap">
-            <button type="button" class="btn btn-outline-secondary" id="btnReloadStockCountList">
-                <i class="bx bx-refresh me-1"></i> Tải lại
-            </button>
-
-            @if (canCreate)
-            {
-                <button type="button" class="btn btn-primary" id="btnOpenCreateStockCountModal">
-                    <i class="bx bx-plus me-1"></i> Tạo phiếu kiểm kê
-                </button>
-            }
-        </div>
-    </div>
-
-    <!-- =====================================================
-         SUMMARY
-    ====================================================== -->
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3">
-            <div class="sc-summary-box">
-                <div class="sc-summary-title">Tổng số phiếu</div>
-                <div class="sc-summary-value" id="sumTotalDocuments">0</div>
+    <section class="card shadow-sm border-0" aria-label="Bộ lọc phiếu kiểm kê">
+        <div class="card-header bg-transparent border-0 pb-0"><div class="d-flex align-items-center gap-2"><span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span><div><h5 class="mb-0 text-dark">Tra cứu phiếu kiểm kê</h5><small class="text-muted">Tìm theo số phiếu, tên phiếu, kho hoặc ghi chú.</small></div></div></div>
+        <div class="card-body pt-3"><div class="sc-index-filter-bar">
+            <div class="sc-index-search-wrap"><label for="scIndexKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label><div class="gds-search-field"><i class="bx bx-search"></i><input type="search" id="scIndexKeyword" class="form-control" placeholder="Số phiếu, tên phiếu, kho hoặc ghi chú..." autocomplete="off" /><button type="button" id="scIndexClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button></div></div>
+            <div class="sc-index-desktop-filters">
+                <div><label for="scIndexWarehouse" class="form-label">Kho kiểm kê</label><select id="scIndexWarehouse" class="form-select"><option value="">Tất cả kho</option></select></div>
+                <div><label for="scIndexStatus" class="form-label">Trạng thái</label><select id="scIndexStatus" class="form-select"><option value="open" selected>Nháp + Chờ duyệt</option><option value="all">Tất cả trạng thái</option><option value="working">Cần hoàn thiện</option><option value="draft">Nháp</option><option value="pending">Chờ duyệt</option><option value="rejected">Từ chối</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option></select></div>
+                <div><label for="scIndexFromDate" class="form-label">Từ ngày</label><input type="date" id="scIndexFromDate" class="form-control" /></div>
+                <div><label for="scIndexToDate" class="form-label">Đến ngày</label><input type="date" id="scIndexToDate" class="form-control" /></div>
+                <div class="sc-index-compact-filter"><label for="scIndexPageSize" class="form-label">Số dòng / trang</label><select id="scIndexPageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+                <button type="button" class="gds-icon-button sc-index-reset-button d-none" id="scIndexResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
             </div>
-        </div>
+            <button type="button" class="btn btn-label-primary sc-index-mobile-filter-button" id="scIndexOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#stockCountMobileFilterSheet"><i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="scIndexActiveFilterCount">0</span></button>
+            <div class="sc-index-date-error d-none" id="scIndexDateError" role="alert">Từ ngày không được lớn hơn đến ngày.</div>
+        </div></div>
+    </section>
 
-        <div class="col-6 col-md-3">
-            <div class="sc-summary-box">
-                <div class="sc-summary-title">Nháp / bị từ chối</div>
-                <div class="sc-summary-value" id="sumWorkingDocuments">0</div>
-            </div>
-        </div>
+    <section class="gds-list-panel sc-index-results-panel" id="stockCountResultsPanel" aria-label="Danh sách phiếu kiểm kê" aria-live="polite" aria-busy="false">
+        <div class="sc-index-results-heading"><div><h5 class="mb-1 text-dark">Danh sách phiếu kiểm kê</h5><small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh.</small></div></div>
+        <div class="sc-index-desktop-list" id="stockCountDesktopList"><div class="table-responsive"><table class="table align-middle gds-table mb-0 sc-index-table"><thead><tr><th>Phiếu / ngày</th><th>Kho kiểm kê</th><th>Tiến độ</th><th>Trạng thái</th><th>Ghi chú</th><th class="text-end">Thao tác</th></tr></thead><tbody id="stockCountIndexBody"><tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody></table></div></div>
+        <div class="sc-index-mobile-list" id="stockCountMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+    <div class="gds-list-footer sc-index-list-footer"><div class="gds-list-footer__summary" id="stockCountPaginationInfo">0 kết quả</div><nav aria-label="Phân trang phiếu kiểm kê"><ul class="pagination pagination-sm mb-0 sc-index-pagination" id="stockCountPagination"></ul></nav></div>
 
-        <div class="col-6 col-md-3">
-            <div class="sc-summary-box">
-                <div class="sc-summary-title">Chờ duyệt</div>
-                <div class="sc-summary-value" id="sumPendingDocuments">0</div>
-            </div>
-        </div>
+    <div class="modal fade" id="stockCountQuickViewModal" tabindex="-1" aria-labelledby="quickViewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable sc-index-quick-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><div><div class="text-primary fw-semibold small text-uppercase">Xem nhanh phiếu kiểm kê</div><h4 class="modal-title text-dark" id="quickViewTitle">Thông tin phiếu</h4><div class="d-flex flex-wrap gap-2 mt-1"><span class="gds-code" id="quickViewSubtitle">—</span><span class="gds-status gds-status--dot is-neutral" id="stockCountQuickState">—</span></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="quickViewBody"><div class="text-center text-muted py-5">Đang tải thông tin...</div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><a href="#" class="btn btn-primary" id="btnOpenQuickViewDetail">Mở phiếu</a></div></div></div></div>
+    <div class="modal fade" id="stockCountImagePreviewModal" tabindex="-1" aria-labelledby="stockCountImagePreviewTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered sc-index-image-preview-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><h5 class="modal-title" id="stockCountImagePreviewTitle">Ảnh sản phẩm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body sc-index-image-preview-body"><img id="stockCountImagePreviewImage" alt="Ảnh sản phẩm phóng to" /></div></div></div></div>
 
-        <div class="col-6 col-md-3">
-            <div class="sc-summary-box">
-                <div class="sc-summary-title">Đã xác nhận</div>
-                <div class="sc-summary-value" id="sumConfirmedDocuments">0</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================
-         FILTER
-    ====================================================== -->
-    <div class="sc-filter-card p-3 mb-4">
-        <div class="row g-3 align-items-end">
-            <div class="col-md-5">
-                <label class="form-label" for="stockCountSearchInput">Tìm kiếm</label>
-                <input type="text"
-                       id="stockCountSearchInput"
-                       class="form-control"
-                       placeholder="Nhập số phiếu, tên phiếu, kho hoặc ghi chú..." />
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label" for="stockCountStatusFilter">Trạng thái</label>
-                <select id="stockCountStatusFilter" class="form-select">
-                    <option value="working" selected>Mặc định: Nháp + Chờ duyệt</option>
-                    <option value="all">Tất cả</option>
-                    <option value="1">Nháp</option>
-                    <option value="2">Chờ duyệt</option>
-                    <option value="3">Đã xác nhận</option>
-                    <option value="4">Bị từ chối</option>
-                    <option value="5">Đã hủy</option>
-                </select>
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label" for="stockCountPageSize">Số dòng/trang</label>
-                <select id="stockCountPageSize" class="form-select">
-                    <option value="10" selected>10 dòng</option>
-                    <option value="20">20 dòng</option>
-                    <option value="50">50 dòng</option>
-                </select>
-            </div>
-
-            <div class="col-md-2">
-                <button type="button" class="btn btn-outline-secondary w-100" id="btnResetStockCountFilter">
-                    <i class="bx bx-filter-alt me-1"></i> Reset
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================================================
-         TABLE
-    ====================================================== -->
-    <div class="card sc-card">
-        <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-            <div>
-                <div>Danh sách phiếu kiểm kê</div>
-    
-            </div>
-
-            <div class="text-muted small" id="stockCountListInfo">
-                Đang tải...
-            </div>
-        </div>
-
-        <div class="card-body p-0">
-            <div class="table-responsive sc-table-wrap">
-                <table class="table table-hover align-middle mb-0 sc-table">
-                    <thead>
-                        <tr>
-                            <th style="min-width:280px;">Phiếu kiểm kê</th>
-                            <th style="width: 160px;">Ngày phiếu</th>
-                            <th style="width: 180px;">Kho</th>
-                            <th style="width: 140px;">Trạng thái</th>
-                            <th class="text-end" style="width: 100px;">Số dòng</th>
-                            <th>Ghi chú</th>
-                            <th class="text-end" style="width: 120px;"></th>
-                        </tr>
-                    </thead>
-
-                    <tbody id="stockCountIndexBody">
-                        <tr>
-                            <td colspan="8" class="sc-empty">Đang tải dữ liệu...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card-footer d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-            <div class="text-muted small" id="stockCountPaginationInfo"></div>
-            <nav>
-                <ul class="pagination pagination-sm mb-0 sc-pagination" id="stockCountPagination"></ul>
-            </nav>
-        </div>
+    <div class="offcanvas offcanvas-bottom sc-index-filter-sheet" tabindex="-1" id="stockCountMobileFilterSheet" aria-labelledby="stockCountMobileFilterTitle">
+        <div class="offcanvas-header"><div><h5 class="offcanvas-title" id="stockCountMobileFilterTitle">Bộ lọc phiếu kiểm kê</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
+        <div class="offcanvas-body"><div class="row g-3"><div class="col-12"><label for="scMobileWarehouse" class="form-label">Kho kiểm kê</label><select id="scMobileWarehouse" class="form-select"><option value="">Tất cả kho</option></select></div><div class="col-12"><label for="scMobileStatus" class="form-label">Trạng thái</label><select id="scMobileStatus" class="form-select"><option value="open">Nháp + Chờ duyệt</option><option value="all">Tất cả trạng thái</option><option value="working">Cần hoàn thiện</option><option value="draft">Nháp</option><option value="pending">Chờ duyệt</option><option value="rejected">Từ chối</option><option value="confirmed">Đã xác nhận</option><option value="cancelled">Đã hủy</option></select></div><div class="col-6"><label for="scMobileFromDate" class="form-label">Từ ngày</label><input type="date" id="scMobileFromDate" class="form-control" /></div><div class="col-6"><label for="scMobileToDate" class="form-label">Đến ngày</label><input type="date" id="scMobileToDate" class="form-control" /></div><div class="col-12"><label for="scMobilePageSize" class="form-label">Số dòng / trang</label><select id="scMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div></div></div>
+        <div class="offcanvas-footer sc-index-filter-sheet__footer"><button type="button" class="btn btn-label-secondary" id="scMobileClearFilters">Xóa lọc</button><button type="button" class="btn btn-primary flex-grow-1" id="scMobileApplyFilters">Áp dụng</button></div>
     </div>
 </div>
 
-<!-- =========================================================
-     CREATE MODAL
-========================================================= -->
-<div class="modal fade sc-modal" id="createStockCountModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-
-            <div class="modal-header border-0">
-                <div>
-                    <h5 class="modal-title fw-bold">Tạo phiếu kiểm kê</h5>
-                    <div class="text-muted small">
-                        Chọn kho, đặt tên phiếu để dễ quản lý và bắt đầu kiểm kê.
-                    </div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-
-            <div class="modal-body">
-                <div class="sc-create-hero">
-                    <div class="fw-bold mb-1">
-                        <i class="bx bx-package me-1"></i> Phiếu kiểm kê mới
-                    </div>
-                    <div class="text-muted small">
-                        Sau khi tạo, bạn sẽ được chuyển sang màn chi tiết để quét barcode hoặc thêm sản phẩm.
-                    </div>
-                </div>
-
-                <form id="createStockCountForm" novalidate>
-                    <div class="mb-3">
-                        <label class="form-label" for="createStockCountDocumentName">Tên phiếu</label>
-                        <input type="text"
-                               id="createStockCountDocumentName"
-                               class="form-control"
-                               maxlength="250"
-                               placeholder="Ví dụ: Kiểm kê kho bán lẻ cuối ngày" />
-                        <div class="form-text">
-                            Nếu backend chưa thêm DocumentName, trường này sẽ không ảnh hưởng flow cũ.
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label" for="createStockCountWarehouseId">Kho kiểm kê</label>
-                        <select id="createStockCountWarehouseId" class="form-select">
-                            <option value="">-- Chọn kho --</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label" for="createStockCountDocumentDate">Ngày phiếu</label>
-                        <input type="datetime-local" id="createStockCountDocumentDate" class="form-control" />
-                    </div>
-
-                    <div class="mb-0">
-                        <label class="form-label" for="createStockCountNote">Ghi chú</label>
-                        <textarea id="createStockCountNote"
-                                  class="form-control"
-                                  rows="3"
-                                  maxlength="1000"
-                                  placeholder="Ghi chú nội bộ nếu có..."></textarea>
-                    </div>
-
-                    <div class="text-danger small mt-2" id="createStockCountMessage"></div>
-                </form>
-            </div>
-
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    Đóng
-                </button>
-                <button type="button" class="btn btn-primary" id="btnCreateStockCount">
-                    <i class="bx bx-check me-1"></i> Tạo phiếu
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- =========================================================
-     QUICK VIEW MODAL
-========================================================= -->
-<div class="modal fade sc-modal" id="stockCountQuickViewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content">
-
-            <div class="modal-header border-0">
-                <div>
-                    <h5 class="modal-title fw-bold" id="quickViewTitle">Xem nhanh phiếu kiểm kê</h5>
-                    <div class="text-muted small" id="quickViewSubtitle"></div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-
-            <div class="modal-body">
-                <div id="quickViewBody" class="text-muted">
-                    Đang tải dữ liệu...
-                </div>
-            </div>
-
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    Đóng
-                </button>
-                <a href="#" class="btn btn-primary" id="btnOpenQuickViewDetail">
-                    <i class="bx bx-detail me-1"></i> Mở chi tiết
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Existing Create workflow remains unchanged. -->
+<div class="modal fade sc-modal" id="createStockCountModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header border-0"><div><h5 class="modal-title fw-bold">Tạo phiếu kiểm kê</h5><div class="text-muted small">Chọn kho, đặt tên phiếu để dễ quản lý và bắt đầu kiểm kê.</div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><div class="sc-create-hero"><div class="fw-bold mb-1"><i class="bx bx-package me-1"></i> Phiếu kiểm kê mới</div><div class="text-muted small">Sau khi tạo, bạn sẽ được chuyển sang màn chi tiết để quét barcode hoặc thêm sản phẩm.</div></div><form id="createStockCountForm" novalidate><div class="mb-3"><label class="form-label" for="createStockCountDocumentName">Tên phiếu</label><input type="text" id="createStockCountDocumentName" class="form-control" maxlength="250" placeholder="Ví dụ: Kiểm kê kho bán lẻ cuối ngày" /><div class="form-text">Nếu backend chưa thêm DocumentName, trường này sẽ không ảnh hưởng flow cũ.</div></div><div class="mb-3"><label class="form-label" for="createStockCountWarehouseId">Kho kiểm kê</label><select id="createStockCountWarehouseId" class="form-select"><option value="">-- Chọn kho --</option></select></div><div class="mb-3"><label class="form-label" for="createStockCountDocumentDate">Ngày phiếu</label><input type="datetime-local" id="createStockCountDocumentDate" class="form-control" /></div><div class="mb-0"><label class="form-label" for="createStockCountNote">Ghi chú</label><textarea id="createStockCountNote" class="form-control" rows="3" maxlength="1000" placeholder="Ghi chú nội bộ nếu có..."></textarea></div><div class="text-danger small mt-2" id="createStockCountMessage"></div></form></div>
+    <div class="modal-footer border-0"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Đóng</button><button type="button" class="btn btn-primary" id="btnCreateStockCount"><i class="bx bx-check me-1"></i> Tạo phiếu</button></div>
+</div></div></div>
 
 @section PageScripts {
-    <script>
-        window.stockCountPage = {
-            mode: 'index',
-            permissions: {
-                canCreate: @canCreate.ToString().ToLowerInvariant()
-            }
-        };
-    </script>
-
+    <script>window.stockCountPage = { mode: 'index', permissions: { canCreate: @canCreate.ToString().ToLowerInvariant() } };</script>
     <script src="~/Admin/js/stock-count.js" asp-append-version="true"></script>
 }

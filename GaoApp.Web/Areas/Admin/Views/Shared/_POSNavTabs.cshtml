@@ -1,8 +1,12 @@
-﻿@{
+﻿@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess StoreAdminAccess
+@{
+    var canManageShifts = await StoreAdminAccess.IsAdminAsync(Context.RequestAborted);
+    var isHandover = Context.Request.Path.StartsWithSegments("/admin/pos-shift/handover-slips");
+    var isManager = Context.Request.Path.StartsWithSegments("/admin/pos-shift/manager-dashboard");
     var path = Context.Request.Path.Value?.ToLower() ?? string.Empty;
 
     bool isPOS = path == "/admin/pos";
-    bool isShift = path.Contains("/admin/pos-shift") && !path.Contains("/history");
+    bool isShift = path == "/admin/pos-shift";
     bool isShiftHistory = path.Contains("/admin/pos-shift/history") || path.Contains("/admin/pos-shift-history");
     bool isOrders = path.Contains("/admin/pos/orders-page") || path.Contains("/admin/pos/order-detail");
     bool isDashboard = path.Contains("/admin/pos/dashboard");
@@ -86,6 +90,12 @@
         <i class="bx bx-history pos-nav-icon"></i>
         <span>Lịch sử ca</span>
     </a>
+
+    @if (canManageShifts)
+    {
+        <a href="/admin/pos-shift/handover-slips" class="pos-nav-link @(isHandover ? "active" : "")">Phiếu nhận ca</a>
+        <a href="/admin/pos-shift/manager-dashboard" class="pos-nav-link @(isManager ? "active" : "")">Quản lý / duyệt ca</a>
+    }
 
     <a href="/admin/pos/orders-page" class="pos-nav-link @(isOrders ? "active" : "")">
         <i class="bx bx-receipt pos-nav-icon"></i>

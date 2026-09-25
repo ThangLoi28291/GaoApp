@@ -4,6 +4,7 @@ using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.LegalEntities;
 using GaoApp.Application.Interfaces.Services.Inventory;
@@ -15,9 +16,40 @@ using GaoApp.Domain.Enums;
 
 namespace GaoApp.Tests.Purchases;
 
+// R2.4-C2 coverage: owner guard and frozen receipt owner precede all posting side effects.
 public sealed class PurchaseReceiptConfirmPrerequisiteTests
 {
     private static readonly byte[] CurrentVersion = [1, 2, 3, 4];
+
+    [Fact]
+    public async Task Unresolved_provisional_blocks_inside_confirm_transaction_before_posting()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        fixture.Repository.HasUnresolvedProvisional = true;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(
+            document.Id, ValidCommercialRequest(supplier.Id));
+
+        (await action.Should().ThrowAsync<BusinessRuleException>())
+            .Which.SafeMessage.Should().Contain("UNRESOLVED_PROVISIONAL");
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(0);
+        fixture.Repository.AddedPayables.Should().BeEmpty();
+        fixture.Movements.PreLockCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public void Warehouse_date_resolution_is_read_only_and_does_not_add_a_persisted_receipt_field()
+    {
+        typeof(StockDocument).GetProperties().Select(x => x.Name)
+            .Should().NotContain("WarehouseOccurredAtUtc");
+        typeof(PurchaseReceiptWarehouseDatePolicy).GetMethod("Resolve")
+            .Should().NotBeNull();
+    }
 
     [Theory]
     [InlineData(true, "Người bán đã nhận tiền")]
@@ -141,6 +173,137 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         fixture.Repository.RollbackTransactionCalls.Should().Be(0);
         fixture.Repository.AddedPayables.Should().ContainSingle()
             .Which.SupplierId.Should().Be(supplier.Id);
+    }
+
+    [Fact]
+    public async Task Final_authoritative_reconciliation_observes_applied_commercial_values_before_posting()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var observedAppliedPrice = false;
+        var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
+        {
+            if (method.Name != nameof(IInputInvoiceReconciliationService
+                    .EnsureConfirmableWithinTransactionAsync))
+                throw new NotSupportedException(method.Name);
+            observedAppliedPrice = document.Lines.Single().UnitPriceBeforeVat == 12m &&
+                document.Lines.Single().LineTotal > 0m;
+            return Task.FromResult(new InputInvoiceReconciliationDto
+            {
+                StockDocumentId = document.Id,
+                State = InputInvoiceReconciliationState.NotApplicable
+            });
+        });
+        var fixture = CreateFixtureWithReconciliation(document, reconciliation, supplier);
+
+        await fixture.Service.ApproveCommercialAsync(
+            document.Id, ValidCommercialRequest(supplier.Id));
+
+        observedAppliedPrice.Should().BeTrue();
+        fixture.Movements.CreateCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Xml_supplier_guard_should_fail_inside_transaction_before_any_posting()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var guardCalls = 0;
+        var guard = CreateProxy<IInputInvoiceSupplierResolutionService>((method, _) =>
+        {
+            if (method.Name != nameof(
+                    IInputInvoiceSupplierResolutionService.EnsureReceiptCanBeConfirmedAsync))
+            {
+                throw new NotSupportedException(method.Name);
+            }
+
+            guardCalls++;
+            return Task.FromException(new BusinessRuleException(
+                "Nhà cung cấp hóa đơn XML chưa sẵn sàng để xác nhận."));
+        });
+        var fixture = CreateFixture(document, guard, supplier);
+
+        var action = () => fixture.Service.ApproveCommercialAsync(
+            document.Id,
+            ValidCommercialRequest(supplier.Id));
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*XML chưa sẵn sàng*");
+        guardCalls.Should().Be(1);
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.Repository.AddedPayables.Should().BeEmpty();
+        fixture.Movements.PreLockCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+    }
+
+    [Fact]
+    public async Task Actual_reconciliation_refresh_exception_rolls_back_before_posting_side_effects()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var calls = 0;
+        var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
+        {
+            if (method.Name != nameof(IInputInvoiceReconciliationService
+                    .EnsureConfirmableWithinTransactionAsync))
+                throw new NotSupportedException(method.Name);
+            calls++;
+            return Task.FromException<GaoApp.Application.DTOs.Inventory.InputInvoices.InputInvoiceReconciliationDto>(
+                new BusinessRuleException("Phiếu nhập đang liên kết nhiều hơn một hóa đơn."));
+        });
+        var fixture = CreateFixtureWithReconciliation(
+            document, reconciliation, supplier);
+
+        var action = () => fixture.Service.ApproveCommercialAsync(
+            document.Id, ValidCommercialRequest(supplier.Id));
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*liên kết nhiều hơn một hóa đơn*");
+        calls.Should().Be(1);
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(0);
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+    }
+
+    [Theory]
+    [InlineData(InputInvoiceReconciliationState.Incomplete)]
+    [InlineData(InputInvoiceReconciliationState.Mismatch)]
+    public async Task Reconciliation_completeness_state_does_not_block_posting(
+        InputInvoiceReconciliationState state)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var calls = 0;
+        var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
+        {
+            if (method.Name != nameof(IInputInvoiceReconciliationService
+                    .EnsureConfirmableWithinTransactionAsync))
+                throw new NotSupportedException(method.Name);
+            calls++;
+            return Task.FromResult(new InputInvoiceReconciliationDto
+            {
+                StockDocumentId = document.Id,
+                State = state
+            });
+        });
+        var fixture = CreateFixtureWithReconciliation(
+            document, reconciliation, supplier);
+
+        await fixture.Service.ApproveCommercialAsync(
+            document.Id, ValidCommercialRequest(supplier.Id));
+
+        calls.Should().Be(1);
+        document.Status.Should().Be(StockDocumentStatus.Confirmed);
+        fixture.Repository.CommitTransactionCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(0);
+        fixture.Movements.CreateCalls.Should().Be(1);
     }
 
     [Theory]
@@ -651,6 +814,25 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
     private static ServiceFixture CreateFixture(
         StockDocument document,
         params Supplier[] resolvableSuppliers)
+        => CreateFixtureCore(document, null, null, resolvableSuppliers);
+
+    private static ServiceFixture CreateFixture(
+        StockDocument document,
+        IInputInvoiceSupplierResolutionService resolutionService,
+        params Supplier[] resolvableSuppliers)
+        => CreateFixtureCore(document, resolutionService, null, resolvableSuppliers);
+
+    private static ServiceFixture CreateFixtureWithReconciliation(
+        StockDocument document,
+        IInputInvoiceReconciliationService reconciliation,
+        params Supplier[] resolvableSuppliers)
+        => CreateFixtureCore(document, null, reconciliation, resolvableSuppliers);
+
+    private static ServiceFixture CreateFixtureCore(
+        StockDocument document,
+        IInputInvoiceSupplierResolutionService? resolutionService,
+        IInputInvoiceReconciliationService? reconciliationService,
+        params Supplier[] resolvableSuppliers)
     {
         var repository = new RecordingStockDocumentRepository(document, resolvableSuppliers);
         var movements = new RecordingInventoryMovementService();
@@ -674,7 +856,10 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
                 method.Name == nameof(IInventoryValuationEntryRepository.GetByReferenceAsync)
                     ? Task.FromResult(new List<InventoryValuationEntry>())
                     : throw new NotSupportedException(method.Name)),
-            new CurrentUserStub());
+            new CurrentUserStub(),
+            resolutionService,
+            inputInvoiceRepository: null,
+            inputInvoiceReconciliationService: reconciliationService);
 
         return new ServiceFixture(service, repository, movements);
     }
@@ -949,6 +1134,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         public Dictionary<int, decimal> LastPurchaseBasePrices { get; } = [];
         public int PriceHistoryLockCalls { get; private set; }
         public Action? OnPriceHistoryLock { get; set; }
+        public bool HasUnresolvedProvisional { get; set; }
 
         public Task AddAsync(StockDocument entity, CancellationToken ct = default)
             => throw new NotSupportedException();
@@ -969,6 +1155,9 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
             SupplierExistsCalls++;
             return Task.FromResult(_suppliers.ContainsKey(supplierId));
         }
+        public Task<bool> HasUnresolvedProvisionalItemsAsync(
+            int storeId, int stockDocumentId, CancellationToken ct = default)
+            => Task.FromResult(HasUnresolvedProvisional);
         public Task<Supplier?> GetSupplierAsync(int supplierId, CancellationToken ct = default)
         {
             GetSupplierCalls++;

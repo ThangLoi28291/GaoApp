@@ -13,6 +13,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [ApiController]
 [Route("admin/pos/shift")]
 [Authorize] // bắt buộc đăng nhập trước
+[AutoValidateAntiforgeryToken]
 public class POSShiftController : ControllerBase
 {
     private readonly IPOSShiftService _service;
@@ -232,6 +233,7 @@ public class POSShiftController : ControllerBase
     /// Dashboard quản lý ca POS.
     /// Chỉ dành cho quản lý.
     /// </summary>
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpGet("manager-dashboard")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
     public async Task<IActionResult> GetManagerDashboard(
@@ -262,6 +264,7 @@ public class POSShiftController : ControllerBase
     /// Xuất Excel báo cáo quản lý ca POS.
     /// GET: /admin/pos/shift/manager-dashboard/export-excel
     /// </summary>
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpGet("manager-dashboard/export-excel")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
     public async Task<IActionResult> ExportManagerDashboardExcel(
@@ -299,6 +302,17 @@ public class POSShiftController : ControllerBase
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             fileName);
     }
+    [HttpPost("{shiftId:int}/cash-receipt")]
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
+    public async Task<IActionResult> ConfirmCashReceipt(
+        int shiftId, [FromBody] ConfirmShiftCashReceiptRequest request,
+        [FromServices] GaoApp.Application.Services.POSShifts.POSShiftCashReceiptService receipts,
+        CancellationToken ct)
+    {
+        await receipts.ConfirmAsync(shiftId, request, ct);
+        return Ok(new { success = true, message = "Đã xác nhận nhận tiền và duyệt chốt ca." });
+    }
+
     private static void CreateOverviewSheet(
     XLWorkbook workbook,
     POSShiftManagerDashboardDto data,
@@ -465,7 +479,13 @@ public class POSShiftController : ControllerBase
         "Tiền thực đếm",
         "Lệch quỹ",
         "Ghi chú mở ca",
-        "Ghi chú đóng ca"
+        "Ghi chú đóng ca",
+        "Bàn giao tiền",
+        "Admin thực nhận",
+        "Lệch so với nhân viên",
+        "Admin xác nhận",
+        "Xác nhận lúc",
+        "Ghi chú bàn giao"
     };
 
         WriteHeader(ws, headers);
@@ -498,6 +518,12 @@ public class POSShiftController : ControllerBase
             ws.Cell(row, 20).Value = x.CashDifference;
             ws.Cell(row, 21).Value = x.OpenNote;
             ws.Cell(row, 22).Value = x.CloseNote;
+            ws.Cell(row, 23).Value = x.CashReceivedAtUtc.HasValue ? "Đã nhận tiền / Đã duyệt" : x.Status == POSShiftStatus.Closed ? "Chờ nhận tiền" : "Chưa chốt ca";
+            ws.Cell(row, 24).Value = x.CashReceivedAmount;
+            ws.Cell(row, 25).Value = x.CashReceivedAmount - x.ClosingCashActual;
+            ws.Cell(row, 26).Value = x.CashReceivedByUserName;
+            ws.Cell(row, 27).Value = x.CashReceivedAtUtc?.ToLocalTime();
+            ws.Cell(row, 28).Value = x.CashReceiptNote;
 
             row++;
         }
@@ -505,8 +531,8 @@ public class POSShiftController : ControllerBase
         FormatTable(
             ws,
             row - 1,
-            moneyColumns: new[] { 9, 10, 11, 12, 13, 14, 15, 18, 19, 20 },
-            dateColumns: new[] { 7, 8 });
+            moneyColumns: new[] { 9, 10, 11, 12, 13, 14, 15, 18, 19, 20, 24, 25 },
+            dateColumns: new[] { 7, 8, 27 });
 
         ws.SheetView.FreezeRows(1);
     }

@@ -291,7 +291,7 @@
 
                                 <div class="help-text">
                                     @(isEdit
-                                        ? "Hệ thống không hiển thị mật khẩu đã lưu. Để trống nếu không muốn thay đổi."
+                                        ? "Hệ thống không hiển thị mật khẩu đã lưu. Để trống nếu không muốn thay đổi. Nếu báo mất DataProtection key, bắt buộc nhập lại mật khẩu rồi bấm Lưu; nút Test không lưu mật khẩu."
                                         : "Mật khẩu sẽ được mã hóa trước khi lưu database.")
                                 </div>
                             </div>
@@ -372,6 +372,9 @@
                                 </label>
 
                                 <input asp-for="ExchangeRate"
+                                       type="number"
+                                       asp-format="{0:0.############################}"
+                                       step="any"
                                        class="form-control"
                                        inputmode="decimal" />
 

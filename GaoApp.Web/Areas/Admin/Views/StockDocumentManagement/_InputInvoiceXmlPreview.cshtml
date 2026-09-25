@@ -1,0 +1,73 @@
+@model GaoApp.Application.DTOs.Inventory.InputInvoices.InputInvoiceXmlPreviewDto
+@using System.Globalization
+@{
+    var ownerLabel = Model.BuyerOwnerMatchesReceipt
+        ? "Đúng pháp nhân"
+        : Model.BuyerOwnerResolutionStatus switch
+        {
+            "MissingBuyerTaxCode" => "Thiếu MST bên mua",
+            "NotFound" => "Không tìm thấy pháp nhân",
+            "Ambiguous" => "MST bên mua bị trùng",
+            "Resolved" => "Sai pháp nhân",
+            _ => "Không thể liên kết"
+        };
+}
+
+<article class="bg-white p-4" aria-label="Hóa đơn dựng từ XML">
+    <div class="alert alert-info py-2 small">Dựng từ XML · Bản xem trước an toàn, không phải bản PDF gốc.</div>
+    <header class="text-center mb-4">
+        <h4 class="mb-1">HÓA ĐƠN ĐIỆN TỬ</h4>
+        <div>@Model.InvoiceDate?.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)</div>
+        <div class="small text-muted">
+            Mẫu số: @(Model.InvoiceTemplateCode ?? "-") · Ký hiệu: @(Model.InvoiceSeries ?? "-") · Số: @(Model.InvoiceNumber ?? "-")
+        </div>
+    </header>
+
+    <dl class="row small">
+        <dt class="col-sm-3">Người bán</dt><dd class="col-sm-9">@(Model.SellerName ?? "-")</dd>
+        <dt class="col-sm-3">MST người bán</dt><dd class="col-sm-9">@(Model.SellerTaxCode ?? "-")</dd>
+        <dt class="col-sm-3">Địa chỉ</dt><dd class="col-sm-9">@(Model.SellerAddress ?? "-")</dd>
+        <dt class="col-sm-3">Người mua</dt><dd class="col-sm-9">@(Model.BuyerName ?? "-")</dd>
+        <dt class="col-sm-3">MST người mua</dt><dd class="col-sm-9">@(Model.BuyerTaxCode ?? "-")</dd>
+        <dt class="col-sm-3">Đối chiếu chủ thể</dt>
+        <dd class="col-sm-9">
+            @if (Model.BuyerOwnerMatchesReceipt)
+            {
+                <span class="badge text-bg-success">@ownerLabel</span>
+            }
+            else
+            {
+                <span class="badge text-bg-danger">@ownerLabel</span>
+            }
+            <span class="ms-1">@(Model.ResolvedBuyerLegalEntityName ?? Model.BuyerOwnerResolutionStatus)</span>
+        </dd>
+        <dt class="col-sm-3">Mã CQT</dt><dd class="col-sm-9">@(Model.TaxAuthorityCode ?? "-")</dd>
+    </dl>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-light">
+                <tr><th>STT</th><th>Mã hàng XML</th><th>Tên hàng hóa, dịch vụ</th><th>ĐVT</th><th class="text-end">SL</th><th class="text-end">Đơn giá</th><th class="text-end">Thành tiền</th><th>VAT</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var line in Model.Lines)
+            {
+                <tr>
+                    <td>@line.LineNo</td><td>@(line.SupplierItemCode ?? "Không có mã")</td><td>@line.ItemName</td><td>@(line.UnitName ?? "-")</td>
+                    <td class="text-end">@line.Quantity.ToString("N2", CultureInfo.GetCultureInfo("vi-VN"))</td>
+                    <td class="text-end">@line.UnitPrice.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))</td>
+                    <td class="text-end">@line.LineAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))</td>
+                    <td>@(line.VatRate ?? "-")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="row justify-content-end">
+        <div class="col-sm-6 col-lg-5">
+            <div class="d-flex justify-content-between"><span>Tiền trước thuế</span><strong>@Model.TotalBeforeTax.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))</strong></div>
+            <div class="d-flex justify-content-between"><span>Tiền thuế</span><strong>@Model.TotalTaxAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))</strong></div>
+            <div class="d-flex justify-content-between fs-5 border-top mt-2 pt-2"><span>Tổng thanh toán</span><strong>@Model.TotalPaymentAmount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))</strong></div>
+        </div>
+    </div>
+</article>

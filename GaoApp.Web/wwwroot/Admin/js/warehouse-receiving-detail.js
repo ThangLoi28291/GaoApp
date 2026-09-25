@@ -1,14 +1,25 @@
-﻿let quickAddProductModalInstance = null;
+let quickAddProductModalInstance = null;
 let requestRevisionModalInstance = null;
 let submitReceivingModalInstance = null;
 let barcodeVerificationModalInstance = null;
 let receivingQuickCreateModalInstance = null;
 let barcodeVerificationItems = [];
+let receivingPendingSaves = 0;
+let receivingSaveFailed = false;
+let receivingSubmissionInProgress = false;
+let receivingRefreshSequence = 0;
+let receivingAddCommand = null;
+let receivingAddBusy = false;
+let receivingLookupSequence = 0;
+let receivingLookupTerm = '';
+const receivingSavingMessage = 'Đang lưu hàng nhập. Vui lòng chờ trước khi gửi duyệt.';
+const receivingSaveFailedMessage = 'Chưa lưu được thay đổi. Vui lòng kiểm tra lại hàng nhập và lưu lại trước khi gửi duyệt.';
 document.addEventListener('DOMContentLoaded', function () {
 
     const modalEl = document.getElementById('quickAddProductModal');
     if (modalEl) {
         quickAddProductModalInstance = new bootstrap.Modal(modalEl);
+        modalEl.addEventListener('hide.bs.modal', event => { if (receivingAddBusy && !receivingAddCommand?.saved) event.preventDefault(); });
     }
 
     const revisionModalEl = document.getElementById('requestRevisionModal');
@@ -64,10 +75,12 @@ function initReceivingLookup() {
     el.select2({
         theme: 'bootstrap-5',
         width: '100%',
-        placeholder: 'Quét barcode / nhập tên sản phẩm...',
+        placeholder: 'Quét mã / tìm tên có dấu hoặc không dấu…',
         minimumInputLength: 1,
+        language: { inputTooShort: () => 'Nhập tên hoặc quét mã sản phẩm', searching: () => 'Đang tìm…',
+            noResults: () => window.ReceiptIntake?.noResults() || 'Không tìm thấy sản phẩm.' },
         ajax: {
-            url: '/admin/warehouse-receiving/product-lookup-select2',
+            url: window.ReceiptBarcodeProposals?.lookupUrl || '/admin/warehouse-receiving/product-lookup-select2',
             dataType: 'json',
             delay: 120,
             data: function (params) {
@@ -75,6 +88,7 @@ function initReceivingLookup() {
             },
             processResults: function (data, params) {
                 const term = params.term || '';
+                receivingLookupTerm = term;
                 const items = data.results || [];
 
                 return {
@@ -91,6 +105,9 @@ function initReceivingLookup() {
 
     el.on('select2:select', function (e) {
         const item = e.params.data;
+        // This is an action lookup, not a persistent selection. Otherwise Select2
+        // only closes on Enter when the employee chooses the same product again.
+        el.val(null).trigger('change');
 
         if (item.isGroupedVariant) {
             openGroupedProductPopup(item);
@@ -100,25 +117,34 @@ function initReceivingLookup() {
         openQtyPopup(item);
     });
 
-    $(document).on('keydown', '.select2-container--open .select2-search__field', async function (e) {
-        if (e.key !== 'Enter') return;
-
-        const term = $(this).val();
+    document.addEventListener('keydown', async function (e) {
+        const field = e.target;
+        if (e.key !== 'Enter' || e.isComposing || !field.matches('.select2-container--open .select2-search__field') ||
+            !field.getAttribute('aria-controls')?.includes('quickLookupInput')) return;
+        const term = field.value.trim();
         if (!term) return;
-
-        const response = await fetch(`/admin/warehouse-receiving/product-lookup-select2?term=${encodeURIComponent(term)}`);
+        const widget = el.data('select2');
+        // Select2 owns its result data cache and keyboard highlight. Let it select the
+        // highlighted current result; jQuery .data('data') does not read that cache.
+        if (receivingLookupTerm === term && !widget?.results?.$results?.find('.loading-results').length &&
+            widget?.results?.getHighlightedResults().filter('.select2-results__option--selectable').length) return;
+        // A fast barcode can arrive before its result list. Resolve that term instead
+        // of letting Enter accept a highlight left over from the previous search.
+        e.preventDefault(); e.stopImmediatePropagation();
+        const sequence = ++receivingLookupSequence;
+        try {
+        const response = await fetch(`${window.ReceiptBarcodeProposals?.lookupUrl || '/admin/warehouse-receiving/product-lookup-select2'}?term=${encodeURIComponent(term)}`);
         const api = await readApiResponse(response);
-
-        if (!api.ok || !api.data?.results || api.data.results.length !== 1) return;
-
-        e.preventDefault();
-
+        if (sequence !== receivingLookupSequence || field.value.trim() !== term || !field.isConnected || document.querySelector('.modal.show')) return;
+        if (!api.ok || !api.data?.results) return;
+        if (api.data.results.length === 0) {
+            window.ReceiptBarcodeProposals?.open(term, openQtyPopup);
+            return;
+        }
         let results = api.data.results || [];
         results = groupLookupResultsForTextSearch(results, term);
-
-        if (results.length !== 1) return;
-
-        const item = results[0];
+        const item = results.length === 1 ? results[0] : null;
+        if (!item) return;
         const option = new Option(item.text, item.id, true, true);
 
         el.append(option).trigger('change');
@@ -128,13 +154,16 @@ function initReceivingLookup() {
         });
 
         el.select2('close');
-    });
+        } catch { document.getElementById('wrdSaveStatus')?.replaceChildren(document.createTextNode('Không tìm được sản phẩm. Kiểm tra kết nối rồi thử lại.')); }
+    }, true);
 }
 function openGroupedProductPopup(group) {
     if (!group || !Array.isArray(group.units) || group.units.length === 0) {
         return;
     }
 
+    if (receivingAddBusy || receivingPendingSaves) return;
+    receivingAddCommand = null;
     $('#quickLookupInput').select2('close');
 
     const firstUnit = group.units[0];
@@ -144,18 +173,7 @@ function openGroupedProductPopup(group) {
 
     setText('popupProductName', group.productName || group.text || '-');
 
-    const img = document.getElementById('popupProductImage');
-    const noImg = document.getElementById('popupProductNoImage');
-
-    if (group.imageUrl) {
-        img.src = group.imageUrl;
-        img.classList.remove('d-none');
-        noImg.classList.add('d-none');
-    } else {
-        img.src = '';
-        img.classList.add('d-none');
-        noImg.classList.remove('d-none');
-    }
+    setPopupProductImage(group.imageUrl || firstUnit.imageUrl, group.productName || group.text);
 
     renderUnitChooser(group.units, firstUnit.unitId);
 
@@ -244,6 +262,7 @@ function formatMoney(value) {
     return new Intl.NumberFormat('vi-VN').format(value || 0);
 }
 function focusAndSelectPopupQty() {
+    if (window.matchMedia('(max-width: 768px)').matches) return;
     const qty = document.getElementById('popupQuickQty');
     if (!qty) return;
 
@@ -289,6 +308,8 @@ function bindPopupQtyAutoSelect() {
 }
 function openQtyPopup(item) {
     if (!item) return;
+    if (receivingAddBusy || receivingPendingSaves) return;
+    receivingAddCommand = null;
     $('#quickLookupInput').removeData('grouped-item');
 
     const unitChooser = document.getElementById('popupUnitChooser');
@@ -312,18 +333,7 @@ function openQtyPopup(item) {
     const qty = document.getElementById('popupQuickQty');
     if (qty) qty.value = '1';
 
-    const img = document.getElementById('popupProductImage');
-    const noImg = document.getElementById('popupProductNoImage');
-
-    if (item.imageUrl) {
-        img.src = item.imageUrl;
-        img.classList.remove('d-none');
-        noImg.classList.add('d-none');
-    } else {
-        img.src = '';
-        img.classList.add('d-none');
-        noImg.classList.remove('d-none');
-    }
+    setPopupProductImage(item.imageUrl, item.productName || item.text);
 
     updatePopupBaseQty();
     setText('popupQuickMessage', '');
@@ -333,6 +343,27 @@ function openQtyPopup(item) {
     setTimeout(function () {
         focusAndSelectPopupQty();
     }, 350);
+}
+
+function setPopupProductImage(imageUrl, productName) {
+    const img = document.getElementById('popupProductImage');
+    const noImg = document.getElementById('popupProductNoImage');
+    if (!img || !noImg) return;
+
+    img.alt = productName ? `Ảnh ${productName}` : 'Ảnh sản phẩm đang nhập';
+    img.onerror = function () {
+        img.classList.add('d-none');
+        noImg.classList.remove('d-none');
+    };
+    if (imageUrl) {
+        img.src = imageUrl;
+        img.classList.remove('d-none');
+        noImg.classList.add('d-none');
+    } else {
+        img.removeAttribute('src');
+        img.classList.add('d-none');
+        noImg.classList.remove('d-none');
+    }
 }
 
 function bindPopupAddLine() {
@@ -351,7 +382,61 @@ function bindPopupAddLine() {
     btn?.addEventListener('click', addReceivingLine);
 }
 
-async function addReceivingLine() {
+function updateReceivingSubmitState() {
+    const btn = document.getElementById('btnConfirmSubmitReceiving');
+    const msg = document.getElementById('submitReceivingMessage');
+    if (btn) btn.disabled = receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!window.WarehouseReceivingQuantity?.hasPending();
+    if (!msg) return;
+    if (receivingPendingSaves > 0) msg.textContent = receivingSavingMessage;
+    else if (receivingSaveFailed) msg.textContent = receivingSaveFailedMessage;
+    else if (msg.textContent === receivingSavingMessage || msg.textContent === receivingSaveFailedMessage) msg.textContent = '';
+}
+
+function receivingHasPendingChanges() {
+    return !!window.WarehouseReceivingQuantity?.hasPending() || receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!receivingAddCommand?.uncertain ||
+        [...document.querySelectorAll('.js-receiving-qty')].some(x => parseDecimalInput(x.value) !== parseDecimalInput(x.defaultValue));
+}
+
+function receivingSaveEvent(state, message, item, feedback) {
+    if (state === 'error') receivingSaveFailed = true;
+    if (state === 'saved' && receivingPendingSaves === 0) receivingSaveFailed = false;
+    document.dispatchEvent(new CustomEvent('receiving:save', {detail:{state,message,item,feedback}}));
+}
+function receivingRetryChanges() {
+    if (receivingAddCommand || $('#quickLookupInput').data('selected-item')) { quickAddProductModalInstance?.show(); return; }
+    if (window.ReceiptIntake?.retryPending?.()) return;
+    const dirty = [...document.querySelectorAll('.js-receiving-qty')].find(x => parseDecimalInput(x.value) !== parseDecimalInput(x.defaultValue));
+    if (dirty) { dirty.scrollIntoView({block:'center'}); dirty.focus(); saveReceivingQty(dirty); }
+}
+
+async function withReceivingLineSave(action) {
+    if (receivingSubmissionInProgress) return false;
+    if (receivingPendingSaves === 0) receivingSaveFailed = false;
+    receivingPendingSaves++;
+    receivingSaveEvent('saving');
+    updateReceivingSubmitState();
+    try {
+        const saved = await action();
+        if (!saved) receivingSaveFailed = true;
+        return saved;
+    } catch (error) {
+        receivingSaveFailed = true;
+        alert(error.message || 'Không lưu được hàng nhập. Vui lòng thử lại.');
+        return false;
+    } finally {
+        receivingPendingSaves--;
+        updateReceivingSubmitState();
+        if (receivingPendingSaves === 0) receivingSaveEvent(receivingSaveFailed ? 'error' : 'saved');
+    }
+}
+
+function addReceivingLine() {
+    if (receivingAddBusy || receivingPendingSaves > 0) return Promise.resolve(false);
+    receivingAddBusy = true;
+    return withReceivingLineSave(addReceivingLineCore).finally(() => { receivingAddBusy = false; });
+}
+
+async function addReceivingLineCore() {
     const selected = $('#quickLookupInput').data('selected-item');
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
     const qty = parseDecimalInput(document.getElementById('popupQuickQty')?.value || '0');
@@ -359,32 +444,41 @@ async function addReceivingLine() {
 
     if (!selected) {
         setText('popupQuickMessage', 'Vui lòng chọn sản phẩm.');
-        return;
+        return false;
     }
 
     if (qty <= 0) {
         setText('popupQuickMessage', 'Số lượng phải lớn hơn 0.');
-        return;
+        return false;
     }
 
     try {
         btn.disabled = true;
         btn.textContent = 'Đang thêm...';
+        document.querySelectorAll('#quickAddProductModal input, #quickAddProductModal [data-popup-step], #popupUnitChooserList button').forEach(x=>x.disabled=true);
 
-        const response = await fetch(`/admin/api/stock-documents/${documentId}/lines`, {
+        let conversion = selected;
+        if (!conversion.productUnitConversionId) {
+            const unitsResponse = await fetch(`/admin/api/stock-documents/${documentId}/barcode-proposals/products/${Number(selected.productVariantId)}/units`, {cache:'no-store'});
+            const unitsApi = await readApiResponse(unitsResponse);
+            if (!unitsApi.ok) throw new Error(unitsApi.data?.message || 'Không tải được đơn vị sản phẩm.');
+            conversion = unitsApi.data.items?.find(x => Number(x.unitId) === Number(selected.unitId));
+            if (!conversion) throw new Error('Không tìm thấy đơn vị nhập. Hãy chọn lại sản phẩm.');
+        }
+        const payload = {productUnitConversionId:Number(conversion.productUnitConversionId),factor:Number(conversion.factor),quantity:qty,barcode:selected.barcode || null,note:null};
+        const identity = JSON.stringify(payload);
+        if (!receivingAddCommand || (!receivingAddCommand.uncertain && receivingAddCommand.identity !== identity)) receivingAddCommand = {identity,commandId:crypto.randomUUID()};
+        receivingAddCommand.feedback ??= window.WarehouseReceivingFeedback?.prepare({
+            commandId:receivingAddCommand.commandId, conversionId:payload.productUnitConversionId,
+            name:selected.productName || selected.text, unitName:selected.unitName || conversion.unitName || '',
+            barcode:selected.barcode || selected.sku || '', factor:payload.factor, quantity:qty, imageUrl:selected.imageUrl
+        });
+        const response = await fetch(`/admin/api/stock-documents/${documentId}/intake/known`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                productVariantId: Number(selected.productVariantId),
-                unitId: selected.unitId ? Number(selected.unitId) : null,
-                quantity: qty,
-
-                // Nhân viên không nhập giá.
-                // Tạm set 1 để service hiện tại không lỗi.
-                // Quản lý sẽ sửa giá ở màn admin sau.
-                // Giá thực tế do quản lý chốt tại bước duyệt.
-                unitCost: 0,
-                note: null
+                ...payload,commandId:receivingAddCommand.commandId,documentRowVersion:window.warehouseReceivingDetail.rowVersion,
+                leaseToken:sessionStorage.getItem(`gaoapp:receiving-lease:${documentId}`) || null
             })
         });
 
@@ -392,25 +486,36 @@ async function addReceivingLine() {
 
         if (!api.ok) {
             setText('popupQuickMessage', api.data?.message || 'Thêm dòng thất bại.');
-            return;
+            receivingAddCommand.uncertain = response.status >= 500;
+            return false;
         }
 
-        quickAddProductModalInstance?.hide();
-
-        $('#quickLookupInput').val(null).trigger('change');
-        $('#quickLookupInput').removeData('selected-item');
-
+        window.warehouseReceivingDetail.rowVersion = api.data.documentRowVersion;
+        window.WarehouseReceivingFeedback?.loadState(api.data.recentReceipts);
         await refreshReceivingLines();
-
+        await window.ReceiptIntake?.reload();
+        receivingAddCommand.saved = true;
+        quickAddProductModalInstance?.hide();
+        $('#quickLookupInput').val(null).trigger('change').removeData('selected-item');
+        const feedback = receivingAddCommand.feedback ? {...receivingAddCommand.feedback, next:api.data} : null;
+        receivingAddCommand = null;
+        receivingSaveEvent('saved',null,`${selected.productName || selected.text} · ${formatDecimal(qty)} ${selected.unitName || ''}`,feedback);
         setTimeout(focusQuickLookup, 150);
+        return true;
+    } catch (error) {
+        if(receivingAddCommand)receivingAddCommand.uncertain=true;
+        setText('popupQuickMessage', receivingAddCommand ? 'Chưa nhận đủ xác nhận lưu. Giữ nguyên số lượng và bấm Thêm dòng để kiểm tra, thử lại; hàng không bị cộng hai lần.' : error.message);
+        return false;
     } finally {
         btn.disabled = false;
         btn.textContent = 'Thêm dòng';
+        document.querySelectorAll('#quickAddProductModal input, #quickAddProductModal [data-popup-step], #popupUnitChooserList button').forEach(x=>x.disabled=!!receivingAddCommand?.uncertain);
     }
 }
 
 async function refreshReceivingLines() {
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
+    const sequence = ++receivingRefreshSequence;
 
     const response = await fetch(`/admin/warehouse-receiving/${documentId}/lines`, {
         method: 'GET',
@@ -418,16 +523,31 @@ async function refreshReceivingLines() {
     });
 
     if (!response.ok) {
-        alert('Không tải lại được danh sách hàng.');
-        return;
+        throw new Error('Không tải lại được danh sách hàng. Vui lòng tải lại phiếu trước khi gửi duyệt.');
     }
 
     const html = await response.text();
-    document.getElementById('wrdLinesContainer').innerHTML = html;
+    if (sequence !== receivingRefreshSequence) return;
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const snapshot = template.content.querySelector('[data-receiving-row-version]');
+    const rowVersion = snapshot?.dataset.receivingRowVersion || '';
+    let validVersion = false;
+    try { validVersion = atob(rowVersion).length === 8; } catch { /* Invalid snapshot: do not enable submission. */ }
+    if (Number(snapshot?.dataset.receivingDocumentId) !== Number(documentId) || !validVersion) {
+        throw new Error('Không đọc được phiên bản phiếu. Vui lòng tải lại trang.');
+    }
+    // Advance the version only with the corresponding visible receipt snapshot.
+    // Fetching a fresh token at submission would bypass unseen concurrent edits.
+    const viewport = window.WarehouseReceivingApp?.captureListViewport();
+    document.getElementById('wrdLinesContainer').replaceChildren(template.content);
+    window.WarehouseReceivingFeedback?.restoreOrder();
+    window.warehouseReceivingDetail.rowVersion = rowVersion;
 
     bindReceivingQtyInputs();
     bindDeleteReceivingLine();
     updateSummaryFromDom();
+    window.WarehouseReceivingApp?.restoreListViewport(viewport);
     await loadMissingBarcodeVerification(false);
 }
 
@@ -451,7 +571,8 @@ function bindReceivingQtyInputs() {
         });
 
         input.addEventListener('blur', async function () {
-            await saveReceivingQty(this);
+            if (this.dataset.receiptStepSaving === '1') return;
+            if (Number(this.value) !== Number(this.defaultValue)) await saveReceivingQty(this);
 
             if (focusLookupAfterSave) {
                 focusLookupAfterSave = false;
@@ -461,20 +582,24 @@ function bindReceivingQtyInputs() {
     });
 }
 
-async function saveReceivingQty(input) {
+function saveReceivingQty(input) {
+    return withReceivingLineSave(() => saveReceivingQtyCore(input));
+}
+
+async function saveReceivingQtyCore(input) {
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
     const lineId = input.dataset.lineId;
     const qty = parseDecimalInput(input.value);
     const unitId = Number(input.dataset.unitId || 0);
     const note = input.dataset.note || null;
 
-    if (!lineId || !unitId) return;
+    if (!lineId || !unitId) return false;
 
     if (qty <= 0) {
         alert('Số lượng phải lớn hơn 0.');
         input.focus();
         input.select();
-        return;
+        return false;
     }
 
     const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
@@ -495,10 +620,11 @@ async function saveReceivingQty(input) {
 
     if (!api.ok) {
         alert(api.data?.message || 'Cập nhật số lượng thất bại.');
-        return;
+        return false;
     }
 
     await refreshReceivingLines();
+    return true;
 }
 
 function bindDeleteReceivingLine() {
@@ -515,21 +641,20 @@ function bindDeleteReceivingLine() {
                 return;
             }
 
-            const documentId = window.warehouseReceivingDetail?.documentId || 0;
-
-            const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
-                method: 'DELETE'
+            await withReceivingLineSave(async () => {
+                const documentId = window.warehouseReceivingDetail?.documentId || 0;
+                const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
+                    method: 'DELETE'
+                });
+                const api = await readApiResponse(response);
+                if (!api.ok) {
+                    alert(api.data?.message || 'Xóa dòng thất bại.');
+                    return false;
+                }
+                await refreshReceivingLines();
+                focusQuickLookup();
+                return true;
             });
-
-            const api = await readApiResponse(response);
-
-            if (!api.ok) {
-                alert(api.data?.message || 'Xóa dòng thất bại.');
-                return;
-            }
-
-            await refreshReceivingLines();
-            focusQuickLookup();
         });
     });
 }
@@ -543,6 +668,7 @@ function bindSubmitReceiving() {
 
         btnOpen.addEventListener('click', function () {
             setText('submitReceivingMessage', '');
+            updateReceivingSubmitState();
             submitReceivingModalInstance?.show();
         });
     }
@@ -554,6 +680,20 @@ function bindSubmitReceiving() {
     }
 }
 async function submitReceivingForApproval() {
+    if (window.WarehouseReceivingQuantity?.hasPending() && !await window.WarehouseReceivingQuantity.flush()) {
+        setText('submitReceivingMessage', 'Chưa lưu xong số lượng. Bấm Lưu lại trước khi gửi duyệt.');
+        return;
+    }
+    if (window.ReceiptIntake?.isSaving() || window.ReceiptQuantityControls?.hasFailed()) {
+        setText('submitReceivingMessage', window.ReceiptQuantityControls?.hasFailed()
+            ? 'Chưa lưu được số lượng. Vui lòng kiểm tra dòng hàng và lưu lại trước khi gửi duyệt.'
+            : 'Đang lưu hàng nhận. Vui lòng chờ lưu xong trước khi gửi duyệt.');
+        return;
+    }
+    if (receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress) {
+        updateReceivingSubmitState();
+        return;
+    }
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
     const btn = document.getElementById('btnConfirmSubmitReceiving');
     const msg = document.getElementById('submitReceivingMessage');
@@ -566,6 +706,7 @@ async function submitReceivingForApproval() {
     }
 
     try {
+        receivingSubmissionInProgress = true;
         btn.disabled = true;
         btn.textContent = 'Đang gửi...';
 
@@ -599,24 +740,33 @@ async function submitReceivingForApproval() {
             msg.textContent = 'Có lỗi khi gửi duyệt.';
         }
     } finally {
-        btn.disabled = false;
+        receivingSubmissionInProgress = false;
+        updateReceivingSubmitState();
         btn.textContent = 'Gửi quản lý duyệt';
     }
 }
 function updatePopupBaseQty() {
     const qty = parseDecimalInput(document.getElementById('popupQuickQty')?.value || '0');
     const factor = parseDecimalInput(document.getElementById('popupFactor')?.textContent || '1');
+    const selected = $('#quickLookupInput').data('selected-item');
+    const box = document.getElementById('popupBaseQuantityBox');
 
-    setText('popupBaseQty', formatDecimal(qty * factor));
+    if (selected?.isBaseUnit) {
+        box?.classList.add('d-none');
+        return;
+    }
+
+    box?.classList.remove('d-none');
+    setText('popupBaseQty', `${formatDecimal(qty * factor)} ${selected?.baseUnitName || ''}`.trim());
 }
 
 function updateSummaryFromDom() {
-    const inputs = document.querySelectorAll('.js-receiving-qty');
+    const rows = document.querySelectorAll('#wrdLinesContainer tr[data-receiving-key]');
 
     let totalQty = 0;
-    inputs.forEach(x => totalQty += parseDecimalInput(x.value));
+    rows.forEach(row => totalQty += parseDecimalInput(row.querySelector('.wrd-table-qty')?.value || row.dataset.receivingQuantity || '0'));
 
-    setText('wrdTotalLines', inputs.length.toString());
+    setText('wrdTotalLines', rows.length.toString());
     setText('wrdTotalQty', formatDecimal(totalQty));
 }
 
@@ -750,10 +900,12 @@ async function createReceivingPendingProduct() {
 }
 
 function focusQuickLookup() {
+    if (window.matchMedia('(max-width: 768px)').matches || document.querySelector('.modal.show, .offcanvas.show')) return;
     const el = $('#quickLookupInput');
     if (!el.length) return;
 
     setTimeout(function () {
+        if (document.querySelector('.modal.show, .offcanvas.show')) return;
         el.select2('open');
     }, 80);
 }
@@ -1200,6 +1352,9 @@ function groupLookupResultsForTextSearch(items, term) {
         const group = map.get(key);
 
         group.units.push({
+            productUnitConversionId: item.productUnitConversionId,
+            baseUnitName: item.baseUnitName,
+            isBaseUnit: item.isBaseUnit,
             id: item.id,
             productVariantId: item.productVariantId,
             unitId: item.unitId,

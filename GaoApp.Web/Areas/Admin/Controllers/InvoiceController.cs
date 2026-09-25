@@ -18,6 +18,7 @@ public partial class InvoiceController : Controller
     private readonly IViettelInvoiceEmailService _viettelInvoiceEmailService;
     private readonly IInvoiceCorrectionService _invoiceCorrectionService;
     private readonly IInvoiceViettelDashboardService _viettelDashboardService;
+    private readonly IAutoInvoiceService _autoInvoiceService;
     public InvoiceController(
         IInvoiceService invoiceService,
         IViettelInvoicePayloadBuilder viettelPayloadBuilder,
@@ -27,7 +28,8 @@ public partial class InvoiceController : Controller
         IViettelInvoiceSyncService viettelInvoiceSyncService,
         IViettelInvoiceEmailService viettelInvoiceEmailService,
         IInvoiceCorrectionService invoiceCorrectionService,
-        IInvoiceViettelDashboardService viettelDashboardService)
+        IInvoiceViettelDashboardService viettelDashboardService,
+        IAutoInvoiceService autoInvoiceService)
     {
         _invoiceService = invoiceService;
         _viettelPayloadBuilder = viettelPayloadBuilder;
@@ -38,5 +40,6 @@ public partial class InvoiceController : Controller
         _viettelInvoiceEmailService = viettelInvoiceEmailService;
         _invoiceCorrectionService = invoiceCorrectionService;
         _viettelDashboardService = viettelDashboardService;
+        _autoInvoiceService = autoInvoiceService;
     }
 }

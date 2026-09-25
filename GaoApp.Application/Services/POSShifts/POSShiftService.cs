@@ -163,22 +163,11 @@ public class POSShiftService : IPOSShiftService
                     });
             }
 
-            // Nếu phiếu chỉ định nhân viên thì chỉ nhân viên đó được nhận ca.
-            if (handoverSlip.AssignedToUserId.HasValue &&
-                handoverSlip.AssignedToUserId.Value != userId)
-            {
-                throw PosAppException.Business(
-                    errorCode: PosErrorCodes.ShiftAlreadyOpen,
-                    message: "Phiếu nhận ca không được cấp cho tài khoản hiện tại.",
-                    actionHint: "Vui lòng đăng nhập đúng nhân viên nhận ca hoặc liên hệ quản lý.",
-                    metadata: new
-                    {
-                        handoverSlip.Id,
-                        handoverSlip.SlipCode,
-                        handoverSlip.AssignedToUserId,
-                        CurrentUserId = userId
-                    });
-            }
+            if ((!string.IsNullOrWhiteSpace(req.HandoverBarcodeValue)
+                    && !string.Equals(req.HandoverBarcodeValue.Trim(), handoverSlip.BarcodeValue, StringComparison.OrdinalIgnoreCase))
+                || (handoverSlip.BarcodeValue != handoverSlip.SlipCode && string.IsNullOrWhiteSpace(req.HandoverBarcodeValue)))
+                throw new GaoApp.Application.Common.Exceptions.ConflictAppException(
+                    "Phiếu nhận ca đã được sửa. Vui lòng quét mã trên bản in mới và kiểm tra lại số tiền.");
 
             // Dữ liệu trên phiếu là nguồn chính.
             req.WarehouseId = handoverSlip.WarehouseId;
@@ -225,7 +214,8 @@ public class POSShiftService : IPOSShiftService
                     warehouse.Name
                 });
         }
-
+        var shiftCode =
+    $"SHIFT-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
         var shift = new POSShift
         {
             StoreId = storeId,
@@ -233,7 +223,7 @@ public class POSShiftService : IPOSShiftService
             OpenedByUserId = userId,
             OpenedAtUtc = DateTime.UtcNow,
             Status = POSShiftStatus.Open,
-            ShiftCode = $"SHIFT-{DateTime.Now:yyyyMMddHHmmss}",
+            ShiftCode = shiftCode,
             OpeningCash = req.OpeningCash,
             OpenNote = req.Note,
             WarehouseId = warehouse.Id
@@ -269,14 +259,14 @@ public class POSShiftService : IPOSShiftService
         }
 
         await _shiftRepo.AddAsync(shift, ct);
-        await _shiftRepo.SaveChangesAsync(ct);
-
-        // Sau khi ca đã có Id thì đánh dấu phiếu đã dùng.
         if (handoverSlip != null)
         {
             handoverSlip.MarkUsed(shift.Id, userId);
-            await _handoverSlipRepo.SaveChangesAsync(ct);
+            handoverSlip.UsedPOSShift = shift;
+            shift.HandoverSlips.Add(handoverSlip);
         }
+        // Persist the shift and consumed slip together. A stale slip rowversion rolls back both.
+        await _shiftRepo.SaveChangesAsync(ct);
 
         shift.Warehouse = warehouse;
 
@@ -1330,7 +1320,8 @@ public class POSShiftService : IPOSShiftService
         };
 
         var userIds = shifts
-            .Select(x => x.OpenedByUserId)
+            .SelectMany(x => new[] { x.OpenedByUserId, x.ClosedByUserId ?? 0, x.CashReceivedByUserId ?? 0 })
+            .Where(x => x > 0)
             .Distinct()
             .ToList();
 
@@ -1409,6 +1400,12 @@ public class POSShiftService : IPOSShiftService
                     ?.UserName,
 
                 ClosedByUserId = x.ClosedByUserId,
+                ClosedByUserName = users.FirstOrDefault(u => u.Id == x.ClosedByUserId)?.UserName,
+                CashReceivedAmount = x.CashReceivedAmount,
+                CashReceivedByUserId = x.CashReceivedByUserId,
+                CashReceivedByUserName = users.FirstOrDefault(u => u.Id == x.CashReceivedByUserId)?.UserName,
+                CashReceivedAtUtc = x.CashReceivedAtUtc,
+                CashReceiptNote = x.CashReceiptNote,
 
                 TerminalId = x.TerminalId,
 

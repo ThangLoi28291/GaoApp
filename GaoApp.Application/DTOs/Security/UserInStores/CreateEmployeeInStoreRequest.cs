@@ -19,7 +19,7 @@ public class CreateEmployeeInStoreRequest
     public string? PhoneNumber { get; set; }
 
     [Required(ErrorMessage = "Mật khẩu là bắt buộc.")]
-    [StringLength(100, MinimumLength = 6, ErrorMessage = "Mật khẩu tối thiểu 6 ký tự.")]
+    [StringLength(128, MinimumLength = 12, ErrorMessage = "Mật khẩu phải có từ 12 đến 128 ký tự.")]
     public string Password { get; set; } = default!;
 
     [Required(ErrorMessage = "Vai trò là bắt buộc.")]

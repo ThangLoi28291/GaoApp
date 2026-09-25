@@ -16,7 +16,8 @@ public static class CategoryMappings
             Name = source.Name,
             ParentName = source.Parent?.Name,
             SortOrder = source.SortOrder,
-            IsActive = source.IsActive
+            IsActive = source.IsActive,
+            CreatedAtUtc = source.CreatedAtUtc
         };
     }
 

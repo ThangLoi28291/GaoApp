@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions;
+using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Web.Middlewares;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -335,6 +336,62 @@ public sealed class GlobalExceptionMiddlewareTests
 
         Assert.Same(expected, actual);
         Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Pos_hold_inventory_shortage_is_409_with_structured_payload_and_warning_log()
+    {
+        const string actionHint =
+            "Hãy giảm số lượng hoặc kiểm tra tồn kho rồi thử lại.";
+        var exception = PosAppException.StateConflict(
+            PosErrorCodes.CartHoldInsufficientInventory,
+            "Không thể giữ đơn vì Nước suối không đủ tồn khả dụng tại Kho chính. " +
+            "Khả dụng: 0 Chai; cần giữ: 1 Chai. " + actionHint,
+            actionHint,
+            new
+            {
+                itemName = "Nước suối",
+                warehouseName = "Kho chính",
+                availableBaseQty = 0m,
+                requiredBaseQty = 1m,
+                baseUnitName = "Chai",
+                sellingQuantity = 1m,
+                sellingUnitName = "Chai",
+                multiplier = 1m
+            });
+
+        var (context, logger) = await InvokeAsync(exception);
+        var body = await ReadBodyAsync(context);
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+        Assert.False(root.GetProperty("success").GetBoolean());
+        Assert.Equal(
+            PosErrorCodes.CartHoldInsufficientInventory,
+            root.GetProperty("errorCode").GetString());
+        Assert.Equal(
+            PosErrorTypes.StateConflict,
+            root.GetProperty("errorType").GetString());
+        Assert.Equal(actionHint, root.GetProperty("actionHint").GetString());
+        Assert.Contains(
+            "Nước suối không đủ tồn khả dụng",
+            root.GetProperty("message").GetString() ?? string.Empty,
+            StringComparison.Ordinal);
+
+        var metadata = root.GetProperty("metadata");
+        Assert.Equal("Nước suối", metadata.GetProperty("itemName").GetString());
+        Assert.Equal("Kho chính", metadata.GetProperty("warehouseName").GetString());
+        Assert.Equal(0m, metadata.GetProperty("availableBaseQty").GetDecimal());
+        Assert.Equal(1m, metadata.GetProperty("requiredBaseQty").GetDecimal());
+        Assert.Equal("Chai", metadata.GetProperty("baseUnitName").GetString());
+
+        Assert.DoesNotContain(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Error);
+        Assert.Single(
+            logger.Entries,
+            entry => entry.Level == LogLevel.Warning);
     }
 
     public static IEnumerable<object[]> ExpectedFailures()

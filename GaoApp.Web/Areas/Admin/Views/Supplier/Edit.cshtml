@@ -1,271 +1,71 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.Suppliers
+@using GaoApp.Web.Areas.Admin.ViewModels.Suppliers
 @model SupplierEditViewModel
-
 @{
     var isCreate = Model.Id == 0;
     ViewData["Title"] = isCreate ? "Thêm nhà cung cấp" : "Cập nhật nhà cung cấp";
     Layout = "_ContentNavbarLayout";
 }
-
-@section Header {
-    <div class="sp-page-header">
-        <div>
-            <div class="sp-kicker">Catalog</div>
-            <h3 class="mb-1 fw-bold">@ViewData["Title"]</h3>
-            <div class="text-muted">
-                @(isCreate
-                    ? "Tạo hồ sơ nhà cung cấp mới để phục vụ nhập hàng và công nợ."
-                    : "Cập nhật thông tin liên hệ, mã số thuế và trạng thái nhà cung cấp.")
-            </div>
-        </div>
-
-        <div>
-            <a asp-area="Admin"
-                   asp-controller="Supplier"
-                   asp-action="Index"
-                   class="btn btn-label-secondary">
-                <i class="bx bx-arrow-back me-1"></i> Quay lại
-            </a>
-        </div>
-    </div>
-}
-
 @section PageStyles {
-    <link rel="stylesheet" href="~/admin/css/suppliers.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/admin/css/supplier-editor.css" asp-append-version="true" />
 }
-
-<div class="row justify-content-center">
-    <div class="col-xl-9 col-lg-10">
-        <div class="card border-0 shadow-sm sp-edit-card">
-            <div class="card-body p-lg-5">
-
-                <div class="d-flex align-items-center gap-3 mb-4">
-                    <div class="sp-edit-icon">
-                        <i class="bx bx-store-alt"></i>
+<div class="supplier-editor">
+    <nav class="se-breadcrumb" aria-label="Đường dẫn">
+        <a asp-action="Index" asp-controller="Supplier" asp-area="Admin">Nhà cung cấp</a>
+        <i class="bx bx-chevron-right" aria-hidden="true"></i>
+        <span>@(isCreate ? "Tạo mới" : "Chỉnh sửa")</span>
+    </nav>
+    <header class="se-header">
+        <div><span class="se-eyebrow">ĐỐI TÁC KINH DOANH</span><h1>@ViewData["Title"]</h1>
+            <p>@(isCreate ? "Khởi tạo đối tác mới, sẵn sàng cho những đơn hàng tiếp theo." : "Quản lý hồ sơ, thông tin liên hệ và thanh toán của đối tác.")</p></div>
+        <a asp-action="Index" asp-controller="Supplier" asp-area="Admin" class="se-back"><i class="bx bx-arrow-back" aria-hidden="true"></i> Quay lại danh sách</a>
+    </header>
+    <form asp-area="Admin" asp-controller="Supplier" asp-action="@(isCreate ? "Create" : "Edit")" method="post" novalidate>
+        @Html.AntiForgeryToken()
+        @Html.HiddenFor(x => x.Id)
+        @Html.HiddenFor(x => x.RowVersion)
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="se-layout">
+            <div class="se-main">
+                <section class="se-card" aria-labelledby="se-profile-title">
+                    <div class="se-section-heading"><span class="se-icon"><i class="bx bx-store-alt" aria-hidden="true"></i></span><div><h2 id="se-profile-title">Thông tin nhà cung cấp</h2><p>Thông tin nhận diện và liên hệ của đối tác.</p></div><span class="se-section-number" aria-hidden="true">01</span></div>
+                    <div class="se-fields">
+                        <div class="se-field se-full"><label asp-for="Name">Tên nhà cung cấp <span class="se-required">*</span></label><input asp-for="Name" class="form-control" placeholder="Ví dụ: Công ty TNHH Gạo Việt" autocomplete="off" /><span asp-validation-for="Name" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="Code">Mã nhà cung cấp</label>
+                            @if (isCreate) { <input asp-for="Code" class="form-control" placeholder="Tự động tạo nếu để trống" autocomplete="off" /> }
+                            else { <input asp-for="Code" class="form-control" readonly /> }
+                            <span asp-validation-for="Code" class="text-danger"></span>
+                        </div>
+                        <div class="se-field"><label asp-for="TaxCode">Mã số thuế</label><input asp-for="TaxCode" class="form-control" placeholder="Nhập mã số thuế" /><span asp-validation-for="TaxCode" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="Phone">Số điện thoại</label><input asp-for="Phone" class="form-control" placeholder="Nhập số điện thoại" inputmode="tel" autocomplete="off" /><span asp-validation-for="Phone" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="Email">Email</label><input asp-for="Email" class="form-control" placeholder="email@congty.vn" inputmode="email" autocomplete="off" /><span asp-validation-for="Email" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="ContactName">Người liên hệ</label><input asp-for="ContactName" class="form-control" placeholder="Họ và tên người phụ trách" /><span asp-validation-for="ContactName" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="Address">Địa chỉ</label><input asp-for="Address" class="form-control" placeholder="Số nhà, đường, phường/xã…" /><span asp-validation-for="Address" class="text-danger"></span></div>
                     </div>
-
-                    <div>
-                        <h5 class="mb-1 fw-bold">Thông tin nhà cung cấp</h5>
-                        <div class="text-muted small">
-                            Các trường có dấu <span class="text-danger">*</span> là bắt buộc.
-                        </div>
+                </section>
+                <section class="se-card se-note-card" aria-labelledby="se-note-title">
+                    <div class="se-section-heading"><span class="se-icon se-icon-neutral"><i class="bx bx-note" aria-hidden="true"></i></span><div><h2 id="se-note-title">Ghi chú nội bộ</h2><p>Lưu những thông tin cần thiết khi làm việc cùng đối tác.</p></div><span class="se-optional">Không bắt buộc</span></div>
+                    <label asp-for="Note" class="visually-hidden">Ghi chú</label><textarea asp-for="Note" class="form-control" rows="3" placeholder="Ví dụ: Thời gian giao hàng, đầu mối liên hệ, lưu ý khi đặt hàng…"></textarea><span asp-validation-for="Note" class="text-danger"></span>
+                </section>
+            </div>
+            <div class="se-side">
+                <section class="se-card se-bank-card" aria-labelledby="se-bank-title">
+                    <div class="se-bank-heading"><span class="se-icon"><i class="bx bxs-bank" aria-hidden="true"></i></span><span class="se-optional">Không bắt buộc</span><h2 id="se-bank-title">Thông tin ngân hàng</h2><p>Tài khoản nhận thanh toán của nhà cung cấp.</p></div>
+                    <div class="se-bank-fields">
+                        <div class="se-field"><label asp-for="BankName">Ngân hàng</label><input asp-for="BankName" class="form-control" maxlength="250" autocomplete="off" placeholder="Ví dụ: Vietcombank" /><span asp-validation-for="BankName" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="BankAccountNumber">Số tài khoản</label><input asp-for="BankAccountNumber" class="form-control se-account" maxlength="50" autocomplete="off" placeholder="Nhập số tài khoản" /><span asp-validation-for="BankAccountNumber" class="text-danger"></span></div>
+                        <div class="se-field"><label asp-for="BankAccountName">Tên chủ tài khoản</label><input asp-for="BankAccountName" class="form-control" maxlength="250" autocomplete="off" placeholder="Tên đăng ký tại ngân hàng" /><span asp-validation-for="BankAccountName" class="text-danger"></span></div>
+                        <p class="se-bank-help"><i class="bx bx-info-circle" aria-hidden="true"></i><span>Kiểm tra số tài khoản và tên chủ tài khoản trước khi lưu.</span></p>
                     </div>
-                </div>
-
-                <div asp-validation-summary="ModelOnly" class="alert alert-danger mb-4"></div>
-
-                <form asp-area="Admin"
-                      asp-controller="Supplier"
-                      asp-action="@(isCreate ? "Create" : "Edit")"
-                      method="post"
-                      novalidate>
-
-                    @Html.AntiForgeryToken()
-                    @Html.HiddenFor(x => x.Id)
-                    @Html.HiddenFor(x => x.RowVersion)
-
-                    <div class="row g-4">
-                        <div class="col-md-4">
-                            <label asp-for="Code" class="form-label fw-semibold">
-                                Mã nhà cung cấp
-                            </label>
-
-                            @if (isCreate)
-                            {
-                                <div class="input-group input-group-lg">
-                                    <span class="input-group-text">
-                                        <i class="bx bx-barcode"></i>
-                                    </span>
-
-                                    <input asp-for="Code"
-                                           class="form-control text-uppercase"
-                                           placeholder="Tự sinh nếu để trống"
-                                           autocomplete="off" />
-                                </div>
-
-                                <div class="form-text">
-                                    Có thể để trống, hệ thống sẽ tự sinh mã.
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="input-group input-group-lg">
-                                    <span class="input-group-text">
-                                        <i class="bx bx-lock-alt"></i>
-                                    </span>
-
-                                    <input asp-for="Code"
-                                           class="form-control text-uppercase"
-                                           readonly />
-                                </div>
-
-                                <div class="form-text">
-                                    Mã đã tạo không nên sửa để tránh ảnh hưởng dữ liệu liên kết.
-                                </div>
-                            }
-
-                            <span asp-validation-for="Code" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-md-8">
-                            <label asp-for="Name" class="form-label fw-semibold">
-                                Tên nhà cung cấp <span class="text-danger">*</span>
-                            </label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-building-house"></i>
-                                </span>
-
-                                <input asp-for="Name"
-                                       class="form-control"
-                                       placeholder="Nhập tên nhà cung cấp..."
-                                       autocomplete="off"
-                                       autofocus />
-                            </div>
-
-                            <span asp-validation-for="Name" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label asp-for="Phone" class="form-label fw-semibold">Số điện thoại</label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-phone"></i>
-                                </span>
-
-                                <input asp-for="Phone"
-                                       class="form-control"
-                                       placeholder="09xxxxxxxx"
-                                       inputmode="tel"
-                                       autocomplete="off" />
-                            </div>
-
-                            <span asp-validation-for="Phone" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label asp-for="Email" class="form-label fw-semibold">Email</label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-envelope"></i>
-                                </span>
-
-                                <input asp-for="Email"
-                                       class="form-control"
-                                       placeholder="email@example.com"
-                                       inputmode="email"
-                                       autocomplete="off" />
-                            </div>
-
-                            <span asp-validation-for="Email" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-12">
-                            <label asp-for="Address" class="form-label fw-semibold">Địa chỉ</label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-map"></i>
-                                </span>
-
-                                <input asp-for="Address"
-                                       class="form-control"
-                                       placeholder="Số nhà, đường, phường/xã, quận/huyện..." />
-                            </div>
-
-                            <span asp-validation-for="Address" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label asp-for="ContactName" class="form-label fw-semibold">Người liên hệ</label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-user"></i>
-                                </span>
-
-                                <input asp-for="ContactName"
-                                       class="form-control"
-                                       placeholder="Tên người liên hệ..." />
-                            </div>
-
-                            <span asp-validation-for="ContactName" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-md-6">
-                            <label asp-for="TaxCode" class="form-label fw-semibold">Mã số thuế</label>
-
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text">
-                                    <i class="bx bx-receipt"></i>
-                                </span>
-
-                                <input asp-for="TaxCode"
-                                       class="form-control"
-                                       placeholder="Mã số thuế nếu có..." />
-                            </div>
-
-                            <span asp-validation-for="TaxCode" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-12">
-                            <label asp-for="Note" class="form-label fw-semibold">Ghi chú</label>
-
-                            <textarea asp-for="Note"
-                                      class="form-control"
-                                      rows="3"
-                                      placeholder="Ghi chú thêm về nhà cung cấp..."></textarea>
-
-                            <span asp-validation-for="Note" class="text-danger small"></span>
-                        </div>
-
-                        <div class="col-12">
-                            <div class="sp-status-panel">
-                                <div>
-                                    <div class="fw-bold mb-1">Trạng thái giao dịch</div>
-                                    <div class="text-muted small">
-                                        Tắt trạng thái nếu tạm ngưng mua hàng hoặc không còn giao dịch với nhà cung cấp này.
-                                    </div>
-                                </div>
-
-                                <div class="form-check form-switch sp-big-switch">
-                                    <input class="form-check-input"
-                                           type="checkbox"
-                                           asp-for="Status" />
-
-                                    <label class="form-check-label fw-semibold" asp-for="Status">
-                                        Đang hoạt động
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="sp-edit-footer mt-5">
-                        <a asp-area="Admin"
-                               asp-controller="Supplier"
-                               asp-action="Index"
-                               class="btn btn-label-secondary">
-                            Hủy bỏ
-                        </a>
-
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bx bx-save me-1"></i>
-                            @(isCreate ? "Tạo nhà cung cấp" : "Lưu thay đổi")
-                        </button>
-                    </div>
-                </form>
-
+                </section>
+                <section class="se-card se-status-card" aria-labelledby="se-status-title">
+                    <div class="se-status-top"><h2 id="se-status-title">Trạng thái giao dịch</h2><div class="form-check form-switch"><input asp-for="Status" class="form-check-input" type="checkbox" role="switch" aria-describedby="se-status-help" /><label asp-for="Status" class="visually-hidden">Cho phép giao dịch</label></div></div>
+                    <p id="se-status-help">Bật để cho phép giao dịch với nhà cung cấp. Tắt khi tạm ngừng hợp tác.</p>
+                </section>
             </div>
         </div>
-    </div>
+        <footer class="se-actions"><span><span class="se-required">*</span> Chỉ tên nhà cung cấp là bắt buộc</span><div><a asp-action="Index" asp-controller="Supplier" asp-area="Admin" class="btn se-cancel">Hủy bỏ</a><button type="submit" class="btn se-save"><i class="bx bx-check" aria-hidden="true"></i> @(isCreate ? "Tạo nhà cung cấp" : "Lưu thay đổi")</button></div></footer>
+    </form>
 </div>
-
 @section Scripts {
-    @{
-        await Html.RenderPartialAsync("_ValidationScriptsPartial");
-    }
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
 }

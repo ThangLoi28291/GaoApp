@@ -1,0 +1,15 @@
+{
+  "ProductionBootstrap__Enabled": "false",
+  "ProductionBootstrap__StoreName": "",
+  "ProductionBootstrap__StoreSubdomain": "",
+  "ProductionBootstrap__LegalEntityCode": "",
+  "ProductionBootstrap__LegalEntityName": "",
+  "ProductionBootstrap__LegalEntityLegalName": "",
+  "ProductionBootstrap__WarehouseCode": "",
+  "ProductionBootstrap__WarehouseName": "",
+  "ProductionBootstrap__TerminalCode": "",
+  "ProductionBootstrap__TerminalName": "",
+  "ProductionBootstrap__AdminUserName": "",
+  "ProductionBootstrap__AdminFullName": "",
+  "ProductionBootstrap__AdminPassword": ""
+}

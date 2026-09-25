@@ -22,6 +22,15 @@ public interface IProcurementCatalogService
         bool canCreateUnit,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Creates the catalog aggregate inside an already-owned transaction.
+    /// The caller is responsible for commit/rollback.
+    /// </summary>
+    Task<ProcurementCreatedProductDto> CreateProductWithinTransactionAsync(
+        QuickCreateProcurementProductRequest request,
+        bool canCreateUnit,
+        CancellationToken ct = default);
+
     Task<ProcurementCreatedProductDto> QuickCreateAndResolvePurchaseOrderLineAsync(
         int purchaseOrderId,
         int purchaseOrderLineId,

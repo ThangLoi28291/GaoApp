@@ -6,6 +6,10 @@
 /// </summary>
 public class LoginResponse
 {
+    // Internal authentication material: never serialize this DTO field into an API response.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SessionStamp { get; set; } = string.Empty;
+
     public int UserId { get; set; }
     public string UserName { get; set; } = default!;
     public string? FullName { get; set; }

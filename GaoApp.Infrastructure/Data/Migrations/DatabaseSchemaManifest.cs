@@ -386,13 +386,268 @@ public static partial class DatabaseSchemaNormalization
         }
 
         var normalized = WhitespaceRegex()
-            .Replace(value.Trim().ToLowerInvariant(), string.Empty)
+            .Replace(NormalizeNullGuardedInPredicate(value).ToLowerInvariant(), string.Empty)
             .Replace("[", string.Empty, StringComparison.Ordinal)
             .Replace("]", string.Empty, StringComparison.Ordinal);
         normalized = NumericLiteralParenthesesRegex()
             .Replace(normalized, "$1");
 
         return TrimOuterParentheses(normalized);
+    }
+
+    /// <summary>
+    /// Canonicalizes CHECK-only numeric equality disjunctions. Only a complete
+    /// group of column = number OR column = number on the same simple column
+    /// is reordered. Logical grouping, other operators and constraint flags
+    /// are not changed. Index/default normalization keeps its existing path.
+    /// </summary>
+    public static string? NormalizeCheckConstraintExpression(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var rewritten = TryTokenizeCheckExpression(value, out var tokens, out var closing)
+            ? RewriteCheckGroup(value, tokens, closing, 0, tokens.Count)
+            : value;
+
+        return NormalizeSqlExpression(rewritten);
+    }
+
+    private readonly record struct CheckExpressionToken(
+        string Text,
+        int Offset,
+        bool IsIdentifier,
+        bool IsNumber)
+    {
+        public int End => Offset + Text.Length;
+    }
+
+    private static bool TryTokenizeCheckExpression(
+        string value,
+        out List<CheckExpressionToken> tokens,
+        out Dictionary<int, int> closing)
+    {
+        tokens = [];
+        closing = [];
+        var opens = new Stack<int>();
+
+        // Conservative limits: unsupported/oversized expressions keep the
+        // prior normalizer. Do not partially rewrite strings, comments,
+        // quoted/complex identifiers or unsupported SQL syntax.
+        if (value.Length > 32768)
+        {
+            return false;
+        }
+
+        for (var offset = 0; offset < value.Length;)
+        {
+            var match = CheckExpressionTokenRegex().Match(value, offset);
+            if (!match.Success || match.Index != offset)
+            {
+                return false;
+            }
+
+            offset += match.Length;
+            if (match.Groups["space"].Success)
+            {
+                continue;
+            }
+
+            var token = new CheckExpressionToken(
+                match.Value,
+                match.Index,
+                match.Groups["identifier"].Success,
+                match.Groups["number"].Success);
+            var index = tokens.Count;
+            tokens.Add(token);
+
+            if (token.Text == "(")
+            {
+                opens.Push(index);
+                if (opens.Count > 64)
+                {
+                    return false;
+                }
+            }
+            else if (token.Text == ")")
+            {
+                if (opens.Count == 0)
+                {
+                    return false;
+                }
+
+                closing.Add(opens.Pop(), index);
+            }
+        }
+
+        return tokens.Count > 0 && opens.Count == 0;
+    }
+
+    private static string RewriteCheckGroup(
+        string value,
+        IReadOnlyList<CheckExpressionToken> tokens,
+        IReadOnlyDictionary<int, int> closing,
+        int first,
+        int end)
+    {
+        if (first == end)
+        {
+            return string.Empty;
+        }
+
+        if (TryNormalizeCheckDisjunction(tokens, closing, first, end, out var normalized))
+        {
+            return normalized;
+        }
+
+        // Rewrite child groups independently, retaining every enclosing pair
+        // of parentheses. Never flatten or sort a mixed AND/OR expression.
+        var result = new StringBuilder();
+        var cursor = tokens[first].Offset;
+        for (var index = first; index < end; index++)
+        {
+            if (tokens[index].Text != "(")
+            {
+                continue;
+            }
+
+            var close = closing[index];
+            result.Append(value, cursor, tokens[index].End - cursor);
+            result.Append(RewriteCheckGroup(value, tokens, closing, index + 1, close));
+            result.Append(')');
+            cursor = tokens[close].End;
+            index = close;
+        }
+
+        result.Append(value, cursor, tokens[end - 1].End - cursor);
+        return result.ToString();
+    }
+
+    private static bool TryNormalizeCheckDisjunction(
+        IReadOnlyList<CheckExpressionToken> tokens,
+        IReadOnlyDictionary<int, int> closing,
+        int first,
+        int end,
+        out string normalized)
+    {
+        normalized = string.Empty;
+        var terms = new List<(int First, int End)>();
+        var start = first;
+
+        for (var index = first; index < end; index++)
+        {
+            if (tokens[index].Text == "(")
+            {
+                index = closing[index];
+            }
+            else if (string.Equals(tokens[index].Text, "OR", StringComparison.OrdinalIgnoreCase))
+            {
+                terms.Add((start, index));
+                start = index + 1;
+            }
+        }
+
+        if (terms.Count == 0)
+        {
+            return false;
+        }
+
+        terms.Add((start, end));
+        string? column = null;
+        var numbers = new List<string>();
+
+        foreach (var term in terms)
+        {
+            if (!TryReadCheckEquality(tokens, closing, term.First, term.End,
+                    out var termColumn, out var number))
+            {
+                return false;
+            }
+
+            if (column is not null && !string.Equals(column, termColumn, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            column = termColumn;
+            numbers.Add(number);
+        }
+
+        // Sort literal spellings, without parsing/rounding/retyping numbers.
+        // Retain duplicate terms: do not broaden the normalization contract.
+        numbers.Sort(StringComparer.Ordinal);
+        normalized = string.Join(" OR ", numbers.Select(number => $"[{column}] = {number}"));
+        return true;
+    }
+
+    private static bool TryReadCheckEquality(
+        IReadOnlyList<CheckExpressionToken> tokens,
+        IReadOnlyDictionary<int, int> closing,
+        int first,
+        int end,
+        out string column,
+        out string number)
+    {
+        column = string.Empty;
+        number = string.Empty;
+        UnwrapCheckTerm(tokens, closing, ref first, ref end);
+
+        if (end - first < 3 || !tokens[first].IsIdentifier || tokens[first + 1].Text != "=")
+        {
+            return false;
+        }
+
+        var numberFirst = first + 2;
+        var numberEnd = end;
+        UnwrapCheckTerm(tokens, closing, ref numberFirst, ref numberEnd);
+        if (numberEnd - numberFirst != 1 || !tokens[numberFirst].IsNumber)
+        {
+            return false;
+        }
+
+        var identifier = tokens[first].Text;
+        column = (identifier[0] == '[' ? identifier[1..^1] : identifier).ToLowerInvariant();
+        number = tokens[numberFirst].Text;
+        return true;
+    }
+
+    private static void UnwrapCheckTerm(
+        IReadOnlyList<CheckExpressionToken> tokens,
+        IReadOnlyDictionary<int, int> closing,
+        ref int first,
+        ref int end)
+    {
+        while (end - first >= 2 && tokens[first].Text == "(" && closing[first] == end - 1)
+        {
+            first++;
+            end--;
+        }
+    }
+
+    [GeneratedRegex(
+        @"\G(?:(?<space>\s+)|(?<identifier>\[[A-Za-z_][A-Za-z0-9_]*\]|[A-Za-z_][A-Za-z0-9_]*)|(?<number>-?[0-9]+(?:\.[0-9]+)?)|(?<symbol><>|>=|<=|!=|[=><()]))",
+        RegexOptions.CultureInvariant)]
+    private static partial Regex CheckExpressionTokenRegex();
+
+    private static string NormalizeNullGuardedInPredicate(string value)
+    {
+        // SQL Server wraps the IN predicate of this filtered-index shape in
+        // parentheses. Recognize the complete expression before whitespace is
+        // removed, so identifiers/literals cannot be mistaken for SQL tokens.
+        // Other expressions retain their grouping; this is not a SQL parser.
+        var expression = TrimOuterParentheses(value.Trim());
+        var match = NullGuardedPredicateRegex().Match(expression);
+        if (!match.Success)
+        {
+            return value.Trim();
+        }
+
+        var predicate = TrimOuterParentheses(match.Groups["predicate"].Value.Trim());
+        return LiteralInPredicateRegex().IsMatch(predicate)
+            ? match.Groups["guard"].Value + predicate
+            : value.Trim();
     }
 
     public static string? NormalizeDefaultExpression(string? value)
@@ -471,13 +726,13 @@ public static partial class DatabaseSchemaNormalization
 
     private static string TrimOuterParentheses(string value)
     {
-        var result = value;
+        var result = value.Trim();
         while (result.Length >= 2
                && result[0] == '('
                && result[^1] == ')'
                && OuterParenthesesWrapWholeExpression(result))
         {
-            result = result[1..^1];
+            result = result[1..^1].Trim();
         }
 
         return result;
@@ -534,4 +789,14 @@ public static partial class DatabaseSchemaNormalization
         @"\((-?\d+(?:\.\d+)?)\)",
         RegexOptions.CultureInvariant)]
     private static partial Regex NumericLiteralParenthesesRegex();
+
+    [GeneratedRegex(
+        @"\A(?<guard>(?:\[[^\]]+\]|[a-z_][a-z0-9_]*)\s+IS\s+NOT\s+NULL\s+AND\s+)(?<predicate>.+)\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+    private static partial Regex NullGuardedPredicateRegex();
+
+    [GeneratedRegex(
+        @"\A(?:\[[^\]]+\]|[a-z_][a-z0-9_]*)\s+IN\s*\(\s*N?'(?:[^']|'')*'(?:\s*,\s*N?'(?:[^']|'')*')*\s*\)\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LiteralInPredicateRegex();
 }

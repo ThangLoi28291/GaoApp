@@ -319,6 +319,26 @@
                 qtyEditValue?.select?.();
             }, 120);
         }
+        function closeLineActionMenu(sourceElement) {
+            const dropdown =
+                sourceElement?.closest?.('.dropdown');
+
+            const toggle =
+                dropdown?.querySelector?.(
+                    '[data-bs-toggle="dropdown"]'
+                );
+
+            if (
+                !toggle ||
+                !window.bootstrap?.Dropdown
+            ) {
+                return;
+            }
+
+            bootstrap.Dropdown
+                .getOrCreateInstance(toggle)
+                .hide();
+        }
         function openLineDiscountModalForActiveLine() {
             const line = getActiveLineData();
             if (!line) {
@@ -1506,7 +1526,7 @@
 
                     const lineId = Number(priceBtn.getAttribute('data-price-line-id') || 0);
                     if (!lineId) return;
-
+                    closeLineActionMenu(priceBtn);
                     setActiveLineId(lineId);
 
                     const draft =
@@ -1600,6 +1620,29 @@
             });
 
             currentDraftBody?.addEventListener('click', function (e) {
+                const qtyEditBtn =
+                    e.target.closest(
+                        '[data-open-qty-line-id]'
+                    );
+
+                if (qtyEditBtn) {
+                    e.preventDefault();
+
+                    const lineId = parseInt(
+                        qtyEditBtn.getAttribute(
+                            'data-open-qty-line-id'
+                        ) || '0',
+                        10
+                    );
+
+                    if (lineId > 0) {
+                        closeLineActionMenu(qtyEditBtn);
+                        setActiveLineId(lineId);
+                        openQtyEditModalForActiveLine();
+                    }
+
+                    return;
+                }
                 const decBtn = e.target.closest('[data-dec-line-id]');
                 if (decBtn) {
                     const lineId = parseInt(decBtn.getAttribute('data-dec-line-id') || '0', 10);
@@ -1638,6 +1681,7 @@
 
                 const discountBtn = e.target.closest('[data-line-discount-id]');
                 if (discountBtn) {
+                    closeLineActionMenu(discountBtn);
                     const lineId = parseInt(discountBtn.getAttribute('data-line-discount-id') || '0', 10);
                     const discountAmount = parseFloat(discountBtn.getAttribute('data-line-discount-amount') || '0');
                     const itemName = discountBtn.getAttribute('data-line-name') || '';
@@ -1652,6 +1696,7 @@
 
                 const removeBtn = e.target.closest('[data-remove-line-id]');
                 if (removeBtn) {
+                    closeLineActionMenu(discountBtn);
                     const lineId = parseInt(removeBtn.getAttribute('data-remove-line-id') || '0', 10);
 
                     if (lineId > 0) {

@@ -1,244 +1,360 @@
-﻿(function () {
+(function () {
     "use strict";
 
     document.addEventListener("DOMContentLoaded", function () {
-        const shell = document.querySelector(".pa-shell");
+        const shell = document.querySelector("[data-product-attribute-shell]");
         if (!shell) return;
 
         const txtSearch = document.getElementById("txtSearch");
         const btnClearSearch = document.getElementById("btnClearSearch");
+        const ddlStatus = document.getElementById("ddlStatus");
         const ddlPageSize = document.getElementById("ddlPageSize");
-        const btnReload = document.getElementById("btnReload");
         const wrapper = document.getElementById("productAttributeTableWrapper");
+        const totalCount = document.getElementById("productAttributeTotalCount");
+        const activeCount = document.getElementById("productAttributeActiveCount");
+        const inactiveCount = document.getElementById("productAttributeInactiveCount");
+
+        if (!txtSearch || !btnClearSearch || !ddlStatus || !ddlPageSize || !wrapper) {
+            return;
+        }
 
         const searchUrl = shell.dataset.searchUrl;
         const toggleUrl = shell.dataset.toggleUrl;
         const deleteUrl = shell.dataset.deleteUrl;
 
         let typingTimer = null;
-        let deleteId = 0;
-        let currentPage = 1;
-        let isLoading = false;
+        let currentPage = Number.parseInt(shell.dataset.page || "1", 10) || 1;
+        let loadController = null;
+        let requestSequence = 0;
 
         function getToken() {
-            const el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
-            return el ? el.value : "";
+            return document.querySelector(
+                '#antiForgeryForm input[name="__RequestVerificationToken"]')?.value || "";
         }
 
-        function toast(type, message) {
-            if (window.toastr) {
-                toastr[type](message);
+        function notify(type, message) {
+            const safeMessage = message || "Đã xử lý yêu cầu.";
+            const notifier = window.GaoAppNotify;
+
+            if (notifier && typeof notifier[type] === "function") {
+                notifier[type](safeMessage);
                 return;
             }
 
-            alert(message);
+            if (window.toastr && typeof window.toastr[type] === "function") {
+                window.toastr[type](safeMessage);
+                return;
+            }
+
+            window.alert(safeMessage);
         }
 
-        function setLoading(value) {
-            isLoading = value;
+        function setResultsBusy(value) {
             shell.classList.toggle("is-loading", value);
+            wrapper.setAttribute("aria-busy", value ? "true" : "false");
+        }
 
-            if (btnReload) {
-                btnReload.disabled = value;
-                btnReload.innerHTML = value
-                    ? '<span class="spinner-border spinner-border-sm"></span>'
-                    : '<i class="bx bx-refresh"></i>';
-            }
+        function setActionBusy(button, value) {
+            button.disabled = value;
+            button.setAttribute("aria-busy", value ? "true" : "false");
         }
 
         function updateClearButtonVisibility() {
-            const hasText = (txtSearch.value || "").trim().length > 0;
-            btnClearSearch.classList.toggle("d-none", !hasText);
+            btnClearSearch.classList.toggle(
+                "d-none",
+                txtSearch.value.trim().length === 0);
+        }
+
+        function disposeTooltips() {
+            if (!window.bootstrap?.Tooltip) return;
+
+            wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+                window.bootstrap.Tooltip.getInstance(element)?.dispose();
+            });
+        }
+
+        function initializeTooltips() {
+            if (!window.bootstrap?.Tooltip) return;
+
+            wrapper.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+                window.bootstrap.Tooltip.getOrCreateInstance(element);
+            });
+        }
+
+        function updateSummaryCounts() {
+            const result = wrapper.querySelector("[data-product-attribute-result]");
+            if (!result) return;
+
+            if (totalCount) totalCount.textContent = result.dataset.totalAttributes || "0";
+            if (activeCount) activeCount.textContent = result.dataset.activeAttributes || "0";
+            if (inactiveCount) inactiveCount.textContent = result.dataset.inactiveAttributes || "0";
+        }
+
+        async function readJson(response, fallbackMessage) {
+            let data;
+
+            try {
+                data = await response.json();
+            } catch {
+                throw new Error(fallbackMessage);
+            }
+
+            if (!response.ok) {
+                throw new Error(data?.message || fallbackMessage);
+            }
+
+            return data;
+        }
+
+        async function postAction(url, id, fallbackMessage) {
+            const token = getToken();
+            if (!token) {
+                throw new Error("Thiếu AntiForgeryToken. Vui lòng tải lại trang.");
+            }
+
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body:
+                    "id=" + encodeURIComponent(id)
+                    + "&__RequestVerificationToken=" + encodeURIComponent(token)
+            });
+
+            const data = await readJson(response, fallbackMessage);
+            if (!data.success) {
+                throw new Error(data.message || fallbackMessage);
+            }
+
+            return data;
         }
 
         async function loadPage(page) {
-            if (isLoading) return;
+            const requestedPage = Math.max(Number.parseInt(page || "1", 10) || 1, 1);
+            const currentSequence = ++requestSequence;
 
-            currentPage = page || 1;
+            loadController?.abort();
+            const requestController = new AbortController();
+            loadController = requestController;
 
-            const search = txtSearch.value || "";
-            const pageSize = ddlPageSize.value || "20";
-
-            const url = searchUrl
-                + "?search=" + encodeURIComponent(search)
-                + "&page=" + encodeURIComponent(currentPage)
-                + "&pageSize=" + encodeURIComponent(pageSize);
+            const parameters = new URLSearchParams({
+                search: txtSearch.value || "",
+                status: ddlStatus.value || "",
+                page: requestedPage.toString(),
+                pageSize: ddlPageSize.value || "20"
+            });
 
             try {
-                setLoading(true);
+                setResultsBusy(true);
 
-                const response = await fetch(url, {
+                const response = await fetch(searchUrl + "?" + parameters.toString(), {
                     method: "GET",
                     headers: {
                         "X-Requested-With": "XMLHttpRequest"
-                    }
+                    },
+                    signal: requestController.signal
                 });
 
                 if (!response.ok) {
-                    toast("error", "Không tải được danh sách.");
-                    return;
+                    throw new Error("Không tải được danh sách thuộc tính.");
                 }
 
                 const html = await response.text();
+                if (requestController.signal.aborted || currentSequence !== requestSequence) return;
+
+                disposeTooltips();
                 wrapper.innerHTML = html;
+                currentPage = requestedPage;
+                shell.dataset.page = requestedPage.toString();
+                updateSummaryCounts();
                 bindTableEvents();
             } catch (error) {
-                console.error(error);
-                toast("error", "Có lỗi khi tải dữ liệu.");
+                if (error?.name !== "AbortError" && currentSequence === requestSequence) {
+                    console.error(error);
+                    notify("error", error?.message || "Có lỗi khi tải dữ liệu.");
+                }
             } finally {
-                setLoading(false);
+                if (currentSequence === requestSequence) {
+                    loadController = null;
+                    setResultsBusy(false);
+                }
             }
         }
 
         function debounceLoad() {
-            clearTimeout(typingTimer);
-            typingTimer = setTimeout(function () {
+            window.clearTimeout(typingTimer);
+            typingTimer = window.setTimeout(function () {
                 loadPage(1);
             }, 300);
         }
 
-        function bindPaginationEvents() {
-            wrapper.querySelectorAll(".js-page-link").forEach(function (a) {
-                a.addEventListener("click", function (e) {
-                    e.preventDefault();
-
-                    if (this.closest(".page-item")?.classList.contains("disabled")) {
-                        return;
+        async function confirmWithSweetAlert(options, action) {
+            let actionResult = null;
+            const result = await window.Swal.fire({
+                icon: options.icon,
+                title: options.title,
+                text: options.text,
+                showCancelButton: true,
+                confirmButtonText: options.confirmText,
+                cancelButtonText: "Hủy",
+                reverseButtons: true,
+                buttonsStyling: false,
+                showLoaderOnConfirm: true,
+                customClass: {
+                    popup: "gds-swal-popup",
+                    title: "gds-swal-title",
+                    htmlContainer: "gds-swal-copy",
+                    actions: "gds-swal-actions",
+                    confirmButton: options.danger
+                        ? "btn btn-danger gds-swal-confirm"
+                        : "btn btn-primary gds-swal-confirm",
+                    cancelButton: "btn btn-label-secondary gds-swal-cancel"
+                },
+                preConfirm: async function () {
+                    try {
+                        actionResult = await action();
+                        return actionResult;
+                    } catch (error) {
+                        window.Swal.showValidationMessage(
+                            error?.message || "Không thể xử lý yêu cầu.");
+                        return false;
                     }
+                },
+                allowOutsideClick: function () {
+                    return !window.Swal.isLoading();
+                }
+            });
 
-                    const page = parseInt(this.dataset.page || "1");
+            return result.isConfirmed ? actionResult : null;
+        }
+
+        async function runConfirmedAction(button, options, action) {
+            window.bootstrap?.Tooltip?.getInstance(button)?.dispose();
+
+            try {
+                setActionBusy(button, true);
+                let data = null;
+
+                if (window.Swal?.fire) {
+                    data = await confirmWithSweetAlert(options, action);
+                } else if (window.confirm(options.text)) {
+                    data = await action();
+                }
+
+                if (!data) return;
+
+                notify("success", data.message || options.successMessage);
+                await loadPage(currentPage);
+            } catch (error) {
+                console.error(error);
+                notify("error", error?.message || options.failureMessage);
+            } finally {
+                setActionBusy(button, false);
+            }
+        }
+
+        function bindPaginationEvents() {
+            wrapper.querySelectorAll(".js-page-link").forEach(function (link) {
+                link.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    if (link.closest(".page-item")?.classList.contains("disabled")) return;
+
+                    const page = Number.parseInt(link.dataset.page || "1", 10);
                     if (page > 0) loadPage(page);
                 });
             });
         }
 
         function bindToggleStatusEvents() {
-            wrapper.querySelectorAll(".js-toggle-status").forEach(function (btn) {
-                btn.addEventListener("click", async function () {
-                    const id = this.dataset.id;
+            wrapper.querySelectorAll(".js-toggle-status").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    const id = button.dataset.id;
                     if (!id) return;
 
-                    const token = getToken();
-                    if (!token) {
-                        toast("error", "Thiếu AntiForgeryToken.");
-                        return;
-                    }
+                    const isActive = button.dataset.status === "true";
+                    const name = button.dataset.name || "thuộc tính này";
 
-                    try {
-                        this.disabled = true;
-
-                        const response = await fetch(toggleUrl, {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                                "X-Requested-With": "XMLHttpRequest"
-                            },
-                            body:
-                                "id=" + encodeURIComponent(id)
-                                + "&__RequestVerificationToken=" + encodeURIComponent(token)
+                    runConfirmedAction(
+                        button,
+                        {
+                            icon: isActive ? "warning" : "question",
+                            title: isActive
+                                ? "Ngừng hoạt động thuộc tính?"
+                                : "Kích hoạt lại thuộc tính?",
+                            text: "Bạn có chắc muốn "
+                                + (isActive ? "ngừng hoạt động" : "kích hoạt lại")
+                                + " “" + name + "”?",
+                            confirmText: isActive ? "Ngừng hoạt động" : "Kích hoạt",
+                            danger: isActive,
+                            successMessage: "Đã cập nhật trạng thái thuộc tính.",
+                            failureMessage: "Không cập nhật được trạng thái thuộc tính."
+                        },
+                        function () {
+                            return postAction(
+                                toggleUrl,
+                                id,
+                                "Không cập nhật được trạng thái thuộc tính.");
                         });
-
-                        const data = await response.json();
-
-                        toast(data.success ? "success" : "error", data.message || "Đã xử lý.");
-
-                        if (data.success) {
-                            loadPage(currentPage);
-                        }
-                    } catch (error) {
-                        console.error(error);
-                        toast("error", "Không cập nhật được trạng thái.");
-                    } finally {
-                        this.disabled = false;
-                    }
                 });
             });
         }
 
         function bindDeleteEvents() {
-            wrapper.querySelectorAll(".js-delete").forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    deleteId = parseInt(this.dataset.id || "0");
-                    document.getElementById("deleteName").textContent = this.dataset.name || "";
+            wrapper.querySelectorAll(".js-delete").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    const id = button.dataset.id;
+                    if (!id) return;
 
-                    const modalEl = document.getElementById("deleteModal");
-                    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-                    modal.show();
+                    const name = button.dataset.name || "thuộc tính này";
+                    runConfirmedAction(
+                        button,
+                        {
+                            icon: "warning",
+                            title: "Xóa thuộc tính?",
+                            text: "Bạn có chắc muốn xóa “" + name + "”? Hành động này không thể hoàn tác trên giao diện.",
+                            confirmText: "Xóa thuộc tính",
+                            danger: true,
+                            successMessage: "Đã xóa thuộc tính.",
+                            failureMessage: "Không xóa được thuộc tính."
+                        },
+                        function () {
+                            return postAction(deleteUrl, id, "Không xóa được thuộc tính.");
+                        });
                 });
             });
         }
 
         function bindTableEvents() {
+            initializeTooltips();
             bindPaginationEvents();
             bindToggleStatusEvents();
             bindDeleteEvents();
         }
 
-        document.getElementById("btnConfirmDelete")?.addEventListener("click", async function () {
-            if (!deleteId) return;
-
-            const token = getToken();
-            if (!token) {
-                toast("error", "Thiếu AntiForgeryToken.");
-                return;
-            }
-
-            try {
-                this.disabled = true;
-                this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Đang xóa';
-
-                const response = await fetch(deleteUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                        "X-Requested-With": "XMLHttpRequest"
-                    },
-                    body:
-                        "id=" + encodeURIComponent(deleteId)
-                        + "&__RequestVerificationToken=" + encodeURIComponent(token)
-                });
-
-                const data = await response.json();
-
-                toast(data.success ? "success" : "error", data.message || "Đã xử lý.");
-
-                if (!data.success) return;
-
-                const modalEl = document.getElementById("deleteModal");
-                bootstrap.Modal.getInstance(modalEl)?.hide();
-
-                deleteId = 0;
-                loadPage(currentPage);
-            } catch (error) {
-                console.error(error);
-                toast("error", "Không xóa được thuộc tính.");
-            } finally {
-                this.disabled = false;
-                this.innerHTML = "Xóa";
-            }
-        });
-
-        txtSearch?.addEventListener("input", function () {
+        txtSearch.addEventListener("input", function () {
             updateClearButtonVisibility();
             debounceLoad();
         });
 
-        btnClearSearch?.addEventListener("click", function () {
+        btnClearSearch.addEventListener("click", function () {
             txtSearch.value = "";
             updateClearButtonVisibility();
             loadPage(1);
             txtSearch.focus();
         });
 
-        ddlPageSize?.addEventListener("change", function () {
+        ddlStatus.addEventListener("change", function () {
             loadPage(1);
         });
 
-        btnReload?.addEventListener("click", function () {
-            loadPage(currentPage);
+        ddlPageSize.addEventListener("change", function () {
+            loadPage(1);
         });
 
         updateClearButtonVisibility();
+        updateSummaryCounts();
         bindTableEvents();
     });
 })();

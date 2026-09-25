@@ -1,0 +1,81 @@
+@using System.Text.Json
+@using GaoApp.Web.Services.Printing
+@model IReadOnlyList<ReceiptTemplateOption>
+@{
+    ViewData["Title"] = "Mẫu hóa đơn & máy in";
+    var setup = new { storeId = (int)ViewBag.StoreId, terminalId = (int?)ViewBag.TerminalId,
+        canManage = (bool)ViewBag.CanManage, templates = Model, storeInfo = (ReceiptStoreInfo)ViewBag.StoreInfo };
+}
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/receipt-templates.css" asp-append-version="true" /> }
+<main class="receipt-studio" id="receiptStudio">
+    @Html.AntiForgeryToken()
+    <header class="studio-header"><div><div class="studio-eyebrow">GAOAPP · KHÔNG GIAN IN ẤN</div><h1>Mẫu hóa đơn & máy in</h1>
+        <p>Mẫu in đen trắng, chữ rõ nét. Các khoản thanh toán quan trọng được nhấn đậm.</p></div>
+        <a class="btn btn-outline-secondary" href="/admin/pos">Về bán hàng</a></header>
+    <div id="studioMessage" class="studio-message" role="status" hidden></div>
+    <section class="store-identity-panel" aria-labelledby="storeIdentityTitle">
+        <div class="studio-section-heading"><div><div class="studio-eyebrow">THÔNG TIN DÙNG CHUNG</div><h2 id="storeIdentityTitle">Thông tin tiệm trên hóa đơn</h2></div></div>
+        <p>Áp dụng cho tất cả mẫu của cửa hàng. Các quầy đang kết nối tự nhận cập nhật; khi offline sẽ dùng thông tin đã nhận gần nhất.</p>
+        <fieldset id="storeIdentityFields" class="store-identity-fields" disabled="@(!setup.canManage)">
+            <div><label for="receiptStoreName">Tên tiệm</label><input id="receiptStoreName" class="form-control" maxlength="200" required autocomplete="organization" /></div>
+            <div><label for="receiptStoreAddress">Địa chỉ</label><textarea id="receiptStoreAddress" class="form-control" maxlength="300" rows="2" placeholder="Nhập địa chỉ tiệm"></textarea></div>
+            <div><label for="receiptStorePhone">Số điện thoại</label><input id="receiptStorePhone" type="tel" class="form-control" maxlength="50" autocomplete="tel" placeholder="Nhập số điện thoại tiệm" /></div>
+        </fieldset>
+        <div class="studio-actions">
+            @if (setup.canManage) { <button id="saveStoreIdentity" type="button" class="btn btn-primary">Lưu thông tin tiệm</button> }
+            <span id="storeIdentityStatus" class="store-identity-status" role="status">Để trống địa chỉ hoặc điện thoại nếu không muốn in phần đó.</span>
+        </div>
+        @if (!setup.canManage) { <p>Liên hệ quản lý cửa hàng để thay đổi thông tin tiệm.</p> }
+    </section>
+    <div class="studio-layout">
+        <section class="studio-library">
+            <div class="studio-section-heading"><div><h2>Thư viện mẫu</h2><p id="templateCount"></p></div><button id="newTemplate" class="btn btn-primary" hidden="@(!setup.canManage)">+ Tạo mẫu</button></div>
+            <nav id="paperFilters" class="paper-filters" aria-label="Lọc khổ giấy">
+                <button type="button" data-size="all" class="active">Tất cả</button>
+                @foreach (var size in new[] { "45", "80", "A6", "A5", "A4" }) { <button type="button" data-size="@size">@size@(size is "45" or "80" ? " mm" : "")</button> }
+            </nav>
+            <div id="templateGallery" class="template-gallery"></div>
+            <section class="printer-panel">
+                <div class="studio-eyebrow">THIẾT LẬP TRÊN CLIENT NÀY</div><h2>Máy in của quầy</h2>
+                <p>Máy in và mẫu đang dùng được lưu riêng trên trình duyệt của máy này.</p>
+                <label for="printMode">Cách in</label><select id="printMode" class="form-select"><option value="qz">Máy in đã cài trên client · QZ Tray</option><option value="browser">Hộp thoại in của trình duyệt</option></select>
+                <div id="qzSettings"><div class="printer-connect"><label for="clientPrinter">Máy in Windows / Linux</label><button type="button" id="connectPrinters" class="btn btn-sm btn-outline-primary">Kết nối máy in</button></div>
+                    <select id="clientPrinter" class="form-select"><option value="">Chưa chọn máy in</option></select>
+                    <p class="printer-help">Cài và mở <a href="https://qz.io/download/" target="_blank" rel="noopener">QZ Tray</a> trên máy client. QZ có thể yêu cầu xác nhận kết nối và lệnh in. Không cần kết nối tới server để in phiếu offline đã lưu.</p>
+                    <div class="printer-options"><div><label for="printCopies">Số bản</label><input id="printCopies" type="number" min="1" max="5" value="1" class="form-control" /></div>
+                        <p class="printer-help">In đen trắng · chữ đen trên nền trắng.</p></div>
+                </div>
+                <p id="activePrintProfile" class="active-profile"></p>
+                <div class="studio-actions"><button id="applyTemplate" class="btn btn-primary">Dùng mẫu & máy in này</button><button id="testPrint" class="btn btn-outline-secondary">In thử</button></div>
+                <p class="printer-help">Chọn đúng khổ giấy trong driver. Khổ 45 mm dành cho giấy rộng 45 mm; nếu máy dùng giấy 58 mm với vùng in 45 mm, cần kiểm tra lại cấu hình máy in.</p>
+            </section>
+        </section>
+        <aside class="studio-preview-panel">
+            <div class="studio-section-heading"><div><div class="studio-eyebrow">XEM TRƯỚC</div><h2 id="previewTitle">Hóa đơn của bạn</h2></div><span id="previewSize" class="paper-badge"></span></div>
+            <div class="preview-stage"><iframe id="receiptPreview" title="Xem trước mẫu hóa đơn" sandbox="allow-same-origin"></iframe></div>
+            <details class="template-editor" open><summary>Tùy chỉnh mẫu</summary>
+                <fieldset id="designFields" disabled="@(!setup.canManage)">
+                    <label for="designName">Tên mẫu</label><input id="designName" class="form-control" maxlength="100" />
+                    <div class="editor-two"><div><label for="designLayout">Kiểu trình bày</label><select id="designLayout" class="form-select"><option value="modern">Hiện đại</option><option value="classic">Thanh lịch</option><option value="compact">Gọn gàng</option><option value="itemwide">Tên hàng rộng · 80 mm</option></select></div>
+                        <div><label for="designSize">Khổ giấy</label><select id="designSize" class="form-select"><option value="45">45 mm</option><option value="80">80 mm</option><option>A6</option><option>A5</option><option>A4</option></select></div></div>
+                    <p id="wideLayoutNote" class="receipt-ink-note" hidden>Tên hàng chiếm trọn dòng. Bên dưới là SL · ĐVT · Đơn giá · Thành tiền. Dùng cho giấy 80 mm.</p>
+                    <label for="designTitle">Tiêu đề trên hóa đơn</label><input id="designTitle" class="form-control" maxlength="100" />
+                    <p class="receipt-ink-note">Tất cả mẫu dùng chữ đen, nét dày. Tên tiệm, mã hóa đơn và các khoản thanh toán được in đậm.</p>
+                    <label for="designHeader">Nội dung dưới tên cửa hàng</label><textarea id="designHeader" class="form-control" rows="2" maxlength="300"></textarea>
+                    <label for="designFooter">Lời cảm ơn / thông tin cuối phiếu</label><textarea id="designFooter" class="form-control" rows="2" maxlength="400"></textarea>
+                    <div class="editor-checks"><label><input id="showCustomer" type="checkbox" /> Khách hàng</label><label><input id="showCashier" type="checkbox" /> Thu ngân</label><label><input id="showSku" type="checkbox" /> Mã SKU</label><label><input id="showPayments" type="checkbox" /> Thanh toán</label></div>
+                </fieldset>
+                @if (setup.canManage) { <div class="studio-actions"><button id="saveTemplate" class="btn btn-primary">Lưu mẫu mới</button><button id="duplicateTemplate" class="btn btn-outline-secondary">Nhân bản</button><button id="deleteTemplate" class="btn btn-outline-danger" hidden>Xóa</button></div> }
+                else { <p>Liên hệ quản lý cửa hàng để tạo hoặc chỉnh sửa mẫu.</p> }
+            </details>
+        </aside>
+    </div>
+</main>
+<script id="receiptStudioData" type="application/json">@Html.Raw(JsonSerializer.Serialize(setup, ReceiptTemplateService.Json))</script>
+@section PageScripts {
+    <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/pos.printing.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/receipt.studio.js" asp-append-version="true"></script>
+}

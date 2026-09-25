@@ -12,6 +12,7 @@ public sealed class PurchaseReceiptAuditEvent
     public int StoreId { get; set; }
     public int StockDocumentId { get; set; }
     public int? StockDocumentLineId { get; set; }
+    public int? StockDocumentProvisionalItemId { get; set; }
     public PurchaseReceiptAuditEventType EventType { get; set; }
     public int ActorUserId { get; set; }
     public string? ActorUserName { get; set; }
@@ -27,4 +28,5 @@ public sealed class PurchaseReceiptAuditEvent
     public Store Store { get; set; } = default!;
     public StockDocument StockDocument { get; set; } = default!;
     public StockDocumentLine? StockDocumentLine { get; set; }
+    public StockDocumentProvisionalItem? StockDocumentProvisionalItem { get; set; }
 }

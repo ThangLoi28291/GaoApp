@@ -6,6 +6,8 @@ namespace GaoApp.Application.Interfaces.Services.Rewards;
 
 public interface ICustomerRewardService
 {
+    Task<bool> IsProgramEnabledAsync(
+    CancellationToken ct = default);
     Task<CustomerRewardBalanceDto> GetBalanceAsync(int customerId, CancellationToken ct = default);
     Task<CustomerRewardBalanceDto> CreateManualLedgerAsync(
     CreateManualRewardLedgerRequest request,

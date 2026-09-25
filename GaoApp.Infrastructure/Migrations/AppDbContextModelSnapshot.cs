@@ -22,6 +22,466 @@ namespace GaoApp.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ClientRequestId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("nvarchar(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Page")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RequestCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("TRANSACTION_UPDATE");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalPages")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessedAtUtc", "NextAttemptAtUtc");
+
+                    b.HasIndex("StoreId", "RequestCode", "ClientRequestId", "Page")
+                        .IsUnique();
+
+                    b.ToTable("AcbCallbackReceipts", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackRoute", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("TargetStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Host")
+                        .IsUnique();
+
+                    b.HasIndex("TargetStoreId");
+
+                    b.ToTable("AcbCallbackRoutes", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackRouteChange", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PreviousStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RouteId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TargetStoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RouteId", "ChangedAtUtc");
+
+                    b.ToTable("AcbCallbackRouteChanges", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbPaymentTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PostedAt")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId");
+
+                    b.HasIndex("SessionId", "TransactionNumber")
+                        .IsUnique();
+
+                    b.ToTable("AcbPaymentTransactions", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbQrNotificationItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("BusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DebitOrCredit")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderOrderId")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("ReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestCode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceiptId", "Position")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "BusinessDate", "RequestCode", "ProviderOrderId");
+
+                    b.ToTable("AcbQrNotificationItems", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbQrSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CartFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("CashierId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ConfirmationCallbackReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ConfirmationSource")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastRetrieveJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("LastRetrievedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PaymentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PrintClaimedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderOrderId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("QrRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TerminalId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TraceNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VirtualAccount")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConfirmationCallbackReceiptId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("QrRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "ProviderOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "OrderId", "Status");
+
+                    b.ToTable("AcbQrSessions", (string)null);
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuItem", b =>
                 {
                     b.Property<int>("Id")
@@ -535,6 +995,351 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("Customers");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDebtReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Method")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("POSShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RequestJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("StoreBankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("POSShiftId");
+
+                    b.HasIndex("StoreBankAccountId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "CustomerId", "Id");
+
+                    b.ToTable("CustomerDebtReceipts", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDeposit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ExpectedDeliveryDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("StoreId", "CustomerId");
+
+                    b.ToTable("CustomerDeposits", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDepositEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerDepositId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("Method")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("POSShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RequestJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("SalesReturnId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StoreBankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerDepositId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("POSShiftId");
+
+                    b.HasIndex("SalesReturnId");
+
+                    b.HasIndex("StoreBankAccountId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "SalesReturnId")
+                        .IsUnique()
+                        .HasFilter("[SalesReturnId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "CustomerDepositId", "Id");
+
+                    b.HasIndex("StoreId", "OrderId", "Kind")
+                        .IsUnique()
+                        .HasFilter("[OrderId] IS NOT NULL AND [Kind] IN ('Apply','Void')");
+
+                    b.ToTable("CustomerDepositEntries", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerReceivableEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("SalesReturnId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("SalesReturnId");
+
+                    b.HasIndex("StoreId", "SalesReturnId")
+                        .IsUnique()
+                        .HasFilter("[SalesReturnId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "CustomerId", "Id");
+
+                    b.HasIndex("StoreId", "OrderId", "Kind")
+                        .IsUnique()
+                        .HasFilter("[Kind] IN ('Sale','Void')");
+
+                    b.HasIndex("StoreId", "OrderId", "ReceiptId")
+                        .IsUnique()
+                        .HasFilter("[ReceiptId] IS NOT NULL");
+
+                    b.ToTable("CustomerReceivableEntries", (string)null);
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.CustomerRewardLedger", b =>
                 {
                     b.Property<int>("Id")
@@ -906,6 +1711,18 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("LineNo")
                         .HasColumnType("int");
 
+                    b.Property<string>("NormalizedItemName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NormalizedSupplierItemCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedUnitName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Note")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -918,6 +1735,10 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<string>("SupplierItemCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("UnitName")
                         .HasMaxLength(100)
@@ -943,6 +1764,8 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("InputInvoiceHeadId", "LineNo");
 
+                    b.HasIndex("InputInvoiceHeadId", "NormalizedSupplierItemCode", "NormalizedUnitName");
+
                     b.ToTable("InputInvoiceDetail", (string)null);
                 });
 
@@ -961,6 +1784,14 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<string>("BuyerName")
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("BuyerOwnerResolutionStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("BuyerOwnerResolutionUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("BuyerTaxCode")
                         .HasMaxLength(50)
@@ -999,9 +1830,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                    b.Property<string>("NormalizedBuyerTaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasComputedColumnSql("CONVERT(nvarchar(50), NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([BuyerTaxCode])), N' ', N''), N'.', N''), N'-', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''))", true);
 
                     b.Property<string>("NormalizedInvoiceNumber")
                         .HasMaxLength(50)
@@ -1015,9 +1847,19 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("OriginalFileName")
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
+
+                    b.Property<int?>("ResolvedBuyerLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ResolvedSupplierId")
+                        .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1039,6 +1881,14 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<int>("StoreId")
                         .HasColumnType("int");
+
+                    b.Property<int>("SupplierResolutionStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("SupplierResolutionUpdatedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("TaxAuthorityCode")
                         .HasMaxLength(100)
@@ -1069,12 +1919,14 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "IX_InputInvoiceHead_StoreId_XmlHash");
+                    b.HasIndex("ResolvedSupplierId");
 
-                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "UX_InputInvoiceHead_StoreId_XmlHash_Active")
-                        .IsUnique()
-                        .HasDatabaseName("UX_InputInvoiceHead_StoreId_XmlHash_Active")
-                        .HasFilter("[XmlHash] IS NOT NULL AND [IsDeleted] = 0");
+                    b.HasIndex("StoreId", "NormalizedBuyerTaxCode");
+
+                    b.HasIndex("StoreId", "ResolvedBuyerLegalEntityId");
+
+                    b.HasIndex("StoreId", "ResolvedSupplierId")
+                        .HasDatabaseName("IX_InputInvoiceHead_StoreId_ResolvedSupplierId");
 
                     b.HasIndex("StoreId", "NormalizedSellerTaxCode", "NormalizedInvoiceSeries", "NormalizedInvoiceNumber", "InvoiceIdentityDate")
                         .IsUnique()
@@ -1083,7 +1935,195 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "SellerTaxCode", "InvoiceTemplateCode", "InvoiceSeries", "InvoiceNumber");
 
+                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "IX_InputInvoiceHead_StoreId_XmlHash");
+
+                    b.HasIndex(new[] { "StoreId", "XmlHash" }, "UX_InputInvoiceHead_StoreId_XmlHash_Active")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceHead_StoreId_XmlHash_Active")
+                        .HasFilter("[XmlHash] IS NOT NULL AND [IsDeleted] = 0");
+
                     b.ToTable("InputInvoiceHead", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InputInvoiceItemCatalogMap", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConfirmedBaseUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ConfirmedFactor")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("ConfirmedUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NormalizedSupplierItemCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedSupplierItemName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("NormalizedSupplierUnitName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SupplierItemCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SupplierItemName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SupplierUnitName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConfirmedBaseUnitId");
+
+                    b.HasIndex("ConfirmedUnitId");
+
+                    b.HasIndex("ProductUnitConversionId");
+
+                    b.HasIndex("ProductVariantId");
+
+                    b.HasIndex("SupplierId");
+
+                    b.HasIndex("StoreId", "ProductVariantId", "ProductUnitConversionId", "IsActive");
+
+                    b.HasIndex("StoreId", "SupplierId", "NormalizedSupplierItemCode", "NormalizedSupplierUnitName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceItemCatalogMap_CodeUnit_Active")
+                        .HasFilter("[NormalizedSupplierItemCode] IS NOT NULL AND [IsActive] = 1 AND [IsDeleted] = 0");
+
+                    b.HasIndex("StoreId", "SupplierId", "NormalizedSupplierItemName", "NormalizedSupplierUnitName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceItemCatalogMap_NameUnit_Active")
+                        .HasFilter("[NormalizedSupplierItemCode] IS NULL AND [IsActive] = 1 AND [IsDeleted] = 0");
+
+                    b.ToTable("InputInvoiceItemCatalogMap", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InputInvoiceSupplierResolutionEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CandidateCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EventType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InputInvoiceHeadId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("NewStatus")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NewSupplierId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OldSupplierId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PreviousStatus")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InputInvoiceHeadId");
+
+                    b.HasIndex("NewSupplierId");
+
+                    b.HasIndex("OldSupplierId");
+
+                    b.HasIndex("StockDocumentId");
+
+                    b.HasIndex("StoreId", "InputInvoiceHeadId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_InputInvoiceSupplierResolutionEvent_Store_Invoice_Time");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_InputInvoiceSupplierResolutionEvent_Store_Receipt_Time");
+
+                    b.ToTable("InputInvoiceSupplierResolutionEvent", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryAdjustmentDocument", b =>
@@ -1378,6 +2418,101 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("InventoryBalances", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceInputStockSupplementalMovement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("EffectiveAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<long?>("LegacyOrderId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("LegacyInvoiceNumber")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LegacyInvoiceSymbol")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("LegacySourceKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("MovementType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("QuantityChange")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourcePeriod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductVariantId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.HasIndex("StoreId", "LegacySourceKey")
+                        .IsUnique()
+                        .HasFilter("[StoreId] IS NOT NULL AND [LegacySourceKey] IS NOT NULL")
+                        .HasDatabaseName("UX_InvoiceInputStockSupplementalMovements_Store_LegacySourceKey");
+
+                    b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "EffectiveAtUtc")
+                        .HasDatabaseName("IX_InvoiceInputStockSupplementalMovements_Store_Warehouse_Variant_EffectiveAt");
+
+                    b.ToTable("InvoiceInputStockSupplementalMovements", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostLayer", b =>
@@ -1830,6 +2965,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "ReferenceType", "ReferenceId", "ReferenceLineId", "TransactionType");
 
+                    b.HasIndex("StoreId", "OccurredAtUtc", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("IX_InventoryTransactions_LedgerTimeline")
+                        .HasFilter("[IsDeleted] = 0")
+                        .HasAnnotation("SqlServer:Include", new[] { "QuantityChange", "AfterQty" });
+
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "OccurredAtUtc", "Id");
 
                     b.ToTable("InventoryTransactions", (string)null);
@@ -1986,6 +3127,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "RevaluationOfEntryId");
 
                     b.HasIndex("StoreId", "SourceValuationEntryId");
+
+                    b.HasIndex("StoreId", "EntryType", "OccurredAtUtc");
 
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "OccurredAtUtc", "Id");
 
@@ -2307,7 +3450,13 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(9, 2)
                         .HasColumnType("decimal(9,2)");
 
+                    b.Property<long?>("LegacySourceId").HasColumnType("bigint");
+                    b.Property<string>("LegacySnapshotJson").HasColumnType("nvarchar(max)");
+                    b.Property<byte[]>("LegacyImportedHash").HasColumnType("binary(32)");
+                    b.Property<decimal?>("LegacyUnitFactor").HasPrecision(18, 4).HasColumnType("decimal(18,4)");
+
                     b.HasKey("Id");
+                    b.HasIndex("StoreId", "LegacySourceId").IsUnique().HasFilter("[LegacySourceId] IS NOT NULL");
 
                     b.HasIndex("InvoiceHeadId");
 
@@ -2434,6 +3583,11 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<bool>("IsAutoInvoiceGroup")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2501,7 +3655,7 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("OfficialZipXmlStatus")
                         .HasColumnType("int");
 
-                    b.Property<int>("OrderId")
+                    b.Property<int?>("OrderId")
                         .HasColumnType("int");
 
                     b.Property<int?>("OriginalInvoiceHeadId")
@@ -2582,7 +3736,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<long?>("LegacySourceId").HasColumnType("bigint");
+                    b.Property<string>("LegacySnapshotJson").HasColumnType("nvarchar(max)");
+                    b.Property<byte[]>("LegacyImportedHash").HasColumnType("binary(32)");
+                    b.Property<long?>("LegacyOrderCategoryId").HasColumnType("bigint");
+                    b.Property<string>("LegacyMergeId").HasMaxLength(15).HasColumnType("nvarchar(15)");
+                    b.Property<bool>("LegacyReadOnly").HasColumnType("bit");
+
                     b.HasKey("Id");
+                    b.HasIndex("StoreId", "LegacySourceId").IsUnique().HasFilter("[LegacySourceId] IS NOT NULL");
 
                     b.HasIndex("OrderId");
 
@@ -2590,13 +3752,15 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderId")
                         .IsUnique()
-                        .HasFilter("[IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NULL");
+                        .HasFilter("[OrderId] IS NOT NULL AND [IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NULL");
 
                     b.HasIndex("StoreId", "TransactionUuid")
                         .IsUnique()
                         .HasFilter("[TransactionUuid] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.HasIndex("StoreId", "BuyerTaxCode", "IsDeleted");
+
+                    b.HasIndex("StoreId", "IsAutoInvoiceGroup", "IsDeleted");
 
                     b.HasIndex("StoreId", "CorrectionType", "IsDeleted");
 
@@ -2606,7 +3770,7 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderId", "LegalEntityId")
                         .IsUnique()
-                        .HasFilter("[IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NOT NULL");
+                        .HasFilter("[OrderId] IS NOT NULL AND [IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "OriginalInvoiceHeadId", "IsDeleted");
 
@@ -2616,7 +3780,7 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "LegalEntityId", "InvoiceDate", "IsDeleted");
 
-                    b.ToTable("InvoiceHeads", (string)null);
+                    b.ToTable("InvoiceHeads", (string)null, t => t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1"));
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceIntegrationLog", b =>
@@ -2657,6 +3821,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int>("InvoiceHeadId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("AutoInvoiceOperationId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
@@ -2701,11 +3868,207 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "StartedAtUtc");
 
+                    b.HasIndex("StoreId", "AutoInvoiceOperationId", "StartedAtUtc");
+
                     b.HasIndex("StoreId", "InvoiceHeadId", "ActionType");
 
                     b.HasIndex("StoreId", "IsSuccess", "ActionType");
 
                     b.ToTable("InvoiceIntegrationLogs", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperation", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<byte>("Kind").HasColumnType("tinyint");
+                    b.Property<byte>("Status").HasColumnType("tinyint");
+                    b.Property<int?>("InvoiceHeadId").HasColumnType("int");
+                    b.Property<string>("GroupKey").HasMaxLength(500).HasColumnType("nvarchar(500)");
+                    b.Property<DateTime>("SaleDateLocal").HasColumnType("datetime2");
+                    b.Property<string>("TransactionUuid").HasMaxLength(36).HasColumnType("nvarchar(36)");
+                    b.Property<int>("AttemptCount").HasColumnType("int");
+                    b.Property<bool>("IsManual").HasColumnType("bit");
+                    b.Property<int?>("RequestedByUserId").HasColumnType("int");
+                    b.Property<string>("RequestedByUserName").HasMaxLength(200).HasColumnType("nvarchar(200)");
+                    b.Property<string>("CorrelationId").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<DateTime?>("ClaimedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("SubmittedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("CompletedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("NextAttemptAtUtc").HasColumnType("datetime2");
+                    b.Property<string>("ErrorCode").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<string>("ErrorMessage").HasMaxLength(2000).HasColumnType("nvarchar(2000)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("CreatedBy").HasColumnType("int");
+                    b.Property<DateTime?>("UpdatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("UpdatedBy").HasColumnType("int");
+                    b.Property<bool>("IsDeleted").HasColumnType("bit");
+                    b.Property<DateTime?>("DeletedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("DeletedBy").HasColumnType("int");
+                    b.Property<byte[]>("RowVersion").IsConcurrencyToken().IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("rowversion");
+                    b.Property<int>("StoreId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.HasIndex("InvoiceHeadId");
+                    b.HasIndex("StoreId", "Status", "NextAttemptAtUtc");
+                    b.HasIndex("StoreId", "InvoiceHeadId", "IsDeleted");
+                    b.ToTable("AutoInvoiceOperations", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperationSource", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<int>("AutoInvoiceOperationId").HasColumnType("int");
+                    b.Property<int>("InvoiceHeadId").HasColumnType("int");
+                    b.Property<int?>("OrderId").HasColumnType("int");
+                    b.Property<int?>("InvoiceDetailId").HasColumnType("int");
+                    b.Property<int?>("OrderLineId").HasColumnType("int");
+                    b.Property<byte>("Status").HasColumnType("tinyint");
+                    b.Property<bool>("IsActive").HasColumnType("bit");
+                    b.Property<string>("SourceSnapshotJson").HasMaxLength(2000).HasColumnType("nvarchar(2000)");
+                    b.Property<string>("ErrorCode").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<string>("ErrorMessage").HasMaxLength(2000).HasColumnType("nvarchar(2000)");
+                    b.Property<DateTime?>("CompletedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("CreatedBy").HasColumnType("int");
+                    b.Property<DateTime?>("UpdatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("UpdatedBy").HasColumnType("int");
+                    b.Property<bool>("IsDeleted").HasColumnType("bit");
+                    b.Property<DateTime?>("DeletedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("DeletedBy").HasColumnType("int");
+                    b.Property<byte[]>("RowVersion").IsConcurrencyToken().IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("rowversion");
+                    b.Property<int>("StoreId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.HasIndex("AutoInvoiceOperationId");
+
+                    b.HasIndex("InvoiceHeadId");
+                    b.HasIndex("StoreId", "InvoiceHeadId").IsUnique().HasFilter("[IsActive] = 1 AND [IsDeleted] = 0");
+                    b.HasIndex("StoreId", "AutoInvoiceOperationId", "Status");
+                    b.ToTable("AutoInvoiceOperationSources", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceSettings", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<bool>("IsEnabled").HasColumnType("bit");
+                    b.Property<int>("MinimumAgeMinutes").HasColumnType("int");
+                    b.Property<decimal>("SeparateAmountThreshold").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("GroupTargetAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<int>("SendIntervalSeconds").HasColumnType("int");
+                    b.Property<TimeSpan>("ClosingTimeLocal").HasColumnType("time");
+                    b.Property<bool>("IssueOldDayRemainder").HasColumnType("bit");
+                    b.Property<byte>("ScopeMode").HasColumnType("tinyint");
+                    b.Property<DateTime?>("ScopeStartDateLocal").HasColumnType("datetime2");
+                    b.Property<DateTime?>("ScopeEndDateLocal").HasColumnType("datetime2");
+                    b.Property<string>("TimeZoneId").IsRequired().HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<DateTime?>("LastEnabledAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("LastDisabledAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("CreatedBy").HasColumnType("int");
+                    b.Property<DateTime?>("UpdatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("UpdatedBy").HasColumnType("int");
+                    b.Property<bool>("IsDeleted").HasColumnType("bit");
+                    b.Property<DateTime?>("DeletedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("DeletedBy").HasColumnType("int");
+                    b.Property<byte[]>("RowVersion").IsConcurrencyToken().IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("rowversion");
+                    b.Property<int>("StoreId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.HasIndex("StoreId", "IsDeleted").IsUnique().HasFilter("[IsDeleted] = 0");
+                    b.ToTable("AutoInvoiceSettings", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceWorkerState", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<string>("WorkerName").IsRequired().HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<string>("WorkerInstanceId").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<bool>("IsRunning").HasColumnType("bit");
+                    b.Property<DateTime?>("StartedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("StoppedAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("LastHeartbeatAtUtc").HasColumnType("datetime2");
+                    b.Property<DateTime?>("LastScanAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("CurrentOperationId").HasColumnType("int");
+                    b.Property<int?>("CurrentInvoiceHeadId").HasColumnType("int");
+                    b.Property<DateTime?>("NextRunAtUtc").HasColumnType("datetime2");
+                    b.Property<string>("LastErrorCode").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                    b.Property<string>("LastErrorMessage").HasMaxLength(2000).HasColumnType("nvarchar(2000)");
+                    b.Property<string>("LastResult").HasMaxLength(1000).HasColumnType("nvarchar(1000)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("CreatedBy").HasColumnType("int");
+                    b.Property<DateTime?>("UpdatedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("UpdatedBy").HasColumnType("int");
+                    b.Property<bool>("IsDeleted").HasColumnType("bit");
+                    b.Property<DateTime?>("DeletedAtUtc").HasColumnType("datetime2");
+                    b.Property<int?>("DeletedBy").HasColumnType("int");
+                    b.Property<byte[]>("RowVersion").IsConcurrencyToken().IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("rowversion");
+                    b.Property<int>("StoreId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.HasIndex("StoreId", "WorkerName").IsUnique();
+                    b.ToTable("AutoInvoiceWorkerStates", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InvoiceHead", null)
+                        .WithMany()
+                        .HasForeignKey("InvoiceHeadId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperationSource", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.AutoInvoiceOperation", "AutoInvoiceOperation")
+                        .WithMany("Sources")
+                        .HasForeignKey("AutoInvoiceOperationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InvoiceHead", null)
+                        .WithMany()
+                        .HasForeignKey("InvoiceHeadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("AutoInvoiceOperation");
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceSettings", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceWorkerState", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceProviderSetting", b =>
@@ -2842,6 +4205,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("InvoiceProviderSettings", (string)null);
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperation", b =>
+                {
+                    b.Navigation("Sources");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.LegalEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -2904,6 +4272,11 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("NormalizedTaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasComputedColumnSql("CONVERT(nvarchar(50), NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([TaxCode])), N' ', N''), N'.', N''), N'-', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''))", true);
+
                     b.Property<string>("Note")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -2955,10 +4328,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasFilter("[IsActive] = 1 AND [IsDeleted] = 0");
 
                     b.HasIndex("StoreId", "TaxCode")
-                        .IsUnique()
                         .HasFilter("[TaxCode] IS NOT NULL AND [TaxCode] <> '' AND [IsDeleted] = 0");
 
                     b.HasIndex("StoreId", "IsActive", "IsDeleted");
+
+                    b.HasIndex("StoreId", "NormalizedTaxCode", "IsDeleted", "IsActive")
+                        .HasDatabaseName("IX_LegalEntities_StoreId_NormalizedTaxCode_State");
 
                     b.ToTable("LegalEntities", null, t =>
                         {
@@ -3249,6 +4624,22 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("CreatedBy")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("CreditDueDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("CreditInitialBalance")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CreditNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid?>("CreditRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CustomerDepositId")
+                        .HasColumnType("int");
+
                     b.Property<int?>("CustomerId")
                         .HasColumnType("int");
 
@@ -3257,6 +4648,9 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("DepositAmount")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("DiscountTotal")
                         .HasPrecision(18, 2)
@@ -3300,6 +4694,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(0);
+
+                    b.Property<bool>("IsCreditSale")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -3377,6 +4774,8 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CustomerDepositId");
 
                     b.HasIndex("CustomerId");
 
@@ -4257,6 +5656,14 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("RewardBaseUnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("RewardableAmountSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -4391,6 +5798,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4402,6 +5812,9 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsDebtCollection")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -4444,6 +5857,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OrderPayments_StoreId_ClientRequestId")
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "OrderId");
 
@@ -4594,6 +6012,20 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("decimal(18,2)")
                         .HasDefaultValue(0m);
 
+                    b.Property<string>("CashReceiptNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal?>("CashReceivedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("CashReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CashReceivedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("CashRefundTotal")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(18, 2)
@@ -4713,6 +6145,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("TerminalId");
 
                     b.HasIndex("WarehouseId");
+
+                    b.HasIndex("StoreId", "CashReceivedAtUtc");
 
                     b.HasIndex("StoreId", "ClosedAtUtc");
 
@@ -5498,6 +6932,78 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("Permissions");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.PosOperationReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TerminalId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("WasOffline")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "OperationId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "TerminalId", "CreatedAtUtc");
+
+                    b.ToTable("PosOperationReceipts", (string)null);
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.PosPaymentQrRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -5515,6 +7021,9 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<string>("CallbackRawJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("ConfirmMode")
                         .HasColumnType("int");
@@ -5552,6 +7061,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("PaidAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PaymentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PrintClaimedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("ProviderRawResponseJson")
@@ -5599,12 +7114,72 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("OrderId");
 
+                    b.HasIndex("PaymentId");
+
                     b.HasIndex("StoreId", "RequestCode")
                         .IsUnique();
+
+                    b.HasIndex("StoreId", "OrderId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "OrderId", "Status");
 
                     b.ToTable("PosPaymentQrRequests");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PosReceiptTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "IsDeleted");
+
+                    b.ToTable("PosReceiptTemplates", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Product", b =>
@@ -5936,6 +7511,331 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "ProductId", "SortOrder");
 
                     b.ToTable("ProductImages", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelJob", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConfirmedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("ConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsReprint")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("SpoolJobId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TaskId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrinterId");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("StoreId", "RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "TaskId")
+                        .IsUnique()
+                        .HasFilter("[TaskId] IS NOT NULL AND [Status] IN (0, 1, 2, 3)");
+
+                    b.HasIndex("StoreId", "PrinterId", "Status", "Id");
+
+                    b.ToTable("ProductLabelJobs", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelPrinter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Dpi")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("OffsetXmm")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal>("OffsetYmm")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal>("PrintableWidthMm")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WindowsPrinterName")
+                        .IsRequired()
+                        .HasMaxLength(220)
+                        .HasColumnType("nvarchar(220)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "WindowsPrinterName")
+                        .IsUnique();
+
+                    b.ToTable("ProductLabelPrinters", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelTask", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CompletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DocumentNo")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LinesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TemplateId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockDocumentId");
+
+                    b.HasIndex("StoreId", "StockDocumentId")
+                        .IsUnique();
+
+                    b.ToTable("ProductLabelTasks", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefinitionJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "IsDeleted");
+
+                    b.ToTable("ProductLabelTemplates", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.ProductUnitConversion", b =>
@@ -6727,7 +8627,7 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("SupplierId")
+                    b.Property<int?>("SupplierId")
                         .HasColumnType("int");
 
                     b.Property<string>("Title")
@@ -7014,6 +8914,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("PurchaseOrderId", "LineNo")
                         .IsUnique();
 
+                    b.HasIndex("StoreId", "PurchaseOrderId", "ProductUnitConversionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PurchaseOrderLines_Store_Order_ProductUnitConversion")
+                        .HasFilter("[IsDeleted] = 0 AND [ProductUnitConversionId] IS NOT NULL");
+
                     b.ToTable("PurchaseOrderLines");
                 });
 
@@ -7107,6 +9012,182 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "Status", "RecognizedAtUtc");
 
                     b.ToTable("PurchasePayables");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceiptAuditEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ActorUserName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ChangedFieldsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("EventType")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NewValuesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OldValuesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StockDocumentLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StockDocumentProvisionalItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockDocumentId");
+
+                    b.HasIndex("StockDocumentLineId");
+
+                    b.HasIndex("StockDocumentProvisionalItemId");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "OccurredAtUtc", "Id")
+                        .HasDatabaseName("IX_PurchaseReceiptAuditEvents_Store_Document_Occurred_Id");
+
+                    b.ToTable("PurchaseReceiptAuditEvents", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceivingAction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ActionType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AfterIsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("AfterProvisionalStateJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<decimal>("AfterQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<bool>("BeforeIsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("BeforeProvisionalStateJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<decimal>("BeforeQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<Guid>("CommandId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CommandPayloadHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PurchaseOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReceiptAllocationKind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReceivingRevision")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StockDocumentLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StockDocumentProvisionalItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("UndoOfActionId")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StockDocumentId");
+
+                    b.HasIndex("StockDocumentLineId");
+
+                    b.HasIndex("StockDocumentProvisionalItemId");
+
+                    b.HasIndex("UndoOfActionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PurchaseReceivingActions_UndoOf")
+                        .HasFilter("[UndoOfActionId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "CommandId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PurchaseReceivingActions_Document_Command");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "ReceivingRevision", "Id")
+                        .HasDatabaseName("IX_PurchaseReceivingActions_Latest");
+
+                    b.ToTable("PurchaseReceivingActions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_PurchaseReceivingActions_Target", "[StockDocumentLineId] IS NOT NULL AND [StockDocumentProvisionalItemId] IS NULL AND [ProductVariantId] IS NOT NULL AND [ProductUnitConversionId] IS NOT NULL OR [StockDocumentLineId] IS NULL AND [StockDocumentProvisionalItemId] IS NOT NULL AND [ProductVariantId] IS NULL AND [ProductUnitConversionId] IS NULL");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseRequest", b =>
@@ -7581,6 +9662,9 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("DepositRestoredTotal")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -7638,6 +9722,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("POSShiftId");
+
+                    b.HasIndex("StoreId", "CompletedAtUtc");
 
                     b.HasIndex("StoreId", "OrderId");
 
@@ -8030,75 +10116,6 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("StockCountLine");
                 });
 
-            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceiptAuditEvent", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<int>("ActorUserId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ActorUserName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("ChangedFieldsJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("EventType")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsSuccess")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("NewValuesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTime>("OccurredAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("OldValuesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int>("StockDocumentId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("StockDocumentLineId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StoreId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TraceId")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StockDocumentId");
-
-                    b.HasIndex("StockDocumentLineId");
-
-                    b.HasIndex("StoreId", "StockDocumentId", "OccurredAtUtc", "Id")
-                        .HasDatabaseName("IX_PurchaseReceiptAuditEvents_Store_Document_Occurred_Id");
-
-                    b.ToTable("PurchaseReceiptAuditEvents", (string)null);
-                });
-
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocument", b =>
                 {
                     b.Property<int>("Id")
@@ -8111,19 +10128,22 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<bool>("CapitalizeFreightInInventoryCost")
-                        .HasColumnType("bit");
-
                     b.Property<DateTime?>("ApprovedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("ApprovedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("CapitalizeFreightInInventoryCost")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("ConfirmedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("ConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ConfirmedLegalEntityId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -8153,6 +10173,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<string>("DocumentTitle")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("EditablePurchaseReceiptKey")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("int")
+                        .HasComputedColumnSql("CASE WHEN [IsDeleted] = 0 AND [Type] = 1 AND [ReceiptSource] = 2 AND ([Status] = 4 OR [Status] = 1) AND [PurchaseOrderId] IS NOT NULL THEN [PurchaseOrderId] ELSE -[Id] END", true);
 
                     b.Property<string>("FreightNote")
                         .HasMaxLength(1000)
@@ -8200,6 +10225,28 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<int>("ReceiptSource")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("ReceivingLastSavedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ReceivingLeaseExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReceivingLeaseToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("ReceivingOwnerUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReceivingRevision")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("ReceivingSessionState")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<string>("RevisionRequestNote")
                         .HasMaxLength(1000)
@@ -8273,14 +10320,161 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
+                    b.HasIndex("StoreId", "ConfirmedLegalEntityId");
+
                     b.HasIndex("StoreId", "DocumentNo")
                         .IsUnique();
+
+                    b.HasIndex("StoreId", "EditablePurchaseReceiptKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocument_EditablePurchaseReceipt");
+
+                    b.HasIndex("StoreId", "ReceivingOwnerUserId", "ReceivingLeaseExpiresAtUtc")
+                        .HasDatabaseName("IX_StockDocument_ReceivingLease");
 
                     b.HasIndex("StoreId", "WarehouseId", "DocumentDate");
 
                     b.HasIndex("StoreId", "Type", "Status", "DocumentDate");
 
-                    b.ToTable("StockDocument");
+                    b.ToTable("StockDocument", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockDocument_ConfirmedReceiptOwner", "[Type] <> 1 OR [Status] <> 3 OR [ConfirmedLegalEntityId] IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceDetailReconciliation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountDifference")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ConfirmedBaseUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ConfirmedFactor")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("ConfirmedUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("DerivedBaseQuantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("DetailState")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IgnoreReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("InputInvoiceDetailId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InputInvoiceHeadId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsIgnored")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("QuantityDifference")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("ReceiptBaseQuantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("ReceiptBeforeVatAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ReceiptVatAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ReceiptVatRate")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StockDocumentInputInvoiceReconciliationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("VatAmountDifference")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("VatComparable")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("VatComparisonReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal>("XmlBeforeVatAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("XmlQuantity")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("XmlVatAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("XmlVatRate")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InputInvoiceDetailId");
+
+                    b.HasIndex("StockDocumentInputInvoiceReconciliationId");
+
+                    b.HasIndex("StoreId", "StockDocumentInputInvoiceReconciliationId", "InputInvoiceDetailId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceDetailReconciliation_Detail_Active")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "InputInvoiceHeadId", "DetailState")
+                        .HasDatabaseName("IX_InputInvoiceDetailReconciliation_Receipt_State");
+
+                    b.ToTable("StockDocumentInputInvoiceDetailReconciliation", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceMap", b =>
@@ -8337,10 +10531,161 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StockDocumentId");
 
+                    b.HasIndex("StoreId", "StockDocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocumentInputInvoiceMap_StoreId_StockDocumentId_Active")
+                        .HasFilter("[IsDeleted] = 0");
+
                     b.HasIndex("StoreId", "StockDocumentId", "InputInvoiceHeadId")
                         .IsUnique();
 
                     b.ToTable("StockDocumentInputInvoiceMap", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceReconciliation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AcceptanceReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("AcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("AcceptedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AcceptedEvidenceFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("ExcludedLineCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasUnsupportedHeader")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("IgnoredDetailCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IncompleteCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InputInvoiceHeadId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastCalculatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MatchedDetailCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MismatchDetailCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OverallState")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PaymentDifference")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ReceiptGoodsTotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ReceiptSubtotalBeforeVat")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ReceiptVatAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StockDocumentInputInvoiceMapId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SubtotalDifference")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("TotalDetailCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UnmatchedDetailCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UnsupportedHeaderReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("VatDifference")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("XmlPaymentAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("XmlTaxAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("XmlTotalBeforeTax")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InputInvoiceHeadId");
+
+                    b.HasIndex("StockDocumentId");
+
+                    b.HasIndex("StockDocumentInputInvoiceMapId");
+
+                    b.HasIndex("StoreId", "StockDocumentInputInvoiceMapId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InputInvoiceReconciliation_Link_Active")
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "OverallState")
+                        .HasDatabaseName("IX_InputInvoiceReconciliation_Receipt_State");
+
+                    b.ToTable("StockDocumentInputInvoiceReconciliation", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentLine", b =>
@@ -8390,6 +10735,21 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<DateTime?>("OutsidePoDecisionAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("OutsidePoDecisionByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OutsidePoDecisionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("OutsidePoDecisionStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<string>("ProductNameSnapshot")
                         .IsRequired()
                         .HasMaxLength(250)
@@ -8406,6 +10766,11 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<decimal>("Quantity")
                         .HasColumnType("decimal(18,3)");
+
+                    b.Property<int>("ReceiptAllocationKind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -8483,7 +10848,20 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StockDocumentId", "LineNo")
                         .IsUnique();
 
-                    b.ToTable("StockDocumentLine");
+                    b.HasIndex("StockDocumentId", "ProductVariantId", "ProductUnitConversionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocumentLine_OutsideReceivingComponent")
+                        .HasFilter("[IsDeleted] = 0 AND [ReceiptAllocationKind] = 2 AND [ProductUnitConversionId] IS NOT NULL");
+
+                    b.HasIndex("StockDocumentId", "PurchaseOrderLineId", "ProductUnitConversionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocumentLine_PoReceivingComponent")
+                        .HasFilter("[IsDeleted] = 0 AND [ReceiptAllocationKind] = 1 AND [PurchaseOrderLineId] IS NOT NULL AND [ProductUnitConversionId] IS NOT NULL");
+
+                    b.ToTable("StockDocumentLine", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockDocumentLine_ReceivingAllocation", "[ReceiptAllocationKind] = 0 AND [OutsidePoDecisionStatus] = 0 OR [ReceiptAllocationKind] = 1 AND [PurchaseOrderLineId] IS NOT NULL AND [OutsidePoDecisionStatus] = 0 OR [ReceiptAllocationKind] = 2 AND [PurchaseOrderLineId] IS NULL AND ([OutsidePoDecisionStatus] = 1 OR [OutsidePoDecisionStatus] = 2 OR [OutsidePoDecisionStatus] = 3)");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentLineInputInvoiceMap", b =>
@@ -8508,6 +10886,10 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
+
+                    b.Property<string>("ExclusionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<int?>("InputInvoiceDetailId")
                         .HasColumnType("int");
@@ -8563,6 +10945,177 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "StockDocumentId", "UseInputInvoice");
 
                     b.ToTable("StockDocumentLineInputInvoiceMap", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentProvisionalItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBarcodeId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedBarcode")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("NormalizedUnitNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("PackagingPhoto")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int?>("ProposedBaseUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProposedBaseUnitName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ProposedCategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ProposedFactor")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<int?>("ProposedProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<bool>("RawBarcodeRemembered")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RawBarcodeSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("ReceivingRevision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RemovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RemovedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ResolutionMethod")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ResolvedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ResolvedProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ResolvedProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ResolvedStockDocumentLineId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StockDocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SupersededByProvisionalItemId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("UnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UnitNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBarcodeId");
+
+                    b.HasIndex("ProposedBaseUnitId");
+
+                    b.HasIndex("ProposedProductVariantId");
+
+                    b.HasIndex("ResolvedProductUnitConversionId");
+
+                    b.HasIndex("ResolvedProductVariantId");
+
+                    b.HasIndex("ResolvedStockDocumentLineId");
+
+                    b.HasIndex("SupersededByProvisionalItemId");
+
+                    b.HasIndex("UnitId");
+
+                    b.HasIndex("StockDocumentId", "NormalizedBarcode", "NormalizedUnitNameSnapshot")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocumentProvisionalItems_Barcode_UnitSnapshot")
+                        .HasFilter("[IsDeleted] = 0 AND [Status] = 0 AND [NormalizedBarcode] IS NOT NULL AND [UnitId] IS NULL AND [NormalizedUnitNameSnapshot] IS NOT NULL");
+
+                    b.HasIndex("StockDocumentId", "NormalizedBarcode", "UnitId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StockDocumentProvisionalItems_Barcode_Unit")
+                        .HasFilter("[IsDeleted] = 0 AND [Status] = 0 AND [NormalizedBarcode] IS NOT NULL AND [UnitId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "StockDocumentId", "Status")
+                        .HasDatabaseName("IX_StockDocumentProvisionalItems_Document_Status");
+
+                    b.ToTable("StockDocumentProvisionalItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StockDocumentProvisionalItem_Quantity", "[Quantity] > 0");
+
+                            t.HasCheckConstraint("CK_StockDocumentProvisionalItem_State", "[Status] = 0 AND [ResolvedStockDocumentLineId] IS NULL AND [ResolutionMethod] IS NULL AND [RemovedAtUtc] IS NULL OR [Status] = 1 AND [ResolvedStockDocumentLineId] IS NOT NULL AND [ResolvedProductVariantId] IS NOT NULL AND [ResolvedProductUnitConversionId] IS NOT NULL AND [ResolutionMethod] IS NOT NULL AND [ResolvedAtUtc] IS NOT NULL OR [Status] = 2 AND [ResolvedStockDocumentLineId] IS NULL AND [RemovedAtUtc] IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockTransferDocument", b =>
@@ -8788,6 +11341,14 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
 
+                    b.Property<string>("GuestWifiName")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("GuestWifiPassword")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -8806,6 +11367,18 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReceiptAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("ReceiptName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReceiptPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -8835,6 +11408,128 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("Stores");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StoreAcbSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApiBaseUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BeneficiaryName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CallbackApiKeyProtected")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ClientSecretProtected")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MerchantId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("QrEndpoint")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TokenEndpoint")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TokenScope")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VirtualAccountPrefix")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("XOwnerNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("XOwnerType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("XProviderId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("XService")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("StoreId")
+                        .IsUnique();
+
+                    b.ToTable("StoreAcbSettings", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StoreBankAccount", b =>
@@ -8939,6 +11634,11 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StoreId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StoreBankAccounts_OneDefaultPerStore")
+                        .HasFilter("[IsDefault] = 1 AND [IsDeleted] = 0");
+
                     b.HasIndex("StoreId", "AccountNumber")
                         .IsUnique();
 
@@ -8958,6 +11658,18 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<string>("Address")
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -8994,6 +11706,11 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NormalizedTaxCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasComputedColumnSql("CONVERT(nvarchar(50), NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([TaxCode])), N' ', N''), N'.', N''), N'-', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''))", true);
 
                     b.Property<string>("Note")
                         .HasMaxLength(500)
@@ -9032,6 +11749,9 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "Name")
                         .IsUnique();
+
+                    b.HasIndex("StoreId", "NormalizedTaxCode", "IsDeleted", "IsActive")
+                        .HasDatabaseName("IX_Suppliers_StoreId_NormalizedTaxCode_State");
 
                     b.ToTable("Suppliers");
                 });
@@ -9407,6 +12127,100 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("Warehouses", (string)null);
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackRoute", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("TargetStoreId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackRouteChange", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.AcbCallbackRoute", "Route")
+                        .WithMany()
+                        .HasForeignKey("RouteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Route");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbPaymentTransaction", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.AcbQrSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbQrNotificationItem", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.AcbCallbackReceipt", "Receipt")
+                        .WithMany("Items")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Receipt");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbQrSession", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.AcbCallbackReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("ConfirmationCallbackReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.PosPaymentQrRequest", null)
+                        .WithMany()
+                        .HasForeignKey("QrRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuItem", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.AdminMenuItem", "Parent")
@@ -9480,6 +12294,124 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDebtReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("POSShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreBankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDeposit", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDepositEntry", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.CustomerDeposit", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerDepositId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("POSShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.SalesReturn", null)
+                        .WithMany()
+                        .HasForeignKey("SalesReturnId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreBankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerReceivableEntry", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.CustomerDebtReceipt", "Receipt")
+                        .WithMany("Entries")
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.SalesReturn", null)
+                        .WithMany()
+                        .HasForeignKey("SalesReturnId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Receipt");
 
                     b.Navigation("Store");
                 });
@@ -9585,11 +12517,117 @@ namespace GaoApp.Infrastructure.Migrations
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InputInvoiceHead", b =>
                 {
+                    b.HasOne("GaoApp.Domain.Entities.Supplier", "ResolvedSupplier")
+                        .WithMany()
+                        .HasForeignKey("ResolvedSupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", "ResolvedBuyerLegalEntity")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ResolvedBuyerLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ResolvedBuyerLegalEntity");
+
+                    b.Navigation("ResolvedSupplier");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InputInvoiceItemCatalogMap", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Unit", "ConfirmedBaseUnit")
+                        .WithMany()
+                        .HasForeignKey("ConfirmedBaseUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Unit", "ConfirmedUnit")
+                        .WithMany()
+                        .HasForeignKey("ConfirmedUnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", "ProductUnitConversion")
+                        .WithMany()
+                        .HasForeignKey("ProductUnitConversionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", "ProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ConfirmedBaseUnit");
+
+                    b.Navigation("ConfirmedUnit");
+
+                    b.Navigation("ProductUnitConversion");
+
+                    b.Navigation("ProductVariant");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InputInvoiceSupplierResolutionEvent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InputInvoiceHead", "InputInvoiceHead")
+                        .WithMany("SupplierResolutionEvents")
+                        .HasForeignKey("InputInvoiceHeadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Supplier", "NewSupplier")
+                        .WithMany()
+                        .HasForeignKey("NewSupplierId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("GaoApp.Domain.Entities.Supplier", "OldSupplier")
+                        .WithMany()
+                        .HasForeignKey("OldSupplierId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("InputInvoiceHead");
+
+                    b.Navigation("NewSupplier");
+
+                    b.Navigation("OldSupplier");
+
+                    b.Navigation("StockDocument");
 
                     b.Navigation("Store");
                 });
@@ -9670,6 +12708,33 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasOne("GaoApp.Domain.Entities.Warehouse", "Warehouse")
                         .WithMany("InventoryBalances")
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductVariant");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceInputStockSupplementalMovement", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", "ProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Warehouse", "Warehouse")
+                        .WithMany()
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -9964,8 +13029,7 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasOne("GaoApp.Domain.Entities.Order", "Order")
                         .WithMany()
                         .HasForeignKey("OrderId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GaoApp.Domain.Entities.InvoiceHead", "OriginalInvoiceHead")
                         .WithMany("CorrectionInvoices")
@@ -10109,6 +13173,11 @@ namespace GaoApp.Infrastructure.Migrations
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Order", b =>
                 {
+                    b.HasOne("GaoApp.Domain.Entities.CustomerDeposit", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerDepositId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.Customer", "Customer")
                         .WithMany()
                         .HasForeignKey("CustomerId")
@@ -10755,6 +13824,17 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Terminal");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.PosOperationReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.PosPaymentQrRequest", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", "BankAccount")
@@ -10769,6 +13849,11 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.OrderPayment", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
@@ -10778,6 +13863,17 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("BankAccount");
 
                     b.Navigation("Order");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PosReceiptTemplate", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.Navigation("Store");
                 });
@@ -10896,6 +13992,73 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("MediaAsset");
 
                     b.Navigation("Product");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelJob", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.ProductLabelPrinter", "Printer")
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductLabelTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Printer");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelPrinter", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelTask", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("StockDocument");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.ProductLabelTemplate", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.Navigation("Store");
                 });
@@ -11125,8 +14288,7 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasOne("GaoApp.Domain.Entities.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ExpectedWarehouse");
 
@@ -11250,6 +14412,71 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceiptAuditEvent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.ClientNoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentLine", "StockDocumentLine")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentLineId")
+                        .OnDelete(DeleteBehavior.ClientNoAction);
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentProvisionalItem", "StockDocumentProvisionalItem")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentProvisionalItemId")
+                        .OnDelete(DeleteBehavior.ClientNoAction);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("StockDocument");
+
+                    b.Navigation("StockDocumentLine");
+
+                    b.Navigation("StockDocumentProvisionalItem");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceivingAction", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany("ReceivingActions")
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentLine", "StockDocumentLine")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentLineId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentProvisionalItem", "StockDocumentProvisionalItem")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentProvisionalItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.PurchaseReceivingAction", "UndoOfAction")
+                        .WithMany()
+                        .HasForeignKey("UndoOfActionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("StockDocument");
+
+                    b.Navigation("StockDocumentLine");
+
+                    b.Navigation("StockDocumentProvisionalItem");
+
+                    b.Navigation("UndoOfAction");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseRequest", b =>
@@ -11497,32 +14724,6 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Unit");
                 });
 
-            modelBuilder.Entity("GaoApp.Domain.Entities.PurchaseReceiptAuditEvent", b =>
-                {
-                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
-                        .WithMany()
-                        .HasForeignKey("StockDocumentId")
-                        .OnDelete(DeleteBehavior.ClientNoAction)
-                        .IsRequired();
-
-                    b.HasOne("GaoApp.Domain.Entities.StockDocumentLine", "StockDocumentLine")
-                        .WithMany()
-                        .HasForeignKey("StockDocumentLineId")
-                        .OnDelete(DeleteBehavior.ClientNoAction);
-
-                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
-                        .WithMany()
-                        .HasForeignKey("StoreId")
-                        .OnDelete(DeleteBehavior.ClientNoAction)
-                        .IsRequired();
-
-                    b.Navigation("StockDocument");
-
-                    b.Navigation("StockDocumentLine");
-
-                    b.Navigation("Store");
-                });
-
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocument", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.PurchaseOrder", "PurchaseOrder")
@@ -11547,6 +14748,14 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", "ConfirmedLegalEntity")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ConfirmedLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ConfirmedLegalEntity");
+
                     b.Navigation("PurchaseOrder");
 
                     b.Navigation("Store");
@@ -11554,6 +14763,33 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Supplier");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceDetailReconciliation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InputInvoiceDetail", "InputInvoiceDetail")
+                        .WithMany()
+                        .HasForeignKey("InputInvoiceDetailId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentInputInvoiceReconciliation", "Reconciliation")
+                        .WithMany("Details")
+                        .HasForeignKey("StockDocumentInputInvoiceReconciliationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("InputInvoiceDetail");
+
+                    b.Navigation("Reconciliation");
+
+                    b.Navigation("Store");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceMap", b =>
@@ -11579,6 +14815,41 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("InputInvoiceHead");
 
                     b.Navigation("StockDocument");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceReconciliation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InputInvoiceHead", "InputInvoiceHead")
+                        .WithMany()
+                        .HasForeignKey("InputInvoiceHeadId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentInputInvoiceMap", "StockDocumentInputInvoiceMap")
+                        .WithMany()
+                        .HasForeignKey("StockDocumentInputInvoiceMapId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("InputInvoiceHead");
+
+                    b.Navigation("StockDocument");
+
+                    b.Navigation("StockDocumentInputInvoiceMap");
 
                     b.Navigation("Store");
                 });
@@ -11664,6 +14935,81 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentProvisionalItem", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariantUnitBarcode", "CreatedBarcode")
+                        .WithMany()
+                        .HasForeignKey("CreatedBarcodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Unit", "ProposedBaseUnit")
+                        .WithMany()
+                        .HasForeignKey("ProposedBaseUnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", "ProposedProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProposedProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", "ResolvedProductUnitConversion")
+                        .WithMany()
+                        .HasForeignKey("ResolvedProductUnitConversionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", "ResolvedProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ResolvedProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentLine", "ResolvedStockDocumentLine")
+                        .WithMany()
+                        .HasForeignKey("ResolvedStockDocumentLineId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocument", "StockDocument")
+                        .WithMany("ProvisionalItems")
+                        .HasForeignKey("StockDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StockDocumentProvisionalItem", "SupersededByProvisionalItem")
+                        .WithMany()
+                        .HasForeignKey("SupersededByProvisionalItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Unit", "Unit")
+                        .WithMany()
+                        .HasForeignKey("UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedBarcode");
+
+                    b.Navigation("ProposedBaseUnit");
+
+                    b.Navigation("ProposedProductVariant");
+
+                    b.Navigation("ResolvedProductUnitConversion");
+
+                    b.Navigation("ResolvedProductVariant");
+
+                    b.Navigation("ResolvedStockDocumentLine");
+
+                    b.Navigation("StockDocument");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("SupersededByProvisionalItem");
+
+                    b.Navigation("Unit");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.StockTransferDocument", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.Warehouse", "FromWarehouse")
@@ -11714,6 +15060,23 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("ProductVariant");
 
                     b.Navigation("StockTransferDocument");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StoreAcbSettings", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.Navigation("Store");
                 });
@@ -11809,6 +15172,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackReceipt", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuItem", b =>
                 {
                     b.Navigation("Children");
@@ -11817,6 +15185,11 @@ namespace GaoApp.Infrastructure.Migrations
             modelBuilder.Entity("GaoApp.Domain.Entities.Category", b =>
                 {
                     b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerDebtReceipt", b =>
+                {
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.CustomerRewardVoucher", b =>
@@ -11834,6 +15207,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Details");
 
                     b.Navigation("StockDocumentMaps");
+
+                    b.Navigation("SupplierResolutionEvents");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryAdjustmentDocument", b =>
@@ -12044,7 +15419,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Navigation("Lines");
 
+                    b.Navigation("ProvisionalItems");
+
                     b.Navigation("PurchasePayables");
+
+                    b.Navigation("ReceivingActions");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentInputInvoiceReconciliation", b =>
+                {
+                    b.Navigation("Details");
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StockDocumentLine", b =>

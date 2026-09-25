@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Brands;
@@ -27,14 +27,29 @@ public sealed class BrandService : IBrandService
         _logger = logger;
     }
 
-    public async Task<PagedResult<BrandListItemDto>> GetPagedAsync(
+    public Task<PagedResult<BrandListItemDto>> GetPagedAsync(
         int storeId,
         string? search,
         int page,
         int pageSize,
         CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<BrandListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
-        var (items, totalItems) = await _repo.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var (items, totalItems) = await _repo.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
 
         return new PagedResult<BrandListItemDto>
         {
@@ -44,6 +59,11 @@ public sealed class BrandService : IBrandService
             Items = items.Select(static item => item.ToListItemDto()).ToList()
         };
     }
+
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
 
     public async Task<Result<BrandEditDto>> GetForEditAsync(
         int storeId,

@@ -1,495 +1,257 @@
-﻿@using GaoApp.Application.DTOs.Invoices
+﻿@using System.Globalization
+@using GaoApp.Application.DTOs.Invoices
 @using GaoApp.Domain.Enums
 @model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIndexViewModel
 
 @{
-    ViewData["Title"] = "Quản lý hóa đơn bán ra";
-
+    ViewData["Title"] = "Hóa đơn bán ra";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
     var q = Model.Query ?? new InvoiceListQueryDto();
+    var items = Model.Items ?? new List<InvoiceListItemDto>();
+    var vi = CultureInfo.GetCultureInfo("vi-VN");
+    var hasFilters = q.FromDate.HasValue || q.ToDate.HasValue || q.OrderId.HasValue ||
+        !string.IsNullOrWhiteSpace(q.Keyword) || q.DisplayMode != InvoiceListDisplayMode.All;
+    var firstItem = items.Count == 0 ? 0 : (Math.Max(Model.CurrentPage, 1) - 1) * q.PageSize + 1;
+    var lastItem = items.Count == 0 ? 0 : firstItem + items.Count - 1;
+    var displayModes = new Dictionary<InvoiceListDisplayMode, string>
+    {
+        [InvoiceListDisplayMode.All] = "Tất cả hóa đơn",
+        [InvoiceListDisplayMode.HasQuantity] = "Có số lượng",
+        [InvoiceListDisplayMode.Empty] = "Chưa có dòng / số lượng",
+        [InvoiceListDisplayMode.Locked] = "Đã khóa",
+        [InvoiceListDisplayMode.Unlocked] = "Chưa khóa",
+        [InvoiceListDisplayMode.HasAutoLines] = "Có dòng từ đơn hàng",
+        [InvoiceListDisplayMode.HasManualLines] = "Có dòng thêm tay"
+    };
+    var sortModes = new Dictionary<InvoiceListSortMode, string>
+    {
+        [InvoiceListSortMode.OrderIdDesc] = "Đơn hàng mới nhất",
+        [InvoiceListSortMode.HasLinesThenOrderIdDesc] = "Có sản phẩm trước, đơn mới nhất",
+        [InvoiceListSortMode.OrderIdAsc] = "Đơn hàng cũ nhất",
+        [InvoiceListSortMode.InvoiceDateDesc] = "Ngày hóa đơn mới nhất",
+        [InvoiceListSortMode.InvoiceDateAsc] = "Ngày hóa đơn cũ nhất",
+        [InvoiceListSortMode.GrandTotalDesc] = "Tổng tiền cao nhất",
+        [InvoiceListSortMode.GrandTotalAsc] = "Tổng tiền thấp nhất",
+        [InvoiceListSortMode.QuantityDesc] = "Số lượng nhiều nhất",
+        [InvoiceListSortMode.QuantityAsc] = "Số lượng ít nhất",
+        [InvoiceListSortMode.AutoLineCountDesc] = "Nhiều dòng từ đơn hàng nhất",
+        [InvoiceListSortMode.ManualLineCountDesc] = "Nhiều dòng thêm tay nhất"
+    };
+    string PageUrl(int page) => Url.Action("Index", "Invoice", new
+    {
+        area = "Admin", page, pageSize = q.PageSize,
+        fromDate = q.FromDate?.ToString("yyyy-MM-dd"), toDate = q.ToDate?.ToString("yyyy-MM-dd"),
+        orderId = q.OrderId, keyword = q.Keyword, displayMode = (int)q.DisplayMode, sortMode = (int)q.SortMode
+    }) ?? "";
+    var pageNumbers = new SortedSet<int> { 1, Model.TotalPages };
+    for (var page = Math.Max(1, Model.CurrentPage - 2); page <= Math.Min(Model.TotalPages, Model.CurrentPage + 2); page++)
+        pageNumbers.Add(page);
 }
 
-<style>
-    .invoice-row-empty {
-        opacity: .72;
-    }
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-index.css" asp-append-version="true" />
+}
 
-        .invoice-row-empty td {
-            color: #8a94a6;
-        }
-
-    .invoice-row-has-lines {
-        background: #fff;
-    }
-
-    .invoice-filter-card {
-        border: 0;
-        border-radius: 12px;
-    }
-
-    .invoice-table th {
-        white-space: nowrap;
-        font-size: 13px;
-        text-transform: uppercase;
-    }
-
-    .invoice-table td {
-        vertical-align: middle;
-    }
-
-    .invoice-money {
-        font-variant-numeric: tabular-nums;
-    }
-
-    .invoice-badge-count {
-        min-width: 32px;
-        display: inline-block;
-    }
-
-    .invoice-filter-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: #6b7280;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-        margin-bottom: 12px;
-    }
-
-    .invoice-reset-link {
-        text-decoration: none;
-        white-space: nowrap;
-    }
-
-    @@media (max-width: 768px) {
-        .invoice-table th,
-        .invoice-table td {
-            font-size: 13px;
-        }
-
-        .invoice-table .btn {
-            padding: .25rem .5rem;
-            font-size: 12px;
-        }
-    }
-</style>
-
-<div class="container-fluid">
-
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3 class="mb-0">
-            Quản lý hóa đơn bán ra
-        </h3>
-
-        <div>
-            <span class="badge bg-primary px-3 py-2">
-                Tổng: @Model.TotalItems.ToString("N0")
-            </span>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h1 class="gds-page-header__title">Hóa đơn bán ra</h1>
+                <div class="gds-page-header__meta">Tra cứu hóa đơn, người mua và tình trạng phát hành.</div>
+            </div>
+            <span class="gds-status is-primary">@Model.TotalItems.ToString("N0", vi) hóa đơn</span>
         </div>
     </div>
+}
 
-    <!-- FILTER -->
-    <div class="card shadow-sm mb-3 invoice-filter-card">
-        <div class="card-body">
-
-            <form method="get"
-                  asp-area="Admin"
-                  asp-controller="Invoice"
-                  asp-action="Index">
-
-                <div class="invoice-filter-title">
-                    Bộ lọc hóa đơn
+<div data-gao-ui="modern" data-layout-consistency>
+  <div class="gds-page invoice-index">
+    <section class="gds-section gds-section--compact invoice-filter" aria-label="Tìm kiếm và lọc hóa đơn">
+      <form method="get" asp-area="Admin" asp-controller="Invoice" asp-action="Index">
+        <input type="hidden" name="Page" value="1" />
+        <div class="invoice-filter__main">
+            <div>
+                <label for="invoiceKeyword" class="form-label">Tìm hóa đơn</label>
+                <div class="gds-search-field">
+                    <i class="bx bx-search" aria-hidden="true"></i>
+                    <input id="invoiceKeyword" name="Keyword" type="search" class="form-control"
+                           placeholder="Số hóa đơn, tên người mua, mã đơn hàng…" value="@q.Keyword" />
                 </div>
-
-                <!-- HÀNG 1: LỌC CƠ BẢN -->
-                <div class="row g-3 align-items-end">
-
-                    <div class="col-md-2">
-                        <label class="form-label">
-                            Từ ngày
-                        </label>
-
-                        <input type="date"
-                               class="form-control"
-                               name="FromDate"
-                               value="@(q.FromDate?.ToString("yyyy-MM-dd"))" />
-                    </div>
-
-                    <div class="col-md-2">
-                        <label class="form-label">
-                            Đến ngày
-                        </label>
-
-                        <input type="date"
-                               class="form-control"
-                               name="ToDate"
-                               value="@(q.ToDate?.ToString("yyyy-MM-dd"))" />
-                    </div>
-
-                    <div class="col-md-2">
-                        <label class="form-label">
-                            OrderId
-                        </label>
-
-                        <input type="number"
-                               class="form-control"
-                               name="OrderId"
-                               value="@q.OrderId" />
-                    </div>
-
-                    <div class="col-md-6">
-                        <label class="form-label">
-                            Keyword
-                        </label>
-
-                        <input type="text"
-                               class="form-control"
-                               name="Keyword"
-                               placeholder="InvoiceNumber / Buyer / OrderNumber"
-                               value="@q.Keyword" />
-                    </div>
-
-                </div>
-
-                <!-- HÀNG 2: HIỂN THỊ + SẮP XẾP -->
-                <div class="row g-3 align-items-end mt-1">
-
-                    <div class="col-md-4">
-                        <label class="form-label">
-                            Hiển thị
-                        </label>
-
-                        <select name="DisplayMode" class="form-select">
-                            <option value="@((int)InvoiceListDisplayMode.All)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.All ? "selected" : null)">
-                                Tất cả
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.HasQuantity)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasQuantity ? "selected" : null)">
-                                Có số lượng
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.Empty)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Empty ? "selected" : null)">
-                                0 / Chưa có dòng
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.Locked)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Locked ? "selected" : null)">
-                                Đã khóa
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.Unlocked)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.Unlocked ? "selected" : null)">
-                                Chưa khóa
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.HasAutoLines)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasAutoLines ? "selected" : null)">
-                                Có dòng Auto
-                            </option>
-
-                            <option value="@((int)InvoiceListDisplayMode.HasManualLines)"
-                                    selected="@(q.DisplayMode == InvoiceListDisplayMode.HasManualLines ? "selected" : null)">
-                                Có dòng Manual
-                            </option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label class="form-label">
-                            Sắp xếp
-                        </label>
-
-                        <select name="SortMode" class="form-select">
-                            <option value="@((int)InvoiceListSortMode.OrderIdDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.OrderIdDesc ? "selected" : null)">
-                                OrderId mới nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.HasLinesThenOrderIdDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.HasLinesThenOrderIdDesc ? "selected" : null)">
-                                Có SP trước, OrderId mới
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.OrderIdAsc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.OrderIdAsc ? "selected" : null)">
-                                OrderId cũ nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.InvoiceDateDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.InvoiceDateDesc ? "selected" : null)">
-                                Ngày hóa đơn mới nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.InvoiceDateAsc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.InvoiceDateAsc ? "selected" : null)">
-                                Ngày hóa đơn cũ nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.GrandTotalDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.GrandTotalDesc ? "selected" : null)">
-                                Tổng tiền cao nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.GrandTotalAsc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.GrandTotalAsc ? "selected" : null)">
-                                Tổng tiền thấp nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.QuantityDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.QuantityDesc ? "selected" : null)">
-                                Số lượng nhiều nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.QuantityAsc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.QuantityAsc ? "selected" : null)">
-                                Số lượng ít nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.AutoLineCountDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.AutoLineCountDesc ? "selected" : null)">
-                                Auto nhiều nhất
-                            </option>
-
-                            <option value="@((int)InvoiceListSortMode.ManualLineCountDesc)"
-                                    selected="@(q.SortMode == InvoiceListSortMode.ManualLineCountDesc ? "selected" : null)">
-                                Manual nhiều nhất
-                            </option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-2 d-grid">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bx bx-search"></i>
-                            Tìm kiếm
-                        </button>
-                    </div>
-
-                    <div class="col-md-2 d-grid">
-                        <a asp-area="Admin"
-                               asp-controller="Invoice"
-                               asp-action="Index"
-                               class="btn btn-outline-secondary invoice-reset-link">
-                            Làm mới
-                        </a>
-                    </div>
-
-                </div>
-
-            </form>
-
+            </div>
+            <div>
+                <label for="invoiceFromDate" class="form-label">Từ ngày</label>
+                <input id="invoiceFromDate" type="date" class="form-control" name="FromDate" value="@(q.FromDate?.ToString("yyyy-MM-dd"))" />
+            </div>
+            <div>
+                <label for="invoiceToDate" class="form-label">Đến ngày</label>
+                <input id="invoiceToDate" type="date" class="form-control" name="ToDate" value="@(q.ToDate?.ToString("yyyy-MM-dd"))" />
+            </div>
+            <div>
+                <label for="invoiceOrderId" class="form-label">Số thứ tự đơn hàng</label>
+                <input id="invoiceOrderId" type="number" class="form-control" name="OrderId" min="1" step="1" placeholder="Ví dụ: 14" value="@q.OrderId" />
+            </div>
         </div>
-    </div>
-
-    <!-- TABLE -->
-    <div class="card shadow-sm">
-
-        <div class="table-responsive">
-
-            <table class="table table-hover align-middle mb-0 invoice-table">
-
-                <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Ngày</th>
-                        <th>Order</th>
-                        <th>HKD phát hành</th>
-                        <th>Invoice</th>
-                        <th>Người mua</th>
-                        <th class="text-end">SL</th>
-                        <th class="text-end">Tạm tính</th>
-                        <th class="text-end">VAT</th>
-                        <th class="text-end">Tổng</th>
-                        <th class="text-center">Auto</th>
-                        <th class="text-center">Manual</th>
-                        <th></th>
-                    </tr>
-                </thead>
-
-                <tbody>
-
-                    @if (Model.Items == null || !Model.Items.Any())
+        <div class="invoice-filter__options">
+            <div>
+                <label for="invoiceDisplayMode" class="form-label">Hiển thị</label>
+                <select id="invoiceDisplayMode" name="DisplayMode" class="form-select">
+                    @foreach (var option in displayModes)
                     {
-                        <tr>
-                            <td colspan="13"
-                                class="text-center text-muted py-5">
-                                Chưa có dữ liệu.
-                            </td>
-                        </tr>
+                        <option value="@((int)option.Key)" selected="@(q.DisplayMode == option.Key)">@option.Value</option>
                     }
-                    else
+                </select>
+            </div>
+            <div>
+                <label for="invoiceSortMode" class="form-label">Sắp xếp</label>
+                <select id="invoiceSortMode" name="SortMode" class="form-select">
+                    @foreach (var option in sortModes)
                     {
-                        foreach (var item in Model.Items)
+                        <option value="@((int)option.Key)" selected="@(q.SortMode == option.Key)">@option.Value</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label for="invoicePageSize" class="form-label">Mỗi trang</label>
+                <select id="invoicePageSize" name="PageSize" class="form-select">
+                    @foreach (var size in new[] { 20, 50, 100, q.PageSize }.Where(size => size > 0).Distinct().OrderBy(size => size))
+                    {
+                        <option value="@size" selected="@(q.PageSize == size)">@size hóa đơn</option>
+                    }
+                </select>
+            </div>
+            <div class="invoice-filter__actions">
+                <button type="submit" class="btn btn-primary"><i class="bx bx-search" aria-hidden="true"></i> Tìm kiếm</button>
+                <a asp-area="Admin" asp-controller="Invoice" asp-action="Index" class="btn btn-outline-secondary">Xóa bộ lọc</a>
+            </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="gds-list-panel invoice-results" aria-labelledby="invoiceResultsTitle">
+        <div class="invoice-results__header">
+            <div>
+                <h2 id="invoiceResultsTitle" class="gds-list-panel__title">Danh sách hóa đơn</h2>
+                <div class="gds-list-panel__meta">@Model.TotalItems.ToString("N0", vi) kết quả@(hasFilters ? " theo bộ lọc" : "")</div>
+            </div>
+            <span class="invoice-results__range">Hiển thị @firstItem–@lastItem</span>
+        </div>
+        @if (items.Count == 0)
+        {
+            <div class="gds-empty invoice-empty" role="status">
+                <i class="bx bx-file-find gds-empty__icon" aria-hidden="true"></i>
+                <h3>@(Model.TotalItems > 0 ? "Trang này không có hóa đơn" : hasFilters ? "Không tìm thấy hóa đơn phù hợp" : "Chưa có hóa đơn bán ra")</h3>
+                <p class="gds-empty__copy">@(Model.TotalItems > 0 ? "Chuyển về trang đầu để xem các hóa đơn trong danh sách." : hasFilters ? "Thử thay đổi từ khóa, khoảng ngày hoặc xóa bộ lọc để xem lại danh sách." : "Hóa đơn được tạo từ đơn hàng sẽ xuất hiện tại đây.")</p>
+                @if (Model.TotalItems > 0)
+                {
+                    <a href="@PageUrl(1)" class="btn btn-outline-primary">Về trang đầu</a>
+                }
+                else if (hasFilters)
+                {
+                    <a asp-area="Admin" asp-controller="Invoice" asp-action="Index" class="btn btn-outline-primary">Xóa bộ lọc</a>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="invoice-table-wrap" tabindex="0" role="region" aria-label="Danh sách hóa đơn, có thể cuộn">
+                <table class="table gds-table invoice-table">
+                    <caption class="visually-hidden">Hóa đơn bán ra và thông tin đơn hàng, người mua, trạng thái, dòng hàng và giá trị.</caption>
+                    <thead><tr>
+                        <th scope="col">Hóa đơn</th><th scope="col">Đơn hàng</th><th scope="col">HKD phát hành</th>
+                        <th scope="col">Người mua</th><th scope="col">Trạng thái</th><th scope="col">Dòng hàng</th>
+                        <th scope="col" class="text-end">Giá trị hóa đơn</th><th scope="col"><span class="visually-hidden">Thao tác</span></th>
+                    </tr></thead>
+                    <tbody>
+                        @foreach (var item in items)
                         {
-                            var hasLines = item.TotalQuantity > 0 || item.DetailCount > 0;
-
-                            <tr class="@(hasLines ? "invoice-row-has-lines" : "invoice-row-empty")">
-
-                                <td>
-                                    <strong>#@item.Id</strong>
+                            <tr>
+                                <td class="invoice-cell-identity" data-label="Hóa đơn">
+                                    <a asp-area="Admin" asp-controller="Invoice" asp-action="Detail" asp-route-id="@item.Id" class="invoice-reference">#@item.Id</a>
+                                    <time datetime="@item.InvoiceDate.ToString("s")" class="invoice-secondary">@item.InvoiceDate.ToString("dd/MM/yyyy")<span> · @item.InvoiceDate.ToString("HH:mm")</span></time>
                                 </td>
-
-                                <td>
-                                    @item.InvoiceDate.ToString("dd/MM/yyyy HH:mm")
+                                <td data-label="Đơn hàng">
+                                    <strong class="invoice-order">#@(item.OrderId?.ToString() ?? item.LegacySourceId?.ToString())</strong>
+                                    <span class="invoice-secondary">@(item.OrderNumber ?? (item.LegacySourceId.HasValue ? "OrderID GaoStore — chưa liên kết đơn mới" : ""))</span>
+                                    @if (item.LegacySourceId.HasValue)
+                                    {
+                                        <span class="invoice-secondary">GaoStore · Nhóm @item.LegacyOrderCategoryId @(item.LegacyReadOnly ? "· Chỉ tra cứu" : "")</span>
+                                    }
                                 </td>
-
-                                <td>
-                                    <div>
-                                        <strong>
-                                            #@item.OrderId
-                                        </strong>
-                                    </div>
-
-                                    <small class="text-muted">
-                                        @item.OrderNumber
-                                    </small>
-                                </td>
-
-                                <td>
+                                <td data-label="HKD phát hành">
                                     @if (item.LegalEntityId.HasValue)
                                     {
-                                        <span class="badge bg-primary">
-                                            @(string.IsNullOrWhiteSpace(item.LegalEntityCode)
-                                                ? $"HKD #{item.LegalEntityId}"
-                                                : item.LegalEntityCode)
-                                        </span>
-                                        @if (!string.IsNullOrWhiteSpace(item.LegalEntityName))
+                                        <strong>@(string.IsNullOrWhiteSpace(item.LegalEntityCode) ? $"HKD #{item.LegalEntityId}" : item.LegalEntityCode)</strong>
+                                        <span class="invoice-secondary">@item.LegalEntityName</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="invoice-secondary">Chưa gắn HKD</span>
+                                    }
+                                </td>
+                                <td data-label="Người mua">@(string.IsNullOrWhiteSpace(item.BuyerName) ? "Chưa có thông tin" : item.BuyerName)</td>
+                                <td class="invoice-cell-status" data-label="Trạng thái">
+                                    <div class="invoice-status-stack">
+                                        @if (!string.IsNullOrWhiteSpace(item.InvoiceNumber))
                                         {
-                                            <div class="small text-muted mt-1">@item.LegalEntityName</div>
+                                            <span class="gds-status is-success"><i class="bx bx-check-circle" aria-hidden="true"></i> Đã phát hành</span>
+                                            <strong class="invoice-number">@item.InvoiceNumber</strong>
                                         }
-                                    }
-                                    else
+                                        else
+                                        {
+                                            <span class="gds-status is-warning"><i class="bx bx-time-five" aria-hidden="true"></i> Chưa phát hành</span>
+                                        }
+                                        <span class="invoice-lock"><i class="bx @(item.IsLocked ? "bx-lock-alt" : "bx-lock-open-alt")" aria-hidden="true"></i> @(item.IsLocked ? "Đã khóa" : "Chưa khóa")</span>
+                                    </div>
+                                </td>
+                                <td data-label="Dòng hàng">
+                                    <strong class="invoice-quantity">SL: @item.TotalQuantity.ToString("#,0.###", vi)</strong>
+                                    @if (item.TotalQuantity <= 0 && item.DetailCount <= 0)
                                     {
-                                        <span class="badge bg-light text-muted border">Legacy</span>
+                                        <span class="invoice-secondary">Chưa có dòng hàng</span>
                                     }
+                                    <span class="invoice-secondary">Từ đơn: @item.AutoLineCount · Thêm tay: @item.ManualLineCount</span>
                                 </td>
-
-                                <td>
-                                    @if (!string.IsNullOrWhiteSpace(item.InvoiceNumber))
-                                    {
-                                        <span class="badge bg-success">
-                                            @item.InvoiceNumber
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary">
-                                            Chưa phát hành
-                                        </span>
-                                    }
-
-                                    @if (item.IsLocked)
-                                    {
-                                        <span class="badge bg-danger ms-1">
-                                            Đã khóa
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-light text-muted border ms-1">
-                                            Chưa khóa
-                                        </span>
-                                    }
+                                <td class="invoice-cell-money" data-label="Giá trị hóa đơn">
+                                    <strong class="invoice-total">@item.GrandTotal.ToString("N0", vi)</strong>
+                                    <span class="invoice-secondary">Tạm tính: @item.SubTotal.ToString("N0", vi)</span>
+                                    <span class="invoice-secondary">VAT: @item.VatAmount.ToString("N0", vi)</span>
                                 </td>
-
-                                <td>
-                                    @(string.IsNullOrWhiteSpace(item.BuyerName)
-                                        ? "-"
-                                        : item.BuyerName)
-                                </td>
-
-                                <td class="text-end invoice-money">
-                                    @item.TotalQuantity.ToString("N2")
-                                </td>
-
-                                <td class="text-end text-primary fw-semibold invoice-money">
-                                    @item.SubTotal.ToString("N0")
-                                </td>
-
-                                <td class="text-end invoice-money">
-                                    @item.VatAmount.ToString("N0")
-                                </td>
-
-                                <td class="text-end text-danger fw-bold invoice-money">
-                                    @item.GrandTotal.ToString("N0")
-                                </td>
-
-                                <td class="text-center">
-                                    <span class="badge bg-info invoice-badge-count">
-                                        @item.AutoLineCount
-                                    </span>
-                                </td>
-
-                                <td class="text-center">
-                                    <span class="badge bg-warning text-dark invoice-badge-count">
-                                        @item.ManualLineCount
-                                    </span>
-                                </td>
-
-                                <td class="text-end">
-
-                                    <a asp-area="Admin"
-                                           asp-controller="Invoice"
-                                           asp-action="Detail"
-                                           asp-route-id="@item.Id"
-                                           class="btn btn-sm btn-outline-primary">
-
-                                        <i class="bx bx-show"></i>
-                                        Chi tiết
+                                <td class="invoice-cell-action">
+                                    <a asp-area="Admin" asp-controller="Invoice" asp-action="Detail" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary invoice-detail" aria-label="Xem chi tiết hóa đơn @item.Id">
+                                        Chi tiết <i class="bx bx-chevron-right" aria-hidden="true"></i>
                                     </a>
-
                                 </td>
-
                             </tr>
                         }
-                    }
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
-    <!-- PAGING -->
-    @if (Model.TotalPages > 1)
-    {
-        <div class="d-flex justify-content-center mt-3">
-
-            <nav>
-
-                <ul class="pagination">
-
-                    @for (var i = 1; i <= Model.TotalPages; i++)
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (Model.TotalPages > 1)
+        {
+            <nav class="gds-pagination invoice-pagination" aria-label="Phân trang hóa đơn">
+                <span class="gds-pagination__summary">Trang @Model.CurrentPage / @Model.TotalPages</span>
+                <ul class="pagination mb-0">
+                    <li class="page-item @(Model.CurrentPage <= 1 ? "disabled" : "")">
+                        @if (Model.CurrentPage > 1) { <a class="page-link" href="@PageUrl(Model.CurrentPage - 1)" aria-label="Trang trước"><i class="bx bx-chevron-left" aria-hidden="true"></i></a> }
+                        else { <span class="page-link" aria-disabled="true"><i class="bx bx-chevron-left" aria-hidden="true"></i><span class="visually-hidden">Trang trước</span></span> }
+                    </li>
+                    @{ var previousPage = 0; }
+                    @foreach (var page in pageNumbers)
                     {
-                        <li class="page-item @(i == Model.CurrentPage ? "active" : "")">
-
-                            <a class="page-link"
-                                   href="@Url.Action("Index", new
-                                                               {
-                                                                   page = i,
-                                                                   pageSize = q.PageSize,
-                                                                   fromDate = q.FromDate?.ToString("yyyy-MM-dd"),
-                                                                   toDate = q.ToDate?.ToString("yyyy-MM-dd"),
-                                                                   orderId = q.OrderId,
-                                                                   keyword = q.Keyword,
-                                                                   displayMode = (int)q.DisplayMode,
-                                                                   sortMode = (int)q.SortMode
-                                                               })">
-
-                                @i
-
-                            </a>
-
-                        </li>
+                        if (previousPage > 0 && page > previousPage + 1) { <li class="page-item disabled"><span class="page-link">…</span></li> }
+                        <li class="page-item @(page == Model.CurrentPage ? "active" : "")"><a class="page-link" href="@PageUrl(page)" aria-label="Trang @(page)" aria-current="@(page == Model.CurrentPage ? "page" : null)">@(page)</a></li>
+                        previousPage = page;
                     }
-
+                    <li class="page-item @(Model.CurrentPage >= Model.TotalPages ? "disabled" : "")">
+                        @if (Model.CurrentPage < Model.TotalPages) { <a class="page-link" href="@PageUrl(Model.CurrentPage + 1)" aria-label="Trang sau"><i class="bx bx-chevron-right" aria-hidden="true"></i></a> }
+                        else { <span class="page-link" aria-disabled="true"><i class="bx bx-chevron-right" aria-hidden="true"></i><span class="visually-hidden">Trang sau</span></span> }
+                    </li>
                 </ul>
-
             </nav>
-
-        </div>
-    }
-
+        }
+    </section>
+  </div>
 </div>

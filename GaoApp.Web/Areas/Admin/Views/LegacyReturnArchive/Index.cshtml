@@ -1,0 +1,40 @@
+@model GaoApp.Web.Areas.Admin.Models.LegacyReturnArchivePage
+@{
+    ViewData["Title"] = "Trả hàng cũ chưa liên kết";
+    Layout = "_ContentNavbarLayout";
+}
+<div class="card">
+    <div class="card-header">
+        <a href="/admin/pos/orders-page">← Đơn hàng POS</a>
+        <h1 class="h4 mt-3">Trả hàng cũ chưa liên kết</h1>
+        <p class="text-muted">Lịch sử GaoStore thiếu liên kết đơn bán gốc. Chỉ dùng để tra cứu, không phát sinh nhập kho hoặc hoàn tiền.</p>
+        <form method="get" class="d-flex gap-2">
+            <label class="visually-hidden" for="legacy-search">Mã phiếu, khách hàng hoặc nhân viên</label>
+            <input id="legacy-search" name="search" value="@Model.Search" maxlength="200" class="form-control" placeholder="Mã phiếu, khách hàng hoặc nhân viên" />
+            <button class="btn btn-primary" type="submit">Tìm kiếm</button>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead><tr><th>Mã phiếu cũ</th><th>Ngày (UTC+7)</th><th>Khách hàng</th><th>Nhân viên</th><th class="text-end">Số tiền nguồn</th></tr></thead>
+            <tbody>
+            @foreach (var item in Model.Items)
+            {
+                <tr>
+                    <td><a href="/admin/pos/legacy-returns/@item.LegacyOrderId">@item.LegacyOrderId</a></td>
+                    <td>@(item.OccurredAtUtc?.AddHours(7).ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                    <td>@(item.CustomerName ?? "—")</td><td>@(item.EmployeeName ?? "—")</td>
+                    <td class="text-end">@(item.SourceTotal?.ToString("N0") ?? "—")</td>
+                </tr>
+            }
+            @if (Model.Items.Count == 0) { <tr><td colspan="5">Không có phiếu phù hợp.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer d-flex gap-3 align-items-center">
+        <span>@Model.Total.ToString("N0") phiếu · Trang @Model.Page</span>
+        @if (Model.Page > 1) { <a asp-action="Index" asp-route-search="@Model.Search" asp-route-page="@(Model.Page-1)">Trang trước</a> }
+        @if ((long)Model.Page * GaoApp.Web.Areas.Admin.Models.LegacyReturnArchivePage.PageSize < Model.Total)
+        { <a asp-action="Index" asp-route-search="@Model.Search" asp-route-page="@(Model.Page+1)">Trang sau</a> }
+    </div>
+</div>

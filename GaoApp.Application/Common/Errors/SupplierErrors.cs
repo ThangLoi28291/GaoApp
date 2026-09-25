@@ -13,6 +13,11 @@ public static class SupplierErrors
     public static Error DuplicateName(string name) =>
         new("Supplier.DuplicateName", $"Tên nhà cung cấp '{name}' đã tồn tại.");
 
+    public static readonly Error DuplicateActiveTaxCode =
+        new(
+            "Supplier.DuplicateActiveTaxCode",
+            "Đã có nhà cung cấp đang hoạt động cùng mã số thuế trong cửa hàng.");
+
     public static readonly Error CreateFailed =
         new("Supplier.CreateFailed", "Tạo nhà cung cấp thất bại.");
 

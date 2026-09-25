@@ -30,35 +30,55 @@ public class ProductAttributeController : BaseAdminController
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index(string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Index(
+        string? search = "",
+        bool? status = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return View(new ProductAttributeIndexVM
         {
             SearchString = search,
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalAttributeCount = summary.TotalItems,
+            ActiveAttributeCount = summary.ActiveItems,
+            InactiveAttributeCount = summary.InactiveItems,
             Paged = paged
         });
     }
 
     [HttpGet]
-    public async Task<IActionResult> Search(string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Search(
+        string? search = "",
+        bool? status = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return PartialView("_ProductAttributeTable", new ProductAttributeIndexVM
         {
             SearchString = search,
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalAttributeCount = summary.TotalItems,
+            ActiveAttributeCount = summary.ActiveItems,
+            InactiveAttributeCount = summary.InactiveItems,
             Paged = paged
         });
     }

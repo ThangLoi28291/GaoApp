@@ -41,6 +41,7 @@ public sealed class PurchaseReceiptAuditEventConfiguration
             .HasDatabaseName(
                 "IX_PurchaseReceiptAuditEvents_Store_Document_Occurred_Id");
         builder.HasIndex(x => x.StockDocumentLineId);
+        builder.HasIndex(x => x.StockDocumentProvisionalItemId);
 
         builder.HasOne(x => x.Store)
             .WithMany()
@@ -53,6 +54,10 @@ public sealed class PurchaseReceiptAuditEventConfiguration
         builder.HasOne(x => x.StockDocumentLine)
             .WithMany()
             .HasForeignKey(x => x.StockDocumentLineId)
+            .OnDelete(DeleteBehavior.ClientNoAction);
+        builder.HasOne(x => x.StockDocumentProvisionalItem)
+            .WithMany()
+            .HasForeignKey(x => x.StockDocumentProvisionalItemId)
             .OnDelete(DeleteBehavior.ClientNoAction);
     }
 }

@@ -1,0 +1,3323 @@
+/* =========================================================
+   GAOAPP POS — CASHIER COCKPIT v0.2 / P1
+
+   Scope:
+   - Presentation shell only.
+   - Loaded after legacy pos.css.
+   - No business behavior.
+========================================================= */
+
+.pos-cockpit-v2 {
+    --pos-v2-gap: 12px;
+    --pos-v2-radius: 14px;
+    --pos-v2-border: #e5e7eb;
+    --pos-v2-muted: #667085;
+    --pos-v2-text: #101828;
+    --pos-v2-soft: #f8fafc;
+    --pos-v2-primary: #2563eb;
+    --pos-v2-primary-dark: #1d4ed8;
+    --pos-v2-success: #16a34a;
+    --pos-v2-warning: #b54708;
+    --pos-v2-danger: #dc2626;
+    --pos-v2-checkout-width: 360px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--pos-v2-gap);
+    min-width: 0;
+    color: var(--pos-v2-text);
+}
+
+    /* =========================================================
+   1. COCKPIT HEADER
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-header {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 48px;
+        padding: 8px 12px;
+        border: 1px solid var(--pos-v2-border);
+        border-radius: var(--pos-v2-radius);
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, .05);
+        z-index: 100;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-header__identity {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-header__title {
+        flex: 0 0 auto;
+        font-size: 1rem;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: .035em;
+        color: #0f172a;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-header__context {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        color: #475467;
+        font-size: .84rem;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-context-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-context-item span,
+        .pos-cockpit-v2 .pos-cockpit-context-item strong {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-context-item i {
+            flex: 0 0 auto;
+            color: #64748b;
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-context-divider {
+        flex: 0 0 auto;
+        color: #cbd5e1;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-header__actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-readiness {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 38px;
+        padding: 0 10px;
+        border-radius: 10px;
+        font-size: .82rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-readiness.is-ready {
+            background: #ecfdf3;
+            color: #027a48;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-readiness.is-warning {
+            background: #fffaeb;
+            color: var(--pos-v2-warning);
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-readiness__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow: 0 0 0 3px rgba(22, 163, 74, .10);
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-header-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 38px;
+        padding: 0 10px;
+        border: 1px solid #d0d5dd;
+        border-radius: 10px;
+        background: #fff;
+        color: #344054;
+        font-size: .82rem;
+        font-weight: 800;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-header-button:hover {
+            border-color: #98a2b3;
+            background: #f9fafb;
+            color: #101828;
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-more-button {
+        width: 38px;
+        padding: 0;
+        font-size: 1.25rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-menu {
+        min-width: 220px;
+        padding: 6px;
+        border-radius: 12px;
+        border-color: #e4e7ec;
+        box-shadow: 0 14px 36px rgba(16, 24, 40, .14);
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-menu .dropdown-item {
+            display: flex;
+            align-items: center;
+            min-height: 40px;
+            border-radius: 8px;
+            font-weight: 700;
+        }
+
+    /* =========================================================
+   2. HELD ORDERS — HEADER MODE
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-held-slot {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher {
+            width: auto;
+            min-width: 122px;
+            min-height: 38px;
+            border: 1px solid #d0d5dd;
+            border-radius: 10px;
+            background: #fff;
+            color: #344054;
+            box-shadow: none;
+        }
+
+            .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher:hover {
+                border-color: #98a2b3;
+                background: #f9fafb;
+                box-shadow: none;
+                transform: none;
+            }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__main {
+            padding: 0 10px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            margin: 0;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__title {
+            font-size: 0;
+            line-height: 1;
+        }
+
+            .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__title::after {
+                content: "Đơn giữ";
+                font-size: .82rem;
+                font-weight: 800;
+                color: #344054;
+            }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__total {
+            min-width: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #2563eb;
+            font-size: .78rem;
+            font-weight: 900;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__stats,
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__footer,
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__hint,
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher__hint-key {
+            display: none;
+        }
+
+    /* =========================================================
+   3. SHORTCUT PANEL
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-shortcuts {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 48px;
+        width: min(420px, calc(100vw - 32px));
+        padding: 12px;
+        border: 1px solid #e4e7ec;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 18px 44px rgba(16, 24, 40, .16);
+        z-index: 120;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-shortcuts__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-shortcuts__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #667085;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-shortcuts__grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 12px;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-shortcuts__grid > div {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            font-size: .82rem;
+            color: #475467;
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-shortcuts kbd {
+        min-width: 56px;
+        padding: 4px 6px;
+        border-radius: 6px;
+        background: #f2f4f7;
+        color: #344054;
+        box-shadow: none;
+        text-align: center;
+        font-size: .74rem;
+    }
+
+    /* =========================================================
+   4. COMMAND CENTER
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-command {
+        position: relative;
+        z-index: 80;
+        padding: 10px 12px;
+        border: 1px solid var(--pos-v2-border);
+        border-radius: var(--pos-v2-radius);
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, .04);
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-command__label {
+        display: block;
+        margin-bottom: 5px;
+        color: #475467;
+        font-size: .78rem;
+        font-weight: 800;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-search {
+        position: relative;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-search__icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        z-index: 2;
+        transform: translateY(-50%);
+        color: #667085;
+        font-size: 1.25rem;
+        pointer-events: none;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-search__input {
+        height: 50px;
+        padding-left: 46px;
+        border-radius: 11px;
+        border-color: #d0d5dd;
+        background: #fff;
+        font-size: 1rem;
+        font-weight: 700;
+        box-shadow: none;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-search__input:focus {
+            border-color: #84adff;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, .10);
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-command__hints {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-command-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-height: 30px;
+        padding: 4px 9px;
+        border: 1px solid #e4e7ec;
+        border-radius: 999px;
+        background: #f9fafb;
+        color: #475467;
+        font-size: .76rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-command-chip:hover {
+            border-color: #b2ccff;
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-command-chip__symbol {
+        color: #2563eb;
+        font-weight: 900;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-command-chip--shortcuts {
+        margin-left: auto;
+    }
+
+    /* =========================================================
+   5. MAIN WORKSPACE
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--pos-v2-checkout-width);
+        gap: var(--pos-v2-gap);
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-pane,
+    .pos-cockpit-v2 .pos-cockpit-checkout {
+        min-width: 0;
+        min-height: 0;
+        border: 1px solid var(--pos-v2-border);
+        border-radius: var(--pos-v2-radius);
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, .04);
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-pane {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        min-height: 48px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #eaecf0;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-heading > div:first-child {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-heading__title {
+        font-size: .84rem;
+        font-weight: 900;
+        letter-spacing: .035em;
+        color: #101828;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-heading__count {
+        color: #667085;
+        font-size: .78rem;
+        font-weight: 800;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-heading__hint {
+        color: #98a2b3;
+        font-size: .75rem;
+        font-weight: 700;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-cart-body {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-body > .pos-cart-card {
+            height: 100%;
+            margin: 0;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            overflow: hidden;
+        }
+
+            .pos-cockpit-v2 .pos-cockpit-cart-body > .pos-cart-card > .card-body {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                min-height: 0;
+                padding: 0;
+            }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-body .pos-table-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-body .pos-cart-scroll {
+            height: 100%;
+            max-height: none;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-body .pos-line-table {
+            margin-bottom: 0;
+        }
+
+            .pos-cockpit-v2 .pos-cockpit-cart-body .pos-line-table thead {
+                position: sticky;
+                top: 0;
+                z-index: 8;
+                background: #fff;
+            }
+
+    .pos-cockpit-v2 #paymentListBox:not(:empty) {
+        flex: 0 0 auto;
+        padding: 8px 12px 12px;
+        border-top: 1px solid #eaecf0;
+    }
+
+    /* =========================================================
+   6. UNIFIED CHECKOUT PANEL
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-checkout {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: #fff;
+        scrollbar-width: thin;
+        scrollbar-color: #d0d5dd transparent;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-section {
+        padding: 12px 14px;
+        border-bottom: 1px solid #eaecf0;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-section__header,
+    .pos-cockpit-v2 .pos-cockpit-summary-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-section__eyebrow {
+        color: #475467;
+        font-size: .75rem;
+        font-weight: 900;
+        letter-spacing: .055em;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-section__icon-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        border-radius: 8px;
+        background: #f2f4f7;
+        color: #475467;
+        cursor: pointer;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-section__icon-action:hover {
+            background: #e9efff;
+            color: #1d4ed8;
+        }
+
+    /* Customer */
+
+    .pos-cockpit-v2 .pos-customer-box-checkout {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+
+        .pos-cockpit-v2 .pos-customer-box-checkout .pos-customer-name {
+            font-size: .98rem;
+            font-weight: 900;
+        }
+
+        .pos-cockpit-v2 .pos-customer-box-checkout .pos-customer-phone {
+            font-size: .82rem;
+        }
+
+        .pos-cockpit-v2 .pos-customer-box-checkout .pos-customer-reward-box {
+            padding: 8px 10px;
+            border: 1px solid #e4e7ec;
+            border-radius: 10px;
+            background: #f8fafc;
+        }
+
+        .pos-cockpit-v2 .pos-customer-box-checkout .pos-customer-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+
+            .pos-cockpit-v2 .pos-customer-box-checkout .pos-customer-actions .btn {
+                min-height: 34px;
+                font-size: .76rem;
+            }
+    /* Order tools */
+
+    .pos-cockpit-v2 .pos-cockpit-order-tools {
+        padding-top: 10px;
+    }
+
+    .pos-cockpit-v2 .pos-order-tools-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .pos-cockpit-v2 .pos-order-tool {
+        min-width: 0;
+        padding: 8px 9px;
+        border: 1px solid #e4e7ec;
+        border-radius: 10px;
+        background: #f9fafb;
+    }
+
+    .pos-cockpit-v2 .pos-order-tool:not(.is-collapsed) {
+        grid-column: 1 / -1;
+        background: #fff;
+    }
+
+    .pos-cockpit-v2 .pos-meta-section__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .pos-cockpit-v2 .pos-meta-section__header > div {
+        min-width: 0;
+    }
+
+    .pos-cockpit-v2 .pos-meta-section__title {
+        color: #344054;
+        font-size: .72rem;
+        font-weight: 850;
+        line-height: 1.15;
+    }
+
+    .pos-cockpit-v2 .pos-meta-summary {
+        margin-top: 2px;
+        overflow: hidden;
+        color: #98a2b3;
+        font-size: .62rem;
+        font-weight: 650;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pos-cockpit-v2 .pos-meta-toggle {
+        flex: 0 0 auto;
+        min-width: 44px;
+        min-height: 28px;
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: .66rem;
+        font-weight: 800;
+    }
+
+    .pos-cockpit-v2 .pos-order-tool .pos-note-box {
+        margin-top: 8px;
+    }
+
+    .pos-cockpit-v2
+    .pos-order-tools-grid
+    > .pos-applied-voucher-box {
+        grid-column: 1 / -1;
+        margin: 0;
+    }
+
+    /* Persistent total */
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__summary {
+        flex: 0 0 auto;
+        border-top: 1px solid #eaecf0;
+        background: #fff;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-section {
+        padding: 12px 14px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown__item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        min-width: 0;
+        padding: 6px 7px;
+        border: 1px solid #eaecf0;
+        border-radius: 8px;
+        background: #f9fafb;
+        font-size: .68rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown__item span {
+        min-width: 0;
+        overflow: hidden;
+        color: #667085;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown__item strong {
+        flex: 0 0 auto;
+        color: #344054;
+        font-size: .72rem;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero {
+        margin: 8px 0 10px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__label {
+        margin-bottom: 3px;
+        color: #667085;
+        font-size: .78rem;
+        font-weight: 800;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__value {
+        color: #101828;
+        font-size: 2rem;
+        line-height: 1.05;
+        font-weight: 950;
+        letter-spacing: -.025em;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__state {
+        margin-top: 4px;
+        font-size: .76rem;
+        font-weight: 700;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero--due .pos-summary-hero__state {
+        color: #b42318;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero--paid .pos-summary-hero__state {
+        color: #027a48;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero--change .pos-summary-hero__state {
+        color: #026aa2;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-payment-status {
+        display: grid;
+        gap: 5px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-payment-status__row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: .84rem;
+        font-weight: 800;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-payment-status__row span {
+            color: #667085;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-payment-status__row strong {
+            color: #344054;
+            font-size: .94rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-payment-status__row.is-due strong {
+            color: #b42318;
+        }
+    .pos-cockpit-v2 .pos-cockpit-checkout__scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__scroll::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__scroll::-webkit-scrollbar-thumb {
+        background: #d0d5dd;
+        border-radius: 999px;
+    }
+    /* =========================================================
+   7. NEXT ACTION
+========================================================= */
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__actions {
+        flex: 0 0 auto;
+        padding: 10px 12px 12px;
+        border-top: 1px solid #eaecf0;
+        background: #fff;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions {
+        display: block;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-primary-actions {
+        display: grid;
+        gap: 7px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-secondary-actions {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 7px;
+        margin-top: 7px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions .pos-action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 42px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: .88rem;
+        font-weight: 900;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions .shortcut-badge {
+        margin-left: 3px;
+        padding: 3px 6px;
+        border-radius: 6px;
+        background: rgba(255,255,255,.22);
+        color: inherit;
+        font-size: .67rem;
+        font-weight: 900;
+    }
+
+    /* Default / payment due: Payment is primary */
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-empty #btnOpenPayment,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnOpenPayment {
+        border-color: var(--pos-v2-primary);
+        background: var(--pos-v2-primary);
+        color: #fff;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-empty #btnFinalizeCart,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnFinalizeCart {
+        border-color: #d0d5dd;
+        background: #fff;
+        color: #667085;
+    }
+    .pos-cockpit-v2 .pos-cockpit-cart-scroll,
+    .pos-cockpit-v2 .pos-cart-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: #d0d5dd transparent;
+    }
+
+    /* Paid/change: Finalize becomes primary */
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-paid #btnFinalizeCart,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-change #btnFinalizeCart {
+        border-color: var(--pos-v2-success);
+        background: var(--pos-v2-success);
+        color: #fff;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-paid #btnOpenPayment,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-change #btnOpenPayment {
+        border-color: #d0d5dd;
+        background: #fff;
+        color: #475467;
+    }
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnFinalizeCart,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-empty #btnFinalizeCart {
+        min-height: 36px;
+        font-size: .78rem;
+        border-color: transparent;
+        background: transparent;
+        color: #98a2b3;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnOpenPayment {
+        min-height: 48px;
+        font-size: .94rem;
+    }
+
+    /* Secondary actions */
+
+    .pos-cockpit-v2 #btnHoldCart {
+        border-color: #e4e7ec;
+        background: #f9fafb;
+        color: #344054;
+    }
+
+    .pos-cockpit-v2 #btnCancelCart {
+        min-width: 82px;
+        border-color: transparent;
+        background: transparent;
+        color: #b42318;
+    }
+
+        .pos-cockpit-v2 #btnCancelCart:hover {
+            background: #fff1f0;
+        }
+
+/* =========================================================
+   8. DESKTOP VIEWPORT BEHAVIOR
+========================================================= */
+
+@media (min-width: 992px) {
+    .pos-cockpit-v2 {
+        height: var(--pos-cockpit-available-height, calc(100dvh - 78px));
+        min-height: 560px;
+        overflow: hidden;
+    }
+}
+
+/* 1366 / compact cashier mode */
+
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+    .pos-cockpit-v2 {
+        --pos-v2-gap: 10px;
+        --pos-v2-checkout-width: 350px;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-header {
+            min-height: 44px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-context-item {
+            max-width: 150px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-header-button__label {
+            display: none;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-command {
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-search__input {
+            height: 46px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-command__hints {
+            margin-top: 6px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-command-chip {
+            min-height: 28px;
+            padding-top: 3px;
+            padding-bottom: 3px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-section {
+            padding: 10px 12px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-summary-section {
+            padding: 10px 12px;
+        }
+
+        .pos-cockpit-v2 .pos-summary-hero__value {
+            font-size: 1.8rem;
+        }
+}
+
+/* Small desktop / landscape tablet */
+
+@media (min-width: 992px) and (max-width: 1099.98px) {
+    .pos-cockpit-v2 {
+        --pos-v2-checkout-width: 310px;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-header__context {
+            display: none;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-readiness {
+            display: none;
+        }
+}
+
+/* =========================================================
+   9. MOBILE / TABLET FALLBACK
+   Full mobile polish belongs to P5.
+========================================================= */
+
+@media (max-width: 991.98px) {
+    .pos-cockpit-v2 {
+        min-height: 0;
+        height: auto;
+        overflow: visible;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-header {
+            flex-wrap: wrap;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-header__identity {
+            width: 100%;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-header__context {
+            flex-wrap: wrap;
+            white-space: normal;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-header__actions {
+            width: 100%;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-workspace {
+            grid-template-columns: 1fr;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-cart-pane {
+            min-height: 480px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-checkout__scroll {
+            flex: none;
+            min-height: 0;
+            overflow: visible;
+        }
+
+        .pos-cockpit-v2 .pos-order-tools-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pos-cockpit-v2 .pos-order-tool,
+        .pos-cockpit-v2 .pos-order-tool:not(.is-collapsed) {
+            grid-column: auto;
+        }
+}
+
+@media (max-width: 575.98px) {
+    .pos-cockpit-v2 {
+        --pos-v2-gap: 8px;
+    }
+
+        .pos-cockpit-v2 .pos-cockpit-header {
+            padding: 8px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-header__context {
+            display: none;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-readiness {
+            min-height: 34px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-held-slot .pos-held-summary-launcher {
+            min-width: 108px;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-command-chip--shortcuts {
+            margin-left: 0;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-shortcuts {
+            right: 0;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-shortcuts__grid {
+            grid-template-columns: 1fr;
+        }
+
+        .pos-cockpit-v2 .pos-cockpit-secondary-actions {
+            grid-template-columns: 1fr 1fr;
+        }
+}
+
+/* =========================================================
+   GAOAPP POS — CART & SCAN INTERACTION / P2
+   - Compact cashier rows
+   - Horizontal quantity
+   - Context actions
+   - Promotion / gift hierarchy
+========================================================= */
+
+.pos-cockpit-v2 .pos-line-table {
+    width: 100%;
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+
+.pos-cockpit-v2 .pos-col-product {
+    width: auto;
+}
+
+.pos-cockpit-v2 .pos-col-qty {
+    width: 145px;
+    text-align: center;
+}
+
+.pos-cockpit-v2 .pos-col-price {
+    width: 100px;
+    text-align: center;
+}
+
+.pos-cockpit-v2 .pos-col-total {
+    width: 112px;
+    text-align: center;
+}
+
+.pos-cockpit-v2 .pos-col-actions {
+    width: 52px;
+    text-align: center;
+}
+
+.pos-cockpit-v2 .pos-line-table thead th {
+    padding: 9px 8px;
+    font-size: .74rem;
+    letter-spacing: .045em;
+}
+
+.pos-cockpit-v2 .pos-line-table tbody td {
+    padding: 8px;
+    vertical-align: middle;
+}
+
+.pos-cockpit-v2 .pos-line-row {
+    height: 84px;
+    transition: background-color .16s ease, box-shadow .16s ease;
+}
+
+.pos-cockpit-v2 .pos-line-thumb-wrap,
+.pos-cockpit-v2 .pos-line-thumb-placeholder {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+    border-radius: 9px;
+}
+
+.pos-cockpit-v2 .pos-line-name {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: #1d2939;
+    font-size: .9rem;
+    font-weight: 850;
+    line-height: 1.25;
+}
+
+.pos-cockpit-v2 .pos-line-submeta {
+    margin-top: 3px;
+    color: #667085;
+    font-size: .72rem;
+    font-weight: 650;
+    line-height: 1.25;
+}
+
+.pos-cockpit-v2 .pos-line-adjustment-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #fffaeb;
+    color: #b54708;
+    font-size: .68rem;
+    font-weight: 750;
+}
+
+    .pos-cockpit-v2 .pos-line-adjustment-note strong {
+        font-weight: 900;
+    }
+
+/* =========================================================
+   QUANTITY
+========================================================= */
+
+.pos-cockpit-v2 .pos-qty-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+    .pos-cockpit-v2 .pos-qty-inline .qty-btn {
+        width: 32px;
+        min-width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 9px;
+        font-size: 1rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+
+    .pos-cockpit-v2 .pos-qty-inline .qty-input {
+        width: 48px;
+        height: 32px;
+        padding: 2px 4px;
+        border-radius: 9px;
+        text-align: center;
+        font-size: .84rem;
+        font-weight: 900;
+    }
+
+        .pos-cockpit-v2
+        .pos-qty-inline
+        .qty-input::-webkit-inner-spin-button,
+        .pos-cockpit-v2
+        .pos-qty-inline
+        .qty-input::-webkit-outer-spin-button {
+            margin: 0;
+            appearance: none;
+        }
+
+.pos-cockpit-v2 .pos-qty-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 3px;
+    color: #475467;
+    font-size: .7rem;
+    font-weight: 750;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.pos-cockpit-v2 .pos-qty-base {
+    color: #98a2b3;
+    font-weight: 650;
+}
+
+/* =========================================================
+   MONEY
+========================================================= */
+
+.pos-cockpit-v2 .pos-line-money,
+.pos-cockpit-v2 .pos-line-total {
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-cockpit-v2 .pos-line-money {
+    color: #475467;
+    font-size: .86rem;
+    font-weight: 750;
+}
+
+.pos-cockpit-v2 .pos-line-total {
+    color: #101828;
+    font-size: .94rem;
+    font-weight: 900;
+}
+
+.pos-cockpit-v2 .pos-line-price-stack {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+}
+
+.pos-cockpit-v2 .pos-line-original-price {
+    font-size: .68rem;
+    line-height: 1.1;
+}
+
+.pos-cockpit-v2 .pos-line-promo-price {
+    font-size: .88rem;
+    line-height: 1.1;
+}
+
+.pos-cockpit-v2 .pos-line-promo-badge,
+.pos-cockpit-v2 .pos-line-gift-badge {
+    max-width: 94px;
+    padding: 2px 5px;
+    font-size: .62rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pos-cockpit-v2 .pos-line-promo-save,
+.pos-cockpit-v2 .pos-line-gift-note {
+    font-size: .62rem;
+    line-height: 1.2;
+}
+
+/* =========================================================
+   CONTEXT ACTION MENU
+========================================================= */
+
+.pos-cockpit-v2 .pos-line-actions-cell {
+    text-align: center;
+    white-space: nowrap;
+}
+
+.pos-cockpit-v2 .pos-line-actions {
+    display: inline-block;
+}
+
+.pos-cockpit-v2 .pos-line-actions-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: #667085;
+    font-size: 1.25rem;
+}
+
+    .pos-cockpit-v2 .pos-line-actions-toggle:hover,
+    .pos-cockpit-v2 .pos-line-actions-toggle:focus-visible {
+        border-color: #d0d5dd;
+        background: #f2f4f7;
+        color: #101828;
+    }
+
+.pos-cockpit-v2 .pos-line-actions-menu {
+    min-width: 190px;
+    padding: 6px;
+    border: 1px solid #e4e7ec;
+    border-radius: 12px;
+    box-shadow: 0 14px 32px rgba(16, 24, 40, .16);
+}
+
+    .pos-cockpit-v2 .pos-line-actions-menu .dropdown-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 7px 9px;
+        border-radius: 8px;
+        font-size: .78rem;
+        font-weight: 700;
+    }
+
+        .pos-cockpit-v2
+        .pos-line-actions-menu
+        .dropdown-item i {
+            width: 18px;
+            text-align: center;
+            font-size: 1rem;
+        }
+
+.pos-cockpit-v2 .pos-gift-lock-text {
+    color: #98a2b3;
+    font-size: .7rem;
+    font-weight: 750;
+}
+
+/* =========================================================
+   ACTIVE / FEEDBACK
+========================================================= */
+
+/*
+ * Legacy pos.css already owns the active-row background /
+ * left accent. P2 removes only the extra "Đang chọn" label.
+ */
+.pos-cockpit-v2
+.pos-line-table
+tbody
+tr.is-active-line
+.pos-line-name-cell::after {
+    content: none;
+    display: none;
+}
+
+@keyframes posCockpitLineAdded {
+    0% {
+        background-color: #d1fadf;
+    }
+
+    45% {
+        background-color: #ecfdf3;
+    }
+
+    100% {
+        background-color: transparent;
+    }
+}
+
+.pos-cockpit-v2 .pos-line-row.pos-line-just-added {
+    animation: posCockpitLineAdded .85s ease-out;
+}
+
+/* Normal rows remain quiet. */
+.pos-cockpit-v2
+.pos-line-row:not(.is-active-line):not(.is-promotion-gift) {
+    background-color: #fff;
+}
+
+/* Exceptions may attract attention. */
+.pos-cockpit-v2 .pos-line-row.is-promotion-gift {
+    background: linear-gradient( 90deg, #f0fdf4 0%, #ffffff 58% );
+}
+
+.pos-cockpit-v2 .pos-line-combo-badge {
+    max-width: 210px;
+    margin-top: 4px;
+    padding: 2px 6px;
+    font-size: .66rem;
+}
+
+/* =========================================================
+   1366 / COMPACT CASHIER MODE
+========================================================= */
+
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+
+    .pos-cockpit-v2 .pos-col-qty {
+        width: 132px;
+    }
+
+    .pos-cockpit-v2 .pos-col-price {
+        width: 92px;
+    }
+
+    .pos-cockpit-v2 .pos-col-total {
+        width: 102px;
+    }
+
+    .pos-cockpit-v2 .pos-col-actions {
+        width: 46px;
+    }
+
+    .pos-cockpit-v2 .pos-line-table tbody td {
+        padding: 6px 7px;
+    }
+
+    .pos-cockpit-v2 .pos-line-row {
+        height: 78px;
+    }
+
+    .pos-cockpit-v2 .pos-line-thumb-wrap,
+    .pos-cockpit-v2 .pos-line-thumb-placeholder {
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+    }
+
+    .pos-cockpit-v2 .pos-line-name {
+        font-size: .86rem;
+    }
+
+    .pos-cockpit-v2 .pos-line-submeta {
+        font-size: .69rem;
+    }
+
+    .pos-cockpit-v2 .pos-qty-inline .qty-btn {
+        width: 30px;
+        min-width: 30px;
+        height: 30px;
+    }
+
+    .pos-cockpit-v2 .pos-qty-inline .qty-input {
+        width: 44px;
+        height: 30px;
+    }
+}
+
+/* =========================================================
+   MOBILE FALLBACK
+   Full mobile redesign remains P5.
+========================================================= */
+
+@media (max-width: 767.98px) {
+
+    .pos-cockpit-v2 .pos-line-table {
+        table-layout: auto;
+    }
+
+    .pos-cockpit-v2 .pos-qty-inline {
+        justify-content: flex-start;
+    }
+
+    .pos-cockpit-v2 .pos-qty-summary {
+        justify-content: flex-start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .pos-cockpit-v2 .pos-line-row.pos-line-just-added {
+        animation: none;
+    }
+}
+/* P2 bounded remediation:
+   desktop cart must not require horizontal scrolling. */
+
+@media (min-width: 992px) {
+
+    .pos-cockpit-v2 .pos-cart-scroll {
+        overflow-x: hidden;
+    }
+
+    .pos-cockpit-v2 .pos-line-table {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .pos-cockpit-v2 .pos-line-name-cell {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .pos-cockpit-v2 .pos-line-product-wrap,
+    .pos-cockpit-v2 .pos-line-name-main {
+        min-width: 0;
+    }
+}
+/* =========================================================
+   P2.1 — PROMOTION GIFT RELATIONSHIP
+   Gift rows remain aligned financially but read as subordinate
+   to normal sale lines.
+========================================================= */
+
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-name-cell {
+    position: relative;
+}
+
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-product-wrap {
+    position: relative;
+    padding-left: 18px;
+}
+
+    /* subtle hierarchy rail */
+    .pos-cockpit-v2
+    .pos-line-row.is-promotion-gift
+    .pos-line-product-wrap::before {
+        content: "";
+        position: absolute;
+        left: 2px;
+        top: 5px;
+        bottom: 5px;
+        width: 2px;
+        border-radius: 999px;
+        background: #86efac;
+    }
+
+/* explicit relationship label */
+.pos-cockpit-v2 .pos-gift-relation {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+    color: #15803d;
+    font-size: .64rem;
+    font-weight: 850;
+    letter-spacing: .025em;
+    text-transform: uppercase;
+}
+
+    .pos-cockpit-v2 .pos-gift-relation i {
+        font-size: .82rem;
+    }
+
+/* Gift product itself is intentionally quieter
+   than a paid sale row. */
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-name {
+    color: #344054;
+    font-size: .82rem;
+    font-weight: 760;
+}
+
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-submeta {
+    color: #98a2b3;
+}
+
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-thumb-wrap,
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-thumb-placeholder {
+    opacity: .78;
+}
+
+/* Remove redundant visual weight from the old inline gift label.
+   Relationship is now communicated by pos-gift-relation + badge. */
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-gift-inline-label {
+    display: none;
+}
+
+/* Keep the promo reason useful but subordinate. */
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-gift-badge {
+    display: inline-flex;
+    margin-top: 3px;
+    font-size: .65rem;
+}
+
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-gift-note {
+    margin-top: 2px;
+    color: #667085;
+    font-size: .65rem;
+    font-weight: 650;
+}
+
+/* Financial columns remain aligned with paid products. */
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-money-cell,
+.pos-cockpit-v2
+.pos-line-row.is-promotion-gift
+.pos-line-total-cell {
+    opacity: .66;
+}
+/* =========================================================
+   GAOAPP POS — CHECKOUT / PAYMENT WORKSPACE P3
+========================================================= */
+
+.pos-payment-workspace-modal .pos-payment-workspace-dialog {
+    width: min(480px, calc(100vw - 28px));
+    max-width: 480px;
+    min-height: calc(100% - 28px);
+    margin: 14px 14px 14px auto;
+    display: flex;
+    align-items: stretch;
+}
+
+.pos-payment-workspace-modal .pos-payment-workspace {
+    width: 100%;
+    max-height: calc(100dvh - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 22px 60px rgba(16, 24, 40, .22);
+}
+
+.pos-payment-workspace__header {
+    flex: 0 0 auto;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid #eaecf0;
+}
+
+.pos-payment-workspace__eyebrow {
+    margin-bottom: 3px;
+    color: #667085;
+    font-size: .68rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+}
+
+.pos-payment-workspace__title {
+    margin: 0;
+    color: #101828;
+    font-size: 1.15rem;
+    font-weight: 900;
+}
+
+.pos-payment-workspace__subtitle {
+    margin-top: 3px;
+    color: #667085;
+    font-size: .76rem;
+    line-height: 1.35;
+}
+
+.pos-payment-workspace__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 16px;
+    scrollbar-width: thin;
+    scrollbar-color: #d0d5dd transparent;
+}
+
+    .pos-payment-workspace__body::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .pos-payment-workspace__body::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: #d0d5dd;
+    }
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.pos-payment-workspace-summary {
+    padding: 14px;
+    border: 1px solid #dbe7ff;
+    border-radius: 14px;
+    background: linear-gradient( 135deg, #f8fbff 0%, #eef5ff 100% );
+}
+
+.pos-payment-workspace-total__label {
+    color: #667085;
+    font-size: .75rem;
+    font-weight: 800;
+}
+
+.pos-payment-workspace-total__value {
+    margin-top: 2px;
+    color: #101828;
+    font-size: 2.15rem;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: -.035em;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-payment-workspace-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #dbe7ff;
+}
+
+.pos-payment-summary-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    color: #667085;
+    font-size: .75rem;
+}
+
+    .pos-payment-summary-item strong {
+        color: #344054;
+        font-size: .8rem;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pos-payment-summary-item.is-due strong {
+        color: #b42318;
+    }
+
+    .pos-payment-summary-item.is-paid strong {
+        color: #027a48;
+    }
+
+    .pos-payment-summary-item.is-change strong {
+        color: #026aa2;
+    }
+
+/* =========================================================
+   FORM SECTIONS
+========================================================= */
+
+.pos-payment-workspace-section {
+    margin-top: 14px;
+}
+
+.pos-payment-workspace-section__label {
+    margin-bottom: 7px;
+    color: #475467;
+    font-size: .73rem;
+    font-weight: 900;
+    letter-spacing: .035em;
+}
+
+/* =========================================================
+   METHOD SEGMENTS
+========================================================= */
+
+.pos-payment-method-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.pos-payment-method-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 7px 8px;
+    border: 1px solid #d0d5dd;
+    border-radius: 10px;
+    background: #fff;
+    color: #475467;
+    font-size: .75rem;
+    font-weight: 850;
+}
+
+    .pos-payment-method-button i {
+        font-size: 1.05rem;
+    }
+
+    .pos-payment-method-button:hover {
+        border-color: #84adff;
+        background: #f5f8ff;
+        color: #175cd3;
+    }
+
+    .pos-payment-method-button.is-active {
+        border-color: #528bff;
+        background: #edf4ff;
+        color: #175cd3;
+        box-shadow: inset 0 0 0 1px rgba(82, 139, 255, .15);
+    }
+
+.pos-payment-method-notes {
+    margin-top: 6px;
+    color: #667085;
+    font-size: .68rem;
+    line-height: 1.35;
+}
+
+    .pos-payment-method-notes
+    [data-payment-method-note] {
+        display: none;
+    }
+
+.pos-payment-workspace-modal[data-payment-method="0"]
+[data-payment-method-note="0"],
+.pos-payment-workspace-modal[data-payment-method="1"]
+[data-payment-method-note="1"],
+.pos-payment-workspace-modal[data-payment-method="2"]
+[data-payment-method-note="2"] {
+    display: block;
+}
+
+/* =========================================================
+   AMOUNT + QUICK CASH
+========================================================= */
+
+.pos-payment-amount-wrap {
+    position: relative;
+}
+
+.pos-payment-workspace-amount {
+    height: 54px;
+    padding-right: 42px;
+    border-radius: 11px;
+    text-align: right;
+    color: #101828;
+    font-size: 1.3rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-payment-amount-unit {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #98a2b3;
+    font-size: .8rem;
+    font-weight: 800;
+    pointer-events: none;
+}
+
+.pos-payment-quick-cash {
+    margin-top: 8px;
+}
+
+.pos-payment-quick-cash__label {
+    margin-bottom: 5px;
+    color: #98a2b3;
+    font-size: .67rem;
+    font-weight: 800;
+}
+
+.pos-payment-quick-cash__buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.pos-payment-quick-cash__dynamic {
+    display: contents;
+}
+
+.pos-payment-quick-button {
+    min-height: 32px;
+    padding: 5px 9px;
+    border: 1px solid #e4e7ec;
+    border-radius: 999px;
+    background: #f9fafb;
+    color: #475467;
+    font-size: .71rem;
+    font-weight: 850;
+    font-variant-numeric: tabular-nums;
+}
+
+    .pos-payment-quick-button:hover {
+        border-color: #84adff;
+        background: #eff6ff;
+        color: #175cd3;
+    }
+
+.pos-payment-quick-button--exact {
+    border-color: #abefc6;
+    background: #ecfdf3;
+    color: #027a48;
+}
+
+    .pos-payment-quick-button--exact strong {
+        margin-left: 3px;
+    }
+
+/* =========================================================
+   PREVIEW
+========================================================= */
+
+.pos-payment-preview {
+    margin-top: 12px;
+    margin-bottom: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+}
+
+.pos-payment-preview__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: .75rem;
+}
+
+    .pos-payment-preview__row strong {
+        font-size: .82rem;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pos-payment-preview__row.is-change strong {
+        color: #027a48;
+    }
+
+/* =========================================================
+   PROGRESSIVE DISCLOSURE
+========================================================= */
+
+.pos-payment-workspace-extra {
+    margin-top: 12px;
+}
+
+.pos-payment-workspace-modal[data-payment-method="0"]
+.pos-payment-workspace-extra {
+    display: none;
+}
+
+.pos-payment-workspace-modal[data-payment-method="1"]
+.pos-payment-workspace-extra,
+.pos-payment-workspace-modal[data-payment-method="2"]
+.pos-payment-workspace-extra {
+    display: block;
+}
+
+/* =========================================================
+   INLINE QR REGION
+========================================================= */
+
+.pos-payment-workspace-qr {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #b2ddff;
+    border-radius: 12px;
+    background: #f0f9ff;
+}
+
+.pos-payment-workspace-qr__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pos-payment-workspace-qr__status {
+    color: #475467;
+    font-size: .72rem;
+    line-height: 1.35;
+}
+
+/* =========================================================
+   SUBMIT
+========================================================= */
+
+.pos-payment-workspace-submit {
+    min-height: 48px;
+    border-radius: 11px;
+    font-size: .9rem;
+    font-weight: 900;
+}
+
+/* =========================================================
+   LEDGER TIMELINE
+========================================================= */
+
+.pos-payment-ledger-workspace {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #eaecf0;
+}
+
+.pos-payment-ledger-workspace__list {
+    display: grid;
+    gap: 7px;
+}
+
+.pos-payment-ledger-workspace
+.pos-payment-ledger-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 9px 10px 9px 18px;
+    border: 1px solid #eaecf0;
+    border-radius: 10px;
+    background: #fff;
+}
+
+    .pos-payment-ledger-workspace
+    .pos-payment-ledger-item::before {
+        content: "✓";
+        position: absolute;
+        left: 7px;
+        top: 11px;
+        color: #16a34a;
+        font-size: .7rem;
+        font-weight: 900;
+    }
+
+.pos-payment-ledger-workspace
+.pos-payment-ledger-item__title {
+    font-size: .77rem;
+    font-weight: 850;
+}
+
+.pos-payment-ledger-workspace
+.pos-payment-ledger-item__amount {
+    font-size: .82rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-payment-ledger-workspace
+.pos-payment-ledger-item__meta {
+    margin-top: 2px;
+    color: #667085;
+    font-size: .66rem;
+}
+
+.pos-payment-ledger-workspace
+.pos-payment-ledger-item__remove-btn {
+    padding: 3px 7px;
+    font-size: .68rem;
+}
+
+/* =========================================================
+   FOOTER / NEXT ACTION
+========================================================= */
+
+.pos-payment-workspace__footer {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid #eaecf0;
+    background: #fff;
+}
+
+    .pos-payment-workspace__footer
+    .pos-payment-footer__state-text {
+        color: #667085;
+        font-size: .7rem;
+        line-height: 1.3;
+    }
+
+    .pos-payment-workspace__footer
+    .pos-payment-footer__actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .pos-payment-workspace__footer
+    #btnFinalizeFromPaymentModal {
+        min-width: 100px;
+    }
+
+/* =========================================================
+   QR MODAL
+========================================================= */
+
+.pos-payment-qr-dialog {
+    max-width: 430px;
+}
+
+.pos-payment-qr-workspace {
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 22px 60px rgba(16, 24, 40, .22);
+}
+
+.pos-payment-qr-amount {
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+    .pos-payment-qr-amount div {
+        color: #667085;
+        font-size: .72rem;
+        font-weight: 800;
+    }
+
+    .pos-payment-qr-amount strong {
+        display: block;
+        margin-top: 2px;
+        color: #101828;
+        font-size: 1.75rem;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+    }
+
+.pos-payment-qr-image-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.pos-payment-qr-image {
+    width: min(260px, 70vw);
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: contain;
+}
+
+.pos-payment-qr-bank {
+    display: grid;
+    gap: 5px;
+    margin-top: 12px;
+}
+
+    .pos-payment-qr-bank > div,
+    .pos-payment-qr-transfer-content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: .74rem;
+    }
+
+        .pos-payment-qr-bank span,
+        .pos-payment-qr-transfer-content span {
+            color: #667085;
+        }
+
+        .pos-payment-qr-bank strong,
+        .pos-payment-qr-transfer-content strong {
+            text-align: right;
+            color: #344054;
+            font-weight: 850;
+        }
+
+.pos-payment-qr-transfer-content {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eaecf0;
+}
+
+.pos-payment-qr-shortcuts {
+    margin-top: 10px;
+    text-align: center;
+    color: #98a2b3;
+    font-size: .67rem;
+    font-weight: 750;
+}
+
+/* =========================================================
+   1366 DESKTOP
+========================================================= */
+
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+
+    .pos-payment-workspace-modal
+    .pos-payment-workspace-dialog {
+        width: 450px;
+        max-width: 450px;
+    }
+
+    .pos-payment-workspace-total__value {
+        font-size: 1.95rem;
+    }
+
+    .pos-payment-workspace__body {
+        padding: 12px 14px;
+    }
+
+    .pos-payment-method-button {
+        min-height: 40px;
+    }
+}
+
+/* =========================================================
+   MOBILE FALLBACK
+========================================================= */
+
+@media (max-width: 767.98px) {
+
+    .pos-payment-workspace-modal
+    .pos-payment-workspace-dialog {
+        width: auto;
+        max-width: none;
+        min-height: calc(100% - 12px);
+        margin: 6px;
+    }
+
+    .pos-payment-workspace-modal
+    .pos-payment-workspace {
+        max-height: calc(100dvh - 12px);
+        border-radius: 14px;
+    }
+
+    .pos-payment-method-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-payment-workspace-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-payment-workspace__footer {
+        grid-template-columns: 1fr;
+    }
+
+        .pos-payment-workspace__footer
+        .pos-payment-footer__actions {
+            justify-content: stretch;
+        }
+
+            .pos-payment-workspace__footer
+            .pos-payment-footer__actions .btn {
+                flex: 1 1 auto;
+            }
+}
+/* =========================================================
+   P3 bounded remediation
+   Finalize reflects persisted payment state only.
+========================================================= */
+
+.pos-payment-workspace__footer
+#btnFinalizeFromPaymentModal:disabled {
+    border-color: #e4e7ec;
+    background: #f2f4f7;
+    color: #98a2b3;
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.pos-payment-workspace__footer
+#btnFinalizeFromPaymentModal.is-payment-finalize-ready {
+    border-color: #84cc16;
+    background: #84cc16;
+    color: #fff;
+    cursor: pointer;
+}
+
+    .pos-payment-workspace__footer
+    #btnFinalizeFromPaymentModal.is-payment-finalize-ready:hover {
+        border-color: #65a30d;
+        background: #65a30d;
+    }
+/* =========================================================
+   P3.1 — MAIN POS PAYMENT LEDGER
+   Detailed payment history belongs to Checkout Workspace.
+   Main cashier screen keeps summary only.
+========================================================= */
+
+.pos-cockpit-v2 #paymentListBox {
+    display: none;
+}
+/* =========================================================
+   GAOAPP POS — CUSTOMER / REWARD / VOUCHER / HELD P4
+   Presentation only.
+   Existing customer/reward/voucher/held business owners remain.
+========================================================= */
+
+/* =========================================================
+   1. CUSTOMER — EMPTY
+========================================================= */
+
+.pos-cockpit-v2 .pos-customer-empty {
+    padding: 6px 0 2px;
+}
+
+.pos-cockpit-v2 .pos-customer-empty__name {
+    color: #344054;
+    font-size: .9rem;
+    font-weight: 850;
+}
+
+.pos-cockpit-v2 .pos-customer-empty__hint {
+    margin-top: 3px;
+    color: #98a2b3;
+    font-size: .69rem;
+    line-height: 1.35;
+}
+
+    .pos-cockpit-v2 .pos-customer-empty__hint strong {
+        color: #667085;
+        font-weight: 850;
+    }
+
+
+/* =========================================================
+   2. CUSTOMER — COMPACT IDENTITY
+========================================================= */
+
+.pos-cockpit-v2 .pos-customer-compact {
+    display: grid;
+    gap: 9px;
+}
+
+.pos-cockpit-v2 .pos-customer-identity {
+    min-width: 0;
+}
+
+.pos-cockpit-v2 .pos-customer-identity__main {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.pos-cockpit-v2 .pos-customer-identity__name {
+    min-width: 0;
+    overflow: hidden;
+    color: #101828;
+    font-size: .94rem;
+    font-weight: 900;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-cockpit-v2 .pos-customer-identity__phone {
+    margin-top: 3px;
+    color: #667085;
+    font-size: .73rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-cockpit-v2 .pos-customer-tier {
+    display: inline-flex;
+    align-items: center;
+    min-height: 21px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: .62rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.pos-cockpit-v2 .pos-customer-tier--retail {
+    background: #f2f4f7;
+    color: #667085;
+}
+
+.pos-cockpit-v2 .pos-customer-tier--wholesale {
+    background: #ecfdf3;
+    color: #027a48;
+}
+
+
+/* =========================================================
+   3. CUSTOMER BENEFIT CARDS
+========================================================= */
+
+.pos-cockpit-v2 .pos-customer-benefit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 7px;
+    min-width: 0;
+    min-height: 67px;
+    padding: 8px;
+    border: 1px solid #e4e7ec;
+    border-radius: 11px;
+    background: #f9fafb;
+    color: #344054;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .14s ease, background-color .14s ease, box-shadow .14s ease;
+}
+
+    .pos-cockpit-v2 .pos-customer-benefit-card:hover {
+        border-color: #b2ccff;
+        background: #f5f8ff;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, .06);
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card:focus-visible {
+        outline: 0;
+        border-color: #84adff;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, .10);
+    }
+
+.pos-cockpit-v2 .pos-customer-benefit-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+    font-size: .95rem;
+}
+
+.pos-cockpit-v2
+.pos-customer-benefit-card--points
+.pos-customer-benefit-card__icon {
+    background: #fffaeb;
+    color: #b54708;
+}
+
+.pos-cockpit-v2
+.pos-customer-benefit-card--voucher
+.pos-customer-benefit-card__icon {
+    background: #eef4ff;
+    color: #3538cd;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card__content {
+    min-width: 0;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card__value {
+    display: inline;
+    color: #101828;
+    font-size: .9rem;
+    font-weight: 950;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card__label {
+    display: inline;
+    margin-left: 2px;
+    color: #667085;
+    font-size: .65rem;
+    font-weight: 750;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card__meta {
+    margin-top: 3px;
+    overflow: hidden;
+    color: #667085;
+    font-size: .62rem;
+    font-weight: 650;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-cockpit-v2 .pos-customer-benefit-card__amount {
+    margin-top: 2px;
+    color: #3538cd;
+    font-size: .63rem;
+    font-weight: 850;
+    font-variant-numeric: tabular-nums;
+}
+
+
+/* =========================================================
+   4. CUSTOMER FOOTER
+========================================================= */
+
+.pos-cockpit-v2 .pos-customer-compact__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.pos-cockpit-v2 .pos-customer-compact__hint {
+    min-width: 0;
+    overflow: hidden;
+    color: #98a2b3;
+    font-size: .61rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-cockpit-v2 .pos-customer-clear-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    color: #b42318;
+    font-size: .65rem;
+    font-weight: 800;
+}
+
+    .pos-cockpit-v2 .pos-customer-clear-link:hover {
+        color: #912018;
+        text-decoration: underline;
+    }
+
+
+/* =========================================================
+   5. APPLIED VOUCHER SUMMARY
+========================================================= */
+
+.pos-cockpit-v2 .pos-applied-voucher-box {
+    margin: 8px 12px;
+    padding: 9px 10px;
+    border: 1px solid #d9d6fe;
+    border-radius: 10px;
+    background: #f4f3ff;
+    color: #344054;
+    font-size: .7rem;
+}
+
+    .pos-cockpit-v2 .pos-applied-voucher-box > .fw-bold {
+        margin-bottom: 5px;
+        color: #5925dc;
+        font-size: .68rem;
+        font-weight: 900;
+        letter-spacing: .025em;
+        text-transform: uppercase;
+    }
+
+.pos-cockpit-v2 .pos-applied-voucher-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 24px;
+}
+
+    .pos-cockpit-v2 .pos-applied-voucher-row span {
+        min-width: 0;
+        overflow: hidden;
+        color: #475467;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pos-cockpit-v2 .pos-applied-voucher-row strong {
+        flex: 0 0 auto;
+        color: #5925dc;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+    }
+
+
+/* =========================================================
+   6. REWARD MODAL
+========================================================= */
+
+#customerRewardModal .modal-dialog {
+    max-width: 520px;
+}
+
+#customerRewardModal .modal-content {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(16, 24, 40, .18);
+}
+
+#customerRewardModal .modal-header {
+    padding: 15px 16px 10px;
+    border-bottom: 1px solid #eaecf0;
+}
+
+#customerRewardModal .modal-body {
+    padding: 14px 16px;
+}
+
+#customerRewardModal .modal-footer {
+    padding: 10px 16px 14px;
+    border-top: 1px solid #eaecf0;
+}
+
+#customerRewardModal .pos-reward-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+    #customerRewardModal .pos-reward-modal-grid > div {
+        min-width: 0;
+        padding: 10px;
+        border: 1px solid #e4e7ec;
+        border-radius: 11px;
+        background: #f9fafb;
+    }
+
+    #customerRewardModal .pos-reward-modal-grid span {
+        display: block;
+        color: #667085;
+        font-size: .68rem;
+        font-weight: 750;
+    }
+
+    #customerRewardModal .pos-reward-modal-grid strong {
+        display: block;
+        margin-top: 4px;
+        color: #101828;
+        font-size: 1rem;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+    }
+
+#customerRewardModal #rewardVoucherCount {
+    height: 46px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+#customerRewardModal #btnRedeemRewardVoucher {
+    min-width: 120px;
+    font-weight: 850;
+}
+
+
+/* =========================================================
+   7. VOUCHER MODAL
+========================================================= */
+
+#useRewardVoucherModal .modal-dialog {
+    max-width: 560px;
+}
+
+#useRewardVoucherModal .modal-content {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 18px 48px rgba(16, 24, 40, .18);
+}
+
+#useRewardVoucherModal .modal-header {
+    padding: 15px 16px 10px;
+    border-bottom: 1px solid #eaecf0;
+}
+
+#useRewardVoucherModal .modal-body {
+    padding: 14px 16px;
+}
+
+#useRewardVoucherModal .modal-footer {
+    padding: 10px 16px 14px;
+    border-top: 1px solid #eaecf0;
+}
+
+#useRewardVoucherModal .pos-use-voucher-list {
+    display: grid;
+    gap: 7px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #d0d5dd transparent;
+}
+
+    #useRewardVoucherModal
+    .pos-use-voucher-list::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #useRewardVoucherModal
+    .pos-use-voucher-list::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: #d0d5dd;
+    }
+
+#useRewardVoucherModal .pos-use-voucher-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid #e4e7ec;
+    border-radius: 11px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color .14s ease, background-color .14s ease;
+}
+
+    #useRewardVoucherModal .pos-use-voucher-item:hover {
+        border-color: #b2ccff;
+        background: #f8faff;
+    }
+
+#useRewardVoucherModal .pos-use-voucher-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
+}
+
+#useRewardVoucherModal .use-voucher-check {
+    flex: 0 0 auto;
+    margin-top: 3px;
+}
+
+#useRewardVoucherModal .pos-use-voucher-code {
+    overflow: hidden;
+    color: #101828;
+    font-size: .79rem;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#useRewardVoucherModal .pos-use-voucher-desc {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #667085;
+    font-size: .68rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#useRewardVoucherModal .pos-use-voucher-value {
+    color: #5925dc;
+    font-size: .85rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+}
+
+#useRewardVoucherModal .pos-use-voucher-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 11px;
+    border: 1px solid #d9d6fe;
+    border-radius: 11px;
+    background: #f4f3ff;
+    color: #475467;
+    font-size: .76rem;
+    font-weight: 750;
+}
+
+    #useRewardVoucherModal .pos-use-voucher-total strong {
+        color: #5925dc;
+        font-size: .95rem;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+    }
+
+
+/* =========================================================
+   8. HELD ORDERS MODAL
+========================================================= */
+
+#heldOrdersModal .modal-dialog {
+    max-width: min(1180px, calc(100vw - 36px));
+}
+
+#heldOrdersModal .pos-held-modal {
+    border: 0;
+    border-radius: 18px;
+    box-shadow: 0 20px 54px rgba(16, 24, 40, .20);
+}
+
+#heldOrdersModal .modal-header {
+    padding: 16px 18px 10px;
+}
+
+#heldOrdersModal .modal-body {
+    padding: 10px 18px 16px;
+}
+
+#heldOrdersModal .pos-held-modal__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+#heldOrdersModal .pos-held-modal-section {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 14px;
+    background: #fff;
+}
+
+#heldOrdersModal .pos-held-modal-section--current {
+    border-color: #b2ccff;
+    background: linear-gradient( 180deg, #f8faff 0%, #ffffff 32% );
+}
+
+#heldOrdersModal .pos-held-modal-section--other {
+    border-color: #fedf89;
+    background: linear-gradient( 180deg, #fffcf5 0%, #ffffff 32% );
+}
+
+#heldOrdersModal .pos-held-modal-section__header {
+    margin-bottom: 8px;
+}
+
+#heldOrdersModal .pos-held-modal-section__title {
+    color: #101828;
+    font-size: .82rem;
+    font-weight: 900;
+}
+
+#heldOrdersModal .pos-held-modal-section__subtitle {
+    margin-top: 2px;
+    color: #667085;
+    font-size: .67rem;
+    line-height: 1.35;
+}
+
+#heldOrdersModal .pos-held-modal-section__body {
+    display: grid;
+    gap: 8px;
+    max-height: 58vh;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #d0d5dd transparent;
+}
+
+    #heldOrdersModal
+    .pos-held-modal-section__body::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #heldOrdersModal
+    .pos-held-modal-section__body::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: #d0d5dd;
+    }
+
+
+/* =========================================================
+   9. HELD ORDER CARD
+========================================================= */
+
+#heldOrdersModal .pos-held-order-card {
+    position: relative;
+    display: grid;
+    gap: 7px;
+    padding: 10px;
+    border: 1px solid #e4e7ec;
+    border-radius: 11px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+
+#heldOrdersModal .pos-held-order-card--current {
+    border-left: 3px solid #528bff;
+}
+
+#heldOrdersModal .pos-held-order-card--other {
+    border-left: 3px solid #f79009;
+    background: #fffdf8;
+}
+
+#heldOrdersModal .pos-held-order-card--high {
+    box-shadow: 0 0 0 1px rgba(247, 144, 9, .12);
+}
+
+#heldOrdersModal .pos-held-order-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+#heldOrdersModal .pos-held-order-card__identity {
+    min-width: 0;
+}
+
+#heldOrdersModal .pos-held-order-card__code {
+    color: #101828;
+    font-size: .76rem;
+    font-weight: 900;
+}
+
+#heldOrdersModal .pos-held-order-card__customer {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #344054;
+    font-size: .78rem;
+    font-weight: 850;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#heldOrdersModal .pos-held-order-card__phone,
+#heldOrdersModal .pos-held-order-card__submeta {
+    margin-top: 2px;
+    color: #98a2b3;
+    font-size: .64rem;
+}
+
+#heldOrdersModal .pos-held-order-card__money {
+    flex: 0 0 auto;
+    color: #101828;
+    font-size: .9rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+}
+
+#heldOrdersModal .pos-held-order-card__meta-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+#heldOrdersModal .pos-held-meta-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #f2f4f7;
+    color: #667085;
+    font-size: .62rem;
+    font-weight: 750;
+}
+
+#heldOrdersModal .pos-held-order-card__note {
+    padding: 6px 7px;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #475467;
+    font-size: .66rem;
+    line-height: 1.35;
+}
+
+#heldOrdersModal
+.pos-held-order-card__other-shift-box {
+    display: grid;
+    gap: 3px;
+    padding: 7px 8px;
+    border: 1px solid #fedf89;
+    border-radius: 8px;
+    background: #fffaeb;
+    color: #854a0e;
+    font-size: .64rem;
+    line-height: 1.3;
+}
+
+#heldOrdersModal .pos-held-order-card__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+    #heldOrdersModal
+    .pos-held-order-card__actions
+    [data-resume-btn-id] {
+        min-width: 92px;
+        border-radius: 8px;
+        font-size: .7rem;
+        font-weight: 850;
+    }
+
+
+/* =========================================================
+   10. P4 — COMPACT 1366
+========================================================= */
+
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+
+    .pos-cockpit-v2
+    .pos-customer-benefit-card {
+        min-height: 62px;
+        padding: 7px;
+    }
+
+    .pos-cockpit-v2
+    .pos-customer-benefit-card__icon {
+        width: 25px;
+        height: 25px;
+    }
+
+    .pos-cockpit-v2
+    .pos-customer-benefit-card__meta {
+        max-width: 94px;
+    }
+
+    #heldOrdersModal
+    .pos-held-modal-section__body {
+        max-height: 55vh;
+    }
+}
+
+
+/* =========================================================
+   11. MOBILE FALLBACK
+========================================================= */
+
+@media (max-width: 767.98px) {
+
+    .pos-cockpit-v2
+    .pos-customer-benefit-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-cockpit-v2
+    .pos-customer-compact__footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #customerRewardModal
+    .pos-reward-modal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #heldOrdersModal
+    .pos-held-modal__grid {
+        grid-template-columns: 1fr;
+    }
+
+    #heldOrdersModal
+    .pos-held-modal-section__body {
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+/* =========================================================
+   P5-A3 — SINGLE-SCROLL CHECKOUT + PAYMENT HIERARCHY
+   Critical target: 1366 x 768
+
+   Normal cashier state:
+   - Customer + compact order tools share ONE flexible region.
+   - Subtotal / discount are grouped with total.
+   - Total + payment actions remain persistent.
+   - A scrollbar appears only when customer/tools content
+     genuinely exceeds the available region (for example,
+     an expanded editor or unusually long voucher list).
+========================================================= */
+
+@media (min-width: 1200px) and (max-height: 820px) {
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__scroll {
+        overflow-y: auto;
+    }
+
+    .pos-cockpit-v2
+    .pos-cockpit-checkout__scroll
+    .pos-cockpit-section {
+        padding: 7px 10px;
+    }
+
+    /* Customer */
+
+    .pos-cockpit-v2 .pos-customer-compact {
+        gap: 6px;
+    }
+
+    .pos-cockpit-v2 .pos-customer-identity__phone {
+        margin-top: 1px;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-grid {
+        gap: 5px;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card {
+        grid-template-columns: 23px minmax(0, 1fr);
+        gap: 5px;
+        min-height: 48px;
+        padding: 5px 6px;
+        border-radius: 9px;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card__icon {
+        width: 23px;
+        height: 23px;
+        border-radius: 7px;
+        font-size: .8rem;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card__value {
+        font-size: .82rem;
+        line-height: 1;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card__label {
+        font-size: .6rem;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card__meta {
+        margin-top: 2px;
+        font-size: .56rem;
+        line-height: 1.05;
+    }
+
+    .pos-cockpit-v2 .pos-customer-benefit-card__amount {
+        display: inline;
+        margin-top: 0;
+        margin-left: 3px;
+        font-size: .58rem;
+    }
+
+    .pos-cockpit-v2 .pos-customer-compact__footer {
+        gap: 5px;
+        min-height: 16px;
+    }
+
+    .pos-cockpit-v2 .pos-customer-compact__hint {
+        font-size: .56rem;
+        line-height: 1.05;
+    }
+
+    .pos-cockpit-v2 .pos-customer-clear-link {
+        padding: 1px 0;
+        font-size: .6rem;
+    }
+
+    /* Order tools */
+
+    .pos-cockpit-v2 .pos-cockpit-order-tools {
+        padding-top: 6px;
+    }
+
+    .pos-cockpit-v2 .pos-order-tools-grid {
+        gap: 5px;
+        margin-top: 5px;
+    }
+
+    .pos-cockpit-v2 .pos-order-tool {
+        padding: 5px 6px;
+        border-radius: 8px;
+    }
+
+    .pos-cockpit-v2 .pos-meta-section__title {
+        font-size: .64rem;
+    }
+
+    .pos-cockpit-v2 .pos-meta-summary {
+        margin-top: 1px;
+        font-size: .55rem;
+        line-height: 1.05;
+    }
+
+    .pos-cockpit-v2 .pos-meta-toggle {
+        min-width: 40px;
+        min-height: 24px;
+        padding: 3px 6px;
+        border-radius: 7px;
+        font-size: .58rem;
+    }
+
+    .pos-cockpit-v2 .pos-applied-voucher-box {
+        padding: 5px 7px;
+        border-radius: 8px;
+        font-size: .61rem;
+    }
+
+    .pos-cockpit-v2 .pos-applied-voucher-box > .fw-bold {
+        margin-bottom: 2px;
+        font-size: .58rem;
+    }
+
+    .pos-cockpit-v2 .pos-applied-voucher-row {
+        min-height: 18px;
+    }
+
+    /* Payment summary */
+
+    .pos-cockpit-v2 .pos-cockpit-summary-section {
+        padding: 7px 10px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown {
+        gap: 5px;
+        margin-top: 5px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown__item {
+        padding: 4px 6px;
+        font-size: .61rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-summary-breakdown__item strong {
+        font-size: .66rem;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero {
+        margin: 4px 0 5px;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__label {
+        margin-bottom: 1px;
+        font-size: .66rem;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__value {
+        font-size: 1.55rem;
+    }
+
+    .pos-cockpit-v2 .pos-summary-hero__state {
+        margin-top: 2px;
+        font-size: .64rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-payment-status {
+        gap: 2px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-payment-status__row {
+        font-size: .7rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-payment-status__row strong {
+        font-size: .78rem;
+    }
+
+    /* Actions */
+
+    .pos-cockpit-v2 .pos-cockpit-checkout__actions {
+        padding: 6px 10px 8px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-primary-actions {
+        gap: 4px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-secondary-actions {
+        gap: 5px;
+        margin-top: 4px;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions .pos-action-btn {
+        min-height: 34px;
+        padding: 6px 9px;
+        font-size: .78rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnOpenPayment {
+        min-height: 40px;
+        font-size: .84rem;
+    }
+
+    .pos-cockpit-v2 .pos-cockpit-actions.is-due #btnFinalizeCart,
+    .pos-cockpit-v2 .pos-cockpit-actions.is-empty #btnFinalizeCart {
+        min-height: 28px;
+        font-size: .7rem;
+    }
+}

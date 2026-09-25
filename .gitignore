@@ -25,6 +25,28 @@ publish-migrator/
 /publish-phase8/
 
 # Generated archives, review patches, and runtime uploads
+/.artifacts/
+/Logs/receiving-mobile-deps/
+/Logs/chonthanh-redirect-publish/
+/Logs/pos-offline-build/
+/Logs/admin-dashboard-repair-build/
+/Logs/local-default-tenant-build/
+/Logs/chonthanh-redirect-build/
+/Logs/label-printing-tools/
+/Logs/inventory-admin-cost-ui/
+/Logs/inventory-cost-browser/
+/Logs/inventory-ledger-cost-ui/
+/Logs/media-library-read-probe/
+/Logs/media-library-results/
+/Logs/orders-page-baseline/
+/Logs/pos-offline-baseline/
+/Logs/pos-scan-compact/
+/Logs/pos-search-probe/
+/Logs/receiving-quantity-image-ui/
+/Logs/reward-eligibility-tests/
+/Logs/security-phase4-runtime/
+/Logs/security-phase6-runtime/
+/Logs/xml-stock-baseline/
 /Datacode.zip
 /GaoApp.Infrastructure/Migrations.zip
 /R1*.zip
@@ -42,3 +64,37 @@ TestResults/
 *.coveragexml
 App_Data/Logs/
 *.pubxml.user
+/GaoApp.Tests/test.local.runsettings
+# Migration generated evidence / Python cache
+/scripts/migration/**/evidence/
+/scripts/migration/**/__pycache__/
+/scripts/migration/**/*.pyc
+# Historical migration runtime/data evidence
+/scripts/migration/review-legacy/original/GAOAPP-MIGRATION-BUOC-01-PRODUCT-20260916/GAOAPP-MIGRATION-BUOC-01-PRODUCT-20260916/03-EVIDENCE/CURRENT-TEST-SNAPSHOT/
+# Local migration release configuration
+/scripts/migration/release/config.json
+# Local Visual Studio publish profile
+/GaoApp.Web/Properties/PublishProfiles/FolderProfile1.pubxml
+# Local diagnostic / repair artifacts under Logs
+/Logs/admin-dashboard-local-repair.ps1
+/Logs/display-promotion-preview.cjs
+/Logs/inventory-admin-cost-ui-check.cjs
+/Logs/pos-credit-deposit-repair-local.ps1
+/Logs/pos-credit-deposit-upgrade.sql
+/Logs/pos-credit-permission-catalog-only.ps1
+/Logs/pos-credit-permission-check.ps1
+/Logs/pos-deposit-permission-catalog-only.ps1
+/Logs/read-vs-testlog.ps1
+/Logs/receiving-mobile-proposal-preview.html
+/Logs/receiving-proposal-check.cjs
+/Logs/receiving-quantity-image-check.cjs
+/Logs/reward-schema-local.ps1
+/Logs/security-phase6-tool-checks.ps1
+/Logs/security-phase7-add-permissions.ps1
+/Logs/security-phase7-controller-inventory.txt
+/Logs/shift-admin-schema-local.ps1
+# Local source/bootstrap archive
+/GAOAPP-SA-20260819-01.zip
+# Historical migration packages/evidence kept locally, not current source
+/scripts/migration/review-legacy/original/
+/.runtime/WorkerDataProtectionKeys/

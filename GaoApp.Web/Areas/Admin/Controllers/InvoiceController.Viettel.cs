@@ -55,7 +55,7 @@ public partial class InvoiceController
         int id,
         CancellationToken ct)
     {
-        var result = await _viettelIssueService.IssueAsync(
+        var result = await _autoInvoiceService.IssueManualAsync(
             id,
             ct);
 
@@ -84,7 +84,7 @@ public partial class InvoiceController
         int id,
         CancellationToken ct)
     {
-        var result = await _viettelInvoiceSyncService.SyncByTransactionUuidAsync(
+        var result = await _autoInvoiceService.SyncUnknownAsync(
             id,
             ct);
 

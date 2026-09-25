@@ -4,6 +4,7 @@ namespace GaoApp.Application.DTOs.POS;
 
 public sealed class UpsertPaymentRequest
 {
+    public Guid ClientRequestId { get; set; }
     public PaymentMethod Method { get; set; }
     public decimal Amount { get; set; }
 

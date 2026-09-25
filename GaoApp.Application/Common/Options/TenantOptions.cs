@@ -22,4 +22,10 @@ public class TenantOptions
     /// </summary>
     [Required(ErrorMessage = "Tenant:AdminSubdomain là bắt buộc.")]
     public string AdminSubdomain { get; set; } = "admin";
+
+    /// <summary>
+    /// Cửa hàng mặc định cho localhost/127.0.0.1 trong Development.
+    /// Không áp dụng cho Production hoặc host có subdomain.
+    /// </summary>
+    public string? DevelopmentDefaultSubdomain { get; set; }
 }

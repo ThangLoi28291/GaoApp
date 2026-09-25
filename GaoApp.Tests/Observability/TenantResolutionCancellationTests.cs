@@ -16,8 +16,11 @@ namespace GaoApp.Tests.Observability;
 
 public sealed class TenantResolutionCancellationTests
 {
-    [Fact]
-    public async Task Localhost_development_cancellation_propagates_without_next_or_error_log()
+    [Theory]
+    [InlineData("?tenant=shop", null)]
+    [InlineData(null, "chonthanh")]
+    public async Task Localhost_development_cancellation_propagates_without_next_or_error_log(
+        string? queryString, string? defaultSubdomain)
     {
         var tenant = new TenantContext();
         await using var db = CreateDbContext(tenant);
@@ -31,10 +34,11 @@ public sealed class TenantResolutionCancellationTests
                 return Task.CompletedTask;
             },
             logger,
-            Environments.Development);
+            Environments.Development,
+            defaultSubdomain);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        var context = CreateContext("localhost", "?tenant=shop", cts.Token);
+        var context = CreateContext("localhost", queryString, cts.Token);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => middleware.InvokeAsync(context, db, tenant));
@@ -78,7 +82,7 @@ public sealed class TenantResolutionCancellationTests
     }
 
     [Fact]
-    public async Task Localhost_success_resolves_store_and_calls_next()
+    public async Task Localhost_query_overrides_default_and_resolves_store()
     {
         var tenant = new TenantContext();
         await using var db = CreateDbContext(tenant);
@@ -101,7 +105,8 @@ public sealed class TenantResolutionCancellationTests
                 return Task.CompletedTask;
             },
             new GlobalExceptionMiddlewareTests.RecordingLogger<TenantResolutionMiddleware>(),
-            Environments.Development);
+            Environments.Development,
+            "chonthanh");
         var context = CreateContext("localhost", "?tenant=shop");
 
         await middleware.InvokeAsync(context, db, tenant);
@@ -112,7 +117,7 @@ public sealed class TenantResolutionCancellationTests
     }
 
     [Fact]
-    public async Task Localhost_not_found_keeps_existing_continue_behavior()
+    public async Task Localhost_not_found_stops_before_store_dependent_pages()
     {
         var tenant = new TenantContext();
         await using var db = CreateDbContext(tenant);
@@ -129,8 +134,128 @@ public sealed class TenantResolutionCancellationTests
 
         await middleware.InvokeAsync(context, db, tenant);
 
-        Assert.Equal(1, nextCalls);
+        Assert.Equal(0, nextCalls);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
         Assert.Null(tenant.StoreId);
+    }
+
+    [Theory]
+    [InlineData("localhost")]
+    [InlineData("127.0.0.1")]
+    public async Task Local_default_resolves_each_request_including_login_without_query(string host)
+    {
+        var tenant = new TenantContext();
+        await using var db = CreateDbContext(tenant);
+        var store = new Store
+        {
+            Name = "Chơn Thành",
+            SubDomain = "chonthanh",
+            SubDomainNormalized = "chonthanh",
+            IsActive = true,
+            RowVersion = new byte[8]
+        };
+        db.Stores.Add(store);
+        await db.SaveChangesAsync();
+        var nextCalls = 0;
+        var middleware = CreateMiddleware(
+            context =>
+            {
+                Assert.Equal(store.Id, new CurrentStore(tenant).StoreId);
+                Assert.Equal(store.Id.ToString(), context.Items["CurrentStoreId"]);
+                Assert.Equal(store.Name, context.Items["CurrentStoreName"]);
+                nextCalls++;
+                return Task.CompletedTask;
+            },
+            new GlobalExceptionMiddlewareTests.RecordingLogger<TenantResolutionMiddleware>(),
+            Environments.Development,
+            " ChonThanh ");
+
+        foreach (var path in new[] { "/admin", "/admin/account/login", "/admin/POS" })
+        {
+            tenant.Clear();
+            var context = CreateContext(host, queryString: null);
+            context.Request.Path = path;
+            await middleware.InvokeAsync(context, db, tenant);
+            Assert.Equal("chonthanh", tenant.Subdomain);
+            Assert.False(tenant.IsHostAdmin);
+        }
+
+        Assert.Equal(3, nextCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Missing_or_inactive_default_returns_clear_404(bool inactiveStoreExists)
+    {
+        var tenant = new TenantContext();
+        await using var db = CreateDbContext(tenant);
+        if (inactiveStoreExists)
+        {
+            db.Stores.Add(new Store
+            {
+                Name = "Chơn Thành",
+                SubDomain = "chonthanh",
+                SubDomainNormalized = "chonthanh",
+                IsActive = false,
+                RowVersion = new byte[8]
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var nextCalls = 0;
+        var middleware = CreateMiddleware(
+            _ => { nextCalls++; return Task.CompletedTask; },
+            new GlobalExceptionMiddlewareTests.RecordingLogger<TenantResolutionMiddleware>(),
+            Environments.Development,
+            "chonthanh");
+        var context = CreateContext("localhost", queryString: null);
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context, db, tenant);
+
+        Assert.Equal(0, nextCalls);
+        Assert.Null(tenant.StoreId);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        context.Response.Body.Position = 0;
+        using var body = System.Text.Json.JsonDocument.Parse(context.Response.Body);
+        Assert.Contains("chonthanh", body.RootElement.GetProperty("message").GetString());
+    }
+
+    [Theory]
+    [InlineData("Production", "localhost", 400, false)]
+    [InlineData("Staging", "127.0.0.1", 400, false)]
+    [InlineData("Development", "missing.example.test", 404, false)]
+    [InlineData("Development", "admin.example.test", 200, true)]
+    public async Task Default_does_not_override_nonlocal_or_nondevelopment_routing(
+        string environment, string host, int statusCode, bool isHostAdmin)
+    {
+        var tenant = new TenantContext();
+        await using var db = CreateDbContext(tenant);
+        db.Stores.Add(new Store
+        {
+            Name = "Chơn Thành",
+            SubDomain = "chonthanh",
+            SubDomainNormalized = "chonthanh",
+            IsActive = true,
+            RowVersion = new byte[8]
+        });
+        await db.SaveChangesAsync();
+        tenant.Clear();
+        var nextCalls = 0;
+        var middleware = CreateMiddleware(
+            _ => { nextCalls++; return Task.CompletedTask; },
+            new GlobalExceptionMiddlewareTests.RecordingLogger<TenantResolutionMiddleware>(),
+            environment,
+            "chonthanh");
+        var context = CreateContext(host, queryString: null);
+
+        await middleware.InvokeAsync(context, db, tenant);
+
+        Assert.Equal(statusCode, context.Response.StatusCode);
+        Assert.Equal(isHostAdmin ? 1 : 0, nextCalls);
+        Assert.Null(tenant.StoreId);
+        Assert.Equal(isHostAdmin, tenant.IsHostAdmin);
     }
 
     [Fact]
@@ -188,14 +313,16 @@ public sealed class TenantResolutionCancellationTests
     private static TenantResolutionMiddleware CreateMiddleware(
         RequestDelegate next,
         ILogger<TenantResolutionMiddleware> logger,
-        string environment) =>
+        string environment,
+        string? defaultSubdomain = null) =>
         new(
             next,
             logger,
             Options.Create(new TenantOptions
             {
                 RootDomain = "example.test",
-                AdminSubdomain = "admin"
+                AdminSubdomain = "admin",
+                DevelopmentDefaultSubdomain = defaultSubdomain
             }),
             new FakeWebHostEnvironment
             {

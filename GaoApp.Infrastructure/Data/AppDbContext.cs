@@ -89,11 +89,16 @@ public class AppDbContext : DbContext
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
     public DbSet<InventoryBalance> InventoryBalances => Set<InventoryBalance>();
     public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
+    public DbSet<InvoiceInputStockSupplementalMovement> InvoiceInputStockSupplementalMovements => Set<InvoiceInputStockSupplementalMovement>();
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<StockDocument> StockDocuments => Set<StockDocument>();
     public DbSet<StockDocumentLine> StockDocumentLines => Set<StockDocumentLine>();
     public DbSet<PurchaseReceiptAuditEvent> PurchaseReceiptAuditEvents =>
         Set<PurchaseReceiptAuditEvent>();
+    public DbSet<PurchaseReceivingAction> PurchaseReceivingActions =>
+        Set<PurchaseReceivingAction>();
+    public DbSet<StockDocumentProvisionalItem> StockDocumentProvisionalItems =>
+        Set<StockDocumentProvisionalItem>();
     public DbSet<ProductUnitConversion> ProductUnitConversions => Set<ProductUnitConversion>();
     public DbSet<ProductVariantUnitBarcode> ProductVariantUnitBarcodes => Set<ProductVariantUnitBarcode>();
     public DbSet<NegativeInventoryLog> NegativeInventoryLogs => Set<NegativeInventoryLog>();
@@ -123,10 +128,22 @@ public class AppDbContext : DbContext
     public DbSet<DisplayPromotion> DisplayPromotions => Set<DisplayPromotion>();
     public DbSet<InputInvoiceHead> InputInvoiceHeads => Set<InputInvoiceHead>();
     public DbSet<InputInvoiceDetail> InputInvoiceDetails => Set<InputInvoiceDetail>();
+    public DbSet<InputInvoiceItemCatalogMap> InputInvoiceItemCatalogMaps =>
+        Set<InputInvoiceItemCatalogMap>();
+    public DbSet<InputInvoiceSupplierResolutionEvent> InputInvoiceSupplierResolutionEvents =>
+        Set<InputInvoiceSupplierResolutionEvent>();
     public DbSet<StockDocumentInputInvoiceMap> StockDocumentInputInvoiceMaps => Set<StockDocumentInputInvoiceMap>();
     public DbSet<StockDocumentLineInputInvoiceMap> StockDocumentLineInputInvoiceMaps => Set<StockDocumentLineInputInvoiceMap>();
+    public DbSet<StockDocumentInputInvoiceReconciliation> StockDocumentInputInvoiceReconciliations =>
+        Set<StockDocumentInputInvoiceReconciliation>();
+    public DbSet<StockDocumentInputInvoiceDetailReconciliation> StockDocumentInputInvoiceDetailReconciliations =>
+        Set<StockDocumentInputInvoiceDetailReconciliation>();
     public DbSet<InvoiceHead> InvoiceHeads => Set<InvoiceHead>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
+    public DbSet<AutoInvoiceSettings> AutoInvoiceSettings => Set<AutoInvoiceSettings>();
+    public DbSet<AutoInvoiceOperation> AutoInvoiceOperations => Set<AutoInvoiceOperation>();
+    public DbSet<AutoInvoiceOperationSource> AutoInvoiceOperationSources => Set<AutoInvoiceOperationSource>();
+    public DbSet<AutoInvoiceWorkerState> AutoInvoiceWorkerStates => Set<AutoInvoiceWorkerState>();
     public DbSet<AdminMenuItem> AdminMenuItems => Set<AdminMenuItem>();
     public DbSet<InventoryAdjustmentDocument> InventoryAdjustmentDocuments => Set<InventoryAdjustmentDocument>();
     public DbSet<InventoryAdjustmentLine> InventoryAdjustmentLines => Set<InventoryAdjustmentLine>();
@@ -170,10 +187,19 @@ public class AppDbContext : DbContext
             .HasQueryFilter(x =>
                 CurrentStoreId == null || x.StoreId == CurrentStoreId);
 
+        builder.Entity<InputInvoiceSupplierResolutionEvent>()
+            .HasQueryFilter(x =>
+                CurrentStoreId == null || x.StoreId == CurrentStoreId);
+
         // Cấu hình nền tối thiểu còn để tại DbContext cho an toàn
         builder.Entity<Store>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.ReceiptName).HasMaxLength(200);
+            e.Property(x => x.GuestWifiName).HasMaxLength(128);
+            e.Property(x => x.GuestWifiPassword).HasMaxLength(128);
+            e.Property(x => x.ReceiptAddress).HasMaxLength(300);
+            e.Property(x => x.ReceiptPhone).HasMaxLength(50);
             e.Property(x => x.SubDomain).HasMaxLength(60).IsRequired();
             e.Property(x => x.SubDomainNormalized).HasMaxLength(60).IsRequired();
             e.HasIndex(x => x.SubDomainNormalized).IsUnique();
@@ -252,6 +278,7 @@ public class AppDbContext : DbContext
 
         var pendingChanges = CapturePendingChanges();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
+        ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         ValidateTenantOwnership(pendingChanges);
         ApplyAuditAndTenantRules(pendingChanges);
 
@@ -272,6 +299,7 @@ public class AppDbContext : DbContext
 
         var pendingChanges = CapturePendingChanges();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
+        ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         await ValidateTenantOwnershipAsync(
             pendingChanges,
             cancellationToken);
@@ -355,7 +383,77 @@ public class AppDbContext : DbContext
                 ? actorUserName[..200]
                 : actorUserName;
             auditEvent.OccurredAtUtc = DateTime.UtcNow;
-            auditEvent.IsSuccess = true;
+            auditEvent.IsSuccess = auditEvent.EventType is not (
+                GaoApp.Domain.Enums.PurchaseReceiptAuditEventType.InputInvoiceOwnerLinkBlocked or
+                GaoApp.Domain.Enums.PurchaseReceiptAuditEventType.InputInvoiceOwnerConfirmBlocked);
+        }
+    }
+
+    private void ProtectInputInvoiceSupplierResolutionEvents(
+        IReadOnlyList<PendingChange> pendingChanges)
+    {
+        foreach (var pendingChange in pendingChanges)
+        {
+            if (pendingChange.Entry.Entity is not InputInvoiceSupplierResolutionEvent
+                resolutionEvent)
+            {
+                continue;
+            }
+
+            if (pendingChange.StateBeforeAudit is EntityState.Modified or EntityState.Deleted)
+            {
+                throw new InvalidOperationException(
+                    "Input-invoice Supplier resolution events are append-only.");
+            }
+
+            if (pendingChange.StateBeforeAudit != EntityState.Added)
+                continue;
+
+            var storeId = CurrentStoreId;
+            if (!storeId.HasValue || storeId.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    "A current store is required to append Supplier resolution evidence.");
+            }
+
+            if (!IsCurrentUserAuthenticated ||
+                !CurrentUserId.HasValue ||
+                CurrentUserId.Value <= 0)
+            {
+                throw new InvalidOperationException(
+                    "An authenticated actor is required to append Supplier resolution evidence.");
+            }
+
+            if (resolutionEvent.StoreId > 0 && resolutionEvent.StoreId != storeId.Value)
+            {
+                throw new InvalidOperationException(
+                    "Supplier resolution evidence does not belong to the current store.");
+            }
+
+            if (!Enum.IsDefined(resolutionEvent.EventType) ||
+                !Enum.IsDefined(resolutionEvent.PreviousStatus) ||
+                !Enum.IsDefined(resolutionEvent.NewStatus))
+            {
+                throw new InvalidOperationException(
+                    "Supplier resolution evidence contains an invalid status or action.");
+            }
+
+            if (resolutionEvent.EventType is
+                    GaoApp.Domain.Enums.InputInvoiceSupplierResolutionEventType.ManualCandidateSelected or
+                    GaoApp.Domain.Enums.InputInvoiceSupplierResolutionEventType.ReceiptAligned or
+                    GaoApp.Domain.Enums.InputInvoiceSupplierResolutionEventType.CanonicalCorrected &&
+                string.IsNullOrWhiteSpace(resolutionEvent.Reason))
+            {
+                throw new InvalidOperationException(
+                    "A reason is required for manual Supplier resolution evidence.");
+            }
+
+            resolutionEvent.StoreId = storeId.Value;
+            resolutionEvent.ActorUserId = CurrentUserId.Value;
+            resolutionEvent.CreatedAtUtc = DateTime.UtcNow;
+            resolutionEvent.Reason = string.IsNullOrWhiteSpace(resolutionEvent.Reason)
+                ? null
+                : resolutionEvent.Reason.Trim();
         }
     }
 

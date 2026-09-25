@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Repositories.Security;
 using GaoApp.Application.Interfaces.Services.Security;
@@ -7,7 +7,7 @@ namespace GaoApp.Application.Services.Security;
 
 /// <summary>
 /// Service kiểm tra quyền hiệu lực của user trong một store cụ thể.
-/// Dùng cache ngắn hạn để giảm query lặp khi authorize nhiều action.
+/// Đọc quyền hiện hành để việc thu hồi có hiệu lực ngay ở request tiếp theo.
 ///
 /// Giai đoạn A.1:
 /// - Hỗ trợ permission code chuẩn mới
@@ -17,14 +17,11 @@ namespace GaoApp.Application.Services.Security;
 public class CurrentStorePermissionService : ICurrentStorePermissionService
 {
     private readonly IUserInStoreRepository _userInStoreRepository;
-    private readonly ICacheService _cacheService;
 
     public CurrentStorePermissionService(
-        IUserInStoreRepository userInStoreRepository,
-        ICacheService cacheService)
+        IUserInStoreRepository userInStoreRepository)
     {
         _userInStoreRepository = userInStoreRepository;
-        _cacheService = cacheService;
     }
 
     public async Task<bool> HasPermissionAsync(
@@ -59,18 +56,10 @@ public class CurrentStorePermissionService : ICurrentStorePermissionService
         if (storeId <= 0 || userId <= 0)
             return new List<string>();
 
-        var cacheKey = $"perm:{storeId}:{userId}";
-
-        var permissions = await _cacheService.GetOrCreateAsync(
-            cacheKey,
-            async () =>
-            {
-                var result = await _userInStoreRepository
-                    .GetEffectivePermissionCodesAsync(storeId, userId, ct);
-
-                return result ?? new List<string>();
-            },
-            TimeSpan.FromMinutes(3));
+        // A reset/role change must not regain old permissions through a cache
+        // warmed by the previous session. Keep authorization current across instances.
+        var permissions = await _userInStoreRepository
+            .GetEffectivePermissionCodesAsync(storeId, userId, ct);
 
         // Làm sạch dữ liệu trả về:
         // - bỏ chuỗi rỗng

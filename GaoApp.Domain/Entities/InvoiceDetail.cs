@@ -8,6 +8,11 @@ namespace GaoApp.Domain.Entities;
 [Table("InvoiceDetails")]
 public class InvoiceDetail : BaseStoreEntity
 {
+    public long? LegacySourceId { get; set; }
+    public decimal? LegacyUnitFactor { get; set; }
+    public string? LegacySnapshotJson { get; set; }
+    public byte[]? LegacyImportedHash { get; set; }
+
     public int InvoiceHeadId { get; set; }
     public InvoiceHead InvoiceHead { get; set; } = default!;
 

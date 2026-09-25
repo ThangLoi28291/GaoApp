@@ -1,0 +1,93 @@
+.gao-admin-page-heading-row { display: flex; align-items: flex-start; gap: .75rem; margin-bottom: 1rem; min-width: 0; }
+.gao-admin-page-heading-content { display: flex; align-items: center; justify-content: space-between; flex: 1 1 0; min-width: 0; }
+.gao-admin-toolbar-fallback { float: right; width: max-content; margin-inline-start: .75rem; margin-bottom: .25rem; }
+.gao-admin-toolbar {
+    display: flex; align-items: center; flex: 0 0 auto; width: max-content;
+    padding: 0; background: transparent; border: 0; box-shadow: none;
+}
+.gao-admin-toolbar-actions, .gao-admin-utilities { display: flex; align-items: center; gap: .6rem; flex: 0 0 auto; }
+.gao-admin-toolbar-actions { margin-inline-start: auto; }
+.gao-admin-utilities:empty { display: none; }
+.gao-account-toolbar-slot, .gao-account-control { flex: 0 0 auto; width: 44px; min-width: 44px; }
+.gao-account-toolbar-slot:empty { display: none; }
+.gao-account-control[hidden], .gao-account-menu[hidden], .gao-account-drawer [hidden] { display: none !important; }
+.gao-account-trigger {
+    position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 2px;
+    border: 0; border-radius: 50%; background: transparent;
+    color: var(--bs-heading-color, var(--bs-body-color)); cursor: pointer;
+    transition: box-shadow .15s ease;
+}
+.gao-account-trigger:hover, .gao-account-trigger[aria-expanded="true"] {
+    box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .16);
+}
+.gao-account-trigger:focus-visible, .gao-account-item:focus-visible, .gao-account-password-input button:focus-visible {
+    outline: 3px solid rgba(var(--bs-primary-rgb), .45); outline-offset: 2px;
+}
+.gao-account-avatar {
+    display: inline-flex; flex: 0 0 40px; align-items: center; justify-content: center; height: 40px;
+    border-radius: 50%; background: var(--bs-primary-bg-subtle, #e9e7ff); color: var(--bs-primary-text-emphasis, #5145cd);
+    font-size: .85rem; font-weight: 600;
+}
+.gao-account-signed-in { position: absolute; right: 1px; bottom: 1px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bs-paper-bg, var(--bs-body-bg)); background: var(--bs-success); }
+.gao-account-menu {
+    position: fixed; z-index: 1200; width: 280px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px);
+    overflow-y: auto; overscroll-behavior: contain; padding: .5rem; background: var(--bs-paper-bg, var(--bs-body-bg));
+    color: var(--bs-body-color); border: 1px solid var(--bs-border-color); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(34, 48, 62, .15), 0 2px 6px rgba(34, 48, 62, .06);
+}
+.gao-account-menu-heading { padding: .65rem .55rem .85rem; }
+.gao-account-person { display: flex; align-items: center; gap: .7rem; }
+.gao-account-person > div { min-width: 0; overflow-wrap: anywhere; }
+.gao-account-person strong, .gao-account-person small { display: block; }
+.gao-account-person strong { font-size: .9375rem; font-weight: 600; }
+.gao-account-person small { color: var(--bs-body-color); font-size: .75rem; margin-top: .2rem; }
+.gao-account-store { display: flex; align-items: center; gap: .45rem; margin-top: .8rem; color: var(--bs-body-color); font-size: .8125rem; overflow-wrap: anywhere; }
+.gao-account-store .bx { flex-shrink: 0; font-size: 1rem; }
+.gao-account-menu-group { border-top: 1px solid var(--bs-border-color); padding: .3rem 0; margin: 0; }
+.gao-account-item {
+    display: flex; align-items: center; gap: .65rem; width: 100%; min-height: 44px; padding: .65rem .65rem;
+    color: var(--bs-body-color); background: transparent; border: 0; border-radius: 8px;
+    font-size: .875rem; text-align: left; text-decoration: none; cursor: pointer;
+}
+.gao-account-item > span { flex: 1; }
+.gao-account-item > .bx { font-size: 1.15rem; flex: 0 0 auto; }
+.gao-account-item > .bx:last-child:not(:first-child) { color: var(--bs-body-color); font-size: 1rem; }
+.gao-account-item:hover, .gao-account-item:focus-visible { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .07); }
+.gao-account-logout { color: var(--bs-danger); }
+.gao-account-logout:hover { color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .07); }
+.gao-account-drawer { --bs-offcanvas-width: 440px; max-width: 100%; }
+.gao-account-drawer .offcanvas-header { border-bottom: 1px solid var(--bs-border-color); padding: 1.3rem 1.5rem; }
+.gao-account-drawer .offcanvas-title { font-size: 1.125rem; font-weight: 600; }
+.gao-account-drawer .offcanvas-body { padding: 1.5rem; }
+.gao-account-drawer .btn-close { min-width: 28px; min-height: 28px; }
+.gao-account-profile-header { display: flex; flex-direction: column; align-items: center; gap: .45rem; margin-bottom: 1.5rem; text-align: center; overflow-wrap: anywhere; }
+.gao-account-avatar-large { width: 64px; height: 64px; flex-basis: 64px; font-size: 1.25rem; margin-bottom: .35rem; }
+.gao-account-profile-header > strong { font-size: 1.1rem; font-weight: 600; }
+.gao-account-profile-header > span:last-child { color: var(--bs-body-color); font-size: .875rem; }
+.gao-account-details { margin-bottom: 1.25rem; }
+.gao-account-details > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: .75rem; padding: .75rem 0; border-bottom: 1px solid var(--bs-border-color); font-size: .875rem; }
+.gao-account-details dt { color: var(--bs-body-color); font-weight: 400; }
+.gao-account-details dd { margin: 0; overflow-wrap: anywhere; }
+.gao-account-note { color: var(--bs-body-color); line-height: 1.7; font-size: .875rem; margin-bottom: 1.35rem; }
+.gao-account-field { margin-bottom: 1.2rem; }
+.gao-account-field .form-label { display: block; margin-bottom: .5rem; }
+.gao-account-password-input { position: relative; }
+.gao-account-password-input input { padding-right: 3rem; min-height: 44px; }
+.gao-account-password-input button { position: absolute; inset: 0 0 0 auto; width: 44px; background: none; border: 0; border-radius: 6px; color: var(--bs-body-color); font-size: 1.2rem; }
+.gao-account-field > small { display: block; margin-top: .5rem; color: var(--bs-body-color); font-size: .8125rem; }
+.gao-account-field-error { color: var(--bs-danger); font-size: .8125rem; margin-top: .4rem; }
+.gao-account-status { padding: .75rem; margin-bottom: 1rem; border-radius: 8px; background: rgba(var(--bs-danger-rgb), .07); color: var(--bs-danger); font-size: .875rem; }
+.gao-account-status.is-success { background: rgba(var(--bs-success-rgb), .12); color: var(--bs-body-color); }
+.gao-account-drawer [data-account-login] { display: inline-block; margin-bottom: 1rem; }
+.gao-account-help-icon { display: inline-flex; padding: .7rem; margin-bottom: 1rem; border-radius: 12px; background: rgba(var(--bs-primary-rgb), .1); color: var(--bs-primary); font-size: 1.7rem; }
+.gao-account-drawer section[data-account-section="help"] h3 { margin-top: 1.25rem; font-size: 1rem; font-weight: 600; }
+.gao-account-drawer section[data-account-section="help"] p { line-height: 1.7; font-size: .875rem; color: var(--bs-body-color); }
+.gao-account-help-context { display: flex; align-items: center; gap: .5rem; border-top: 1px solid var(--bs-border-color); padding-top: 1rem; margin-top: 1.5rem; overflow-wrap: anywhere; font-size: .875rem; }
+@media (max-width: 575.98px) {
+    .pos-prime-layout .pos-prime .pos-prime-header .gao-account-toolbar-slot { position: absolute; top: 8px; right: 8px; }
+    .pos-prime-layout .pos-prime .pos-prime-header .pos-prime-header__identity { padding-right: 54px; }
+    .gao-account-drawer .offcanvas-header, .gao-account-drawer .offcanvas-body { padding: 1rem; }
+    .gao-account-password-input input { font-size: 16px; }
+    .gao-account-details > div { grid-template-columns: 100px minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .gao-account-trigger { transition: none; } }

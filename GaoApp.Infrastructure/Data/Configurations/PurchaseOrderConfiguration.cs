@@ -29,7 +29,7 @@ public sealed class PurchaseOrderConfiguration : IEntityTypeConfiguration<Purcha
             .IsUnique()
             .HasFilter("[SourcePurchaseRequestId] IS NOT NULL AND [SourceConversionKey] IS NOT NULL");
 
-        b.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.ExpectedWarehouse).WithMany().HasForeignKey(x => x.ExpectedWarehouseId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.LegalEntity).WithMany().HasForeignKey(x => x.LegalEntityId).OnDelete(DeleteBehavior.Restrict);
         b.HasMany(x => x.Lines).WithOne(x => x.PurchaseOrder).HasForeignKey(x => x.PurchaseOrderId).OnDelete(DeleteBehavior.Restrict);
@@ -66,6 +66,11 @@ public sealed class PurchaseOrderLineConfiguration : IEntityTypeConfiguration<Pu
 
         b.HasIndex(x => new { x.PurchaseOrderId, x.LineNo }).IsUnique();
         b.HasIndex(x => x.ProductVariantId);
+        b.HasIndex(x => x.StoreId);
+        b.HasIndex(x => new { x.StoreId, x.PurchaseOrderId, x.ProductUnitConversionId })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0 AND [ProductUnitConversionId] IS NOT NULL")
+            .HasDatabaseName("UX_PurchaseOrderLines_Store_Order_ProductUnitConversion");
         b.HasIndex(x => x.SourcePurchaseRequestLineId);
         b.HasOne(x => x.ProductVariant).WithMany().HasForeignKey(x => x.ProductVariantId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Unit).WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);

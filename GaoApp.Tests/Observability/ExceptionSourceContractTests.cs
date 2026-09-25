@@ -67,7 +67,7 @@ public sealed class ExceptionSourceContractTests
     }
 
     [Fact]
-    public void Fatal_startup_owners_log_and_rethrow()
+    public void Fatal_startup_owners_report_failure_with_their_process_contract()
     {
         foreach (var relativePath in new[]
                  {
@@ -86,12 +86,20 @@ public sealed class ExceptionSourceContractTests
 
             Assert.True(catchIndex >= 0 && finallyIndex > catchIndex);
             var catchBlock = source[catchIndex..finallyIndex];
-            Assert.Contains("Log.Fatal(ex", catchBlock, StringComparison.Ordinal);
-            Assert.Contains("throw;", catchBlock, StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "Environment.ExitCode",
-                catchBlock,
-                StringComparison.Ordinal);
+            if (relativePath.StartsWith("GaoApp.Migrator", StringComparison.Ordinal))
+            {
+                Assert.Contains("Log.Fatal(", catchBlock, StringComparison.Ordinal);
+                Assert.Contains("ex.GetType().Name", catchBlock, StringComparison.Ordinal);
+                Assert.Contains("Environment.ExitCode = 1;", catchBlock, StringComparison.Ordinal);
+                Assert.DoesNotContain("Log.Fatal(ex", catchBlock, StringComparison.Ordinal);
+                Assert.DoesNotContain("throw;", catchBlock, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Contains("Log.Fatal(ex", catchBlock, StringComparison.Ordinal);
+                Assert.Contains("throw;", catchBlock, StringComparison.Ordinal);
+                Assert.DoesNotContain("Environment.ExitCode", catchBlock, StringComparison.Ordinal);
+            }
         }
     }
 

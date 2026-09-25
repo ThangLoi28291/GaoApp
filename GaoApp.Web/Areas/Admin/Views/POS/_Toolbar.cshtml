@@ -1,30 +1,59 @@
-﻿<div class="card pos-card pos-toolbar-card mb-3">
-    <div class="card-body">
-        <div class="row g-3 align-items-stretch">
+﻿<div class="pos-cockpit-command">
+    <div class="pos-cockpit-command__main">
 
-            <div class="col-lg-8">
-                <div class="pos-inline-label">Quét barcode / tìm nhanh sản phẩm</div>
+        <label for="txtBarcode"
+               class="visually-hidden">
+            Quét barcode hoặc tìm sản phẩm
+        </label>
 
-                <div class="pos-barcode-wrap">
-                    <input id="txtBarcode"
-                           class="form-control pos-barcode-input"
-                           placeholder="Quét mã • Tên sản phẩm • 6+Tên SP • Khách hàng"
-                           autocomplete="off" />
+        <div class="pos-barcode-wrap pos-cockpit-search">
+            <i class="bx bx-search pos-cockpit-search__icon"
+               aria-hidden="true"></i>
 
-                    <div id="barcodeAutocomplete"
-                         class="pos-autocomplete-menu"
-                         style="display:none;">
-                    </div>
-                </div>
+            <input id="txtBarcode"
+                   class="form-control pos-barcode-input pos-cockpit-search__input"
+                   placeholder="Quét barcode hoặc tìm sản phẩm..."
+                   autocomplete="off"
+                   aria-describedby="posCockpitCommandHints" />
+
+            <div id="barcodeAutocomplete"
+                 class="pos-autocomplete-menu"
+                 style="display:none;">
             </div>
-
-            <div class="col-lg-4">
-                <div id="customerInfoBox" class="pos-customer-box pos-customer-box-toolbar">
-                    <div class="text-muted">Khách lẻ</div>
-                  
-                </div>
-            </div>
-
         </div>
     </div>
+
+    <div id="posCockpitCommandHints"
+         class="pos-cockpit-command__hints">
+
+        <button type="button"
+                class="pos-cockpit-command-chip"
+                data-pos-command-focus>
+            <i class="bx bx-package"></i>
+            <span>Sản phẩm</span>
+        </button>
+
+        <button type="button"
+                class="pos-cockpit-command-chip"
+                data-pos-command-prefix="&#64;">
+            <span class="pos-cockpit-command-chip__symbol">@@</span>
+            <span>Khách</span>
+        </button>
+
+        <button type="button"
+                class="pos-cockpit-command-chip"
+                data-pos-command-prefix="#">
+            <span class="pos-cockpit-command-chip__symbol">#</span>
+            <span>Voucher</span>
+        </button>
+
+        <button type="button"
+                class="pos-cockpit-command-chip"
+                data-pos-command-prefix="4+">
+            <span class="pos-cockpit-command-chip__symbol">4+</span>
+            <span>SL</span>
+        </button>
+
+    </div>
 </div>
+<partial name="_ScanFeedback" />

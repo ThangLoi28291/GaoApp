@@ -1,4 +1,4 @@
-﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Application.Common.Security
 @using GaoApp.Web.Areas.Admin.ViewModels.AttributeValues
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService AuthorizationService
@@ -11,206 +11,241 @@
     var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
     var currentPage = Model.Page <= 0 ? 1 : Model.Page;
     var totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
+    var firstItem = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    var lastItem = totalItems == 0 ? 0 : Math.Min(currentPage * pageSize, totalItems);
 
-    var canUpdate = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.AttributeValue.Update)).Succeeded;
-    var canDelete = (await AuthorizationService.AuthorizeAsync(User, PermissionCodes.Catalog.AttributeValue.Delete)).Succeeded;
+    var canUpdate = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Catalog.AttributeValue.Update)).Succeeded;
+    var canDelete = (await AuthorizationService.AuthorizeAsync(
+        User,
+        PermissionCodes.Catalog.AttributeValue.Delete)).Succeeded;
 }
 
-<div class="card border-0 shadow-sm av-table-card">
-    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <div>
-            <h5 class="mb-1 fw-bold">Danh sách giá trị</h5>
-            <div class="text-muted small">
-                Tổng cộng <b>@totalItems</b> giá trị thuộc tính
+<div data-attribute-value-result
+     data-total-values="@Model.TotalValueCount"
+     data-active-values="@Model.ActiveValueCount"
+     data-inactive-values="@Model.InactiveValueCount">
+
+    <section class="gds-list-panel" aria-label="Danh sách giá trị thuộc tính">
+        @if (items == null || !items.Any())
+        {
+            <div class="gds-empty">
+                <div class="gds-empty__icon" aria-hidden="true">
+                    <i class="bx bx-purchase-tag"></i>
+                </div>
+                <div class="fw-semibold mb-1">Chưa có giá trị phù hợp</div>
+                <div class="gds-empty__copy">
+                    Thử thay đổi thuộc tính, từ khóa hoặc trạng thái lọc.
+                </div>
             </div>
-        </div>
-    </div>
-
-    <div class="table-responsive av-table-wrap">
-        <table class="table table-hover align-middle mb-0 av-table">
-            <thead>
-                <tr>
-                    <th style="width:90px">ID</th>
-                    <th style="width:230px">Thuộc tính</th>
-                    <th style="width:170px">Mã</th>
-                    <th>Tên giá trị</th>
-                    <th style="width:180px">Trạng thái</th>
-                    <th style="width:190px">Cập nhật</th>
-                    <th class="text-end" style="width:120px">Thao tác</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                @if (items == null || !items.Any())
-                {
-                    <tr>
-                        <td colspan="7">
-                            <div class="av-empty">
-                                <div class="av-empty-icon">
-                                    <i class="bx bx-package"></i>
-                                </div>
-                                <div class="fw-bold mb-1">Chưa có giá trị thuộc tính</div>
-                                <div class="text-muted">
-                                    Hãy thêm giá trị như Đỏ, Xanh, Size M, Size L...
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                }
-                else
-                {
-                    foreach (var x in items)
-                    {
-                        <tr>
-                            <td>
-                                <span class="av-id">#@x.Id</span>
-                            </td>
-
-                            <td>
-                                <div class="fw-semibold">@x.AttributeName</div>
-                            </td>
-
-                            <td>
-                                <span class="av-code">@x.Code</span>
-                            </td>
-
-                            <td>
-                                <div class="fw-bold">@x.Name</div>
-                            </td>
-
-                            <td>
-                                @if (canUpdate)
-                                {
-                                    <button type="button"
-                                            class="av-status-btn js-toggle-status @(x.Status ? "is-active" : "is-inactive")"
-                                            data-id="@x.Id">
-                                        <span class="av-status-dot"></span>
-                                        @(x.Status ? "Đang hoạt động" : "Ngưng giao dịch")
-                                    </button>
-                                }
-                                else
-                                {
-                                    <span class="av-status-badge @(x.Status ? "is-active" : "is-inactive")">
-                                        <span class="av-status-dot"></span>
-                                        @(x.Status ? "Đang hoạt động" : "Ngưng giao dịch")
-                                    </span>
-                                }
-                            </td>
-                            <td>
-                                <div class="small">
-                                    @if (x.UpdatedAtUtc.HasValue)
-                                    {
-                                        <div class="fw-semibold">
-                                            @x.UpdatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                        </div>
-                                        <div class="text-muted">
-                                            Sửa bởi: @(x.UpdatedBy?.ToString() ?? "Hệ thống")
-                                        </div>
-                                    }
-                                    else if (x.CreatedAtUtc.HasValue)
-                                    {
-                                        <div class="fw-semibold">
-                                            @x.CreatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                        </div>
-                                        <div class="text-muted">
-                                            Tạo bởi: @(x.CreatedBy?.ToString() ?? "Hệ thống")
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">Chưa có</span>
-                                    }
-                                </div>
-                            </td>
-                            <td class="text-end">
-                                <div class="dropdown">
-                                    <button type="button"
-                                            class="btn btn-sm btn-icon btn-label-secondary"
-                                            data-bs-toggle="dropdown">
-                                        <i class="bx bx-dots-vertical-rounded"></i>
-                                    </button>
-
-                                    <div class="dropdown-menu dropdown-menu-end">
+        }
+        else
+        {
+            <div class="gds-desktop-list">
+                <div class="table-responsive">
+                    <table class="table align-middle gds-table">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 190px;">Thuộc tính</th>
+                                <th style="width: 160px;">Mã giá trị</th>
+                                <th style="min-width: 210px;">Tên giá trị</th>
+                                <th style="width: 180px;">Trạng thái</th>
+                                <th style="width: 180px;">Cập nhật</th>
+                                <th class="text-end" style="width: 110px;">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var x in items)
+                            {
+                                var activityAt = x.UpdatedAtUtc ?? x.CreatedAtUtc;
+                                var activityBy = x.UpdatedAtUtc.HasValue ? x.UpdatedBy : x.CreatedBy;
+                                <tr>
+                                    <td><div class="gds-table__primary">@x.AttributeName</div></td>
+                                    <td><span class="gds-code">@x.Code</span></td>
+                                    <td><div class="gds-table__primary">@x.Name</div></td>
+                                    <td>
                                         @if (canUpdate)
                                         {
-                                            <a asp-area="Admin"
-                                                   asp-controller="AttributeValue"
-                                                   asp-action="Edit"
-                                                   asp-route-id="@x.Id"
-                                                   class="dropdown-item">
-                                                <i class="bx bx-edit me-2"></i> Sửa
-                                            </a>
-
                                             <button type="button"
-                                                    class="dropdown-item js-toggle-status"
-                                                    data-id="@x.Id">
-                                                <i class="bx bx-power-off me-2"></i>
-                                                @(x.Status ? "Ngưng hoạt động" : "Mở hoạt động")
-                                            </button>
-                                        }
-
-                                        @if (canDelete)
-                                        {
-                                            <div class="dropdown-divider"></div>
-                                            <button type="button"
-                                                    class="dropdown-item text-danger js-delete"
+                                                    class="gds-status gds-status--dot gds-status-button js-toggle-status @(x.Status ? "is-success" : "is-neutral")"
                                                     data-id="@x.Id"
-                                                    data-name="@x.Name">
-                                                <i class="bx bx-trash me-2"></i> Xóa
+                                                    data-name="@x.Name"
+                                                    data-status="@x.Status.ToString().ToLowerInvariant()"
+                                                    aria-label="@(x.Status ? $"Ngừng hoạt động giá trị {x.Name}" : $"Kích hoạt lại giá trị {x.Name}")"
+                                                    title="@(x.Status ? "Bấm để ngừng hoạt động" : "Bấm để kích hoạt lại")"
+                                                    data-bs-toggle="tooltip"
+                                                    data-bs-placement="top">
+                                                @(x.Status ? "Đang hoạt động" : "Ngừng hoạt động")
                                             </button>
                                         }
-
-                                        @if (!canUpdate && !canDelete)
+                                        else
                                         {
-                                            <span class="dropdown-item text-muted">
-                                                Không có quyền thao tác
+                                            <span class="gds-status gds-status--dot @(x.Status ? "is-success" : "is-neutral")">
+                                                @(x.Status ? "Đang hoạt động" : "Ngừng hoạt động")
                                             </span>
                                         }
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-    </div>
-</div>
+                                    </td>
+                                    <td>
+                                        <div class="gds-table__secondary">
+                                            @(activityAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
+                                        </div>
+                                        <div class="text-muted small">Bởi: @(activityBy?.ToString() ?? "Hệ thống")</div>
+                                    </td>
+                                    <td class="text-end">
+                                        @if (canUpdate || canDelete)
+                                        {
+                                            <div class="gds-row-actions justify-content-end">
+                                                @if (canUpdate)
+                                                {
+                                                    <a asp-area="Admin"
+                                                       asp-controller="AttributeValue"
+                                                       asp-action="Edit"
+                                                       asp-route-id="@x.Id"
+                                                       class="gds-icon-button gds-action-button"
+                                                       aria-label="Sửa giá trị @x.Name"
+                                                       title="Sửa"
+                                                       data-bs-toggle="tooltip"
+                                                       data-bs-placement="top">
+                                                        <i class="bx bx-edit" aria-hidden="true"></i>
+                                                    </a>
+                                                }
+                                                @if (canDelete)
+                                                {
+                                                    <button type="button"
+                                                            class="gds-icon-button gds-action-button is-danger js-delete"
+                                                            data-id="@x.Id"
+                                                            data-name="@x.Name"
+                                                            aria-label="Xóa giá trị @x.Name"
+                                                            title="Xóa"
+                                                            data-bs-toggle="tooltip"
+                                                            data-bs-placement="top">
+                                                        <i class="bx bx-trash" aria-hidden="true"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-@if (totalPages > 1)
-{
-    <div class="av-pagination mt-3">
-        <div class="text-muted">
-            Trang <b>@currentPage</b> / <b>@totalPages</b>
+            <div class="gds-mobile-list" aria-label="Danh sách giá trị thuộc tính trên thiết bị di động">
+                @foreach (var x in items)
+                {
+                    var activityAt = x.UpdatedAtUtc ?? x.CreatedAtUtc;
+                    <article class="gds-row-card">
+                        <div class="gds-row-card__header">
+                            <div>
+                                <div class="gds-row-card__title">@x.Name</div>
+                                <div class="gds-code mt-1">@x.Code</div>
+                            </div>
+                            @if (canUpdate)
+                            {
+                                <button type="button"
+                                        class="gds-status gds-status--dot gds-status-button js-toggle-status @(x.Status ? "is-success" : "is-neutral")"
+                                        data-id="@x.Id"
+                                        data-name="@x.Name"
+                                        data-status="@x.Status.ToString().ToLowerInvariant()"
+                                        aria-label="@(x.Status ? $"Ngừng hoạt động giá trị {x.Name}" : $"Kích hoạt lại giá trị {x.Name}")">
+                                    @(x.Status ? "Đang hoạt động" : "Ngừng hoạt động")
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="gds-status gds-status--dot @(x.Status ? "is-success" : "is-neutral")">
+                                    @(x.Status ? "Đang hoạt động" : "Ngừng hoạt động")
+                                </span>
+                            }
+                        </div>
+
+                        <div class="gds-row-card__meta">
+                            <span>
+                                <i class="bx bx-slider-alt me-1" aria-hidden="true"></i>
+                                Thuộc tính: @x.AttributeName
+                            </span>
+                            <span>
+                                <i class="bx bx-history me-1" aria-hidden="true"></i>
+                                Cập nhật: @(activityAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
+                            </span>
+                        </div>
+
+                        @if (canUpdate || canDelete)
+                        {
+                            <div class="gds-row-card__actions">
+                                @if (canUpdate)
+                                {
+                                    <a asp-area="Admin"
+                                       asp-controller="AttributeValue"
+                                       asp-action="Edit"
+                                       asp-route-id="@x.Id"
+                                       class="btn btn-sm btn-label-primary gds-action-button">
+                                        <i class="bx bx-edit me-1" aria-hidden="true"></i>Sửa
+                                    </a>
+                                }
+                                @if (canDelete)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm btn-label-danger gds-action-button js-delete"
+                                            data-id="@x.Id"
+                                            data-name="@x.Name">
+                                        <i class="bx bx-trash me-1" aria-hidden="true"></i>Xóa
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <div class="gds-list-footer">
+        <div class="gds-list-footer__summary">
+            @if (totalItems == 0)
+            {
+                <span>0 kết quả</span>
+            }
+            else
+            {
+                <span><strong>@firstItem–@lastItem</strong> / @totalItems kết quả</span>
+            }
         </div>
 
-        <nav>
-            <ul class="pagination mb-0">
-                @{
-                    var start = Math.Max(1, currentPage - 3);
-                    var end = Math.Min(totalPages, start + 6);
-                    start = Math.Max(1, end - 6);
-                }
-
-                <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
-                    <a href="#" class="page-link js-page-link" data-page="@(currentPage - 1)">
-                        <i class="bx bx-chevron-left"></i>
-                    </a>
-                </li>
-
-                @for (int p = start; p <= end; p++)
-                {
-                    <li class="page-item @(p == currentPage ? "active" : "")">
-                        <a href="#" class="page-link js-page-link" data-page="@p">@p</a>
+        @if (totalPages > 1)
+        {
+            <nav aria-label="Phân trang giá trị thuộc tính">
+                <ul class="pagination mb-0">
+                    @{
+                        var start = Math.Max(1, currentPage - 3);
+                        var end = Math.Min(totalPages, start + 6);
+                        start = Math.Max(1, end - 6);
+                    }
+                    <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                        <a href="#" class="page-link js-page-link" data-page="@(currentPage - 1)" aria-label="Trang trước">
+                            <i class="bx bx-chevron-left" aria-hidden="true"></i>
+                        </a>
                     </li>
-                }
-
-                <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
-                    <a href="#" class="page-link js-page-link" data-page="@(currentPage + 1)">
-                        <i class="bx bx-chevron-right"></i>
-                    </a>
-                </li>
-            </ul>
-        </nav>
+                    @for (var page = start; page <= end; page++)
+                    {
+                        <li class="page-item @(page == currentPage ? "active" : "")">
+                            <a href="#" class="page-link js-page-link" data-page="@(page)">@(page)</a>
+                        </li>
+                    }
+                    <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                        <a href="#" class="page-link js-page-link" data-page="@(currentPage + 1)" aria-label="Trang sau">
+                            <i class="bx bx-chevron-right" aria-hidden="true"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        }
     </div>
-}
+</div>

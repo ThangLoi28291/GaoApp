@@ -1,0 +1,15 @@
+@model GaoApp.Web.Services.Acb.AcbSandboxCheckResult
+@{ Layout = "_ContentNavbarLayout"; ViewData["Title"] = "Kết quả kiểm thử ACB " + Model.Environment; }
+<div class="card"><div class="card-body">
+    <h3>Kết quả kiểm thử ACB @Model.Environment</h3>
+    <p>Mã thử: <code>@Model.ProviderOrderId</code> · Trace: <code>@Model.TraceNumber</code> · Số tiền QR thử: 1.000đ.</p>
+    <table class="table"><thead><tr><th>Bước</th><th>Kết quả</th><th>Chi tiết</th></tr></thead><tbody>
+    @foreach (var step in Model.Steps)
+    {
+        <tr><td>@step.Name</td><td>@(step.Succeeded ? "Đạt" : "Chưa đạt")</td><td>@step.Message</td></tr>
+    }
+    </tbody></table>
+    <p>Phép thử không chuyển tiền, không ghi nhận thanh toán và chưa kiểm tra callback từ ACB.</p>
+    <p>Nhật ký tham chiếu: <code>App_Data/Logs/@Model.JournalFolder/@(Model.RunId.ToString("N")).json</code></p>
+    <a asp-action="Index" asp-route-tenant="@Context.Request.Query["tenant"]" class="btn btn-primary">Về cài đặt ACB</a>
+</div></div>

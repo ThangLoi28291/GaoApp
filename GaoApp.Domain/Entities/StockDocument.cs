@@ -35,6 +35,14 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     public int? PurchaseOrderId { get; set; }
     public PurchaseOrder? PurchaseOrder { get; set; }
 
+    public ReceivingSessionState ReceivingSessionState { get; set; }
+        = ReceivingSessionState.None;
+    public int? ReceivingOwnerUserId { get; set; }
+    public Guid? ReceivingLeaseToken { get; set; }
+    public DateTime? ReceivingLeaseExpiresAtUtc { get; set; }
+    public DateTime? ReceivingLastSavedAtUtc { get; set; }
+    public int ReceivingRevision { get; set; }
+
     [StringLength(500)]
     public string? DirectReceiptReason { get; set; }
 
@@ -138,6 +146,13 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
 
     public int? ConfirmedByUserId { get; set; }
 
+    /// <summary>
+    /// Immutable receipt owner snapshot written atomically at confirmation.
+    /// It is intentionally receipt-scoped; non-receipt stock documents remain unaffected.
+    /// </summary>
+    public int? ConfirmedLegalEntityId { get; set; }
+    public LegalEntity? ConfirmedLegalEntity { get; set; }
+
     public ICollection<StockDocumentLine> Lines { get; set; }
         = new List<StockDocumentLine>();
     /// <summary>
@@ -154,4 +169,8 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
 
     public ICollection<PurchasePayable> PurchasePayables { get; set; }
         = new List<PurchasePayable>();
+    public ICollection<PurchaseReceivingAction> ReceivingActions { get; set; }
+        = new List<PurchaseReceivingAction>();
+    public ICollection<StockDocumentProvisionalItem> ProvisionalItems { get; set; }
+        = new List<StockDocumentProvisionalItem>();
 }

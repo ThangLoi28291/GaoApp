@@ -1,101 +1,100 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.Units
+@using GaoApp.Web.Areas.Admin.ViewModels.Units
 @model UnitEditViewModel
 
 @{
-    ViewData["Title"] = Model.Id == 0 ? "Thêm đơn vị" : "Cập nhật đơn vị";
+    var isCreate = Model.Id == 0;
+    ViewData["Title"] = Model.Id == 0 ? "Thêm đơn vị tính" : "Cập nhật đơn vị tính";
     Layout = "_ContentNavbarLayout";
 }
 
-@section Header {
-    <div class="d-flex align-items-center justify-content-between py-3 mb-4">
-        <h4 class="fw-bold mb-0">
-            <a asp-area="Admin" asp-controller="Unit" asp-action="Index" class="text-muted fw-light">
-                Đơn vị /
-            </a>
-            @ViewData["Title"]
-        </h4>
-    </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/catalog-editor.css" asp-append-version="true" />
 }
+<div class="catalog-editor">
+    <nav class="ce-breadcrumb" aria-label="Đường dẫn">
+        <a asp-area="Admin" asp-controller="Unit" asp-action="Index">Đơn vị tính</a>
+        <i class="bx bx-chevron-right" aria-hidden="true"></i>
+        <span>@(isCreate ? "Tạo mới" : "Chỉnh sửa")</span>
+    </nav>
+    <header class="ce-header">
+        <div><span class="ce-eyebrow">DANH MỤC SẢN PHẨM</span><h1>@ViewData["Title"]</h1><p>Chuẩn hóa đơn vị đo lường để quản lý sản phẩm nhất quán.</p></div>
+        <a asp-area="Admin" asp-controller="Unit" asp-action="Index" class="ce-back"><i class="bx bx-arrow-back" aria-hidden="true"></i> Quay lại danh sách</a>
+    </header>
+    <form asp-area="Admin" asp-controller="Unit" asp-action="@(isCreate ? "Create" : "Edit")" method="post" novalidate>
+        @Html.AntiForgeryToken()
+        @Html.HiddenFor(x => x.Id)
+        @Html.HiddenFor(x => x.RowVersion)
+        <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+        <div class="ce-layout">
+            <section class="ce-card" aria-labelledby="ce-details-title">
+                <div class="ce-section-heading">
+                    <span class="ce-icon"><i class="bx bx-ruler" aria-hidden="true"></i></span>
+                    <div><h2 id="ce-details-title">Thông tin đơn vị tính</h2><p>Các trường có dấu <span class="ce-required">*</span> là bắt buộc.</p></div>
+                </div>
+                <div class="ce-fields">
+                    <div class="ce-field ce-full">
+                        <label asp-for="Name">Tên đơn vị tính <span class="ce-required">*</span></label>
+                        <input asp-for="Name" class="form-control" placeholder="Ví dụ: Kilôgam, Bao, Thùng" autocomplete="off" />
+                        <span asp-validation-for="Name" class="text-danger"></span>
 
-<div class="row justify-content-center">
-    <div class="col-md-10 col-lg-8">
-        <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Thông tin chi tiết</h5>
-                <small class="text-muted float-end">* là bắt buộc</small>
-            </div>
+                    </div>
+<div class="ce-field ce-full">
+                        <label asp-for="Code">Mã đơn vị tính</label>
+                        @if (isCreate)
+                        {
+                            <input asp-for="Code" class="form-control text-uppercase" placeholder="Tự động tạo nếu để trống" autocomplete="off" />
+                        }
+                        else
+                        {
+                            <input asp-for="Code" class="form-control text-uppercase" readonly />
+                        }
+                        <span asp-validation-for="Code" class="text-danger"></span>
+                        <p class="ce-field-help">@(isCreate ? "Bạn có thể để trống để hệ thống tự sinh mã." : "Mã được giữ cố định sau khi tạo.")</p>
+                    </div>
+<div class="ce-field ce-full">
+                        <label asp-for="SortOrder">Thứ tự hiển thị</label>
+                        <input asp-for="SortOrder" class="form-control" type="number" min="0" />
+                        <span asp-validation-for="SortOrder" class="text-danger"></span>
 
-            <div class="card-body">
-                <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
-
-                <form asp-area="Admin"
-                      asp-controller="Unit"
-                      asp-action="@(Model.Id == 0 ? "Create" : "Edit")"
-                      method="post" novalidate>
-                    @Html.AntiForgeryToken()
-                    @Html.HiddenFor(x => x.Id)
-                    @Html.HiddenFor(x => x.RowVersion)
-
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label asp-for="Code" class="form-label"></label>
-
-                            @if (Model.Id == 0)
-                            {
-                                <input asp-for="Code" class="form-control text-uppercase"
-                                       placeholder="(Tự sinh nếu để trống)" />
-                            }
-                            else
-                            {
-                                <input asp-for="Code" class="form-control text-uppercase" readonly />
-                            }
-
-                            <span asp-validation-for="Code" class="text-danger"></span>
-                        </div>
-
-                        <div class="col-md-8">
-                            <label asp-for="Name" class="form-label"></label> <span class="text-danger">*</span>
-                            <input asp-for="Name" class="form-control" placeholder="Nhập tên đơn vị..." autofocus />
-                            <span asp-validation-for="Name" class="text-danger"></span>
+                    </div>
+                </div>
+            </section>
+            <aside class="ce-side">
+                <section class="ce-card ce-guide" aria-labelledby="ce-guide-title">
+                    <span class="ce-icon"><i class="bx bx-ruler" aria-hidden="true"></i></span>
+                    <span class="ce-eyebrow">GỢI Ý THIẾT LẬP</span>
+                    <h2 id="ce-guide-title">Đơn vị rõ ràng, vận hành chính xác</h2><p>Đặt tên ngắn gọn, dễ nhận biết khi nhập hàng và bán hàng.</p><div class="ce-example">Kilôgam · Bao · Thùng</div>
+                </section>
+                <section class="ce-card ce-status-card">
+                    <div class="ce-status-top"><h2>Đang hoạt động</h2>
+                        <div class="form-check form-switch">
+                            <input asp-for="Status" class="form-check-input" type="checkbox" role="switch" aria-describedby="ce-Status-help" />
+                            <label asp-for="Status" class="visually-hidden">Đang hoạt động</label>
                         </div>
                     </div>
-
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label asp-for="SortOrder" class="form-label"></label>
-                            <input asp-for="SortOrder" class="form-control" type="number" min="0" />
-                            <span asp-validation-for="SortOrder" class="text-danger"></span>
-                        </div>
-
-                        <div class="col-md-8 d-flex align-items-end gap-4">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" asp-for="IsBase" />
-                                <label class="form-check-label" asp-for="IsBase">Đơn vị gốc</label>
-                            </div>
-
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" asp-for="Status" />
-                                <label class="form-check-label" asp-for="Status">Đang hoạt động</label>
-                            </div>
+                    <p id="ce-Status-help">Bật khi đang sử dụng. Tắt khi tạm ngừng sử dụng đơn vị tính này.</p>
+                </section><section class="ce-card ce-status-card">
+                    <div class="ce-status-top"><h2>Đơn vị gốc</h2>
+                        <div class="form-check form-switch">
+                            <input asp-for="IsBase" class="form-check-input" type="checkbox" role="switch" aria-describedby="ce-IsBase-help" />
+                            <label asp-for="IsBase" class="visually-hidden">Đơn vị gốc</label>
                         </div>
                     </div>
-
-                    <div class="text-end">
-                        <a asp-area="Admin" asp-controller="Unit" asp-action="Index"
-                           class="btn btn-label-secondary me-2">Hủy bỏ</a>
-
-                        <button type="submit" class="btn btn-primary">
-                            <i class="bx bx-save me-1"></i> Lưu thông tin
-                        </button>
-                    </div>
-                </form>
-            </div>
+                    <p id="ce-IsBase-help">Đánh dấu nếu đây là đơn vị gốc.</p>
+                </section>
+            </aside>
         </div>
-    </div>
-</div>
+        <footer class="ce-actions">
+            <span>Kiểm tra thông tin trước khi lưu.</span>
+            <div>
+                <a asp-area="Admin" asp-controller="Unit" asp-action="Index" class="btn ce-cancel">Hủy bỏ</a>
+                <button type="submit" class="btn ce-save"><i class="bx bx-check" aria-hidden="true"></i> @(isCreate ? "Tạo đơn vị tính" : "Lưu thay đổi")</button>
+            </div>
+        </footer>
+    </form>
 
+</div>
 @section Scripts {
-    @{
-        await Html.RenderPartialAsync("_ValidationScriptsPartial");
-    }
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
 }

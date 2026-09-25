@@ -25,6 +25,24 @@ public sealed class DatabaseSecurityMetadataTests
         "20260817090000_AddPurchaseReceiptCostCapitalizationPolicy";
     private const string InputInvoiceIdentityMigrationId =
         "20260817150000_AddInputInvoiceIdentityUniqueness";
+    private const string InputInvoiceSupplierResolutionMigrationId =
+        "20260822090000_AddInputInvoiceSupplierResolution";
+    private const string InputInvoiceBuyerOwnerGuardMigrationId =
+        "20260824150000_AddInputInvoiceBuyerOwnerGuard";
+    private const string InputInvoiceItemCatalogMappingMigrationId =
+        "20260826150000_AddInputInvoiceItemCatalogMapping";
+    private const string InputInvoiceReconciliationMigrationId =
+        "20260827150000_AddInputInvoiceReconciliation";
+    private const string InputInvoiceSingleActiveReceiptMigrationId =
+        "20260828150000_EnforceSingleActiveInputInvoicePerReceipt";
+    private const string ReceivingWorkbenchMigrationId =
+        "20260830112901_AddReceivingWorkbench";
+    private const string ProvisionalReceivingItemsMigrationId =
+        "20260831135031_AddProvisionalReceivingItems";
+    private const string AcbPaymentsMigrationId =
+        "20260908151919_AddStoreAcbPayments";
+    private const string AcbCallbackInboxMigrationId =
+        "20260908155844_AddAcbCallbackInbox";
 
     [Fact]
     public Task Current_baseline_with_application_database_user_should_be_allowed()
@@ -147,12 +165,12 @@ public sealed class DatabaseSecurityMetadataTests
         IReadOnlyList<string> historyAfterFirst = [];
         var output = await CaptureConsoleAsync(async () =>
         {
-            await execution.Pipeline.RunAsync();
+            await execution.Pipeline.RunAsync(MigratorMode.SchemaOnly);
             provisioningAfterFirst =
                 await database.ReadProvisioningStateSignatureAsync();
             historyAfterFirst =
                 await database.ReadMigrationHistoryAsync();
-            await execution.Pipeline.RunAsync();
+            await execution.Pipeline.RunAsync(MigratorMode.SchemaOnly);
         });
 
         var afterMigration = await preflight.InspectAsync();
@@ -231,7 +249,7 @@ public sealed class DatabaseSecurityMetadataTests
         var execution = CreateExecutionHarness(db, preflight);
 
         var output = await CaptureConsoleAsync(
-            () => execution.Pipeline.RunAsync());
+            () => execution.Pipeline.RunAsync(MigratorMode.SchemaOnly));
 
         output.Should().Contain(
             "Database security metadata audit:");
@@ -288,12 +306,12 @@ public sealed class DatabaseSecurityMetadataTests
         IReadOnlyList<string> historyAfterFirst = [];
         var output = await CaptureConsoleAsync(async () =>
         {
-            await execution.Pipeline.RunAsync();
+            await execution.Pipeline.RunAsync(MigratorMode.SchemaOnly);
             provisioningAfterFirst =
                 await database.ReadProvisioningStateSignatureAsync();
             historyAfterFirst =
                 await database.ReadMigrationHistoryAsync();
-            await execution.Pipeline.RunAsync();
+            await execution.Pipeline.RunAsync(MigratorMode.SchemaOnly);
         });
 
         (await database.ReadProvisioningStateSignatureAsync())
@@ -336,7 +354,7 @@ public sealed class DatabaseSecurityMetadataTests
             bootstrap,
             transaction);
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.SchemaOnly);
 
         compatibility.IsAllowed.Should().BeFalse();
         await action.Should()
@@ -371,7 +389,33 @@ public sealed class DatabaseSecurityMetadataTests
                 InventoryPostingMigrationId,
                 PurchaseReceiptAuditMigrationId,
                 PurchaseReceiptCostPolicyMigrationId,
-                InputInvoiceIdentityMigrationId
+                InputInvoiceIdentityMigrationId,
+                InputInvoiceSupplierResolutionMigrationId,
+                InputInvoiceBuyerOwnerGuardMigrationId,
+                InputInvoiceItemCatalogMappingMigrationId,
+                InputInvoiceReconciliationMigrationId,
+                InputInvoiceSingleActiveReceiptMigrationId,
+                ReceivingWorkbenchMigrationId,
+                ProvisionalReceivingItemsMigrationId,
+                AcbPaymentsMigrationId,
+                AcbCallbackInboxMigrationId,
+                "20260908192844_AddAcbQrNotificationReconciliation", "20260909015242_AddPosQrInstallmentLinks",
+                "20260909024821_AddAcbConfirmationAudit", "20260909055844_EnforceSingleDefaultBankAccount", "20260909061611_EnableSnapshotProfitReads", "20260909062834_AddAcbCallbackStoreRouting", "20260909080000_AddPosCollectionIdempotency", "20260909100000_AddSupplierBankFields", "20260909210000_AddPosOfflineJournal", "20260910002000_AddPosReceiptTemplates", "20260910012000_AddStoreReceiptIdentity", "20260910040620_AddProductLabelPrinting", "20260911053655_AddReceiptIntakePacking",
+                "20260912120000_AddCustomerDisplayWifi",
+                "20260912150000_AddReceivingPackagingPhoto",
+                "20260914073514_AddOrderRewardEligibilitySnapshots",
+                "20260914154923_AddPOSShiftCashReceipt",
+                "20260919095814_AddCustomerReceivables",
+                "20260919111155_AddCustomerDeposits",
+                "20260919111529_AddDepositReturnRestoration",
+                "20260919173000_MakePurchaseOrderSupplierOptional",
+                "20260919174500_AllowPurchaseOrderVariantMultipleUnits",
+                "20260920093000_OptimizeInventoryLedgerTimeline",
+"20260921100000_AddInvoiceInputStockSupplementalMovements",
+"20260923140000_AddInvoiceStockLegacyDocumentReferences",
+"20260923160000_AddLegacyInvoiceImport",
+"20260923180000_AddLegacyReturnArchive",
+"20260924100000_AddAutoInvoiceIssuance"
             ]);
     }
 
@@ -411,11 +455,11 @@ public sealed class DatabaseSecurityMetadataTests
         ExecutionHarness execution)
     {
         execution.Migration.Count.Should().Be(2);
-        execution.Mandatory.Count.Should().Be(2);
+        execution.Mandatory.Count.Should().Be(0);
         execution.Demo.Count.Should().Be(0);
         execution.Bootstrap.InspectCount.Should().Be(0);
         execution.Bootstrap.ApplyCount.Should().Be(0);
-        execution.Transaction.Count.Should().Be(2);
+        execution.Transaction.Count.Should().Be(0);
     }
 
     private static async Task<string> ReadFingerprintAsync(

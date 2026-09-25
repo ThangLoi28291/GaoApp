@@ -1,4 +1,4 @@
-﻿window.PosApp = (function () {
+window.PosApp = (function () {
     'use strict';
 
     function create() {
@@ -90,7 +90,6 @@
             qtyEditModalEl
         } = dom.modalElements;
 
-        const screenRetryStateEl = document.getElementById('posScreenRetryState');
         const cartRetryStateEl = document.getElementById('posCartRetryState');
         const paymentRetryStateEl = document.getElementById('posPaymentRetryState');
         const holdRetryStateEl = document.getElementById('posHoldRetryState');
@@ -187,15 +186,6 @@
         };
 
         function registerRetryScopes() {
-            if (screenRetryStateEl) {
-                registerRetryUi({
-                    scope: 'screen',
-                    target: screenRetryStateEl,
-                    autoHideSuccessMs: 1500,
-                    autoHideFailureMs: 0
-                });
-            }
-
             if (cartRetryStateEl) {
                 registerRetryUi({
                     scope: 'cart',
@@ -222,33 +212,6 @@
                     autoHideFailureMs: 0
                 });
             }
-        }
-
-        function showScreenRetryingUi(ctx) {
-            showRetryingState('screen', {
-                title: buildRetryAttemptText(ctx?.autoRetried, ctx?.policy?.maxAutoRetry),
-                message: 'Kết nối tạm thời bị gián đoạn. Hệ thống đang tự thử lại.',
-                detail: buildRetryDelayText(ctx?.delayMs)
-            });
-        }
-
-        function showScreenRetryRecoveredUi() {
-            showRetrySuccessState('screen', {
-                title: 'Đã phục hồi kết nối',
-                message: 'Dữ liệu màn hình POS đã được tải lại thành công.'
-            });
-        }
-
-        function showScreenRetryFailedUi(error) {
-            showRetryFailureState('screen', {
-                title: 'Không thể tải lại tự động',
-                message: error?.message || 'Không thể tải màn hình POS.',
-                detail: 'Bạn có thể bấm Tải lại để thử lại thủ công.'
-            });
-        }
-
-        function clearScreenRetryUi() {
-            clearRetryState('screen');
         }
 
         function showCartRetryingUi(ctx) {
@@ -333,7 +296,6 @@
         }
 
         function clearAllRetryUi() {
-            clearScreenRetryUi();
             clearCartRetryUi();
             clearPaymentRetryUi();
             clearHoldRetryUi();
@@ -452,6 +414,7 @@
 
         function openReceiptPrint(orderId) {
             if (!orderId) return;
+            if (window.PosOffline?.print(orderId)) return;
             window.open('/admin/pos/receipt/' + orderId, '_blank', 'noopener,noreferrer');
         }
 
@@ -649,7 +612,6 @@
             renderScreen(screen, posState);
             renderNetworkBanner(posState);
             refreshUiLocks?.(posState);
-            clearScreenRetryUi();
 
             if (options?.focusBarcode !== false) {
                 focusBarcodeInput();
@@ -763,24 +725,6 @@
                         return await getJson('/admin/pos/screen');
                     },
 
-                    onRetry: function (ctx) {
-                        // chỉ hiện retry UI cho lỗi transient
-                        showScreenRetryingUi(ctx);
-                    },
-
-                    onRetrySuccess: function () {
-                        showScreenRetryRecoveredUi();
-                    },
-
-                    onFinalFailure: function (ctx) {
-                        const err = ctx?.error || null;
-                        const policy = ctx?.policy || null;
-
-                        // chỉ show retry-failed UI khi đúng là transient/unknown có retry
-                        if (policy?.classification === 'transient' || policy?.classification === 'unknown') {
-                            showScreenRetryFailedUi(err);
-                        }
-                    }
                 });
 
                 if (refreshToken !== posState.runtime.activeRefreshToken) {
@@ -1049,6 +993,9 @@
             connection.on('pos:event', function (payload) {
                 if (!payload) return;
 
+                if ((payload.eventType || payload.EventType) === 'acb_payment_changed') {
+                    window.dispatchEvent(new CustomEvent('acb:payment-changed', { detail: payload }));
+                }
                 console.log('SignalR pos:event', payload);
                 handleRealtimePosEvent(payload);
             });
@@ -1596,6 +1543,18 @@
             }
         };
         async function init() {
+            await window.PosOffline?.init();
+            if (window.PosError.redirectToShiftIfNeeded(window.PosOffline?.status()?.sessionIssue?.code)) return;
+            window.addEventListener('pos:offline-status', function () {
+                const offline = window.PosOffline?.status();
+                if (window.PosError.redirectToShiftIfNeeded(offline?.sessionIssue?.code)) return;
+                if (offline?.ready) posState.offline.isOnline = offline.connected;
+                renderNetworkBanner(posState);
+                refreshUiLocks?.(posState);
+            });
+            window.addEventListener('pos:offline-synced', function () {
+                requestScreenRefresh({ reason: 'offline-synced', silent: true, scope: 'full', focusBarcode: false });
+            });
             registerRetryScopes();
             bindModuleEvents();
             bindModalEvents();
@@ -1641,10 +1600,6 @@
                 posBarcode
             },
             retryUi: {
-                showScreenRetryingUi,
-                showScreenRetryRecoveredUi,
-                showScreenRetryFailedUi,
-                clearScreenRetryUi,
 
                 showCartRetryingUi,
                 showCartRetryRecoveredUi,

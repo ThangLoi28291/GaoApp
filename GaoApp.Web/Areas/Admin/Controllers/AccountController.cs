@@ -1,6 +1,7 @@
-﻿using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.Auth;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Security.UserInStores;
 using GaoApp.Application.Interfaces.Repositories.POSTerminals;
 using GaoApp.Application.Interfaces.Services.Audit;
@@ -56,6 +57,8 @@ public class AccountController : Controller
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting("login")]
+    [RequestSizeLimit(64 * 1024)]
+    [ServiceFilter(typeof(GaoApp.Web.Security.LoginAccountRateLimitFilter))]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(LoginVm vm, CancellationToken ct)
     {
@@ -114,6 +117,7 @@ public class AccountController : Controller
 
         var claims = new List<Claim>
         {
+            new(AuthSessionStamp.ClaimType, result.SessionStamp),
             new(ClaimTypes.NameIdentifier, result.UserId.ToString()),
             new(ClaimTypes.Name, result.UserName),
             new("user_name", result.UserName),
@@ -168,6 +172,8 @@ public class AccountController : Controller
         }, "Logout", ct);
 
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        HttpContext.RequestServices.GetRequiredService<GaoApp.Web.Hubs.RevocablePosHubLifetimeManager>()
+            .RevokeSession(User);
         return Redirect("/admin/account/login");
     }
 

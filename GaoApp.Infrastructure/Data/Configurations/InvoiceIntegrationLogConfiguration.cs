@@ -18,6 +18,9 @@ public class InvoiceIntegrationLogConfiguration : IEntityTypeConfiguration<Invoi
         b.Property(x => x.InvoiceHeadId)
             .IsRequired();
 
+        b.Property(x => x.AutoInvoiceOperationId)
+            .IsRequired(false);
+
         b.Property(x => x.ActionType)
             .HasConversion<byte>()
             .IsRequired();
@@ -50,6 +53,8 @@ public class InvoiceIntegrationLogConfiguration : IEntityTypeConfiguration<Invoi
             .WithMany(x => x.IntegrationLogs)
             .HasForeignKey(x => x.InvoiceHeadId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasIndex(x => new { x.StoreId, x.AutoInvoiceOperationId, x.StartedAtUtc });
 
         b.HasIndex(x => new { x.StoreId, x.InvoiceHeadId, x.ActionType });
 

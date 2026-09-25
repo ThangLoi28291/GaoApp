@@ -37,10 +37,16 @@ public class AdminMenuService : IAdminMenuService
 
         var visible = items
             .Where(x => x.IsActive)
+            .Where(x => x.StoreId == storeId && !x.IsDeleted)
             .Where(x =>
                 string.IsNullOrWhiteSpace(x.PermissionCode)
                 || permissions.Contains(x.PermissionCode, StringComparer.OrdinalIgnoreCase))
             .ToList();
+
+        // The canonical Reports container has no permission of its own; leaves retain theirs.
+        visible.RemoveAll(x => x.IsSystem && x.ParentId == null && x.Title == "Báo cáo" &&
+            string.IsNullOrWhiteSpace(x.Controller) &&
+            !visible.Any(child => child.ParentId == x.Id));
 
         return BuildTree(visible);
     }

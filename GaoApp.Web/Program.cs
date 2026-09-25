@@ -1,4 +1,4 @@
-﻿using FluentValidation.AspNetCore;
+using FluentValidation.AspNetCore;
 using GaoApp.Application;
 using GaoApp.Application.Common;
 using GaoApp.Application.Interfaces.Common;
@@ -38,7 +38,33 @@ try
 {
     Log.Information("Starting GaoApp.Web");
 
-    var builder = WebApplication.CreateBuilder(args);
+    const string recoverAdminMenusOnlyFlag = "--recover-admin-menus-only";
+    var recoveryFlagCount = args.Count(argument =>
+        string.Equals(
+            argument,
+            recoverAdminMenusOnlyFlag,
+            StringComparison.Ordinal));
+
+    if (recoveryFlagCount > 1)
+    {
+        Console.Error.WriteLine(
+            "The admin menu recovery flag may be specified only once.");
+        Environment.ExitCode = 2;
+        return;
+    }
+
+    var recoverAdminMenusOnly = recoveryFlagCount == 1;
+    var builderArgs = recoverAdminMenusOnly
+        ? args.Where(argument =>
+            !string.Equals(
+                argument,
+                recoverAdminMenusOnlyFlag,
+                StringComparison.Ordinal))
+            .ToArray()
+        : args;
+
+    var builder = WebApplication.CreateBuilder(builderArgs);
+    builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
     // Custom validation environments run from the project output just like
     // Development, so they also need the generated static-web-assets manifest
@@ -57,7 +83,13 @@ try
         configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
-            .Enrich.FromLogContext();
+            .Enrich.FromLogContext()
+            .WriteTo.Logger(callback => callback
+                .Filter.ByIncludingOnly(Serilog.Filters.Matching.FromSource<GaoApp.Web.Services.Acb.AcbCallbackDiagnostics>())
+                .WriteTo.File(new Serilog.Formatting.Json.JsonFormatter(),
+                    System.IO.Path.Combine(context.HostingEnvironment.ContentRootPath, "App_Data", "Logs", "acb-callback", "callback-.jsonl"),
+                    rollingInterval: RollingInterval.Day, retainedFileCountLimit: 30,
+                    fileSizeLimitBytes: 10485760, rollOnFileSizeLimit: true, shared: true));
     });
 
     // =========================================================
@@ -82,14 +114,32 @@ try
     builder.Services.AddControllersWithViews(options =>
     {
         options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+        options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
     });
 
     // =========================================================
     // SignalR
     // =========================================================
 
-    builder.Services.AddSignalR();
+    builder.Services.AddSecuredPosRealtime();
     builder.Services.AddScoped<IPosRealtimeNotifier, PosRealtimeNotifier>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Offline.PosOperationFilter>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Printing.ReceiptTemplateService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.CustomerDisplayService>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.CustomerDepositDisplayState>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Printing.ProductLabelService>();
+    builder.Services.AddHttpClient<GaoApp.Web.Services.Acb.AcbProtocol>(client => client.Timeout = TimeSpan.FromSeconds(30))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbPaymentService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbCallbackInbox>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbReconciliationService>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.Acb.AcbCallbackDiagnostics>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbSandboxCheck>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.IAcbSandboxJournal, GaoApp.Web.Services.Acb.AcbSandboxFileJournal>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.Acb.AcbCallbackSignal>();
+    builder.Services.AddHostedService<GaoApp.Web.Services.Acb.AcbCallbackWorker>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.IAcbOrderLockProvider, GaoApp.Web.Services.Acb.SqlAcbOrderLockProvider>();
+    builder.Services.AddScoped<GaoApp.Application.Interfaces.Services.Orders.IOrderFinalizeGuard, GaoApp.Web.Services.Acb.AcbFinalizeGuard>();
     // =========================================================
     // 3) FLUENTVALIDATION
     // =========================================================
@@ -104,7 +154,10 @@ try
     // 4) APPLICATION + INFRASTRUCTURE
     // =========================================================
     builder.Services.AddApplication();
-    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
+    builder.Services.AddSingleton<GaoApp.Web.Services.Media.MediaCleanupStatus>();
+    builder.Services.AddHostedService<GaoApp.Web.Services.Media.MediaCleanupWorker>();
+    builder.Services.AddAcbCallbackRouting(builder.Configuration);
 
     // =========================================================
     // 5) WEB-SPECIFIC SERVICES
@@ -179,87 +232,26 @@ try
 
              OnValidatePrincipal = async context =>
              {
-                 var rawUserId = context.Principal?
-                     .FindFirstValue(ClaimTypes.NameIdentifier);
-
-                 if (!int.TryParse(rawUserId, out var userId) || userId <= 0)
+                 var validator = context.HttpContext.RequestServices
+                     .GetRequiredService<GaoApp.Web.Security.SessionPrincipalValidator>();
+                 if (!await validator.ValidateAsync(context.Principal, context.HttpContext.RequestAborted))
                  {
                      context.RejectPrincipal();
-                     return;
-                 }
-
-                 var services = context.HttpContext.RequestServices;
-                 var db = services.GetRequiredService<AppDbContext>();
-                 var tenant = services.GetRequiredService<ITenantContext>();
-
-                 bool isValid;
-
-                 if (tenant.IsHostAdmin)
-                 {
-                     isValid = await db.Users
-                         .AsNoTracking()
-                         .AnyAsync(x =>
-                             x.Id == userId &&
-                             x.IsActive &&
-                             !x.IsDeleted &&
-                             x.IsHostAdmin,
-                             context.HttpContext.RequestAborted);
-                 }
-                 else if (tenant.StoreId.HasValue && tenant.StoreId.Value > 0)
-                 {
-                     var claimStoreId = context.Principal?
-                         .FindFirstValue("store_id");
-
-                     isValid = int.TryParse(claimStoreId, out var cookieStoreId) &&
-                         cookieStoreId == tenant.StoreId.Value &&
-                         await db.UserInStores
-                             .IgnoreQueryFilters()
-                             .AsNoTracking()
-                             .AnyAsync(x =>
-                                 x.StoreId == tenant.StoreId.Value &&
-                                 x.UserId == userId &&
-                                 x.IsActive &&
-                                 !x.IsDeleted &&
-                                 x.User.IsActive &&
-                                 !x.User.IsDeleted &&
-                                 x.Role.StoreId == tenant.StoreId.Value &&
-                                 !x.Role.IsDeleted,
-                                 context.HttpContext.RequestAborted);
-                 }
-                 else
-                 {
-                     isValid = false;
-                 }
-
-                 if (!isValid)
-                 {
-                     context.RejectPrincipal();
+                     await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(
+                         context.HttpContext, CookieAuthenticationDefaults.AuthenticationScheme);
                  }
              }
          };
      });
 
+    builder.Services.AddScoped<GaoApp.Web.Security.SessionPrincipalValidator>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Accounts.EmployeeAccountService>();
+    builder.Services.AddScoped<GaoApp.Web.Security.SelfPasswordRateLimitFilter>();
+    builder.Services.AddScoped<FluentValidation.IValidator<GaoApp.Web.Areas.Admin.ViewModels.Account.ChangeOwnPasswordVm>,
+        GaoApp.Web.Areas.Admin.ViewModels.Account.ChangeOwnPasswordValidator>();
     builder.Services.AddAuthorization();
 
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.AddPolicy("login", httpContext =>
-        {
-            var clientKey = httpContext.Connection.RemoteIpAddress?.ToString()
-                ?? "unknown";
-
-            return RateLimitPartition.GetFixedWindowLimiter(
-                clientKey,
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0,
-                    AutoReplenishment = true
-                });
-        });
-    });
+    GaoApp.Web.Security.LoginRateLimiting.AddLoginRateLimiting(builder.Services, builder.Configuration);
 
     builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
     builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
@@ -281,22 +273,76 @@ try
 
     var app = builder.Build();
 
-    // Startup validation phải hoàn tất trước mọi migration/seed side effect.
+    if (recoverAdminMenusOnly)
+    {
+        using var cancellation = new CancellationTokenSource();
+        ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            cancellation.Cancel();
+        };
+        Console.CancelKeyPress += cancelHandler;
+
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var connection = db.Database.GetDbConnection();
+            var activeStoreCount = await db.Stores
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .CountAsync(
+                    store => store.IsActive && !store.IsDeleted,
+                    cancellation.Token);
+
+            Console.WriteLine(
+                "Environment: {0}",
+                app.Environment.EnvironmentName);
+            Console.WriteLine("Server: {0}", connection.DataSource);
+            Console.WriteLine("Database: {0}", connection.Database);
+            Console.WriteLine("Active stores: {0}", activeStoreCount);
+
+            await AdminMenuSeeder.SeedAsync(db, cancellation.Token);
+
+            Console.WriteLine("Admin menu recovery completed successfully.");
+            Environment.ExitCode = 0;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("Admin menu recovery was canceled.");
+            Environment.ExitCode = 1;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                "Admin menu recovery failed ({0}).",
+                ex.GetType().Name);
+            Environment.ExitCode = 1;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= cancelHandler;
+        }
+
+        return;
+    }
+
+    // Normal startup validates configuration only, in every environment.
+    // Schema and provisioning are separate explicit Migrator operations.
     await app.ValidateStartupAsync();
 
-    // 9) DB MIGRATION + SEED
-    // Development: web tự migrate + seed để dev nhanh
-    // Production/Staging: KHÔNG tự migrate, dùng GaoApp.Migrator riêng
-    // =========================================================
-    if (app.Environment.IsDevelopment())
-    {
-        await app.MigrateAndSeedDatabaseAsync();
-    }
+    // Local Visual Studio development may point at the developer's current
+    // GaoAppDb. Keep schema installation explicit outside Development, but
+    // allow the local profile to bring that database up to the compiled
+    // model before the first request. This is deliberately disabled for
+    // Production/Staging and never seeds or copies business data.
+    await app.ApplyDevelopmentSchemaAsync();
 
     // =========================================================
     // 10) GLOBAL EXCEPTION HANDLING
     // Chỉ dùng 1 lần, đặt rất sớm để bắt lỗi toàn pipeline.
     // =========================================================
+    app.UseMiddleware<GaoApp.Web.Security.SecurityResponseHeadersMiddleware>();
     app.UseMiddleware<GlobalExceptionMiddleware>();
 
     // =========================================================
@@ -311,6 +357,8 @@ try
     // 12) HSTS / HTTPS
     // Chỉ bật ngoài môi trường development.
     // =========================================================
+    app.UseMiddleware<AcbCallbackDiagnosticsMiddleware>();
+
     if (!app.Environment.IsDevelopment())
     {
         app.UseHsts();
@@ -325,16 +373,7 @@ try
         options.MessageTemplate =
             "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
 
-        options.GetLevel = (httpContext, elapsed, ex) =>
-        {
-            if (ex != null || httpContext.Response.StatusCode >= 500)
-                return LogEventLevel.Error;
-
-            if (httpContext.Response.StatusCode >= 400)
-                return LogEventLevel.Warning;
-
-            return LogEventLevel.Information;
-        };
+        options.GetLevel = RequestLoggingPolicy.GetLevel;
 
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
@@ -354,37 +393,15 @@ try
     // =========================================================
     // 14) STATIC FILES
     // =========================================================
-    // File hóa đơn có thể chứa dữ liệu nhạy cảm. Không cho static middleware
-    // phục vụ trực tiếp; người dùng phải tải qua controller đã kiểm tra quyền.
-    app.Use(async (context, next) =>
-    {
-        var path = context.Request.Path.Value;
-        var isProtectedInvoicePath =
-            string.Equals(path, "/uploads/invoices", StringComparison.OrdinalIgnoreCase) ||
-            (path?.StartsWith("/uploads/invoices/", StringComparison.OrdinalIgnoreCase) ?? false);
-
-        if (isProtectedInvoicePath)
-        {
-            context.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-
-        await next();
-    });
+    GaoApp.Web.Security.PublicUploadExtensions.UsePublicUploads(app, app.Environment,
+        app.Services.GetRequiredService<GaoApp.Infrastructure.Storage.UploadPathResolver>());
 
     app.UseStaticFiles();
 
-    // Missing legacy upload paths are a known data-quality condition. Existing
-    // files have already been served by StaticFileMiddleware; stop only misses
-    // here so they do not enter tenant/terminal resolution and query GaoAppDb.
+    // Missing uploads must not enter tenant/terminal resolution and query GaoAppDb.
     app.Use(async (context, next) =>
     {
-        var path = context.Request.Path.Value;
-        var isMissingDataUpload =
-            string.Equals(path, "/uploads/data", StringComparison.OrdinalIgnoreCase) ||
-            (path?.StartsWith("/uploads/data/", StringComparison.OrdinalIgnoreCase) ?? false);
-
-        if (isMissingDataUpload)
+        if (context.Request.Path.StartsWithSegments("/uploads", StringComparison.OrdinalIgnoreCase))
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
@@ -403,6 +420,20 @@ try
     // 16) TENANT / TERMINAL RESOLUTION
     // Sau ForwardedHeaders + sau Routing.
     // =========================================================
+    // Public probes finish before tenant/terminal/authentication. Otherwise a
+    // valid store cookie is rejected on a tenant-free health request.
+    app.UseHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("live"),
+        ResponseWriter = HealthCheckResponseWriter.WriteResponseAsync
+    });
+
+    app.UseHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready"),
+        ResponseWriter = HealthCheckResponseWriter.WriteResponseAsync
+    });
+
     app.UseMiddleware<TenantResolutionMiddleware>();
     app.UseMiddleware<TerminalResolutionMiddleware>();
 
@@ -415,19 +446,7 @@ try
     // =========================================================
     // 18) HEALTH CHECKS
     // =========================================================
-    app.MapHealthChecks("/health/live", new HealthCheckOptions
-    {
-        Predicate = check => check.Tags.Contains("live"),
-        ResponseWriter = HealthCheckResponseWriter.WriteResponseAsync
-    });
-
-    app.MapHealthChecks("/health/ready", new HealthCheckOptions
-    {
-        Predicate = check => check.Tags.Contains("ready"),
-        ResponseWriter = HealthCheckResponseWriter.WriteResponseAsync
-    });
-
-    app.MapHub<PosHub>("/hubs/pos");
+    app.MapHub<PosHub>("/hubs/pos", options => options.CloseOnAuthenticationExpiration = true);
 
     // =========================================================
     // 19) DEBUG ENDPOINTS
@@ -487,7 +506,3 @@ finally
 {
     Log.CloseAndFlush();
 }
-
-// =========================================================
-// LOCAL FUNCTIONS
-// =========================================================

@@ -11,6 +11,7 @@ public class InventoryValuationEntryConfiguration : IEntityTypeConfiguration<Inv
         builder.ToTable("InventoryValuationEntries");
 
         builder.HasKey(x => x.Id);
+        builder.HasIndex(x => new { x.StoreId, x.EntryType, x.OccurredAtUtc });
 
         builder.Property(x => x.ReferenceId)
             .HasMaxLength(64)

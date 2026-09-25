@@ -1,20 +1,31 @@
 ﻿@* =========================================================
-   PARTIAL VIEW: _CustomerBox.cshtml
-   Mục đích:
-   - Chứa riêng khu vực thông tin khách hàng của POS
-   - Giữ nguyên id="customerInfoBox" để JavaScript hiện tại tiếp tục render được
-   - Không thay đổi logic chọn/xóa khách hàng, chỉ tách HTML ra khỏi Index.cshtml
-   ========================================================= *@
+   POS v0.2 P1
+   Customer region inside Checkout Panel.
 
-<div class="card pos-card mb-3">
-    <div class="card-body">
-        @* Tiêu đề khu vực khách hàng *@
-        <div class="pos-section-title">Khách hàng</div>
+   IMPORTANT:
+   - Giữ duy nhất id="customerInfoBox"
+   - Customer/reward/voucher behavior vẫn do JS cũ sở hữu
+========================================================= *@
 
-        @* JS hiện tại sẽ render khách lẻ / khách đã chọn vào đây,
-           nên bắt buộc phải giữ nguyên id="customerInfoBox" *@
-        <div id="customerInfoBox" class="pos-customer-box">
-            <div class="text-muted">Khách lẻ</div>
+<section class="pos-cockpit-section pos-cockpit-customer-section">
+    <div class="pos-cockpit-section__header">
+        <div class="pos-cockpit-section__eyebrow">
+            KHÁCH HÀNG
+        </div>
+
+        <button type="button"
+                class="pos-cockpit-section__icon-action"
+                data-pos-command-prefix="&#64;"
+                title="Tìm hoặc đổi khách hàng"
+                aria-label="Tìm hoặc đổi khách hàng">
+            <i class="bx bx-chevron-right"></i>
+        </button>
+    </div>
+
+    <div id="customerInfoBox"
+         class="pos-customer-box pos-customer-box-checkout">
+        <div class="text-muted">
+            Khách lẻ
         </div>
     </div>
-</div>
+</section>

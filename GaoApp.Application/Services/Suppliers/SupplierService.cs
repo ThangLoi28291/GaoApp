@@ -2,6 +2,7 @@
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Errors;
 using GaoApp.Application.Common.Results;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.DTOs.Common;
 using GaoApp.Application.DTOs.Suppliers;
 using GaoApp.Application.Interfaces.Repositories.Suppliers;
@@ -24,10 +25,25 @@ public sealed class SupplierService : ISupplierService
         _validator = validator;
     }
 
-    public async Task<PagedResult<SupplierListItemDto>> GetPagedAsync(
+    public Task<PagedResult<SupplierListItemDto>> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<SupplierListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
-        var (items, total) = await _repo.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var (items, total) = await _repo.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
 
         return new PagedResult<SupplierListItemDto>
         {
@@ -37,6 +53,11 @@ public sealed class SupplierService : ISupplierService
             Items = items.Select(static item => item.ToListItemDto()).ToList()
         };
     }
+
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
 
     public async Task<Result<SupplierEditDto>> GetForEditAsync(
         int storeId, int id, CancellationToken ct = default)
@@ -61,6 +82,9 @@ public sealed class SupplierService : ISupplierService
             Address = dto.Address,
             ContactName = dto.ContactName,
             TaxCode = dto.TaxCode,
+            BankAccountNumber = dto.BankAccountNumber,
+            BankAccountName = dto.BankAccountName,
+            BankName = dto.BankName,
             Note = dto.Note,
             Status = dto.Status
         });
@@ -89,6 +113,9 @@ public sealed class SupplierService : ISupplierService
             Address = editDto.Address,
             ContactName = editDto.ContactName,
             TaxCode = editDto.TaxCode,
+            BankAccountNumber = editDto.BankAccountNumber,
+            BankAccountName = editDto.BankAccountName,
+            BankName = editDto.BankName,
             Note = editDto.Note,
             IsActive = editDto.Status,
             SortOrder = 0,
@@ -97,7 +124,22 @@ public sealed class SupplierService : ISupplierService
         };
 
         await _repo.AddAsync(entity, ct);
-        await _repo.SaveChangesAsync(ct);
+        var normalizedTaxCode = TaxCodeIdentityNormalizer.Normalize(entity.TaxCode);
+        if (entity.IsActive && normalizedTaxCode is not null)
+        {
+            if (!await _repo.SaveChangesWithActiveTaxCodeGuardAsync(
+                    storeId,
+                    normalizedTaxCode,
+                    excludeSupplierId: null,
+                    ct))
+            {
+                return Result.Failure<int>(SupplierErrors.DuplicateActiveTaxCode);
+            }
+        }
+        else
+        {
+            await _repo.SaveChangesAsync(ct);
+        }
 
         if (entity.Id <= 0)
             return Result.Failure<int>(SupplierErrors.CreateFailed);
@@ -122,6 +164,9 @@ public sealed class SupplierService : ISupplierService
             Address = dto.Address,
             ContactName = dto.ContactName,
             TaxCode = dto.TaxCode,
+            BankAccountNumber = dto.BankAccountNumber,
+            BankAccountName = dto.BankAccountName,
+            BankName = dto.BankName,
             Note = dto.Note,
             Status = dto.Status,
             RowVersion = dto.RowVersion
@@ -143,6 +188,9 @@ public sealed class SupplierService : ISupplierService
         if (await _repo.ExistsNameAsync(storeId, editDto.Name!, dto.Id, ct))
             return Result.Failure(SupplierErrors.DuplicateName(editDto.Name!));
 
+        var oldNormalizedTaxCode = TaxCodeIdentityNormalizer.Normalize(entity.TaxCode);
+        var wasActive = entity.IsActive;
+
         // Gán RowVersion để EF check concurrency như flow hiện tại
         if (editDto.RowVersion is { Length: > 0 })
             entity.RowVersion = editDto.RowVersion;
@@ -155,6 +203,9 @@ public sealed class SupplierService : ISupplierService
         entity.Address = editDto.Address;
         entity.ContactName = editDto.ContactName;
         entity.TaxCode = editDto.TaxCode;
+        entity.BankAccountNumber = editDto.BankAccountNumber;
+        entity.BankAccountName = editDto.BankAccountName;
+        entity.BankName = editDto.BankName;
         entity.Note = editDto.Note;
         entity.IsActive = editDto.Status;
         entity.UpdatedAtUtc = DateTime.UtcNow;
@@ -162,7 +213,26 @@ public sealed class SupplierService : ISupplierService
 
         try
         {
-            await _repo.SaveChangesAsync(ct);
+            var newNormalizedTaxCode = TaxCodeIdentityNormalizer.Normalize(entity.TaxCode);
+            var requiresTaxCodeGuard = entity.IsActive &&
+                newNormalizedTaxCode is not null &&
+                (!wasActive || !string.Equals(
+                    oldNormalizedTaxCode,
+                    newNormalizedTaxCode,
+                    StringComparison.Ordinal));
+            if (requiresTaxCodeGuard &&
+                !await _repo.SaveChangesWithActiveTaxCodeGuardAsync(
+                    storeId,
+                    newNormalizedTaxCode!,
+                    entity.Id,
+                    ct))
+            {
+                return Result.Failure(SupplierErrors.DuplicateActiveTaxCode);
+            }
+            else if (!requiresTaxCodeGuard)
+            {
+                await _repo.SaveChangesAsync(ct);
+            }
             return Result.Success();
         }
         catch (ConcurrencyException)
@@ -182,7 +252,22 @@ public sealed class SupplierService : ISupplierService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = userId;
 
-        await _repo.SaveChangesAsync(ct);
+        var normalizedTaxCode = TaxCodeIdentityNormalizer.Normalize(entity.TaxCode);
+        if (entity.IsActive && normalizedTaxCode is not null)
+        {
+            if (!await _repo.SaveChangesWithActiveTaxCodeGuardAsync(
+                    storeId,
+                    normalizedTaxCode,
+                    entity.Id,
+                    ct))
+            {
+                return Result.Failure(SupplierErrors.DuplicateActiveTaxCode);
+            }
+        }
+        else
+        {
+            await _repo.SaveChangesAsync(ct);
+        }
         return Result.Success();
     }
 
@@ -243,6 +328,9 @@ public sealed class SupplierService : ISupplierService
         dto.Address = NormalizeNullable(dto.Address);
         dto.ContactName = NormalizeNullable(dto.ContactName);
         dto.TaxCode = NormalizeNullable(dto.TaxCode);
+        dto.BankAccountNumber = NormalizeNullable(dto.BankAccountNumber);
+        dto.BankAccountName = NormalizeNullable(dto.BankAccountName);
+        dto.BankName = NormalizeNullable(dto.BankName);
         dto.Note = NormalizeNullable(dto.Note);
 
         return dto;

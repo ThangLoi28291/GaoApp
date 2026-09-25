@@ -42,9 +42,9 @@
     }
 
     function validate() {
-        const required = [supplier, legalEntity, warehouse, orderDate];
+        const required = [legalEntity, warehouse, orderDate];
         const invalid = required.find(element => !String(element.value || '').trim());
-        if (invalid) { window.alert('Hãy nhập đầy đủ nhà cung cấp, đơn vị mua hàng, kho và ngày đặt.'); invalid.focus(); return false; }
+        if (invalid) { window.alert('Hãy nhập đầy đủ đơn vị mua hàng, kho và ngày đặt.'); invalid.focus(); return false; }
         if (orderDate.value && deliveryDate.value && deliveryDate.value < orderDate.value) {
             window.alert('Ngày dự kiến giao không được trước ngày đặt.'); deliveryDate.focus(); return false;
         }

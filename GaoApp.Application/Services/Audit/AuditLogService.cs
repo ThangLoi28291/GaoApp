@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Audit;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Repositories.Audit;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Domain.Entities;
@@ -55,8 +56,8 @@ public class AuditLogService : IAuditLogService
             EntityDisplay = request.EntityDisplay,
             Summary = request.Summary,
 
-            OldValuesJson = request.OldValuesJson,
-            NewValuesJson = request.NewValuesJson,
+            OldValuesJson = AuditSensitiveData.SanitizeJson(request.OldValuesJson),
+            NewValuesJson = AuditSensitiveData.SanitizeJson(request.NewValuesJson),
             ChangedColumnsJson = request.ChangedColumnsJson,
 
             TraceId = request.TraceId ?? ctx.TraceId,
@@ -97,8 +98,8 @@ public class AuditLogService : IAuditLogService
             EntityId = entity.EntityId,
             EntityDisplay = entity.EntityDisplay,
             Summary = entity.Summary,
-            OldValuesJson = entity.OldValuesJson,
-            NewValuesJson = entity.NewValuesJson,
+            OldValuesJson = AuditSensitiveData.SanitizeJson(entity.OldValuesJson),
+            NewValuesJson = AuditSensitiveData.SanitizeJson(entity.NewValuesJson),
             ChangedColumnsJson = entity.ChangedColumnsJson,
             TraceId = entity.TraceId,
             IpAddress = entity.IpAddress,

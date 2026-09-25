@@ -17,10 +17,25 @@ public sealed class TaxService : ITaxService
         _repo = repo;
     }
 
-    public async Task<PagedResult<TaxListItemDto>> GetPagedAsync(
+    public Task<PagedResult<TaxListItemDto>> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<TaxListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
-        var (items, total) = await _repo.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var (items, total) = await _repo.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
 
         return new PagedResult<TaxListItemDto>
         {
@@ -33,10 +48,16 @@ public sealed class TaxService : ITaxService
                 Code = x.Code,
                 Name = x.Name,
                 Rate = x.Rate,
-                Status = x.IsActive
+                Status = x.IsActive,
+                CreatedAtUtc = x.CreatedAtUtc
             }).ToList()
         };
     }
+
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
 
     public async Task<TaxEditDto?> GetForEditAsync(int storeId, int id, CancellationToken ct = default)
     {

@@ -1,359 +1,363 @@
-﻿@{
+@{
     ViewData["Title"] = "Tra cứu tồn kho";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 }
 
-@section VendorStyles {
-    <style>
-        .iq-page {
-            min-height: calc(100vh - 140px);
-        }
-
-        .iq-card {
-            border: 0;
-            border-radius: 20px;
-            box-shadow: 0 0.125rem 0.9rem rgba(0,0,0,.08);
-            overflow: hidden;
-        }
-
-            .iq-card .card-header {
-                background: #fff;
-                border-bottom: 1px solid #eef0f4;
-                font-weight: 800;
-                padding: 1rem 1.25rem;
-            }
-
-        .iq-toolbar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .75rem;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.25rem;
-        }
-
-        .iq-toolbar-left h4 {
-            margin-bottom: .25rem;
-            font-weight: 800;
-        }
-
-        .iq-toolbar-left .text-muted {
-            font-size: .95rem;
-        }
-
-        .iq-summary-box {
-            border-radius: 18px;
-            padding: 16px 18px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8f9fa 100%);
-            border: 1px solid #eef0f4;
-            height: 100%;
-        }
-
-        .iq-summary-title {
-            font-size: .86rem;
-            color: #6c757d;
-            margin-bottom: .35rem;
-            font-weight: 600;
-        }
-
-        .iq-summary-value {
-            font-size: 1.45rem;
-            font-weight: 800;
-            color: #212529;
-            line-height: 1.2;
-        }
-
-        .iq-summary-sub {
-            margin-top: .35rem;
-            font-size: .82rem;
-            color: #6c757d;
-        }
-
-        .iq-filter-label {
-            font-weight: 700;
-            margin-bottom: .45rem;
-            font-size: .9rem;
-        }
-
-        .iq-filter-note {
-            font-size: .8rem;
-            color: #6c757d;
-            margin-top: .25rem;
-        }
-
-        .iq-table-wrap {
-            overflow-x: auto;
-        }
-
-        .iq-table {
-            min-width: 1150px;
-        }
-
-            .iq-table td,
-            .iq-table th {
-                vertical-align: middle;
-                white-space: nowrap;
-            }
-
-            .iq-table th {
-                font-size: .84rem;
-                text-transform: uppercase;
-                letter-spacing: .02em;
-                color: #6c757d;
-                background: #fbfcfd;
-            }
-
-        .iq-empty {
-            text-align: center;
-            color: #6c757d;
-            padding: 24px 0;
-        }
-
-        .iq-product-name {
-            font-weight: 700;
-            white-space: normal;
-            min-width: 300px;
-            color: #212529;
-        }
-
-        .iq-product-sub {
-            display: block;
-            margin-top: .2rem;
-            color: #6c757d;
-            font-size: .82rem;
-            font-weight: 500;
-        }
-
-        .iq-badge {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            padding: .28rem .7rem;
-            font-size: .78rem;
-            font-weight: 700;
-            line-height: 1;
-        }
-
-        .iq-badge-normal {
-            background: #e8f7ec;
-            color: #067647;
-        }
-
-        .iq-badge-negative {
-            background: #ffe5e5;
-            color: #b42318;
-        }
-
-        .iq-qty-negative {
-            color: #b42318;
-            font-weight: 800;
-        }
-
-        .iq-qty-positive {
-            color: #067647;
-            font-weight: 800;
-        }
-
-        .iq-qty-neutral {
-            color: #212529;
-            font-weight: 700;
-        }
-
-        .iq-paging-info {
-            color: #6c757d;
-            font-weight: 600;
-        }
-
-        .iq-mini-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: .35rem;
-            padding: .35rem .65rem;
-            border-radius: 999px;
-            background: #f3f4f6;
-            color: #495057;
-            font-size: .8rem;
-            font-weight: 600;
-        }
-    </style>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Tra cứu tồn kho</h3>
+                <p class="gds-page-header__subtitle mb-0">
+                    Theo dõi tồn thực tế, đang giữ và khả dụng theo từng kho.
+                </p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button"
+                        class="btn btn-label-secondary gds-action-button"
+                        id="inventoryReloadButton">
+                    <i class="bx bx-refresh" aria-hidden="true"></i>
+                    <span>Tải lại</span>
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
-<div class="container-xxl flex-grow-1 container-p-y iq-page">
-    <div class="iq-toolbar">
-        <div class="iq-toolbar-left">
-            <h4>Tra cứu tồn kho</h4>
-            <div class="text-muted">
-                Xem tồn thực tế, đang giữ và khả dụng theo từng kho, từng sản phẩm.
-            </div>
-        </div>
+@section VendorStyles {
+    <link href="~/Admin/css/inventory-inquiry.css" rel="stylesheet" asp-append-version="true" />
+}
 
-        <div class="d-flex flex-wrap gap-2">
-            <button type="button" class="btn btn-outline-secondary" id="btnReloadBalances">
-                <i class="bx bx-refresh me-1"></i> Tải lại
-            </button>
-        </div>
-    </div>
+<div class="inventory-inquiry-page gds-page"
+     data-gao-ui="modern"
+     data-inventory-inquiry-index
+     data-data-url="@Url.Action("GetData", "InventoryInquiry", new { area = "Admin" })"
+     data-quick-view-url="@Url.Action("GetQuickView", "InventoryInquiry", new { area = "Admin" })"
+     data-warehouse-url="/admin/api/warehouses/select2?term=">
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="iq-summary-box">
-                <div class="iq-summary-title">Tổng số dòng</div>
-                <div class="iq-summary-value" id="sumTotalItems">0</div>
-                <div class="iq-summary-sub">Sau khi áp dụng bộ lọc</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="iq-summary-box">
-                <div class="iq-summary-title">Đang âm kho</div>
-                <div class="iq-summary-value" id="sumNegativeItems">0</div>
-                <div class="iq-summary-sub">Số dòng âm trong trang hiện tại</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="iq-summary-box">
-                <div class="iq-summary-title">Còn tồn dương</div>
-                <div class="iq-summary-value" id="sumPositiveItems">0</div>
-                <div class="iq-summary-sub">Số dòng có tồn > 0</div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="iq-summary-box">
-                <div class="iq-summary-title">Trang hiện tại</div>
-                <div class="iq-summary-value" id="sumCurrentPage">1</div>
-                <div class="iq-summary-sub">Theo kết quả phân trang</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card iq-card mb-4">
-        <div class="card-header">Bộ lọc tra cứu</div>
-        <div class="card-body">
-            <form id="inventoryInquiryFilterForm" class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label iq-filter-label" for="WarehouseId">Kho</label>
-                    <select id="WarehouseId" class="form-select">
-                        <option value="">-- Tất cả kho --</option>
-                    </select>
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label iq-filter-label" for="ProductVariantId">Mã Variant</label>
-                    <input type="number"
-                           id="ProductVariantId"
-                           class="form-control"
-                           min="1"
-                           placeholder="Ví dụ: 125" />
-                    <div class="iq-filter-note">Nhập khi cần soi đúng một variant cụ thể.</div>
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label iq-filter-label" for="SortBy">Sắp xếp theo</label>
-                    <select id="SortBy" class="form-select">
-                        <option value="ProductName">Tên sản phẩm</option>
-                        <option value="Sku">SKU</option>
-                        <option value="Warehouse">Kho</option>
-                        <option value="OnHandQty">Tồn thực tế</option>
-                        <option value="ReservedQty">Đang giữ</option>
-                        <option value="AvailableQty">Khả dụng</option>
-                    </select>
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label iq-filter-label" for="SortDirection">Chiều sắp xếp</label>
-                    <select id="SortDirection" class="form-select">
-                        <option value="asc">Tăng dần</option>
-                        <option value="desc">Giảm dần</option>
-                    </select>
-                </div>
-
-                <div class="col-md-8">
-                    <label class="form-label iq-filter-label" for="Keyword">Từ khóa</label>
-                    <input type="text"
-                           id="Keyword"
-                           class="form-control"
-                           placeholder="Tên sản phẩm / SKU / barcode variant / barcode đơn vị..." />
-                </div>
-
-                <div class="col-md-4 d-flex flex-wrap gap-3 align-items-end">
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="OnlyNegative" />
-                        <label class="form-check-label" for="OnlyNegative">
-                            Chỉ xem hàng âm
-                        </label>
-                    </div>
-
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="OnlyPositive" />
-                        <label class="form-check-label" for="OnlyPositive">
-                            Chỉ xem hàng còn tồn dương
-                        </label>
-                    </div>
-                </div>
-
-                <div class="col-12 d-flex flex-wrap gap-2">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bx bx-search me-1"></i> Tìm kiếm
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="btnResetFilter">
-                        Làm mới bộ lọc
-                    </button>
-
-                    <span class="iq-mini-chip">
-                        <i class="bx bx-info-circle"></i>
-                        Nếu cùng bật âm và dương thì kết quả có thể rỗng.
+    <section aria-label="Tổng quan tồn kho">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col">
+                <button type="button"
+                        class="inventory-kpi-filter card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100 is-active"
+                        data-inventory-state=""
+                        aria-pressed="true">
+                    <span class="gds-kpi-card__icon is-primary" aria-hidden="true">
+                        <i class="bx bx-package"></i>
                     </span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Tổng dòng tồn</span>
+                        <span class="gds-kpi-card__value text-primary" id="inventoryTotalCount">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button"
+                        class="inventory-kpi-filter card shadow-sm border-0 gds-kpi-card h-100 w-100"
+                        data-inventory-state="negative"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-danger text-danger" aria-hidden="true">
+                        <i class="bx bx-trending-down"></i>
+                    </span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Đang âm kho</span>
+                        <span class="gds-kpi-card__value text-danger" id="inventoryNegativeCount">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button"
+                        class="inventory-kpi-filter card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100 w-100"
+                        data-inventory-state="positive"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-success" aria-hidden="true">
+                        <i class="bx bx-check-circle"></i>
+                    </span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Còn hàng</span>
+                        <span class="gds-kpi-card__value text-success" id="inventoryPositiveCount">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button"
+                        class="inventory-kpi-filter card shadow-sm border-0 gds-kpi-card h-100 w-100"
+                        data-inventory-state="zero"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-secondary text-secondary" aria-hidden="true">
+                        <i class="bx bx-x-circle"></i>
+                    </span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Hết hàng</span>
+                        <span class="gds-kpi-card__value text-secondary" id="inventoryZeroCount">0</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="card shadow-sm border-0" aria-label="Bộ lọc tra cứu tồn kho">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <div class="d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm rounded bg-label-primary" aria-hidden="true">
+                    <i class="bx bx-filter-alt"></i>
+                </span>
+                <div>
+                    <h5 class="mb-0 text-dark">Tra cứu tồn kho</h5>
+                    <small class="text-muted">Tìm theo tên sản phẩm, SKU hoặc barcode và thu hẹp bằng bộ lọc.</small>
                 </div>
-            </form>
+            </div>
         </div>
-    </div>
+        <div class="card-body pt-3">
+            <div class="inventory-filter-bar">
+                <div class="inventory-search-wrap">
+                    <label for="inventoryKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label>
+                    <div class="gds-search-field">
+                        <i class="bx bx-search" aria-hidden="true"></i>
+                        <input type="search"
+                               id="inventoryKeyword"
+                               class="form-control"
+                               placeholder="Tên sản phẩm, SKU hoặc barcode..."
+                               autocomplete="off" />
+                        <button type="button"
+                                id="inventoryClearSearch"
+                                class="gds-search-field__clear d-none"
+                                aria-label="Xóa tìm kiếm"
+                                title="Xóa tìm kiếm">
+                            <i class="bx bx-x" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
 
-    <div class="card iq-card">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div class="fw-bold">Danh sách tồn kho hiện tại</div>
-            <div class="iq-paging-info" id="pagingInfo">Trang 1 / 1</div>
+                <div class="inventory-desktop-filters">
+                    <div>
+                        <label for="inventoryWarehouseFilter" class="form-label fw-semibold text-dark">Kho</label>
+                        <select id="inventoryWarehouseFilter" class="form-select">
+                            <option value="">Tất cả kho</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="inventoryStateFilter" class="form-label fw-semibold text-dark">Trạng thái tồn</label>
+                        <select id="inventoryStateFilter" class="form-select">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="positive">Còn hàng</option>
+                            <option value="zero">Hết hàng</option>
+                            <option value="negative">Âm kho</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="inventorySortBy" class="form-label fw-semibold text-dark">Sắp xếp</label>
+                        <select id="inventorySortBy" class="form-select">
+                            <option value="productname">Tên sản phẩm</option>
+                            <option value="warehouse">Kho</option>
+                            <option value="onhandqty">Tồn thực tế</option>
+                            <option value="reservedqty">Đang giữ</option>
+                            <option value="availableqty">Khả dụng</option>
+                        </select>
+                    </div>
+                    <div class="inventory-sort-direction-wrap">
+                        <label for="inventorySortDirection" class="form-label fw-semibold text-dark">Chiều</label>
+                        <select id="inventorySortDirection" class="form-select" aria-label="Chiều sắp xếp">
+                            <option value="asc">Tăng dần</option>
+                            <option value="desc">Giảm dần</option>
+                        </select>
+                    </div>
+                    <div class="inventory-page-size-wrap">
+                        <label for="inventoryPageSize" class="form-label fw-semibold text-dark">Số dòng / trang</label>
+                        <select id="inventoryPageSize" class="form-select">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                        </select>
+                    </div>
+                    <button type="button"
+                            class="gds-icon-button inventory-reset-button"
+                            id="inventoryResetFilters"
+                            aria-label="Xóa bộ lọc"
+                            title="Xóa bộ lọc">
+                        <i class="bx bx-reset" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                <button type="button"
+                        class="btn btn-label-primary inventory-mobile-filter-button"
+                        id="inventoryOpenMobileFilters"
+                        data-bs-toggle="offcanvas"
+                        data-bs-target="#inventoryMobileFilterSheet"
+                        aria-controls="inventoryMobileFilterSheet">
+                    <i class="bx bx-filter-alt" aria-hidden="true"></i>
+                    <span>Bộ lọc</span>
+                    <span class="badge bg-primary rounded-pill d-none" id="inventoryActiveFilterCount">0</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="gds-list-panel inventory-results-panel"
+             id="inventoryResultsPanel"
+             aria-label="Danh sách tồn kho hiện tại"
+             aria-live="polite"
+             aria-busy="false">
+        <div class="inventory-results-heading">
+            <div>
+                <h5 class="mb-1 text-dark">Danh sách tồn kho hiện tại</h5>
+                <small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh.</small>
+                <small class="d-block text-muted mt-1" data-inventory-cost-column hidden>Giá vốn FIFO là đơn giá của lô còn hàng đầu tiên, theo đơn vị gốc. Xem nhanh để đối chiếu các mức giá vốn.</small>
+            </div>
         </div>
 
-        <div class="card-body">
-            <div class="iq-table-wrap">
-                <table class="table table-hover iq-table align-middle mb-0">
+        <div class="inventory-desktop-list" id="inventoryDesktopList">
+            <div class="table-responsive">
+                <table class="table align-middle gds-table mb-0">
                     <thead>
                         <tr>
-                            <th>Kho</th>
                             <th>Sản phẩm</th>
-                            <th>SKU</th>
+                            <th>Kho</th>
                             <th>Barcode</th>
                             <th class="text-end">Tồn thực tế</th>
                             <th class="text-end">Đang giữ</th>
                             <th class="text-end">Khả dụng</th>
+                            <th class="text-end" data-inventory-cost-column hidden>Giá vốn lô FIFO đầu</th>
                             <th>Trạng thái</th>
+                            <th class="text-end">Thao tác</th>
                         </tr>
                     </thead>
-                    <tbody id="inventoryInquiryTableBody">
-                        <tr>
-                            <td colspan="8" class="iq-empty">Đang tải dữ liệu...</td>
-                        </tr>
+                    <tbody id="inventoryDesktopBody">
+                        <tr><td colspan="8" class="gds-empty">Đang tải dữ liệu...</td></tr>
                     </tbody>
                 </table>
             </div>
+        </div>
 
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mt-4">
-                <div class="text-muted" id="resultInfo">
-                    Chưa có dữ liệu.
+        <div class="inventory-mobile-list" id="inventoryMobileList" aria-label="Danh sách tồn kho trên thiết bị di động">
+            <div class="gds-empty">Đang tải dữ liệu...</div>
+        </div>
+    </section>
+
+    <div class="gds-list-footer inventory-list-footer">
+        <div class="gds-list-footer__summary" id="inventoryResultSummary">0 kết quả</div>
+        <nav aria-label="Phân trang tồn kho">
+            <ul class="pagination pagination-sm mb-0 inventory-pagination" id="inventoryPagination"></ul>
+        </nav>
+    </div>
+
+    <div class="modal fade"
+         id="inventoryQuickViewModal"
+         tabindex="-1"
+         aria-labelledby="inventoryQuickViewTitle"
+         aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable inventory-quick-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header">
+                    <div>
+                        <div class="text-primary fw-semibold small text-uppercase">Xem nhanh tồn kho</div>
+                        <h4 class="modal-title text-dark" id="inventoryQuickViewTitle">Thông tin tồn kho</h4>
+                        <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                            <span class="gds-code" id="inventoryQuickWarehouse">—</span>
+                            <span class="gds-status gds-status--dot is-neutral" id="inventoryQuickState">—</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
                 </div>
-
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-outline-secondary" id="btnPrevPage">
-                        <i class="bx bx-chevron-left"></i> Trang trước
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="btnNextPage">
-                        Trang sau <i class="bx bx-chevron-right"></i>
-                    </button>
+                <div class="modal-body" id="inventoryQuickBody">
+                    <div class="inventory-quick-loading text-center text-muted py-5">
+                        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                        Đang tải thông tin...
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="modal fade"
+         id="inventoryImagePreviewModal"
+         tabindex="-1"
+         aria-labelledby="inventoryImagePreviewTitle"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered inventory-image-preview-dialog">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="inventoryImagePreviewTitle">Ảnh sản phẩm</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body inventory-image-preview-body">
+                    <img id="inventoryImagePreviewImage" alt="Ảnh sản phẩm phóng to" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="offcanvas offcanvas-bottom inventory-filter-sheet"
+         tabindex="-1"
+         id="inventoryMobileFilterSheet"
+         aria-labelledby="inventoryMobileFilterTitle">
+        <div class="offcanvas-header">
+            <div>
+                <h5 class="offcanvas-title" id="inventoryMobileFilterTitle">Bộ lọc tồn kho</h5>
+                <small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label for="inventoryMobileWarehouse" class="form-label">Kho</label>
+                    <select id="inventoryMobileWarehouse" class="form-select">
+                        <option value="">Tất cả kho</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label for="inventoryMobileState" class="form-label">Trạng thái tồn</label>
+                    <select id="inventoryMobileState" class="form-select">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="positive">Còn hàng</option>
+                        <option value="zero">Hết hàng</option>
+                        <option value="negative">Âm kho</option>
+                    </select>
+                </div>
+                <div class="col-7">
+                    <label for="inventoryMobileSortBy" class="form-label">Sắp xếp</label>
+                    <select id="inventoryMobileSortBy" class="form-select">
+                        <option value="productname">Tên sản phẩm</option>
+                        <option value="warehouse">Kho</option>
+                        <option value="onhandqty">Tồn thực tế</option>
+                        <option value="reservedqty">Đang giữ</option>
+                        <option value="availableqty">Khả dụng</option>
+                    </select>
+                </div>
+                <div class="col-5">
+                    <label for="inventoryMobileSortDirection" class="form-label">Chiều</label>
+                    <select id="inventoryMobileSortDirection" class="form-select">
+                        <option value="asc">Tăng dần</option>
+                        <option value="desc">Giảm dần</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label for="inventoryMobilePageSize" class="form-label">Số dòng / trang</label>
+                    <select id="inventoryMobilePageSize" class="form-select">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="offcanvas-footer inventory-filter-sheet__footer">
+            <button type="button" class="btn btn-label-secondary" id="inventoryMobileClearFilters">Xóa lọc</button>
+            <button type="button" class="btn btn-primary flex-grow-1" id="inventoryMobileApplyFilters">Áp dụng</button>
         </div>
     </div>
 </div>
 
 @section PageScripts {
-    <script src="~/Admin/js/inventory-inquiry.js"></script>
+    <script src="~/Admin/js/inventory-inquiry.js" asp-append-version="true"></script>
 }

@@ -621,3 +621,38 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Keep assignment fields scrollable while the confirmation controls stay visible. */
+#createSlipModal .modal-content {
+    max-height: calc(100dvh - 56px);
+}
+#createSlipModal .modal-body {
+    min-height: 0;
+    overflow: auto !important;
+    flex: 1 1 auto;
+}
+#createSlipModal .modal-header,
+#createSlipModal .modal-footer {
+    flex-shrink: 0;
+}
+@media (max-width: 767.98px) {
+    #createSlipModal .modal-content { max-height: calc(100dvh - 16px); }
+    #createSlipModal .modal-body { max-height: none !important; }
+    #createSlipModal .modal-footer {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        padding: 12px 14px !important;
+    }
+    #createSlipModal .modal-footer .btn {
+        min-width: 0;
+        width: auto;
+        height: 48px;
+        font-size: 14px;
+        margin: 0;
+    }
+    #createSlipModal .shift-open-cancel-btn { flex: 0 0 80px; }
+    #createSlipModal .shift-open-confirm-btn { flex: 1; }
+}
+
+#createSlipTitle { overflow-wrap: anywhere; }

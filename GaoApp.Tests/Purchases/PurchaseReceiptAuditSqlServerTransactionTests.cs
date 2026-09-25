@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace GaoApp.Tests.Purchases;
 
 [Collection("R1FinalDatabasePreflight")]
+// R2.4-C2 coverage: owner-sensitive audit rolls back without partial business mutation.
 public sealed class PurchaseReceiptAuditSqlServerTransactionTests
 {
     [Fact]
@@ -149,11 +150,16 @@ public sealed class PurchaseReceiptAuditSqlServerTransactionTests
         var secondDocument = await second.StockDocuments.SingleAsync(x => x.Id == receiptId);
         var firstRepository = new StockDocumentRepository(first);
         var secondRepository = new StockDocumentRepository(second);
+        var ownerId = await first.Warehouses
+            .Where(x => x.Id == seed.WarehouseId)
+            .Select(x => x.LegalEntityId)
+            .SingleAsync();
 
         await firstRepository.BeginTransactionAsync();
         firstDocument.Status = StockDocumentStatus.Confirmed;
         firstDocument.ConfirmedAtUtc = DateTime.UtcNow;
         firstDocument.ConfirmedByUserId = 501;
+        firstDocument.ConfirmedLegalEntityId = ownerId;
         PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
             firstDocument,
             PurchaseReceiptAuditEventType.GenericReceiptConfirmed);
@@ -164,6 +170,7 @@ public sealed class PurchaseReceiptAuditSqlServerTransactionTests
         secondDocument.Status = StockDocumentStatus.Confirmed;
         secondDocument.ConfirmedAtUtc = DateTime.UtcNow;
         secondDocument.ConfirmedByUserId = 501;
+        secondDocument.ConfirmedLegalEntityId = ownerId;
         PurchaseReceiptAuditEvidence.MarkWorkflowEvent(
             secondDocument,
             PurchaseReceiptAuditEventType.GenericReceiptConfirmed);

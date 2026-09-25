@@ -5,6 +5,7 @@ using GaoApp.Application.Interfaces.Repositories.Media;
 using GaoApp.Application.Interfaces.Repositories.Products;
 using GaoApp.Application.Interfaces.Services.Media;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Media;
 
@@ -50,7 +51,8 @@ public sealed class ProductImageService : IProductImageService
 
         // load temp assets by tokens
         var tempAssets = await _mediaRepo.GetTempsByTokensAsync(tempTokens, storeId, ct);
-        if (tempAssets.Count == 0) return;
+        if (tempAssets.Count != tempTokens.Count)
+            throw new BusinessRuleException("Một số ảnh tải tạm đã hết hạn hoặc bị hủy. Vui lòng tải lại ảnh.");
 
         var now = DateTime.UtcNow;
 
@@ -70,14 +72,7 @@ public sealed class ProductImageService : IProductImageService
 
             if (asset == null) continue;
 
-            // move file: _temp -> final
-            var fileName = Path.GetFileName(asset.StoragePath);
-            var finalPath = $"uploads/products/{now:yyyy/MM/dd}/{productId}/{fileName}";
-
-            await _storage.MoveAsync(asset.StoragePath, finalPath, ct);
-
-            // update asset
-            asset.StoragePath = finalPath;
+            // Keep the immutable upload path; committing performs no file I/O.
             asset.IsTemp = false;
             asset.TempToken = null;
             asset.ExpireAtUtc = null;
@@ -221,6 +216,9 @@ public sealed class ProductImageService : IProductImageService
             .Where(a => !string.IsNullOrWhiteSpace(a.TempToken))
             .ToDictionary(a => a.TempToken!, a => a, StringComparer.OrdinalIgnoreCase);
 
+        if (tempAssets.Count != tempTokensInOrder.Count)
+            throw new BusinessRuleException("Một số ảnh tải tạm đã hết hạn hoặc bị hủy. Vui lòng tải lại ảnh.");
+
         // 6) Append ảnh mới SAU CÙNG (không đổi primary)
         var now = DateTime.UtcNow;
         var added = new List<ProductImage>();
@@ -229,14 +227,6 @@ public sealed class ProductImageService : IProductImageService
         {
             if (!tempMap.TryGetValue(token, out var asset)) continue;
 
-            var fileName = Path.GetFileName(asset.StoragePath);
-            if (string.IsNullOrWhiteSpace(fileName))
-                fileName = $"{Guid.NewGuid():N}.jpg";
-
-            var finalPath = $"uploads/products/{now:yyyy/MM/dd}/{productId}/{fileName}";
-            await _storage.MoveAsync(asset.StoragePath, finalPath, ct);
-
-            asset.StoragePath = finalPath;
             asset.IsTemp = false;
             asset.TempToken = null;
             asset.ExpireAtUtc = null;
@@ -254,11 +244,8 @@ public sealed class ProductImageService : IProductImageService
 
         // 7) Remove ảnh cũ bị xóa
         var removed = existing.Where(x => !keepExistingIds.Contains(x.Id)).ToList();
-        foreach (var pi in removed)
-        {
-            if (pi.MediaAsset?.StoragePath != null)
-                await _storage.DeleteAsync(pi.MediaAsset.StoragePath, ct);
-        }
+        // Unlink in the product save only. The worker observes unused assets,
+        // starts a retention period, and rechecks all references before deletion.
 
         if (removed.Count > 0) _imgRepo.RemoveRange(removed);
         if (added.Count > 0) await _imgRepo.AddRangeAsync(added, ct);

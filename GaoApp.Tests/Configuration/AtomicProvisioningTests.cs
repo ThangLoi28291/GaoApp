@@ -5,6 +5,7 @@ using GaoApp.Infrastructure.Data.Migrations;
 using GaoApp.Infrastructure.Data.Seed;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -40,7 +41,7 @@ public sealed class AtomicProvisioningTests
                 db,
                 Options.Create(CreateBootstrapOptions())));
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.Bootstrap);
 
         await action.Should()
             .ThrowAsync<ProductionBootstrapStateException>()
@@ -63,7 +64,7 @@ public sealed class AtomicProvisioningTests
             new MandatorySecuritySeeder(db),
             new ThrowingBootstrapper());
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.Bootstrap);
 
         await action.Should()
             .ThrowAsync<InvalidOperationException>()
@@ -87,7 +88,7 @@ public sealed class AtomicProvisioningTests
                 db,
                 Options.Create(options)));
 
-        await pipeline.RunAsync();
+        await pipeline.RunAsync(MigratorMode.Bootstrap);
 
         (await db.Stores.IgnoreQueryFilters().CountAsync()).Should().Be(1);
         (await db.Users.IgnoreQueryFilters().CountAsync()).Should().Be(1);
@@ -116,11 +117,12 @@ public sealed class AtomicProvisioningTests
                 db,
                 Options.Create(options)));
 
-        await pipeline.RunAsync();
+        await pipeline.RunAsync(MigratorMode.Bootstrap);
+        await database.ExecuteAsync("UPDATE dbo.AdminMenuItems SET Title=N'Human menu', SortOrder=731, IsActive=0 WHERE Id=(SELECT MIN(Id) FROM dbo.AdminMenuItems)");
         var afterFirst =
             await database.ReadProvisioningStateSignatureAsync();
         db.ChangeTracker.Clear();
-        await pipeline.RunAsync();
+        await pipeline.RunAsync(MigratorMode.Bootstrap);
 
         (await database.ReadProvisioningStateSignatureAsync())
             .Should().Be(afterFirst);
@@ -141,7 +143,7 @@ public sealed class AtomicProvisioningTests
             new MandatorySecuritySeeder(db),
             new CancelingBootstrapper(cts));
 
-        var action = () => pipeline.RunAsync(cts.Token);
+        var action = () => pipeline.RunAsync(MigratorMode.Bootstrap, cts.Token);
 
         await action.Should().ThrowAsync<OperationCanceledException>();
         (await database.ReadProvisioningStateSignatureAsync())
@@ -149,7 +151,7 @@ public sealed class AtomicProvisioningTests
     }
 
     [Fact]
-    public async Task Demo_seed_failure_should_rollback_mandatory_seed()
+    public async Task Demo_seed_failure_should_leave_existing_data_unchanged()
     {
         await using var database = new PreflightAcceptanceDatabase();
         await using var db = database.CreateContext();
@@ -172,7 +174,7 @@ public sealed class AtomicProvisioningTests
             new DisabledBootstrapper(),
             new EfCoreProvisioningTransactionRunner(db));
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.DemoSeed);
 
         await action.Should()
             .ThrowAsync<InvalidOperationException>()
@@ -182,7 +184,7 @@ public sealed class AtomicProvisioningTests
     }
 
     [Fact]
-    public async Task Neither_mode_mandatory_seed_should_be_idempotent()
+    public async Task Explicit_security_seed_should_be_idempotent()
     {
         await using var database = new PreflightAcceptanceDatabase();
         await using var db = database.CreateContext();
@@ -199,14 +201,58 @@ public sealed class AtomicProvisioningTests
             new DisabledBootstrapper(),
             new EfCoreProvisioningTransactionRunner(db));
 
-        await pipeline.RunAsync();
+        await pipeline.RunAsync(MigratorMode.SecuritySeed);
         var afterFirst =
             await database.ReadProvisioningStateSignatureAsync();
         db.ChangeTracker.Clear();
-        await pipeline.RunAsync();
+        await pipeline.RunAsync(MigratorMode.SecuritySeed);
 
         (await database.ReadProvisioningStateSignatureAsync())
             .Should().Be(afterFirst);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Schema_only_preserves_customized_security_and_business_rows(bool pendingUpgrade)
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        if (pendingUpgrade)
+            await db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
+                .MigrateAsync("20260912120000_AddCustomerDisplayWifi");
+        else
+            await db.Database.MigrateAsync();
+
+        // Fixture owns all provisioning; this does not model normal deployment.
+        var bootstrap = new ProductionBootstrapper(db, Options.Create(CreateBootstrapOptions()));
+        await new EfCoreProvisioningTransactionRunner(db).ExecuteAsync(async ct =>
+        {
+            await bootstrap.ApplyAsync(await bootstrap.InspectAsync(ct), ct);
+        });
+        await database.ExecuteAsync("""
+            UPDATE dbo.AdminMenuItems SET Title = N'Human customized menu', SortOrder = 731, IsActive = 0
+            WHERE Id = (SELECT MIN(Id) FROM dbo.AdminMenuItems);
+            UPDATE dbo.Roles SET Name = N'Human customized role';
+            DELETE FROM dbo.RolePermissions WHERE PermissionId = (SELECT MIN(Id) FROM dbo.Permissions);
+            UPDATE dbo.Permissions SET Name = N'Human permission name';
+            UPDATE dbo.Stores SET Name = N'Human store name';
+            UPDATE dbo.LegalEntities SET Name = N'Human legal entity';
+            UPDATE dbo.Warehouses SET Name = N'Human warehouse';
+            """);
+        var tables = new[] { "AdminMenuItems", "Permissions", "Roles", "RolePermissions", "Users", "UserInStores", "Stores", "LegalEntities", "Warehouses", "POSTerminals" };
+        var before = new Dictionary<string, string>();
+        foreach (var table in tables)
+            before[table] = await database.ReadScalarAsync<string>($"SELECT (SELECT * FROM dbo.[{table}] FOR JSON PATH, INCLUDE_NULL_VALUES)");
+        var pipeline = new MigrationExecutionPipeline(Options.Create(new SeedDataOptions()),
+            Options.Create(new ProductionBootstrapOptions()), new TestHostEnvironment(Environments.Production),
+            new MigratorConfigurationValidator(), CreatePreflight(db), new EfCoreDatabaseMigrationExecutor(db),
+            new MandatorySecuritySeeder(db), new ThrowingDemoSeeder(), new DisabledBootstrapper(), new EfCoreProvisioningTransactionRunner(db));
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        foreach (var table in tables)
+            Assert.Equal(before[table], await database.ReadScalarAsync<string>($"SELECT (SELECT * FROM dbo.[{table}] FOR JSON PATH, INCLUDE_NULL_VALUES)"));
     }
 
     private static MigrationExecutionPipeline CreateProductionPipeline(

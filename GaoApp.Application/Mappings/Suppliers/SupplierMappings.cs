@@ -14,8 +14,14 @@ public static class SupplierMappings
             Id = source.Id,
             Code = source.Code,
             Name = source.Name,
+            ContactName = source.ContactName,
             Phone = source.Phone,
-            Status = source.IsActive
+            Email = source.Email,
+            TaxCode = source.TaxCode,
+            BankName = source.BankName,
+            MaskedBankAccountNumber = MaskBankAccountNumber(source.BankAccountNumber),
+            Status = source.IsActive,
+            CreatedAtUtc = source.CreatedAtUtc
         };
     }
 
@@ -33,9 +39,22 @@ public static class SupplierMappings
             Address = source.Address,
             ContactName = source.ContactName,
             TaxCode = source.TaxCode,
+            BankAccountNumber = source.BankAccountNumber,
+            BankAccountName = source.BankAccountName,
+            BankName = source.BankName,
             Note = source.Note,
             Status = source.IsActive,
             RowVersion = source.RowVersion?.ToArray() ?? Array.Empty<byte>()
         };
     }
+
+    private static string? MaskBankAccountNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var account = value.Trim();
+        return account.Length <= 4 ? "****" : "**** " + account[^4..];
+    }
+
 }

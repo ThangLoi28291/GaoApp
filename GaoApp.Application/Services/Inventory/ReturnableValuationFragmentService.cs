@@ -6,6 +6,15 @@ using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Inventory;
 
+// Optional cost-specific capability, kept beside its implementation so the
+// existing quantity-fragment interface and all external DTO shapes stay intact.
+public interface IReturnableValuationCostEvidence
+{
+    Task<List<ReturnableValuationFragmentDto>> GetQuantityOnlyForOrderLineAsync(
+        int orderId, int orderLineId, CancellationToken ct);
+    Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct);
+}
+
 /// <summary>
 /// Dựng danh sách source valuation fragments còn outstanding cho 1 order line.
 ///
@@ -25,7 +34,8 @@ namespace GaoApp.Application.Services.Inventory;
 ///
 /// Tối ưu query có thể làm sau.
 /// </summary>
-public class ReturnableValuationFragmentService : IReturnableValuationFragmentService
+public class ReturnableValuationFragmentService : IReturnableValuationFragmentService,
+    IReturnableValuationCostEvidence
 {
     private readonly IInventoryValuationEntryRepository _valuationRepository;
     private readonly IOrderLegalEntityAllocationReversalRepository _reversalRepository;
@@ -38,10 +48,34 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
         _reversalRepository = reversalRepository;
     }
 
-    public async Task<List<ReturnableValuationFragmentDto>> GetForOrderLineAsync(
+    public Task<List<ReturnableValuationFragmentDto>> GetForOrderLineAsync(
       int orderId,
       int orderLineId,
       CancellationToken ct = default)
+        => GetCoreAsync(orderId, orderLineId, true, ct);
+
+    public Task<List<ReturnableValuationFragmentDto>> GetQuantityOnlyForOrderLineAsync(
+        int orderId, int orderLineId, CancellationToken ct)
+        => GetCoreAsync(orderId, orderLineId, false, ct);
+
+    public async Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct)
+    {
+        var sources = await _valuationRepository.GetSaleIssueEntriesByOrderLineAsync(orderId, orderLineId, ct);
+        if (sources.Count == 0)
+            throw new InvalidOperationException("Void is missing original sale cost evidence.");
+        foreach (var source in sources)
+        {
+            var cost = SaleValuationCostPolicy.Evaluate(source,
+                await _valuationRepository.GetRevaluationEntriesBySourceIdAsync(source.Id, ct),
+                await _valuationRepository.GetReverseEntriesBySourceEntryIdAsync(source.Id, ct));
+            if (cost.State != SaleValuationCostPolicy.Quality.Finalized || cost.Cost != 0 ||
+                cost.InventoryReversedQuantity != -source.Quantity)
+                throw new InvalidOperationException($"Void leaves unsupported/residual sale cost: {cost.Reason}");
+        }
+    }
+
+    private async Task<List<ReturnableValuationFragmentDto>> GetCoreAsync(
+        int orderId, int orderLineId, bool requireFinalCost, CancellationToken ct)
     {
         // Lấy toàn bộ outbound source entries của dòng bán gốc.
         // Nếu outbound đã split theo FIFO layer thì ở đây sẽ có nhiều source entry.
@@ -81,8 +115,15 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
             // Revaluation có quantity = 0 nên không được tính vào reversed qty.
             // =====================================================
             var reverseQuantityEntries = reverseEntries
-                .Where(x => x.Quantity != 0)
+                .Where(x => x.EntryType == InventoryValuationEntryType.Inbound && x.Quantity > 0)
                 .ToList();
+
+            if (source.StoreId <= 0 || source.IsDeleted || reverseEntries.Any(x =>
+                    x.IsDeleted || x.StoreId != source.StoreId ||
+                    x.WarehouseId != source.WarehouseId || x.ProductVariantId != source.ProductVariantId ||
+                    (x.EntryType != InventoryValuationEntryType.Revaluation &&
+                     (x.EntryType != InventoryValuationEntryType.Inbound || x.Quantity <= 0))))
+                throw new InvalidOperationException("Invalid source reversal quantity evidence.");
 
             var valuationReversedQuantityAbs = reverseQuantityEntries.Sum(x => Math.Abs(x.Quantity));
             var recordedReversedQuantityAbs = reversedBySource.GetValueOrDefault(source.Id);
@@ -94,31 +135,21 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
                 recordedReversedQuantityAbs);
             var remainingQuantityAbs = sourceQuantityAbs - reversedQuantityAbs;
 
+            if (remainingQuantityAbs < 0 || recordedReversedQuantityAbs < 0)
+                throw new InvalidOperationException("Source valuation quantity is over-reversed.");
+
+            // NoRestock needs eligibility only, and must not be blocked merely
+            // because cost is provisional. Its historical unit value is never posted.
+            var finalUnitCost = source.UnitCost;
+            if (requireFinalCost)
+            {
+                var cost = SaleValuationCostPolicy.Evaluate(source, revaluationEntries, reverseEntries);
+                finalUnitCost = cost.RequireFinalUnitCost();
+            }
+
             // Nếu source đã reverse hết hoặc vượt rồi thì bỏ qua.
             if (remainingQuantityAbs <= 0)
                 continue;
-
-            // =====================================================
-            // 2. RESOLVE FINAL COST CHO SOURCE
-            //
-            // Nếu source có revaluation thì return phải dùng FINAL COST,
-            // không dùng provisional cost ban đầu nữa.
-            //
-            // Rule:
-            // finalUnitCost = source.UnitCost + (totalRevaluationAmount / sourceQuantityAbs)
-            //
-            // Ví dụ:
-            // source: -3 @ 15000
-            // revaluation: Amount = -9000
-            // => final cost = 15000 + (-9000 / 3) = 12000
-            // =====================================================
-            var totalRevaluationAmount = revaluationEntries.Sum(x => x.Amount);
-
-            var finalUnitCost = source.UnitCost;
-            if (totalRevaluationAmount != 0)
-            {
-                finalUnitCost = source.UnitCost + (totalRevaluationAmount / sourceQuantityAbs);
-            }
 
             result.Add(new ReturnableValuationFragmentDto
             {
@@ -135,8 +166,9 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
                 // dùng FINAL COST nếu source đã được revaluation
                 UnitCost = finalUnitCost,
 
-                // Giữ trace lịch sử source vốn từng provisional hay không.
-                IsProvisional = source.IsProvisional,
+                // The ledger retains historical provisional provenance; this DTO
+                // describes the validated cost used by the current operation.
+                IsProvisional = !requireFinalCost && source.IsProvisional,
                 OccurredAtUtc = source.OccurredAtUtc
             });
         }

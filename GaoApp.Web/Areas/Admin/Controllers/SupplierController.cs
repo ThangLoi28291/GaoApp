@@ -32,6 +32,7 @@ public class SupplierController : BaseAdminController
     [HttpGet]
     public async Task<IActionResult> Index(
         string? search = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
@@ -39,20 +40,22 @@ public class SupplierController : BaseAdminController
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
-        return View(new SupplierIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        });
+        return View(BuildIndexViewModel(search, status, page, pageSize, paged, summary));
     }
 
     [HttpGet]
     public async Task<IActionResult> Search(
         string? search = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
@@ -60,15 +63,18 @@ public class SupplierController : BaseAdminController
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
-        return PartialView("_SupplierTable", new SupplierIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        });
+        return PartialView(
+            "_SupplierTable",
+            BuildIndexViewModel(search, status, page, pageSize, paged, summary));
     }
 
     [HttpGet]
@@ -97,6 +103,9 @@ public class SupplierController : BaseAdminController
                 Address = vm.Address,
                 ContactName = vm.ContactName,
                 TaxCode = vm.TaxCode,
+                BankAccountNumber = vm.BankAccountNumber,
+                BankAccountName = vm.BankAccountName,
+                BankName = vm.BankName,
                 Note = vm.Note,
                 Status = vm.Status
             },
@@ -138,6 +147,9 @@ public class SupplierController : BaseAdminController
             Address = dto.Address,
             ContactName = dto.ContactName,
             TaxCode = dto.TaxCode,
+            BankAccountNumber = dto.BankAccountNumber,
+            BankAccountName = dto.BankAccountName,
+            BankName = dto.BankName,
             Note = dto.Note,
             Status = dto.Status,
             RowVersion = dto.RowVersion
@@ -166,6 +178,9 @@ public class SupplierController : BaseAdminController
                 Address = vm.Address,
                 ContactName = vm.ContactName,
                 TaxCode = vm.TaxCode,
+                BankAccountNumber = vm.BankAccountNumber,
+                BankAccountName = vm.BankAccountName,
+                BankName = vm.BankName,
                 Note = vm.Note,
                 Status = vm.Status,
                 RowVersion = vm.RowVersion
@@ -216,4 +231,23 @@ public class SupplierController : BaseAdminController
                 : result.Error.Message
         });
     }
+
+    private static SupplierIndexVM BuildIndexViewModel(
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        PagedResult<SupplierListItemDto> paged,
+        (int TotalItems, int ActiveItems, int InactiveItems) summary)
+        => new()
+        {
+            SearchString = search,
+            Status = status,
+            Page = page,
+            PageSize = pageSize,
+            TotalSupplierCount = summary.TotalItems,
+            ActiveSupplierCount = summary.ActiveItems,
+            InactiveSupplierCount = summary.InactiveItems,
+            Paged = paged
+        };
 }

@@ -4,6 +4,7 @@ using GaoApp.Application.Common.Security;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
+[GaoApp.Web.Common.POS.StoreAdminOnly]
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
 [Route("admin/pos-shift/handover-slip-print")]

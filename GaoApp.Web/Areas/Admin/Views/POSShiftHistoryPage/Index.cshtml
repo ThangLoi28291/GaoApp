@@ -1,4 +1,4 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@using GaoApp.Web.Areas.Admin.ViewModels.POS
 @{
     ViewData["Title"] = "Lịch sử ca của tôi";
     Layout = "_ContentNavbarLayout";
@@ -6,550 +6,9 @@
 }
 
 @section VendorStyles {
-    <style>
-        .shift-history-shell {
-            min-height: calc(100vh - 140px);
-        }
-
-        .shift-history-card {
-            border: 1px solid #e7edf5;
-            border-radius: 24px;
-            background: #fff;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
-            overflow: hidden;
-        }
-
-            .shift-history-card .card-body {
-                padding: 20px;
-            }
-
-        .shift-section-head {
-            margin-bottom: 16px;
-        }
-
-        .shift-section-title {
-            margin: 0;
-            font-size: 1.12rem;
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.25;
-        }
-
-        .shift-section-sub {
-            margin-top: 6px;
-            color: #667085;
-            font-size: .94rem;
-            font-weight: 600;
-            line-height: 1.45;
-        }
-
-        .filter-shell {
-            border: 1px solid #e7edf5;
-            border-radius: 22px;
-            background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
-        }
-
-            .filter-shell .card-body {
-                padding: 20px;
-            }
-
-        .filter-label {
-            font-size: .88rem;
-            font-weight: 800;
-            color: #344054;
-            margin-bottom: 8px;
-        }
-
-        .filter-shell .form-control,
-        .filter-shell .form-select {
-            min-height: 50px;
-            border-radius: 16px;
-            border: 1px solid #d7dee8;
-            box-shadow: none !important;
-        }
-
-            .filter-shell .form-control:focus,
-            .filter-shell .form-select:focus {
-                border-color: #86b7fe;
-            }
-
-        .quick-filter-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 14px;
-        }
-
-        .quick-filter-btn {
-            min-height: 40px;
-            border-radius: 999px;
-            padding: 8px 14px;
-            font-weight: 800;
-            font-size: .86rem;
-        }
-
-        .search-btn {
-            min-height: 50px;
-            border-radius: 16px;
-            font-weight: 900;
-        }
-
-        .history-table-wrap {
-            border: 1px solid #edf1f5;
-            border-radius: 18px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .history-table {
-            margin-bottom: 0;
-        }
-
-            .history-table thead th {
-                background: #f8fafc;
-                font-size: .82rem;
-                font-weight: 900;
-                color: #475467;
-                border-bottom: 1px solid #e9eef5;
-                white-space: nowrap;
-                text-transform: uppercase;
-                letter-spacing: .04em;
-                padding: 14px 16px;
-            }
-
-            .history-table td,
-            .history-table th {
-                vertical-align: middle;
-            }
-
-            .history-table tbody td {
-                padding: 15px 16px;
-                border-top: 1px solid #edf2f7;
-            }
-
-        .history-row {
-            cursor: pointer;
-            transition: all .15s ease;
-        }
-
-            .history-row:hover {
-                background: #f8fbff;
-            }
-
-            .history-row.active {
-                background: #eef4ff;
-            }
-
-        .history-main {
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.3;
-        }
-
-        .history-sub {
-            margin-top: 3px;
-            font-size: .82rem;
-            color: #667085;
-            font-weight: 700;
-            line-height: 1.4;
-        }
-
-        .history-money {
-            font-weight: 900;
-            color: #101828;
-        }
-
-            .history-money.primary {
-                color: #2458b8;
-            }
-
-            .history-money.success {
-                color: #067647;
-            }
-
-            .history-money.muted {
-                color: #475467;
-            }
-
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 110px;
-            padding: 8px 14px;
-            border-radius: 999px;
-            font-size: .82rem;
-            font-weight: 900;
-            line-height: 1;
-        }
-
-            .status-badge.open {
-                background: #ecfdf3;
-                color: #067647;
-            }
-
-            .status-badge.closed {
-                background: #f2f4f7;
-                color: #344054;
-            }
-
-        .paging-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 14px;
-            margin-top: 16px;
-            flex-wrap: wrap;
-        }
-
-        .paging-left {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .paging-info {
-            color: #667085;
-            font-size: .9rem;
-            font-weight: 700;
-        }
-
-        .paging-page-size {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-            .paging-page-size label {
-                font-size: .88rem;
-                font-weight: 800;
-                color: #475467;
-                margin: 0;
-            }
-
-            .paging-page-size .form-select {
-                min-height: 40px;
-                border-radius: 12px;
-                font-weight: 800;
-                min-width: 88px;
-            }
-
-        .paging-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .paging-btn {
-            min-height: 40px;
-            border-radius: 12px;
-            font-weight: 800;
-        }
-
-        .summary-empty {
-            border: 1px dashed #d7dee8;
-            border-radius: 18px;
-            background: #fafcff;
-            color: #667085;
-            padding: 18px;
-            font-weight: 700;
-        }
-
-        .summary-selected-head {
-            border: 1px solid #e9eef5;
-            border-radius: 20px;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .summary-selected-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0,1fr));
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .summary-selected-item {
-            border: 1px solid #edf1f5;
-            border-radius: 16px;
-            padding: 12px 14px;
-            background: #fff;
-        }
-
-        .summary-selected-label {
-            font-size: .78rem;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            font-weight: 800;
-            color: #667085;
-            margin-bottom: 6px;
-        }
-
-        .summary-selected-value {
-            font-size: 1rem;
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.35;
-        }
-
-        .summary-stat-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-            margin-bottom: 16px;
-        }
-
-        .summary-stat-box {
-            border-radius: 18px;
-            padding: 16px;
-            border: 1px solid #e9eef5;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-            min-height: 100px;
-        }
-
-            .summary-stat-box.accent {
-                background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
-                border-color: #d7e5ff;
-            }
-
-        .summary-stat-label {
-            font-size: .8rem;
-            color: #667085;
-            margin-bottom: 8px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-        }
-
-        .summary-stat-value {
-            font-size: 1.35rem;
-            font-weight: 900;
-            color: #101828;
-            line-height: 1.2;
-        }
-
-            .summary-stat-value.primary {
-                color: #2458b8;
-            }
-
-        .summary-action-grid {
-            display: grid;
-            gap: 14px;
-            margin-top: 16px;
-        }
-
-        .summary-action-card {
-            border: 1px solid #edf1f5;
-            border-radius: 20px;
-            background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-            padding: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-        }
-
-        .summary-action-title {
-            font-size: 1rem;
-            font-weight: 900;
-            color: #101828;
-            margin-bottom: 4px;
-        }
-
-        .summary-action-sub {
-            font-size: .88rem;
-            font-weight: 700;
-            color: #667085;
-            line-height: 1.45;
-        }
-
-        .summary-action-meta {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            flex-shrink: 0;
-        }
-
-        .summary-action-number {
-            min-width: 44px;
-            height: 44px;
-            border-radius: 14px;
-            background: #eef4ff;
-            color: #2458b8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1rem;
-            font-weight: 900;
-        }
-
-        .summary-action-btn {
-            min-height: 44px;
-            border-radius: 14px;
-            font-weight: 900;
-            padding: 0 16px;
-        }
-
-        .cash-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 118px;
-            padding: 7px 12px;
-            border-radius: 999px;
-            font-size: .8rem;
-            font-weight: 900;
-            line-height: 1;
-        }
-
-            .cash-badge.in {
-                background: #eafaf0;
-                color: #18794e;
-            }
-
-            .cash-badge.out {
-                background: #fff1f3;
-                color: #c01048;
-            }
-
-        .order-status-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 110px;
-            padding: 7px 12px;
-            border-radius: 999px;
-            font-size: .8rem;
-            font-weight: 900;
-            line-height: 1;
-        }
-
-            .order-status-badge.draft {
-                background: #f2f4f7;
-                color: #344054;
-            }
-
-            .order-status-badge.onhold {
-                background: #fff7e6;
-                color: #b54708;
-            }
-
-            .order-status-badge.completed {
-                background: #ecfdf3;
-                color: #067647;
-            }
-
-            .order-status-badge.cancelled,
-            .order-status-badge.voided {
-                background: #fff1f3;
-                color: #c01048;
-            }
-
-            .order-status-badge.refunded {
-                background: #eef4ff;
-                color: #2458b8;
-            }
-
-        .summary-muted-empty {
-            text-align: center;
-            color: #98a2b3;
-            font-weight: 700;
-            padding: 18px !important;
-        }
-
-        .shift-history-modal .modal-content {
-            border: 0;
-            border-radius: 24px;
-            overflow: hidden;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
-        }
-
-        .shift-history-modal .modal-header {
-            border-bottom: 1px solid #edf1f5;
-            padding: 16px 18px;
-        }
-
-        .shift-history-modal .modal-title {
-            font-weight: 900;
-            color: #101828;
-        }
-
-        .shift-history-modal .modal-body {
-            padding: 18px;
-        }
-
-        .shift-history-modal .modal-footer {
-            border-top: 1px solid #edf1f5;
-            padding: 14px 18px 18px;
-        }
-
-        .modal-paging-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-top: 14px;
-            flex-wrap: wrap;
-        }
-
-        .modal-paging-info {
-            color: #667085;
-            font-size: .9rem;
-            font-weight: 700;
-        }
-
-        .modal-paging-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .modal-paging-btn {
-            min-height: 40px;
-            border-radius: 12px;
-            font-weight: 800;
-        }
-
-        @@media (max-width: 1199.98px) {
-            .summary-stat-grid,
-            .summary-selected-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @@media (max-width: 767.98px) {
-            .filter-shell .card-body,
-            .shift-history-card .card-body {
-                padding: 16px;
-            }
-
-            .paging-bar,
-            .modal-paging-bar {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .paging-actions,
-            .modal-paging-actions {
-                width: 100%;
-            }
-
-            .paging-btn,
-            .modal-paging-btn {
-                flex: 1;
-            }
-
-            .summary-action-card {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .summary-action-meta {
-                justify-content: space-between;
-            }
-        }
-    </style>
+    <link rel="stylesheet"
+          href="~/Admin/css/pos/pos-shift-history.css"
+          asp-append-version="true" />
 }
 
 @section header {
@@ -719,9 +178,130 @@
                                 <div id="sumCancelledOrders" class="summary-stat-value">0</div>
                             </div>
 
-                            <div class="summary-stat-box accent" style="grid-column: 1 / -1;">
+                            <div class="summary-stat-box accent summary-stat-wide">
                                 <div class="summary-stat-label">Tổng bán hoàn tất</div>
                                 <div id="sumCompletedSalesTotal" class="summary-stat-value primary">0</div>
+                            </div>
+                        </div>
+
+                        <section class="financial-snapshot" aria-labelledby="financialSnapshotTitle">
+                            <div class="financial-snapshot-head">
+                                <div>
+                                    <h5 id="financialSnapshotTitle" class="financial-snapshot-title">Chi tiết tài chính ca</h5>
+                                    <div class="financial-snapshot-sub">
+                                        Số liệu tài chính được lấy trực tiếp từ tổng quan ca trong hệ thống.
+                                    </div>
+                                </div>
+                                <span class="financial-snapshot-badge">Tài chính</span>
+                            </div>
+
+                            <div class="financial-snapshot-grid">
+                                <div class="financial-group">
+                                    <div class="financial-group-title">Doanh thu</div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Tiền mặt</span>
+                                        <strong id="sumCashSalesTotal" class="financial-value success">0</strong>
+                                    </div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Không tiền mặt</span>
+                                        <strong id="sumNonCashSalesTotal" class="financial-value">0</strong>
+                                    </div>
+                                </div>
+
+                                <div class="financial-group">
+                                    <div class="financial-group-title">Hoàn tiền</div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Hoàn tiền mặt</span>
+                                        <strong id="sumCashRefundTotal" class="financial-value danger">0</strong>
+                                    </div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Hoàn không tiền mặt</span>
+                                        <strong id="sumNonCashRefundTotal" class="financial-value danger">0</strong>
+                                    </div>
+
+                                    <div class="financial-row financial-row-total">
+                                        <span class="financial-label">Tổng hoàn tiền</span>
+                                        <strong id="sumRefundTotal" class="financial-value danger">0</strong>
+                                    </div>
+                                </div>
+
+                                <div class="financial-group">
+                                    <div class="financial-group-title">Dòng tiền két</div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Tiền đầu ca</span>
+                                        <strong id="sumOpeningCash" class="financial-value primary">0</strong>
+                                    </div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Thu thêm</span>
+                                        <strong id="sumCashInTotal" class="financial-value success">0</strong>
+                                    </div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Chi ra</span>
+                                        <strong id="sumCashOutTotal" class="financial-value danger">0</strong>
+                                    </div>
+                                </div>
+
+                                <div class="financial-group financial-group-emphasis">
+                                    <div class="financial-group-title">Tiền cuối ca</div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Dự kiến</span>
+                                        <strong id="sumClosingCashExpected" class="financial-value primary">0</strong>
+                                    </div>
+
+                                    <div class="financial-row">
+                                        <span class="financial-label">Thực tế</span>
+                                        <strong id="sumClosingCashActual" class="financial-value">-</strong>
+                                    </div>
+
+                                    <div id="sumClosingCashActualHint" class="financial-hint">
+                                        Chưa ghi nhận tiền cuối ca thực tế.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="shift-note-grid">
+                                <div class="shift-note-card">
+                                    <div class="shift-note-title">Ghi chú mở ca</div>
+                                    <div id="sumOpenNote" class="shift-note-text">-</div>
+                                </div>
+
+                                <div class="shift-note-card">
+                                    <div class="shift-note-title">Ghi chú đóng ca</div>
+                                    <div id="sumCloseNote" class="shift-note-text">-</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <div class="shift-report-toolbar" aria-label="Báo cáo ca">
+                            <div class="shift-report-toolbar-copy">
+                                <div class="shift-report-toolbar-title">Báo cáo ca</div>
+                                <div class="shift-report-toolbar-sub">
+                                    In báo cáo đầy đủ của ca đang chọn hoặc xuất CSV để lưu trữ / đối soát.
+                                </div>
+                            </div>
+
+                            <div class="shift-report-toolbar-actions">
+                                <button id="btnPrintShiftReport"
+                                        type="button"
+                                        class="btn btn-outline-primary shift-report-btn"
+                                        disabled>
+                                    In báo cáo
+                                </button>
+
+                                <button id="btnExportShiftReport"
+                                        type="button"
+                                        class="btn btn-outline-secondary shift-report-btn"
+                                        disabled>
+                                    Xuất CSV
+                                </button>
                             </div>
                         </div>
 
@@ -776,15 +356,18 @@
                         <table class="table align-middle history-table mb-0">
                             <thead>
                                 <tr>
-                                    <th style="width:80px;">ID</th>
-                                    <th style="width:180px;">Mã đơn</th>
-                                    <th style="width:140px;">Trạng thái</th>
-                                    <th style="width:150px;">Tổng tiền</th>
+                                    <th style="width:70px;">ID</th>
+                                    <th style="width:170px;">Mã đơn</th>
+                                    <th style="width:135px;">Trạng thái</th>
+                                    <th style="width:165px;">Thanh toán</th>
+                                    <th style="width:155px;">Tạo lúc</th>
+                                    <th style="width:155px;">Hoàn tất lúc</th>
+                                    <th style="width:145px;" class="text-end">Tổng tiền</th>
                                 </tr>
                             </thead>
                             <tbody id="ordersModalBody">
                                 <tr>
-                                    <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                                    <td colspan="7" class="summary-muted-empty">Không có dữ liệu.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -813,7 +396,7 @@
             <div class="modal-header">
                 <div>
                     <h5 class="modal-title">Thu / chi tiền mặt trong ca</h5>
-                    <div class="shift-section-sub mt-1">Xem chi tiết các giao dịch tiền mặt phát sinh</div>
+                    <div class="shift-section-sub mt-1">Xem loại giao dịch, số tiền, lý do, ghi chú và thời gian phát sinh</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -821,18 +404,19 @@
             <div class="modal-body">
                 <div class="history-table-wrap">
                     <div class="table-responsive">
-                        <table class="table align-middle history-table mb-0">
+                        <table class="table align-middle history-table cash-txn-table mb-0">
                             <thead>
                                 <tr>
-                                    <th style="width:140px;">Loại</th>
-                                    <th style="width:150px;">Số tiền</th>
-                                    <th style="width:180px;">Lý do</th>
+                                    <th style="width:155px;">Thời gian</th>
+                                    <th style="width:145px;">Loại</th>
+                                    <th style="width:150px;" class="text-end">Số tiền</th>
+                                    <th style="width:210px;">Lý do</th>
                                     <th>Ghi chú</th>
                                 </tr>
                             </thead>
                             <tbody id="cashTxnsModalBody">
                                 <tr>
-                                    <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
+                                    <td colspan="5" class="summary-muted-empty">Không có dữ liệu.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -854,566 +438,8 @@
         </div>
     </div>
 </div>
-
 @section PageScripts {
-    <script>
-        const filterStatus = document.getElementById('filterStatus');
-        const filterFrom = document.getElementById('filterFrom');
-        const filterTo = document.getElementById('filterTo');
-        const btnSearch = document.getElementById('btnSearch');
-
-        const historyBody = document.getElementById('historyBody');
-        const historyPagingInfo = document.getElementById('historyPagingInfo');
-        const btnPrevPage = document.getElementById('btnPrevPage');
-        const btnNextPage = document.getElementById('btnNextPage');
-        const pageSizeSelect = document.getElementById('pageSizeSelect');
-
-        const summaryEmpty = document.getElementById('summaryEmpty');
-        const summaryContent = document.getElementById('summaryContent');
-
-        const selectedShiftCode = document.getElementById('selectedShiftCode');
-        const selectedShiftStatus = document.getElementById('selectedShiftStatus');
-        const selectedOpenedAt = document.getElementById('selectedOpenedAt');
-        const selectedClosedAt = document.getElementById('selectedClosedAt');
-
-        const sumTotalOrders = document.getElementById('sumTotalOrders');
-        const sumCompletedOrders = document.getElementById('sumCompletedOrders');
-        const sumDraftOrders = document.getElementById('sumDraftOrders');
-        const sumCancelledOrders = document.getElementById('sumCancelledOrders');
-        const sumCompletedSalesTotal = document.getElementById('sumCompletedSalesTotal');
-
-        const ordersCountText = document.getElementById('ordersCountText');
-        const cashTxnsCountText = document.getElementById('cashTxnsCountText');
-
-        const btnOpenOrdersModal = document.getElementById('btnOpenOrdersModal');
-        const btnOpenCashTxnsModal = document.getElementById('btnOpenCashTxnsModal');
-
-        const btnToday = document.getElementById('btnToday');
-        const btnLast7Days = document.getElementById('btnLast7Days');
-        const btnLast30Days = document.getElementById('btnLast30Days');
-        const btnClearDate = document.getElementById('btnClearDate');
-
-        const ordersModal = new bootstrap.Modal(document.getElementById('ordersModal'));
-        const cashTxnsModal = new bootstrap.Modal(document.getElementById('cashTxnsModal'));
-
-        const ordersModalBody = document.getElementById('ordersModalBody');
-        const cashTxnsModalBody = document.getElementById('cashTxnsModalBody');
-
-        const ordersModalPagingInfo = document.getElementById('ordersModalPagingInfo');
-        const cashTxnsModalPagingInfo = document.getElementById('cashTxnsModalPagingInfo');
-
-        const btnOrdersModalPrev = document.getElementById('btnOrdersModalPrev');
-        const btnOrdersModalNext = document.getElementById('btnOrdersModalNext');
-        const btnCashTxnsModalPrev = document.getElementById('btnCashTxnsModalPrev');
-        const btnCashTxnsModalNext = document.getElementById('btnCashTxnsModalNext');
-
-        const pageState = {
-            page: 1,
-            pageSize: 20,
-            totalPages: 1,
-            selectedShiftId: null,
-            selectedShiftRow: null,
-            currentItems: []
-        };
-
-        const ordersModalState = {
-            page: 1,
-            pageSize: 8,
-            items: []
-        };
-
-        const cashTxnsModalState = {
-            page: 1,
-            pageSize: 8,
-            items: []
-        };
-
-        function formatMoney(value) {
-            const n = Number(value || 0);
-            return n.toLocaleString('vi-VN');
-        }
-
-        function formatDateTime(value) {
-            if (!value) return '-';
-            const d = new Date(value);
-            return d.toLocaleString('vi-VN');
-        }
-
-        function showError(msg) {
-            if (window.toastr) toastr.error(msg || 'Có lỗi xảy ra');
-        }
-
-        function toDateInputValue(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-
-        async function fetchJson(url, options = {}) {
-            const res = await fetch(url, options);
-            const contentType = res.headers.get('content-type') || '';
-
-            let jsonData = null;
-            let textData = '';
-
-            try {
-                if (contentType.includes('application/json')) {
-                    jsonData = await res.json();
-                } else {
-                    textData = await res.text();
-                }
-            } catch { }
-
-            if (!res.ok) {
-                const msg =
-                    jsonData?.message ||
-                    jsonData?.title ||
-                    jsonData?.error ||
-                    textData ||
-                    `Yêu cầu thất bại (${res.status})`;
-
-                throw new Error(msg);
-            }
-
-            return jsonData ?? textData ?? null;
-        }
-
-        function buildHistoryUrl() {
-            const params = new URLSearchParams();
-
-            if (filterStatus.value !== '') params.append('status', filterStatus.value);
-            if (filterFrom.value) params.append('fromUtc', new Date(filterFrom.value).toISOString());
-
-            if (filterTo.value) {
-                const d = new Date(filterTo.value);
-                d.setDate(d.getDate() + 1);
-                params.append('toUtcExclusive', d.toISOString());
-            }
-
-            params.append('page', pageState.page);
-            params.append('pageSize', pageState.pageSize);
-
-            return `/admin/pos/shift/history?${params.toString()}`;
-        }
-
-        function getShiftStatusMeta(status) {
-            const raw = (status ?? '').toString().trim().toLowerCase();
-
-            if (raw === '1') {
-                return { text: 'Đang mở', css: 'open' };
-            }
-
-            if (raw === '2') {
-                return { text: 'Đã đóng', css: 'closed' };
-            }
-
-            if (raw.includes('open')) {
-                return { text: 'Đang mở', css: 'open' };
-            }
-
-            if (raw.includes('closed')) {
-                return { text: 'Đã đóng', css: 'closed' };
-            }
-
-            return {
-                text: status || '-',
-                css: 'closed'
-            };
-        }
-
-        function getStatusBadge(status) {
-            const meta = getShiftStatusMeta(status);
-            return `<span class="status-badge ${meta.css}">${meta.text}</span>`;
-        }
-
-        function getOrderStatusMeta(status) {
-            const raw = (status ?? '').toString().trim().toLowerCase();
-
-            if (raw === '0' || raw.includes('draft')) {
-                return { text: 'Nháp', css: 'draft' };
-            }
-
-            if (raw === '1' || raw.includes('onhold')) {
-                return { text: 'Đang giữ', css: 'onhold' };
-            }
-
-            if (raw === '2' || raw.includes('completed')) {
-                return { text: 'Hoàn tất', css: 'completed' };
-            }
-
-            if (raw === '3' || raw.includes('cancelled')) {
-                return { text: 'Đã hủy', css: 'cancelled' };
-            }
-
-            if (raw === '4' || raw.includes('voided')) {
-                return { text: 'Void', css: 'voided' };
-            }
-
-            if (raw === '5' || raw.includes('refunded')) {
-                return { text: 'Hoàn tiền', css: 'refunded' };
-            }
-
-            return { text: status || '-', css: 'draft' };
-        }
-
-        function getOrderStatusBadge(status) {
-            const meta = getOrderStatusMeta(status);
-            return `<span class="order-status-badge ${meta.css}">${meta.text}</span>`;
-        }
-
-        function getCashTxnTypeBadge(type) {
-            const val = (type || '').toString().toLowerCase();
-
-            if (val.includes('cashin') || val === '1' || val === 'in') {
-                return `<span class="cash-badge in">Thu tiền mặt</span>`;
-            }
-
-            if (val.includes('cashout') || val === '2' || val === 'out') {
-                return `<span class="cash-badge out">Chi tiền mặt</span>`;
-            }
-
-            return `<span class="cash-badge">${type || '-'}</span>`;
-        }
-
-        function paginateItems(items, page, pageSize) {
-            const total = items.length;
-            const totalPages = Math.max(1, Math.ceil(total / pageSize));
-            const currentPage = Math.min(Math.max(1, page), totalPages);
-            const start = (currentPage - 1) * pageSize;
-            const pageItems = items.slice(start, start + pageSize);
-
-            return {
-                total,
-                totalPages,
-                currentPage,
-                start,
-                pageItems
-            };
-        }
-
-        function renderHistory(items) {
-            pageState.currentItems = items || [];
-
-            if (!items || !items.length) {
-                historyBody.innerHTML = `
-                    <tr>
-                        <td colspan="6" class="text-center text-muted py-4">Không có dữ liệu.</td>
-                    </tr>`;
-                return;
-            }
-
-            historyBody.innerHTML = items.map(x => `
-                <tr class="history-row ${pageState.selectedShiftId === x.id ? 'active' : ''}" data-shift-id="${x.id}">
-                    <td>
-                        <div class="history-main">#${x.id}</div>
-                        <div class="history-sub">${x.shiftCode || '-'}</div>
-                    </td>
-                    <td>${getStatusBadge(x.status)}</td>
-                    <td>
-                        <div class="history-main">${formatDateTime(x.openedAtUtc)}</div>
-                    </td>
-                    <td>
-                        <div class="history-main">${formatDateTime(x.closedAtUtc)}</div>
-                    </td>
-                    <td>
-                        <div class="history-money primary">${formatMoney(x.openingCash)}</div>
-                    </td>
-                    <td>
-                        <div class="history-money success">${formatMoney(x.cashSalesTotal)}</div>
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        async function loadHistory() {
-            try {
-                const result = await fetchJson(buildHistoryUrl());
-
-                pageState.totalPages = result.totalPages || 1;
-                renderHistory(result.items || []);
-                historyPagingInfo.textContent =
-                    `Trang ${result.page || 1}/${result.totalPages || 1} - Tổng ${result.totalItems || 0} ca`;
-            } catch (err) {
-                renderHistory([]);
-                showError(err.message);
-            }
-        }
-
-        function renderSummaryHeader(shiftRow) {
-            if (!shiftRow) {
-                selectedShiftCode.textContent = '-';
-                selectedShiftStatus.innerHTML = '';
-                selectedOpenedAt.textContent = '-';
-                selectedClosedAt.textContent = '-';
-                return;
-            }
-
-            selectedShiftCode.textContent = shiftRow.shiftCode || `Ca #${shiftRow.id}`;
-            selectedShiftStatus.innerHTML = getStatusBadge(shiftRow.status);
-            selectedOpenedAt.textContent = formatDateTime(shiftRow.openedAtUtc);
-            selectedClosedAt.textContent = formatDateTime(shiftRow.closedAtUtc);
-        }
-
-        function renderSummary(summary) {
-            if (!summary) {
-                summaryEmpty.style.display = '';
-                summaryContent.style.display = 'none';
-                renderSummaryHeader(null);
-                ordersModalState.items = [];
-                cashTxnsModalState.items = [];
-                ordersCountText.textContent = 0;
-                cashTxnsCountText.textContent = 0;
-                return;
-            }
-
-            summaryEmpty.style.display = 'none';
-            summaryContent.style.display = '';
-
-            renderSummaryHeader(pageState.selectedShiftRow);
-
-            sumTotalOrders.textContent = summary.totalOrders || 0;
-            sumCompletedOrders.textContent = summary.completedOrders || 0;
-            sumDraftOrders.textContent = summary.draftOrders || 0;
-            sumCancelledOrders.textContent = summary.cancelledOrders || 0;
-            sumCompletedSalesTotal.textContent = formatMoney(summary.completedSalesTotal);
-
-            const orders = summary.orders || [];
-            const txns = summary.cashTransactions || [];
-
-            ordersModalState.items = orders;
-            ordersModalState.page = 1;
-
-            cashTxnsModalState.items = txns;
-            cashTxnsModalState.page = 1;
-
-            ordersCountText.textContent = orders.length;
-            cashTxnsCountText.textContent = txns.length;
-        }
-
-        async function loadSummary(shiftId) {
-            try {
-                const summary = await fetchJson(`/admin/pos/shift/summary?shiftId=${shiftId}`);
-                renderSummary(summary);
-            } catch (err) {
-                renderSummary(null);
-                showError(err.message);
-            }
-        }
-
-        function renderOrdersModalPage() {
-            const { total, totalPages, currentPage, start, pageItems } =
-                paginateItems(ordersModalState.items, ordersModalState.page, ordersModalState.pageSize);
-
-            ordersModalState.page = currentPage;
-
-            if (!pageItems.length) {
-                ordersModalBody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
-                    </tr>`;
-            } else {
-                ordersModalBody.innerHTML = pageItems.map(x => `
-                    <tr>
-                        <td>${x.id}</td>
-                        <td><div class="history-main">${x.orderNumber || '-'}</div></td>
-                        <td>${getOrderStatusBadge(x.status)}</td>
-                        <td>${formatMoney(x.grandTotal)}</td>
-                    </tr>
-                `).join('');
-            }
-
-            if (total === 0) {
-                ordersModalPagingInfo.textContent = '0 đơn';
-            } else {
-                const from = start + 1;
-                const to = Math.min(start + ordersModalState.pageSize, total);
-                ordersModalPagingInfo.textContent = `${from}-${to} / ${total} đơn`;
-            }
-
-            btnOrdersModalPrev.disabled = currentPage <= 1;
-            btnOrdersModalNext.disabled = currentPage >= totalPages;
-        }
-
-        function renderCashTxnsModalPage() {
-            const { total, totalPages, currentPage, start, pageItems } =
-                paginateItems(cashTxnsModalState.items, cashTxnsModalState.page, cashTxnsModalState.pageSize);
-
-            cashTxnsModalState.page = currentPage;
-
-            if (!pageItems.length) {
-                cashTxnsModalBody.innerHTML = `
-                    <tr>
-                        <td colspan="4" class="summary-muted-empty">Không có dữ liệu.</td>
-                    </tr>`;
-            } else {
-                cashTxnsModalBody.innerHTML = pageItems.map(x => `
-                    <tr>
-                        <td>${getCashTxnTypeBadge(x.type)}</td>
-                        <td>${formatMoney(x.amount)}</td>
-                        <td>${x.reason || '-'}</td>
-                        <td>${x.note || '-'}</td>
-                    </tr>
-                `).join('');
-            }
-
-            if (total === 0) {
-                cashTxnsModalPagingInfo.textContent = '0 giao dịch';
-            } else {
-                const from = start + 1;
-                const to = Math.min(start + cashTxnsModalState.pageSize, total);
-                cashTxnsModalPagingInfo.textContent = `${from}-${to} / ${total} giao dịch`;
-            }
-
-            btnCashTxnsModalPrev.disabled = currentPage <= 1;
-            btnCashTxnsModalNext.disabled = currentPage >= totalPages;
-        }
-
-        btnSearch.addEventListener('click', async function () {
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnPrevPage.addEventListener('click', async function () {
-            if (pageState.page <= 1) return;
-            pageState.page--;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnNextPage.addEventListener('click', async function () {
-            if (pageState.page >= pageState.totalPages) return;
-            pageState.page++;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        pageSizeSelect.addEventListener('change', async function () {
-            pageState.pageSize = parseInt(this.value || '20');
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        historyBody.addEventListener('click', async function (e) {
-            const row = e.target.closest('[data-shift-id]');
-            if (!row) return;
-
-            const shiftId = parseInt(row.getAttribute('data-shift-id'));
-            if (!shiftId) return;
-
-            const shiftRow = (pageState.currentItems || []).find(x => x.id === shiftId) || null;
-
-            pageState.selectedShiftId = shiftId;
-            pageState.selectedShiftRow = shiftRow;
-
-            renderHistory(pageState.currentItems || []);
-            await loadSummary(shiftId);
-        });
-
-        btnToday.addEventListener('click', async function () {
-            const now = new Date();
-            const today = toDateInputValue(now);
-
-            filterFrom.value = today;
-            filterTo.value = today;
-
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnLast7Days.addEventListener('click', async function () {
-            const now = new Date();
-            const from = new Date();
-            from.setDate(now.getDate() - 6);
-
-            filterFrom.value = toDateInputValue(from);
-            filterTo.value = toDateInputValue(now);
-
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnLast30Days.addEventListener('click', async function () {
-            const now = new Date();
-            const from = new Date();
-            from.setDate(now.getDate() - 29);
-
-            filterFrom.value = toDateInputValue(from);
-            filterTo.value = toDateInputValue(now);
-
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnClearDate.addEventListener('click', async function () {
-            filterFrom.value = '';
-            filterTo.value = '';
-
-            pageState.page = 1;
-            pageState.selectedShiftId = null;
-            pageState.selectedShiftRow = null;
-            await loadHistory();
-            renderSummary(null);
-        });
-
-        btnOpenOrdersModal.addEventListener('click', function () {
-            renderOrdersModalPage();
-            ordersModal.show();
-        });
-
-        btnOpenCashTxnsModal.addEventListener('click', function () {
-            renderCashTxnsModalPage();
-            cashTxnsModal.show();
-        });
-
-        btnOrdersModalPrev.addEventListener('click', function () {
-            if (ordersModalState.page <= 1) return;
-            ordersModalState.page--;
-            renderOrdersModalPage();
-        });
-
-        btnOrdersModalNext.addEventListener('click', function () {
-            const totalPages = Math.max(1, Math.ceil(ordersModalState.items.length / ordersModalState.pageSize));
-            if (ordersModalState.page >= totalPages) return;
-            ordersModalState.page++;
-            renderOrdersModalPage();
-        });
-
-        btnCashTxnsModalPrev.addEventListener('click', function () {
-            if (cashTxnsModalState.page <= 1) return;
-            cashTxnsModalState.page--;
-            renderCashTxnsModalPage();
-        });
-
-        btnCashTxnsModalNext.addEventListener('click', function () {
-            const totalPages = Math.max(1, Math.ceil(cashTxnsModalState.items.length / cashTxnsModalState.pageSize));
-            if (cashTxnsModalState.page >= totalPages) return;
-            cashTxnsModalState.page++;
-            renderCashTxnsModalPage();
-        });
-
-        document.addEventListener('DOMContentLoaded', async function () {
-            pageState.pageSize = parseInt(pageSizeSelect.value || '20');
-            await loadHistory();
-        });
-    </script>
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.history.page.js"
+            asp-append-version="true"></script>
 }

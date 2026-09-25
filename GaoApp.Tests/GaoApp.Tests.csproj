@@ -7,6 +7,7 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <RunSettingsFilePath Condition="'$(RunSettingsFilePath)' == '' and Exists('$(MSBuildThisFileDirectory)test.local.runsettings')">$(MSBuildThisFileDirectory)test.local.runsettings</RunSettingsFilePath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,10 +19,7 @@
 	<ItemGroup>
 		<PackageReference Include="coverlet.collector" Version="6.0.0" />
 		<PackageReference Include="AwesomeAssertions" Version="8.0.2" />
-		<PackageReference
-			Include="Microsoft.CodeAnalysis.CSharp"
-			Version="4.8.0"
-			PrivateAssets="all" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.29" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
 		<PackageReference Include="xunit" Version="2.9.3" />

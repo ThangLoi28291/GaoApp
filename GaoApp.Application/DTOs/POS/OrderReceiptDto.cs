@@ -1,8 +1,12 @@
-﻿namespace GaoApp.Application.DTOs.POS;
+namespace GaoApp.Application.DTOs.POS;
 
 public sealed class OrderReceiptDto
 {
     public int OrderId { get; set; }
+    public decimal DepositAmount { get; set; }
+    public bool IsCreditSale { get; set; }
+    public DateTime? CreditDueDate { get; set; }
+    public bool HasBankTransfer { get; set; }
     public string? OrderNumber { get; set; }
 
     public string Status { get; set; } = default!;

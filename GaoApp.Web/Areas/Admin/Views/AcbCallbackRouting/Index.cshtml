@@ -1,0 +1,58 @@
+@model GaoApp.Web.Services.Acb.AcbCallbackRoutingPage
+@{
+    ViewData["Title"] = "Cửa hàng nhận callback ACB";
+}
+<div class="card mb-4">
+    <div class="card-body">
+        <h4 class="mb-2">Cửa hàng nhận callback từ URL cũ</h4>
+        <p class="text-muted mb-0">Giữ URL đã đăng ký với ACB và chọn cửa hàng nhận thông báo. Lựa chọn được lưu theo StoreId; đổi subdomain không làm thay đổi cửa hàng nhận.</p>
+    </div>
+</div>
+@if (Model.Routes.Count == 0)
+{
+    <div class="alert alert-info">Chưa khai báo tên miền callback cũ trong cấu hình máy chủ.</div>
+}
+@foreach (var route in Model.Routes)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <form asp-controller="AcbCallbackRouting" asp-action="Save" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="Host" value="@route.Host" />
+                <input type="hidden" name="Version" value="@route.Version" />
+                <label class="form-label">URL ACB tiếp tục gọi</label>
+                <div class="border rounded bg-light p-3 mb-3"><code>https://@route.Host/Admin/api-callback</code></div>
+                <label for="store-@route.Host" class="form-label">Cửa hàng nhận callback</label>
+                <select id="store-@route.Host" name="TargetStoreId" class="form-select mb-2">
+                    <option value="">Chưa chọn / Tạm ngưng nhận tại URL này</option>
+                    @if (route.TargetStoreId.HasValue && !Model.Stores.Any(x => x.Id == route.TargetStoreId))
+                    {
+                        <option value="@route.TargetStoreId" selected>Cửa hàng #@route.TargetStoreId — không còn hoạt động</option>
+                    }
+                    @foreach (var store in Model.Stores)
+                    {
+                        <option value="@store.Id" selected="@(store.Id == route.TargetStoreId)">@store.Name — StoreId: @store.Id · @store.Subdomain</option>
+                    }
+                </select>
+                <p class="form-text">Callback dùng x-api-key đã lưu trong Cài đặt thanh toán ACB của cửa hàng được chọn. Nếu chưa chọn hoặc cửa hàng ngừng hoạt động, hệ thống từ chối nhận và ghi log.</p>
+                <button class="btn btn-primary" type="submit">Lưu cửa hàng nhận callback</button>
+            </form>
+        </div>
+    </div>
+}
+<div class="alert alert-info">Khi lên host, yêu cầu POST tại URL cũ phải được chuyển vào ứng dụng mới, giữ nguyên nội dung và header x-api-key. Lưu lựa chọn ở đây chưa chứng minh đường truyền callback đã hoạt động.</div>
+<div class="card">
+    <div class="card-header"><h5 class="mb-0">Lịch sử thay đổi gần nhất</h5></div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Thời điểm</th><th>Tên miền</th><th>StoreId trước</th><th>StoreId sau</th><th>Người thay đổi</th></tr></thead>
+            <tbody>
+            @foreach (var change in Model.History)
+            {
+                <tr><td>@change.ChangedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</td><td>@change.Host</td><td>@(change.PreviousStoreId?.ToString() ?? "Chưa chọn")</td><td>@(change.TargetStoreId?.ToString() ?? "Tạm ngưng")</td><td>UserId: @change.ActorUserId</td></tr>
+            }
+            @if (Model.History.Count == 0) { <tr><td colspan="5" class="text-muted">Chưa có thay đổi được lưu.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</div>

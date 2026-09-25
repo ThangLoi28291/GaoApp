@@ -71,14 +71,16 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
             return;
 
         // Kiểm tra permission của user trong store hiện tại.
-        var hasPermission = await _permissionService.HasPermissionAsync(
-            _tenantContext.StoreId.Value,
-            userId,
-            requirement.PermissionCode);
-
-        if (hasPermission)
+        var codes = requirement.PermissionCode.StartsWith("any:", StringComparison.Ordinal)
+            ? requirement.PermissionCode[4..].Split('|', StringSplitOptions.RemoveEmptyEntries)
+            : [requirement.PermissionCode];
+        foreach (var code in codes)
         {
-            context.Succeed(requirement);
+            if (await _permissionService.HasPermissionAsync(_tenantContext.StoreId.Value, userId, code))
+            {
+                context.Succeed(requirement);
+                break;
+            }
         }
     }
 }

@@ -47,6 +47,26 @@ public sealed class LegalEntityRepository : ILegalEntityRepository
             .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(ct);
 
+    public async Task<IReadOnlyList<LegalEntity>> LockActiveByNormalizedTaxCodeAsync(
+        int storeId,
+        string normalizedTaxCode,
+        CancellationToken ct = default)
+    {
+        if (!_db.Database.IsRelational())
+            return await _db.LegalEntities.Where(x => x.StoreId == storeId &&
+                    x.NormalizedTaxCode == normalizedTaxCode && x.IsActive && !x.IsDeleted)
+                .OrderBy(x => x.Id).Take(2).ToListAsync(ct);
+
+        return await _db.LegalEntities.FromSqlInterpolated($$"""
+                SELECT TOP (2) * FROM [dbo].[LegalEntities] WITH
+                    (UPDLOCK, HOLDLOCK, INDEX([IX_LegalEntities_StoreId_NormalizedTaxCode_State]))
+                WHERE [StoreId] = {{storeId}}
+                  AND [NormalizedTaxCode] = {{normalizedTaxCode}}
+                  AND [IsDeleted] = 0 AND [IsActive] = 1
+                ORDER BY [Id]
+                """).ToListAsync(ct);
+    }
+
     public Task<bool> ExistsCodeAsync(
         string code,
         int? excludeId = null,

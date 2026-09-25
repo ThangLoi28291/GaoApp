@@ -7,4 +7,5 @@ public sealed class TaxListItemDto
     public string Name { get; set; } = default!;
     public decimal Rate { get; set; }
     public bool Status { get; set; } // map IsActive
+    public DateTime CreatedAtUtc { get; set; }
 }

@@ -42,9 +42,11 @@ public class StockDocumentRepository : IStockDocumentRepository
         return await _context.StockDocuments
             .Include(x => x.Warehouse)
                 .ThenInclude(x => x.LegalEntity)
+            .Include(x => x.ConfirmedLegalEntity)
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseOrder)
             .Include(x => x.PurchasePayables)
+            .Include(x => x.ProvisionalItems)
 
             // STOCKDOC.UI.1B:
             // Include ảnh chính của variant để hiển thị ở bảng dòng nhập.
@@ -53,6 +55,7 @@ public class StockDocumentRepository : IStockDocumentRepository
             .Include(x => x.Lines)
                 .ThenInclude(x => x.ProductVariant)
                     .ThenInclude(x => x.Product)
+                        .ThenInclude(x => x.BaseUnit)
             .Include(x => x.Lines)
     .ThenInclude(x => x.ProductVariant)
         .ThenInclude(x => x.PrimaryProductImage!)
@@ -69,10 +72,15 @@ public class StockDocumentRepository : IStockDocumentRepository
         return await _context.StockDocuments
             .Include(x => x.Warehouse)
                 .ThenInclude(x => x.LegalEntity)
+            .Include(x => x.ConfirmedLegalEntity)
             .Include(x => x.Supplier)
+            .Include(x => x.PurchaseOrder)
             .Include(x => x.Lines)
-    .ThenInclude(x => x.PurchaseOrderLine!)
-        .ThenInclude(x => x.PurchaseOrder)
+                .ThenInclude(x => x.PurchaseOrderLine!)
+                    .ThenInclude(x => x.PurchaseOrder)
+            .Include(x => x.Lines)
+                .ThenInclude(x => x.ProductVariant)
+                    .ThenInclude(x => x.Product)
             .Include(x => x.PurchaseOrder)
                 .ThenInclude(x => x!.Lines)
             .Include(x => x.PurchaseOrder)
@@ -81,6 +89,7 @@ public class StockDocumentRepository : IStockDocumentRepository
                 .ThenInclude(x => x!.Actions)
             .Include(x => x.PurchasePayables)
             .Include(x => x.LineInputInvoiceMaps)
+            .Include(x => x.ProvisionalItems)
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
     }
@@ -371,6 +380,24 @@ public class StockDocumentRepository : IStockDocumentRepository
         return validCount == ids.Length;
     }
 
+    public Task<bool> HasOtherActiveReceivingDraftAsync(
+        int storeId, int purchaseOrderId, int excludeStockDocumentId,
+        CancellationToken ct = default)
+        => _context.StockDocuments.AnyAsync(x =>
+            x.StoreId == storeId && x.PurchaseOrderId == purchaseOrderId &&
+            x.Id != excludeStockDocumentId && !x.IsDeleted &&
+            x.Type == StockDocumentType.Receipt &&
+            x.ReceiptSource == PurchaseReceiptSource.PurchaseOrder &&
+            (x.Status == StockDocumentStatus.Draft ||
+             x.Status == StockDocumentStatus.Rejected), ct);
+
+    public Task<bool> HasUnresolvedProvisionalItemsAsync(
+        int storeId, int stockDocumentId, CancellationToken ct = default)
+        => _context.StockDocumentProvisionalItems.AnyAsync(x =>
+            x.StoreId == storeId && x.StockDocumentId == stockDocumentId &&
+            !x.IsDeleted &&
+            x.Status == StockDocumentProvisionalItemStatus.Unresolved, ct);
+
     public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)
         => _context.PurchasePayables.AddAsync(payable, ct).AsTask();
 
@@ -401,7 +428,9 @@ public class StockDocumentRepository : IStockDocumentRepository
             .AsNoTracking()
             .Include(x => x.Warehouse)
                 .ThenInclude(x => x.LegalEntity)
+            .Include(x => x.ConfirmedLegalEntity)
             .Include(x => x.Supplier)
+            .Include(x => x.PurchaseOrder)
             .Include(x => x.Lines)
             .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted)
             .OrderByDescending(x => x.DocumentDate)

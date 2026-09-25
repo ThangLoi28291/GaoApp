@@ -1,6 +1,10 @@
 ﻿@{
     Layout = null;
     var returnUrl = ViewBag.ReturnUrl as string;
+    var blockedPath = returnUrl?.Split('?', '#')[0].TrimEnd('/');
+    var isDashboard = string.Equals(blockedPath, "/admin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(blockedPath, "/admin/home", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(blockedPath, "/admin/dashboard", StringComparison.OrdinalIgnoreCase);
 }
 
 <!DOCTYPE html>
@@ -39,6 +43,11 @@
                 <div class="alert alert-warning text-start">
                     <strong>Chức năng bị chặn:</strong>
                     <br />
+                    @if (isDashboard)
+                    {
+                        <div class="fw-semibold">Trang tổng quan quản trị (GaoApp Dashboard)</div>
+                        <div>Tài khoản cần được cấp quyền “Xem trang tổng quan quản trị” để mở trang này.</div>
+                    }
                     <code>@returnUrl</code>
                 </div>
             }

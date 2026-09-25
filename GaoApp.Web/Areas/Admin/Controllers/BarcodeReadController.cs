@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Products;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +11,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers.Api;
 [Authorize]
 [ApiController]
 [Route("admin/api/barcode-read")]
+[Authorize(Policy = PermissionCodes.Catalog.Barcode.View)]
 public sealed class BarcodeReadController : ControllerBase
 {
     private readonly IProductUnitBarcodeReadService _barcodeReadService;

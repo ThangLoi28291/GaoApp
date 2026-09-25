@@ -1,414 +1,68 @@
-﻿@{
-    ViewData["Title"] = "Đơn POS";
+@{
+    ViewData["Title"] = "Đơn hàng POS";
+    ViewData["container"] = "container-fluid";
     Layout = "_ContentNavbarLayout";
 }
 
 @section VendorStyles {
-    <style>
-        :root {
-            --pos-primary: #3b5bfd;
-            --pos-primary-soft: rgba(59,91,253,.08);
-            --pos-success: #1f9d55;
-            --pos-success-soft: rgba(31,157,85,.10);
-            --pos-warning: #f59e0b;
-            --pos-warning-soft: rgba(245,158,11,.12);
-            --pos-danger: #e11d48;
-            --pos-danger-soft: rgba(225,29,72,.10);
-            --pos-info: #0ea5e9;
-            --pos-info-soft: rgba(14,165,233,.10);
-            --pos-dark: #0f172a;
-            --pos-text: #1e293b;
-            --pos-muted: #667085;
-            --pos-border: #e6edf5;
-            --pos-bg: #f8fafc;
-            --pos-card: #fff;
-            --pos-shadow: 0 18px 40px rgba(15,23,42,.06);
-            --pos-shadow-soft: 0 10px 24px rgba(15,23,42,.05);
-        }
-
-        .pos-orders-page {
-            min-height: calc(100vh - 140px);
-        }
-
-        .pos-page-head {
-            margin-bottom: 16px;
-        }
-
-        .pos-page-title {
-            margin: 0;
-            font-size: 1.7rem;
-            font-weight: 900;
-            color: var(--pos-dark);
-            line-height: 1.2;
-        }
-
-        .pos-page-subtitle {
-            margin-top: 6px;
-            color: var(--pos-muted);
-            font-size: .95rem;
-            font-weight: 600;
-        }
-
-        .pos-card {
-            border: 1px solid var(--pos-border);
-            border-radius: 24px;
-            background: var(--pos-card);
-            box-shadow: var(--pos-shadow);
-            overflow: hidden;
-        }
-
-        .pos-card-head {
-            padding: 18px 20px 16px;
-            border-bottom: 1px solid var(--pos-border);
-            background: linear-gradient(180deg, #fff 0%, #f9fbfe 100%);
-        }
-
-        .pos-card-title {
-            margin: 0;
-            font-size: 1.08rem;
-            font-weight: 900;
-            color: var(--pos-dark);
-        }
-
-        .pos-card-subtitle {
-            margin-top: 6px;
-            color: var(--pos-muted);
-            font-size: .92rem;
-            font-weight: 600;
-        }
-
-        .pos-card-body {
-            padding: 18px 20px;
-        }
-
-        .pos-filter-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1.4fr auto auto;
-            gap: 12px;
-            align-items: end;
-        }
-
-        .pos-quick-filters {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 14px;
-        }
-
-        .pos-chip {
-            min-height: 42px;
-            border-radius: 999px;
-            padding: 8px 14px;
-            border: 1px solid #dbe4ef;
-            background: #fff;
-            color: #344054;
-            font-weight: 800;
-            cursor: pointer;
-        }
-
-        .pos-chip.active {
-            background: #edf4ff;
-            border-color: #cfe0ff;
-            color: #2957c8;
-        }
-
-        .pos-toolbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 14px;
-        }
-
-        .pos-summary-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            min-height: 40px;
-            border-radius: 999px;
-            padding: 8px 14px;
-            background: #f8fafc;
-            border: 1px solid #e6edf5;
-            color: #344054;
-            font-weight: 800;
-        }
-
-        .pos-summary-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            background: #55c266;
-        }
-
-        .pos-page-size-wrap {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            color: var(--pos-muted);
-            font-weight: 700;
-        }
-
-        .pos-page-size-wrap select {
-            min-width: 82px;
-            border-radius: 14px;
-        }
-
-        .pos-table-wrap {
-            border: 1px solid var(--pos-border);
-            border-radius: 20px;
-            overflow: hidden;
-            background: #fff;
-        }
-
-        .pos-table {
-            margin-bottom: 0;
-        }
-
-        .pos-table thead th {
-            background: #f8fafc;
-            color: #475467;
-            font-size: .8rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            border-bottom: 1px solid var(--pos-border);
-            padding: 14px 14px;
-            white-space: nowrap;
-        }
-
-        .pos-table tbody td {
-            padding: 16px 14px;
-            vertical-align: middle;
-            border-top: 1px solid #edf2f7;
-        }
-
-        .pos-order-code {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-
-        .pos-order-number {
-            font-size: 1rem;
-            font-weight: 900;
-            color: var(--pos-dark);
-            line-height: 1.35;
-        }
-
-        .pos-order-id {
-            font-size: .88rem;
-            color: #94a3b8;
-            font-weight: 700;
-        }
-
-        .pos-badge {
-            min-height: 32px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 999px;
-            padding: 6px 12px;
-            font-size: .8rem;
-            font-weight: 800;
-            line-height: 1;
-        }
-
-        .pos-badge-success { background: #eafaf0; color: #18794e; }
-        .pos-badge-warning { background: #fff4d6; color: #b45309; }
-        .pos-badge-danger { background: #fff1f3; color: #c01048; }
-        .pos-badge-info { background: #eaf7ff; color: #147db1; }
-        .pos-badge-secondary { background: #f2f4f7; color: #475467; }
-        .pos-badge-dark { background: #e4e7ec; color: #1f2937; }
-
-        .pos-amount-main {
-            display: block;
-            font-size: 1rem;
-            font-weight: 900;
-            color: var(--pos-dark);
-            line-height: 1.2;
-        }
-
-        .pos-amount-sub {
-            display: block;
-            margin-top: 4px;
-            font-size: .82rem;
-            color: #94a3b8;
-            font-weight: 700;
-        }
-
-        .pos-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .pos-action-btn {
-            min-height: 36px;
-            border-radius: 12px;
-            font-weight: 800;
-            min-width: 88px;
-        }
-
-        .pos-empty-state {
-            text-align: center;
-            padding: 36px 16px;
-            color: var(--pos-muted);
-        }
-
-        .pos-empty-icon {
-            font-size: 2.2rem;
-            color: #cbd5e1;
-        }
-
-        .pos-empty-title {
-            margin-top: 10px;
-            font-size: 1rem;
-            font-weight: 900;
-            color: var(--pos-dark);
-        }
-
-        .pos-empty-text {
-            margin-top: 4px;
-            font-size: .92rem;
-            font-weight: 600;
-            color: var(--pos-muted);
-        }
-
-        .pos-pagination-wrap {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-top: 14px;
-        }
-
-        .pos-pagination-info {
-            color: var(--pos-muted);
-            font-size: .9rem;
-            font-weight: 700;
-        }
-
-        .pos-pagination {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .pos-page-btn {
-            min-height: 40px;
-            min-width: 110px;
-            border-radius: 14px;
-            font-weight: 800;
-        }
-
-        .pos-aftersale-box {
-            display: flex;
-            flex-direction: column;
-            gap: .3rem;
-            min-width: 140px;
-        }
-
-        .pos-aftersale-line {
-            font-size: .78rem;
-            color: #64748b;
-            font-weight: 700;
-            line-height: 1.35;
-        }
-
-        .pos-aftersale-amount {
-            font-weight: 800;
-            color: #0f172a;
-        }
-
-        .pos-aftersale-empty {
-            color: #94a3b8;
-            font-weight: 700;
-            font-size: .82rem;
-        }
-
-        @@media (max-width: 1400px) {
-            .pos-filter-grid {
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-            }
-        }
-
-        @@media (max-width: 992px) {
-            .pos-filter-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-
-        @@media (max-width: 768px) {
-            .pos-filter-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .pos-card-body,
-            .pos-card-head {
-                padding: 16px;
-            }
-        }
-        .pos-voucher-box {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 150px;
+    <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-orders-page.css" asp-append-version="true" />
 }
 
-.pos-voucher-empty {
-    color: #94a3b8;
-    font-weight: 700;
-    font-size: .82rem;
-}
-
-.pos-voucher-code {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    border-radius: 999px;
-    background: #eef4ff;
-    color: #2957c8;
-    padding: 5px 10px;
-    font-size: .78rem;
-    font-weight: 900;
-}
-
-.pos-voucher-amount {
-    font-size: .78rem;
-    color: #64748b;
-    font-weight: 800;
-}
-
-    </style>
-}
-<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
 <div class="pos-orders-page">
-    <div class="pos-page-head">
-        <h3 class="pos-page-title">Đơn POS</h3>
-        <div class="pos-page-subtitle">
-            Theo dõi trạng thái, thanh toán và hậu mãi ngay trên danh sách đơn
+    <partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+    <header class="po-header">
+        <div class="po-heading">
+            <span class="po-heading-icon" aria-hidden="true"><i class="bx bx-receipt"></i></span>
+            <div>
+                <p class="po-eyebrow">QUẢN LÝ BÁN HÀNG</p>
+                <h1>Đơn hàng POS<span class="po-title-dot" aria-hidden="true">.</span></h1>
+                <p class="po-subtitle">Tra cứu đơn hàng, kiểm tra thanh toán và xử lý sau bán.</p>
+            </div>
         </div>
-    </div>
+        <div class="po-header-actions">
+            <a href="/admin/pos/legacy-returns" class="po-button">Trả hàng cũ chưa liên kết</a>
+            <a href="/admin/acb/reconciliation" class="po-button"><i class="bx bx-transfer-alt" aria-hidden="true"></i> Đối soát QR ACB</a>
+            <a href="/admin/pos" class="po-button po-button-primary"><i class="bx bx-plus" aria-hidden="true"></i> Bán hàng</a>
+        </div>
+    </header>
 
-    <div class="pos-card mb-3">
-        <div class="pos-card-body">
-            <div class="pos-filter-grid">
-                <div>
-                    <label class="form-label fw-semibold">Từ ngày</label>
-                    <input type="date" class="form-control" id="fromDate" />
+    <section class="po-metrics" aria-label="Tổng quan danh sách đơn">
+        <article class="po-metric po-metric-count">
+            <div class="po-metric-label">Đơn khớp bộ lọc <i class="bx bx-receipt" aria-hidden="true"></i></div>
+            <div class="po-metric-value" id="metricCount">—</div>
+            <span class="po-metric-note">Tất cả các trang</span>
+        </article>
+        <article class="po-metric">
+            <div class="po-metric-label">Tổng tiền đơn <i class="bx bx-wallet" aria-hidden="true"></i></div>
+            <div class="po-metric-value" id="metricTotal">—</div>
+            <span class="po-metric-note">Các đơn trên trang này</span>
+        </article>
+        <article class="po-metric">
+            <div class="po-metric-label">Đã thanh toán <i class="bx bx-check-circle" aria-hidden="true"></i></div>
+            <div class="po-metric-value po-text-success" id="metricPaid">—</div>
+            <span class="po-metric-note">Các đơn trên trang này</span>
+        </article>
+        <article class="po-metric">
+            <div class="po-metric-label">Còn thiếu <i class="bx bx-time-five" aria-hidden="true"></i></div>
+            <div class="po-metric-value" id="metricDue">—</div>
+            <span class="po-metric-note">Các đơn trên trang này</span>
+        </article>
+    </section>
+
+    <section class="po-workspace" aria-label="Tra cứu đơn hàng">
+        <form id="ordersFilters" class="po-filters" role="search">
+            <div class="po-filter-grid">
+                <div class="po-field po-field-search">
+                    <label for="keyword">Tìm đơn hàng</label>
+                    <div class="po-search-input"><i class="bx bx-search" aria-hidden="true"></i><input type="search" id="keyword" placeholder="Nhập mã đơn hoặc ghi chú…" autocomplete="off" /></div>
                 </div>
-
-                <div>
-                    <label class="form-label fw-semibold">Đến ngày</label>
-                    <input type="date" class="form-control" id="toDate" />
-                </div>
-
-                <div>
-                    <label class="form-label fw-semibold">Trạng thái</label>
-                    <select class="form-select" id="status">
-                        <option value="">Tất cả</option>
+                <div class="po-field"><label for="fromDate">Từ ngày</label><input type="date" id="fromDate" /></div>
+                <div class="po-field"><label for="toDate">Đến ngày</label><input type="date" id="toDate" /></div>
+                <div class="po-field">
+                    <label for="status">Trạng thái đơn</label>
+                    <select id="status">
+                        <option value="">Tất cả trạng thái</option>
                         <option value="Completed">Đã chốt</option>
                         <option value="Draft">Nháp</option>
                         <option value="OnHold">Đang giữ</option>
@@ -417,505 +71,54 @@
                         <option value="Refunded">Đã hoàn tiền</option>
                     </select>
                 </div>
-
-                <div>
-                    <label class="form-label fw-semibold">Từ khóa</label>
-                    <input type="text" class="form-control" id="keyword" placeholder="Mã đơn / ghi chú..." />
-                </div>
-
-                <div>
-                    <button type="button" class="btn btn-outline-secondary w-100 pos-action-btn" id="btnResetFilters">
-                        Xóa bộ lọc
-                    </button>
-                </div>
-
-                <div>
-                    <button type="button" class="btn btn-primary w-100 pos-action-btn" id="btnSearch">
-                        Tìm kiếm
-                    </button>
-                </div>
+                <button type="submit" class="po-button po-button-primary" id="btnSearch"><i class="bx bx-search" aria-hidden="true"></i> Tìm kiếm</button>
+                <button type="button" class="po-button po-filter-toggle" id="btnToggleFilters" aria-expanded="false" aria-controls="fromDate toDate status"><i class="bx bx-filter-alt" aria-hidden="true"></i> Bộ lọc</button>
             </div>
+            <div class="po-filter-bottom">
+                <div class="po-periods" role="group" aria-label="Khoảng thời gian nhanh">
+                    <span class="po-period-label"><i class="bx bx-calendar" aria-hidden="true"></i> Thời gian</span>
+                    <button type="button" class="po-chip" data-range="clear" aria-pressed="true">Tất cả</button>
+                    <button type="button" class="po-chip" data-range="today" aria-pressed="false">Hôm nay</button>
+                    <button type="button" class="po-chip" data-range="7days" aria-pressed="false">7 ngày</button>
+                    <button type="button" class="po-chip" data-range="30days" aria-pressed="false">30 ngày</button>
+                </div>
+                <button type="button" class="po-reset" id="btnResetFilters"><i class="bx bx-reset" aria-hidden="true"></i> Xóa bộ lọc</button>
+            </div>
+        </form>
 
-            <div class="pos-quick-filters">
-                <button type="button" class="pos-chip" data-range="today">Hôm nay</button>
-                <button type="button" class="pos-chip" data-range="7days">7 ngày</button>
-                <button type="button" class="pos-chip" data-range="30days">30 ngày</button>
-                <button type="button" class="pos-chip" data-range="clear">Xóa lọc ngày</button>
+        <div class="po-list-heading">
+            <div><h2>Danh sách đơn hàng <span id="totalOrdersText" class="po-count" aria-live="polite">Đang tải</span></h2><p id="filterSummary">Tất cả thời gian · Tất cả trạng thái</p></div>
+            <div class="po-list-controls">
+                <label for="pageSize">Hiển thị</label>
+                <select id="pageSize" aria-label="Số đơn trên mỗi trang"><option value="10">10 đơn</option><option value="20" selected>20 đơn</option><option value="50">50 đơn</option></select>
+                <button type="button" class="po-icon-button" id="btnRefresh" aria-label="Tải lại danh sách" title="Tải lại danh sách"><i class="bx bx-refresh" aria-hidden="true"></i></button>
             </div>
         </div>
-    </div>
-
-    <div class="pos-card">
-        <div class="pos-card-head">
-            <h5 class="pos-card-title">Danh sách đơn</h5>
-            <div class="pos-card-subtitle">Hiển thị rõ trạng thái, thanh toán, hậu mãi và thao tác nhanh</div>
+        <p class="po-inline-notice" id="ordersNotice" role="status" hidden></p>
+        <div class="po-table-wrap">
+            <table class="po-table" aria-label="Danh sách đơn hàng POS" aria-busy="true">
+                <thead><tr><th scope="col">Đơn hàng</th><th scope="col">Trạng thái</th><th scope="col" class="po-align-right">Tổng tiền</th><th scope="col" class="po-align-right">Thanh toán</th><th scope="col">Sau bán &amp; voucher</th><th scope="col"><span class="po-sr-only">Thao tác</span></th></tr></thead>
+                <tbody id="ordersBody"><tr><td colspan="6"><div class="po-state">Đang tải danh sách đơn…</div></td></tr></tbody>
+            </table>
         </div>
+        <footer class="po-pagination">
+            <span id="pagingInfo" aria-live="polite">Đang tải…</span>
+            <nav aria-label="Phân trang đơn hàng">
+                <button type="button" class="po-icon-button" id="btnPrevPage" aria-label="Trang trước" disabled><i class="bx bx-chevron-left" aria-hidden="true"></i></button>
+                <span id="pageIndicator">Trang 1</span>
+                <button type="button" class="po-icon-button" id="btnNextPage" aria-label="Trang sau" disabled><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+            </nav>
+        </footer>
+    </section>
 
-        <div class="pos-card-body">
-            <div class="pos-toolbar">
-                <div class="pos-summary-pill">
-                    <span class="pos-summary-dot"></span>
-                    <span id="totalOrdersText">Tổng 0 đơn hàng</span>
-                </div>
-
-                <div class="pos-page-size-wrap">
-                    <span>Số dòng / trang</span>
-                    <select class="form-select" id="pageSize">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="pos-table-wrap">
-                <div class="table-responsive">
-                    <table class="table pos-table align-middle">
-                        <thead>
-                            <tr>
-                                <th style="width:150px;">Đơn hàng</th>
-                                <th style="width:130px;">Trạng thái</th>
-                                <th style="width:130px;">Thanh toán</th>
-                                <th style="width:170px;">Hậu mãi</th>
-                                <th style="width:180px;">Voucher</th>
-                                <th style="width:160px;">Tổng tiền</th>
-                                <th style="width:160px;">Đã thanh toán</th>
-                                <th style="width:160px;">Còn thiếu</th>
-                                <th style="width:180px;">Tạo lúc</th>
-                                <th style="width:180px;">Hoàn tất</th>
-                                <th style="width:300px;">Thao tác</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ordersBody">
-                            <tr>
-                                <td colspan="11" class="text-center text-muted py-4">Đang tải...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="pos-pagination-wrap">
-                <div class="pos-pagination-info" id="pagingInfo">0 - 0 / 0</div>
-
-                <div class="pos-pagination">
-                    <button type="button" class="btn btn-outline-secondary pos-page-btn" id="btnPrevPage">
-                        Trang trước
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary pos-page-btn" id="btnNextPage">
-                        Trang sau
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+    <dialog id="orderPreview" class="po-drawer" aria-labelledby="previewTitle">
+        <header class="po-drawer-header"><div><p class="po-eyebrow">XEM NHANH ĐƠN HÀNG</p><h2 id="previewTitle">Chi tiết đơn</h2></div><button type="button" class="po-icon-button" id="btnClosePreview" aria-label="Đóng xem nhanh" autofocus><i class="bx bx-x" aria-hidden="true"></i></button></header>
+        <div id="previewBody" class="po-drawer-body" aria-busy="false"></div>
+        <footer class="po-drawer-footer"><button type="button" class="po-button" id="btnPreviewPrint"><i class="bx bx-printer" aria-hidden="true"></i> In lại</button><a id="previewDetailLink" class="po-button po-button-primary">Mở chi tiết đầy đủ <i class="bx bx-arrow-back po-arrow-right" aria-hidden="true"></i></a></footer>
+    </dialog>
 </div>
 
 @section PageScripts {
-    <script>
-        const ordersBody = document.getElementById('ordersBody');
-        const totalOrdersText = document.getElementById('totalOrdersText');
-        const pagingInfo = document.getElementById('pagingInfo');
-
-        const fromDateInput = document.getElementById('fromDate');
-        const toDateInput = document.getElementById('toDate');
-        const statusInput = document.getElementById('status');
-        const keywordInput = document.getElementById('keyword');
-        const pageSizeInput = document.getElementById('pageSize');
-
-        const btnSearch = document.getElementById('btnSearch');
-        const btnResetFilters = document.getElementById('btnResetFilters');
-        const btnPrevPage = document.getElementById('btnPrevPage');
-        const btnNextPage = document.getElementById('btnNextPage');
-
-        const state = {
-            page: 1,
-            pageSize: 20,
-            totalItems: 0
-        };
-
-        function formatMoney(value) {
-            const n = Number(value || 0);
-            return n.toLocaleString('vi-VN');
-        }
-
-        function formatDateTime(value) {
-            if (!value) return '-';
-
-            const dt = new Date(value);
-            if (Number.isNaN(dt.getTime())) return '-';
-
-            return dt.toLocaleDateString('vi-VN') + '<br><span class="text-muted">' + dt.toLocaleTimeString('vi-VN', {
-                hour: '2-digit',
-                minute: '2-digit'
-            }) + '</span>';
-        }
-
-        function escapeHtml(text) {
-            if (text === null || text === undefined) return '';
-            return String(text)
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#39;');
-        }
-
-        function getStatusBadge(status) {
-            if (!status) return '<span class="pos-badge pos-badge-secondary">-</span>';
-
-            const s = status.toLowerCase();
-
-            if (s === 'completed') return '<span class="pos-badge pos-badge-success">Đã chốt</span>';
-            if (s === 'draft') return '<span class="pos-badge pos-badge-secondary">Nháp</span>';
-            if (s === 'onhold') return '<span class="pos-badge pos-badge-warning">Đang giữ</span>';
-            if (s === 'cancelled') return '<span class="pos-badge pos-badge-danger">Đã hủy</span>';
-            if (s === 'voided') return '<span class="pos-badge pos-badge-dark">Hủy sau chốt</span>';
-            if (s === 'refunded') return '<span class="pos-badge pos-badge-info">Đã hoàn tiền</span>';
-
-            return `<span class="pos-badge pos-badge-secondary">${escapeHtml(status)}</span>`;
-        }
-
-        function getPaymentBadge(paymentStatus, refundedTotal = 0) {
-            if (!paymentStatus) {
-                return '<span class="pos-badge pos-badge-secondary">-</span>';
-            }
-
-            const s = paymentStatus.toLowerCase();
-            let main = '';
-
-            if (s.includes('paid')) main = '<span class="pos-badge pos-badge-success">Đã thanh toán</span>';
-            else if (s.includes('partial')) main = '<span class="pos-badge pos-badge-warning">Thanh toán một phần</span>';
-            else if (s.includes('unpaid')) main = '<span class="pos-badge pos-badge-danger">Chưa thanh toán</span>';
-            else if (s.includes('refunded')) main = '<span class="pos-badge pos-badge-info">Đã hoàn tiền</span>';
-            else main = `<span class="pos-badge pos-badge-secondary">${escapeHtml(paymentStatus)}</span>`;
-
-            if (Number(refundedTotal || 0) > 0) {
-                return `${main}<div class="mt-1"><span class="pos-badge pos-badge-info">Có hoàn tiền</span></div>`;
-            }
-
-            return main;
-        }
-
-        function renderAfterSaleCell(x) {
-            const refundedTotal = Number(x.refundedTotal || 0);
-            const returnCount = Number(x.returnCount || 0);
-            const hasAfterSale = refundedTotal > 0 || returnCount > 0;
-
-            if (!hasAfterSale) {
-                return `<span class="pos-aftersale-empty">-</span>`;
-            }
-
-            return `
-                <div class="pos-aftersale-box">
-                    <span class="pos-badge pos-badge-info">Có hoàn/trả</span>
-                    <div class="pos-aftersale-line">
-                        Đã hoàn: <span class="pos-aftersale-amount">${formatMoney(refundedTotal)} đ</span>
-                    </div>
-                    <div class="pos-aftersale-line">
-                        Số phiếu: <span class="pos-aftersale-amount">${returnCount}</span>
-                    </div>
-                </div>
-            `;
-        }
-        function renderVoucherCell(x) {
-    const total = Number(x.voucherDiscountTotal || x.VoucherDiscountTotal || 0);
-    const vouchers = x.rewardVouchers || x.RewardVouchers || [];
-
-    if (!total && (!vouchers || vouchers.length === 0)) {
-        return `<span class="pos-voucher-empty">-</span>`;
-    }
-
-    return `
-        <div class="pos-voucher-box">
-            <span class="pos-badge pos-badge-info">Có voucher</span>
-
-            ${(vouchers || []).slice(0, 2).map(v => `
-                <span class="pos-voucher-code">
-                    ${escapeHtml(v.voucherCode || v.VoucherCode || '')}
-                </span>
-            `).join('')}
-
-            ${(vouchers || []).length > 2 ? `
-                <div class="pos-voucher-amount">
-                    +${(vouchers || []).length - 2} phiếu khác
-                </div>
-            ` : ''}
-
-            <div class="pos-voucher-amount">
-                Giảm: <strong>${formatMoney(total)} đ</strong>
-            </div>
-        </div>
-    `;
-}
-
-        function canVoidCompletedOrderOnClient(completedAtUtc) {
-            if (!completedAtUtc) return false;
-
-            const completedAt = new Date(completedAtUtc);
-            if (Number.isNaN(completedAt.getTime())) return false;
-
-            const now = new Date();
-            const diffMs = now.getTime() - completedAt.getTime();
-
-            return diffMs <= (15 * 60 * 1000);
-        }
-
-        function renderOrders(items) {
-            if (!items || items.length === 0) {
-                ordersBody.innerHTML = `
-                    <tr>
-                        <td colspan="10">
-                            <div class="pos-empty-state">
-                                <div class="pos-empty-icon">
-                                    <i class="bx bx-receipt"></i>
-                                </div>
-                                <div class="pos-empty-title">Không có đơn hàng phù hợp</div>
-                                <div class="pos-empty-text">Hãy thay đổi bộ lọc hoặc khoảng thời gian để thử lại.</div>
-                            </div>
-                        </td>
-                    </tr>`;
-                return;
-            }
-
-            ordersBody.innerHTML = items.map(x => {
-                const status = (x.status || '').toLowerCase();
-                const canVoid = status === 'completed' && canVoidCompletedOrderOnClient(x.completedAtUtc);
-                const canRefund = status === 'completed';
-
-                return `
-                    <tr>
-                        <td>
-                            <div class="pos-order-code">
-                                <span class="pos-order-number">${escapeHtml(x.orderNumber || '-')}</span>
-                                <span class="pos-order-id">ID: ${x.orderId}</span>
-                            </div>
-                        </td>
-                        <td>${getStatusBadge(x.status)}</td>
-                        <td>${getPaymentBadge(x.paymentStatus, x.refundedTotal)}</td>
-                        <td>${renderAfterSaleCell(x)}</td>
-                        <td>${renderVoucherCell(x)}</td>
-                        <td>
-                            <span class="pos-amount-main">${formatMoney(x.grandTotal)}</span>
-                            <span class="pos-amount-sub">Tổng hóa đơn</span>
-                        </td>
-                        <td>
-                            <span class="pos-amount-main">${formatMoney(x.paidTotal)}</span>
-                            <span class="pos-amount-sub">Đã thu</span>
-                        </td>
-                        <td>
-                            <span class="pos-amount-main">${formatMoney(x.balanceDue)}</span>
-                            <span class="pos-amount-sub">Còn thiếu</span>
-                        </td>
-                        <td>${formatDateTime(x.createdAtUtc)}</td>
-                        <td>${formatDateTime(x.completedAtUtc)}</td>
-                        <td>
-                            <div class="pos-actions">
-                                <a class="btn btn-sm btn-outline-primary pos-action-btn"
-                                   href="/admin/pos/order-detail/${x.orderId}">
-                                   Chi tiết
-                                </a>
-
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-success pos-action-btn"
-                                        data-print-order-id="${x.orderId}">
-                                    In lại
-                                </button>
-
-                                ${canVoid ? `
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-danger pos-action-btn"
-                                            data-void-order-id="${x.orderId}">
-                                        Hủy sau chốt
-                                    </button>` : ''}
-
-                                ${canRefund ? `
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-warning pos-action-btn"
-                                            data-refund-order-id="${x.orderId}">
-                                        Refund
-                                    </button>` : ''}
-                            </div>
-                        </td>
-                    </tr>`;
-            }).join('');
-        }
-
-        function updatePaging(totalItems, page, pageSize, itemCount) {
-            state.totalItems = totalItems;
-            state.page = page;
-            state.pageSize = pageSize;
-
-            totalOrdersText.textContent = `Tổng ${totalItems} đơn hàng`;
-
-            const start = totalItems === 0 ? 0 : ((page - 1) * pageSize + 1);
-            const end = totalItems === 0 ? 0 : ((page - 1) * pageSize + itemCount);
-
-            pagingInfo.textContent = `${start} - ${end} / ${totalItems}`;
-
-            btnPrevPage.disabled = page <= 1;
-            btnNextPage.disabled = end >= totalItems;
-        }
-
-        function buildQueryString() {
-            const params = new URLSearchParams();
-
-            if (fromDateInput.value) params.set('fromDate', fromDateInput.value);
-            if (toDateInput.value) params.set('toDate', toDateInput.value);
-            if (statusInput.value) params.set('status', statusInput.value);
-            if (keywordInput.value) params.set('keyword', keywordInput.value);
-
-            params.set('page', state.page);
-            params.set('pageSize', pageSizeInput.value || '20');
-
-            return params.toString();
-        }
-
-        async function loadOrders() {
-            try {
-                ordersBody.innerHTML = `<tr><td colspan="10" class="text-center text-muted py-4">Đang tải...</td></tr>`;
-
-                const query = buildQueryString();
-                const res = await fetch(`/admin/pos/orders?${query}`, {
-                    method: 'GET'
-                });
-
-                if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(text || 'Không tải được danh sách đơn.');
-                }
-
-                const data = await res.json();
-
-                const items = data.items || [];
-                const page = data.page || 1;
-                const pageSize = data.pageSize || parseInt(pageSizeInput.value || '20');
-                const totalItems = data.totalItems || 0;
-
-                renderOrders(items);
-                updatePaging(totalItems, page, pageSize, items.length);
-                bindActionButtons();
-            } catch (err) {
-                ordersBody.innerHTML = `
-                    <tr>
-                        <td colspan="10" class="text-center text-danger py-4">
-                            ${escapeHtml(err.message || 'Không tải được dữ liệu')}
-                        </td>
-                    </tr>`;
-            }
-        }
-
-        function bindActionButtons() {
-            document.querySelectorAll('[data-print-order-id]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const orderId = this.getAttribute('data-print-order-id');
-                    window.open(`/admin/pos/orders/${orderId}/print?size=80&autoPrint=false`, '_blank');
-                });
-            });
-
-            document.querySelectorAll('[data-refund-order-id]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const orderId = this.getAttribute('data-refund-order-id');
-                    window.location.href = `/admin/pos/order-detail/${orderId}`;
-                });
-            });
-
-            document.querySelectorAll('[data-void-order-id]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const orderId = this.getAttribute('data-void-order-id');
-                    window.location.href = `/admin/pos/order-detail/${orderId}`;
-                });
-            });
-        }
-
-        function applyDateRange(type) {
-            const now = new Date();
-            const format = (date) => {
-                const yyyy = date.getFullYear();
-                const mm = String(date.getMonth() + 1).padStart(2, '0');
-                const dd = String(date.getDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-            };
-
-            document.querySelectorAll('.pos-chip').forEach(x => x.classList.remove('active'));
-
-            const active = document.querySelector(`.pos-chip[data-range="${type}"]`);
-            if (active) active.classList.add('active');
-
-            if (type === 'today') {
-                const d = format(now);
-                fromDateInput.value = d;
-                toDateInput.value = d;
-            } else if (type === '7days') {
-                const from = new Date(now);
-                from.setDate(now.getDate() - 6);
-                fromDateInput.value = format(from);
-                toDateInput.value = format(now);
-            } else if (type === '30days') {
-                const from = new Date(now);
-                from.setDate(now.getDate() - 29);
-                fromDateInput.value = format(from);
-                toDateInput.value = format(now);
-            } else {
-                fromDateInput.value = '';
-                toDateInput.value = '';
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function () {
-            state.page = 1;
-            state.pageSize = parseInt(pageSizeInput.value || '20');
-
-            btnSearch.addEventListener('click', function () {
-                state.page = 1;
-                loadOrders();
-            });
-
-            btnResetFilters.addEventListener('click', function () {
-                fromDateInput.value = '';
-                toDateInput.value = '';
-                statusInput.value = '';
-                keywordInput.value = '';
-                pageSizeInput.value = '20';
-
-                document.querySelectorAll('.pos-chip').forEach(x => x.classList.remove('active'));
-
-                state.page = 1;
-                state.pageSize = 20;
-                loadOrders();
-            });
-
-            btnPrevPage.addEventListener('click', function () {
-                if (state.page > 1) {
-                    state.page--;
-                    loadOrders();
-                }
-            });
-
-            btnNextPage.addEventListener('click', function () {
-                const currentShownEnd = state.page * state.pageSize;
-                if (currentShownEnd < state.totalItems) {
-                    state.page++;
-                    loadOrders();
-                }
-            });
-
-            pageSizeInput.addEventListener('change', function () {
-                state.page = 1;
-                state.pageSize = parseInt(this.value || '20');
-                loadOrders();
-            });
-
-            document.querySelectorAll('.pos-chip').forEach(chip => {
-                chip.addEventListener('click', function () {
-                    const range = this.getAttribute('data-range');
-                    applyDateRange(range);
-                    state.page = 1;
-                    loadOrders();
-                });
-            });
-
-            loadOrders();
-        });
-    </script>
+    <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.orders.page.js" asp-append-version="true"></script>
 }

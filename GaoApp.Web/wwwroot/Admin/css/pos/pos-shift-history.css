@@ -1,0 +1,1230 @@
+﻿.shift-history-shell {
+    min-height: calc(100vh - 140px);
+}
+
+.shift-history-card {
+    border: 1px solid #e7edf5;
+    border-radius: 24px;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+    overflow: hidden;
+}
+
+    .shift-history-card .card-body {
+        padding: 20px;
+    }
+
+.shift-section-head {
+    margin-bottom: 16px;
+}
+
+.shift-section-title {
+    margin: 0;
+    font-size: 1.12rem;
+    font-weight: 900;
+    color: #101828;
+    line-height: 1.25;
+}
+
+.shift-section-sub {
+    margin-top: 6px;
+    color: #667085;
+    font-size: .94rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.filter-shell {
+    border: 1px solid #e7edf5;
+    border-radius: 22px;
+    background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
+}
+
+    .filter-shell .card-body {
+        padding: 20px;
+    }
+
+.filter-label {
+    font-size: .88rem;
+    font-weight: 800;
+    color: #344054;
+    margin-bottom: 8px;
+}
+
+.filter-shell .form-control,
+.filter-shell .form-select {
+    min-height: 50px;
+    border-radius: 16px;
+    border: 1px solid #d7dee8;
+    box-shadow: none !important;
+}
+
+    .filter-shell .form-control:focus,
+    .filter-shell .form-select:focus {
+        border-color: #86b7fe;
+    }
+
+.quick-filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.quick-filter-btn {
+    min-height: 40px;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-weight: 800;
+    font-size: .86rem;
+}
+
+.search-btn {
+    min-height: 50px;
+    border-radius: 16px;
+    font-weight: 900;
+}
+
+.history-table-wrap {
+    border: 1px solid #edf1f5;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.history-table {
+    margin-bottom: 0;
+}
+
+    .history-table thead th {
+        background: #f8fafc;
+        font-size: .82rem;
+        font-weight: 900;
+        color: #475467;
+        border-bottom: 1px solid #e9eef5;
+        white-space: nowrap;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        padding: 14px 16px;
+    }
+
+    .history-table td,
+    .history-table th {
+        vertical-align: middle;
+    }
+
+    .history-table tbody td {
+        padding: 15px 16px;
+        border-top: 1px solid #edf2f7;
+    }
+
+.history-row {
+    cursor: pointer;
+    transition: all .15s ease;
+}
+
+    .history-row:hover {
+        background: #f8fbff;
+    }
+
+    .history-row.active {
+        background: #eef4ff;
+    }
+
+.history-main {
+    font-weight: 900;
+    color: #101828;
+    line-height: 1.3;
+}
+
+.history-sub {
+    margin-top: 3px;
+    font-size: .82rem;
+    color: #667085;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.history-money {
+    font-weight: 900;
+    color: #101828;
+}
+
+    .history-money.primary {
+        color: #2458b8;
+    }
+
+    .history-money.success {
+        color: #067647;
+    }
+
+    .history-money.muted {
+        color: #475467;
+    }
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+    .status-badge.open {
+        background: #ecfdf3;
+        color: #067647;
+    }
+
+    .status-badge.closed {
+        background: #f2f4f7;
+        color: #344054;
+    }
+
+.paging-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.paging-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.paging-info {
+    color: #667085;
+    font-size: .9rem;
+    font-weight: 700;
+}
+
+.paging-page-size {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+    .paging-page-size label {
+        font-size: .88rem;
+        font-weight: 800;
+        color: #475467;
+        margin: 0;
+    }
+
+    .paging-page-size .form-select {
+        min-height: 40px;
+        border-radius: 12px;
+        font-weight: 800;
+        min-width: 88px;
+    }
+
+.paging-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.paging-btn {
+    min-height: 40px;
+    border-radius: 12px;
+    font-weight: 800;
+}
+
+.summary-empty {
+    border: 1px dashed #d7dee8;
+    border-radius: 18px;
+    background: #fafcff;
+    color: #667085;
+    padding: 18px;
+    font-weight: 700;
+}
+
+.summary-selected-head {
+    border: 1px solid #e9eef5;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.summary-selected-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.summary-selected-item {
+    border: 1px solid #edf1f5;
+    border-radius: 16px;
+    padding: 12px 14px;
+    background: #fff;
+}
+
+.summary-selected-label {
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    font-weight: 800;
+    color: #667085;
+    margin-bottom: 6px;
+}
+
+.summary-selected-value {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #101828;
+    line-height: 1.35;
+}
+
+.summary-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.summary-stat-box {
+    border-radius: 18px;
+    padding: 16px;
+    border: 1px solid #e9eef5;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    min-height: 100px;
+}
+
+    .summary-stat-box.accent {
+        background: linear-gradient(180deg, #f6f9ff 0%, #eef4ff 100%);
+        border-color: #d7e5ff;
+    }
+
+.summary-stat-label {
+    font-size: .8rem;
+    color: #667085;
+    margin-bottom: 8px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.summary-stat-value {
+    font-size: 1.35rem;
+    font-weight: 900;
+    color: #101828;
+    line-height: 1.2;
+}
+
+    .summary-stat-value.primary {
+        color: #2458b8;
+    }
+
+.summary-action-grid {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+}
+
+.summary-action-card {
+    border: 1px solid #edf1f5;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.summary-action-title {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #101828;
+    margin-bottom: 4px;
+}
+
+.summary-action-sub {
+    font-size: .88rem;
+    font-weight: 700;
+    color: #667085;
+    line-height: 1.45;
+}
+
+.summary-action-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+}
+
+.summary-action-number {
+    min-width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: #eef4ff;
+    color: #2458b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.summary-action-btn {
+    min-height: 44px;
+    border-radius: 14px;
+    font-weight: 900;
+    padding: 0 16px;
+}
+
+.cash-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 118px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+    .cash-badge.in {
+        background: #eafaf0;
+        color: #18794e;
+    }
+
+    .cash-badge.out {
+        background: #fff1f3;
+        color: #c01048;
+    }
+
+.order-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+    .order-status-badge.draft {
+        background: #f2f4f7;
+        color: #344054;
+    }
+
+    .order-status-badge.onhold {
+        background: #fff7e6;
+        color: #b54708;
+    }
+
+    .order-status-badge.completed {
+        background: #ecfdf3;
+        color: #067647;
+    }
+
+    .order-status-badge.cancelled,
+    .order-status-badge.voided {
+        background: #fff1f3;
+        color: #c01048;
+    }
+
+    .order-status-badge.refunded {
+        background: #eef4ff;
+        color: #2458b8;
+    }
+
+.summary-muted-empty {
+    text-align: center;
+    color: #98a2b3;
+    font-weight: 700;
+    padding: 18px !important;
+}
+
+.shift-history-modal .modal-content {
+    border: 0;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, .18);
+}
+
+.shift-history-modal .modal-header {
+    border-bottom: 1px solid #edf1f5;
+    padding: 16px 18px;
+}
+
+.shift-history-modal .modal-title {
+    font-weight: 900;
+    color: #101828;
+}
+
+.shift-history-modal .modal-body {
+    padding: 18px;
+}
+
+.shift-history-modal .modal-footer {
+    border-top: 1px solid #edf1f5;
+    padding: 14px 18px 18px;
+}
+
+.modal-paging-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.modal-paging-info {
+    color: #667085;
+    font-size: .9rem;
+    font-weight: 700;
+}
+
+.modal-paging-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.modal-paging-btn {
+    min-height: 40px;
+    border-radius: 12px;
+    font-weight: 800;
+}
+
+@media (max-width: 1199.98px) {
+    .summary-stat-grid,
+    .summary-selected-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .filter-shell .card-body,
+    .shift-history-card .card-body {
+        padding: 16px;
+    }
+
+    .paging-bar,
+    .modal-paging-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .paging-actions,
+    .modal-paging-actions {
+        width: 100%;
+    }
+
+    .paging-btn,
+    .modal-paging-btn {
+        flex: 1;
+    }
+
+    .summary-action-card {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .summary-action-meta {
+        justify-content: space-between;
+    }
+}
+
+/* =========================================================
+   POS SHIFT HISTORY - PHASE 2 UI POLISH
+   UI ONLY
+   ========================================================= */
+
+/* 1. Workspace sát sidebar giống các màn Admin chuẩn */
+.layout-page .content-wrapper > .container-xxl {
+    width: 100% !important;
+    max-width: none !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+}
+
+/* 2. Filter compact */
+.filter-shell {
+    border-radius: 18px;
+}
+
+    .filter-shell .card-body {
+        padding: 16px 18px;
+    }
+
+    .filter-shell .shift-section-head {
+        margin-bottom: 12px;
+    }
+
+    .filter-shell .row.g-3 {
+        --bs-gutter-x: 12px;
+        --bs-gutter-y: 10px;
+    }
+
+.filter-label {
+    margin-bottom: 6px;
+    font-size: .82rem;
+}
+
+.filter-shell .form-control,
+.filter-shell .form-select,
+.search-btn {
+    min-height: 44px;
+    border-radius: 12px;
+}
+
+.quick-filter-group {
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.quick-filter-btn {
+    min-height: 34px;
+    padding: 6px 12px;
+    font-size: .82rem;
+}
+
+/* 3. Main cards */
+.shift-history-card {
+    border-radius: 18px;
+}
+
+    .shift-history-card .card-body {
+        padding: 16px 18px;
+    }
+
+    .shift-history-card .shift-section-head {
+        margin-bottom: 12px;
+    }
+
+/* 4. History table */
+.history-table-wrap {
+    border-radius: 14px;
+}
+
+.history-table thead th {
+    padding: 11px 12px;
+    font-size: .76rem;
+}
+
+.history-table tbody td {
+    padding: 12px;
+}
+
+.history-row.active {
+    background: #eef4ff;
+}
+
+    .history-row.active > td:first-child {
+        box-shadow: inset 3px 0 0 #4f6df5;
+    }
+
+    .history-row.active .history-main {
+        color: #244fc9;
+    }
+
+.status-badge {
+    min-width: 94px;
+    padding: 7px 11px;
+    font-size: .78rem;
+}
+
+/* 5. Paging */
+.paging-bar {
+    margin-top: 12px;
+    gap: 10px;
+}
+
+.paging-btn,
+.paging-page-size .form-select {
+    min-height: 36px;
+    border-radius: 10px;
+}
+
+/* 6. Selected shift header */
+.summary-selected-head {
+    border-radius: 16px;
+    padding: 13px 14px;
+    margin-bottom: 12px;
+}
+
+.summary-selected-grid {
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.summary-selected-item {
+    border-radius: 12px;
+    padding: 9px 10px;
+}
+
+.summary-selected-label {
+    font-size: .72rem;
+    margin-bottom: 4px;
+}
+
+.summary-selected-value {
+    font-size: .92rem;
+}
+
+/* 7. Summary KPI */
+.summary-stat-grid {
+    gap: 9px;
+    margin-bottom: 12px;
+}
+
+.summary-stat-box {
+    border-radius: 14px;
+    padding: 12px;
+    min-height: 76px;
+}
+
+.summary-stat-label {
+    font-size: .72rem;
+    margin-bottom: 6px;
+}
+
+.summary-stat-value {
+    font-size: 1.18rem;
+}
+
+/* 8. Action cards */
+.summary-action-grid {
+    gap: 9px;
+    margin-top: 12px;
+}
+
+.summary-action-card {
+    border-radius: 14px;
+    padding: 12px 13px;
+    gap: 12px;
+}
+
+.summary-action-title {
+    font-size: .92rem;
+}
+
+.summary-action-sub {
+    font-size: .80rem;
+}
+
+.summary-action-meta {
+    gap: 8px;
+}
+
+.summary-action-number {
+    min-width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    font-size: .9rem;
+}
+
+.summary-action-btn {
+    min-height: 38px;
+    border-radius: 10px;
+    padding: 0 13px;
+}
+
+/* 9. Modal */
+#ordersModal .modal-dialog {
+    max-width: 980px;
+}
+
+#cashTxnsModal .modal-dialog {
+    max-width: 860px;
+}
+
+.shift-history-modal .modal-content {
+    border-radius: 18px;
+}
+
+.shift-history-modal .modal-header {
+    padding: 14px 16px;
+}
+
+.shift-history-modal .modal-body {
+    padding: 14px 16px;
+}
+
+.shift-history-modal .modal-footer {
+    padding: 10px 16px 14px;
+}
+
+.shift-history-modal .history-table thead th {
+    padding: 10px 12px;
+}
+
+.shift-history-modal .history-table tbody td {
+    padding: 10px 12px;
+}
+
+.modal-paging-bar {
+    margin-top: 10px;
+}
+
+.modal-paging-btn {
+    min-height: 36px;
+    border-radius: 10px;
+}
+
+/* 10. Desktop balance */
+@media (min-width: 1200px) {
+    .shift-history-shell > .row.g-3 {
+        --bs-gutter-x: 12px;
+    }
+}
+
+/* 11. Tablet */
+@media (max-width: 991.98px) {
+    .layout-page .content-wrapper > .container-xxl {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+}
+
+/* 12. Mobile */
+@media (max-width: 767.98px) {
+    .filter-shell .card-body,
+    .shift-history-card .card-body {
+        padding: 14px;
+    }
+
+    #ordersModal .modal-dialog,
+    #cashTxnsModal .modal-dialog {
+        max-width: calc(100vw - 20px);
+        margin: 10px auto;
+    }
+}
+
+/* =========================================================
+   POS SHIFT HISTORY - PHASE 4A FINANCIAL SNAPSHOT
+   UI ONLY - CANONICAL VALUES COME FROM /admin/pos/shift/summary
+   ========================================================= */
+
+.summary-stat-wide {
+    grid-column: 1 / -1;
+}
+
+.financial-snapshot {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #edf1f5;
+}
+
+.financial-snapshot-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.financial-snapshot-title {
+    margin: 0;
+    color: #101828;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.3;
+}
+
+.financial-snapshot-sub {
+    margin-top: 4px;
+    color: #667085;
+    font-size: .8rem;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.financial-snapshot-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid #d7e5ff;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #2458b8;
+    font-size: .74rem;
+    font-weight: 900;
+}
+
+.financial-snapshot-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.financial-group {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #edf1f5;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+}
+
+.financial-group-emphasis {
+    border-color: #d7e5ff;
+    background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.financial-group-title {
+    margin-bottom: 8px;
+    color: #344054;
+    font-size: .76rem;
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.financial-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 34px;
+    padding: 7px 0;
+    border-bottom: 1px dashed #e4e7ec;
+}
+
+    .financial-row:last-of-type {
+        border-bottom: 0;
+    }
+
+.financial-row-total {
+    margin-top: 3px;
+    padding-top: 9px;
+    border-top: 1px solid #e4e7ec;
+    border-bottom: 0;
+}
+
+.financial-label {
+    min-width: 0;
+    color: #667085;
+    font-size: .8rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.financial-value {
+    flex-shrink: 0;
+    color: #101828;
+    font-size: .88rem;
+    font-weight: 900;
+    line-height: 1.25;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+    .financial-value.primary {
+        color: #2458b8;
+    }
+
+    .financial-value.success {
+        color: #067647;
+    }
+
+    .financial-value.danger {
+        color: #b42318;
+    }
+
+.financial-hint {
+    margin-top: 7px;
+    color: #667085;
+    font-size: .74rem;
+    font-weight: 650;
+    line-height: 1.4;
+}
+
+    .financial-hint.has-value {
+        color: #067647;
+    }
+
+.shift-note-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.shift-note-card {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid #edf1f5;
+    border-radius: 14px;
+    background: #fff;
+}
+
+.shift-note-title {
+    margin-bottom: 5px;
+    color: #475467;
+    font-size: .75rem;
+    font-weight: 900;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.shift-note-text {
+    color: #344054;
+    font-size: .8rem;
+    font-weight: 650;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 1399.98px) {
+    .financial-snapshot-grid,
+    .shift-note-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .financial-snapshot-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .financial-snapshot-badge {
+        align-self: flex-start;
+    }
+
+    .financial-group {
+        padding: 11px;
+    }
+}
+
+/* =========================================================
+   POS SHIFT HISTORY - PHASE 4B ORDER DETAIL ENHANCEMENT
+   UI ONLY - USES EXISTING SUMMARY DTO FIELDS
+   ========================================================= */
+
+#ordersModal .modal-dialog {
+    max-width: 1180px;
+}
+
+#ordersModal .history-table {
+    min-width: 1040px;
+}
+
+    #ordersModal .history-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+.order-number-cell {
+    white-space: nowrap;
+}
+
+.order-total-cell {
+    white-space: nowrap;
+    font-weight: 900;
+    color: #101828;
+}
+
+.compact-time-cell {
+    min-width: 118px;
+    line-height: 1.25;
+}
+
+.compact-time-date {
+    font-weight: 850;
+    color: #344054;
+}
+
+.compact-time-clock {
+    margin-top: 3px;
+    font-size: .78rem;
+    font-weight: 700;
+    color: #667085;
+}
+
+.compact-time-empty {
+    color: #98a2b3;
+    font-weight: 700;
+}
+
+.payment-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 128px;
+    padding: 7px 11px;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+    .payment-status-badge.unpaid {
+        background: #f2f4f7;
+        color: #475467;
+    }
+
+    .payment-status-badge.partial {
+        background: #fff7e6;
+        color: #b54708;
+    }
+
+    .payment-status-badge.paid {
+        background: #ecfdf3;
+        color: #067647;
+    }
+
+    .payment-status-badge.refunded {
+        background: #eef4ff;
+        color: #2458b8;
+    }
+
+    .payment-status-badge.unknown {
+        background: #f2f4f7;
+        color: #344054;
+    }
+
+@media (max-width: 767.98px) {
+    #ordersModal .modal-dialog {
+        max-width: calc(100vw - 20px);
+    }
+}
+
+
+/* =========================================================
+   POS SHIFT HISTORY - PHASE 4C CASH TRANSACTION ENHANCEMENT
+   UI ONLY - USES EXISTING CASH TRANSACTION DTO FIELDS
+   ========================================================= */
+
+#cashTxnsModal .modal-dialog {
+    max-width: 1040px;
+}
+
+#cashTxnsModal .cash-txn-table {
+    min-width: 860px;
+}
+
+    #cashTxnsModal .cash-txn-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+.cash-txn-amount {
+    white-space: nowrap;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+    .cash-txn-amount.in {
+        color: #067647;
+    }
+
+    .cash-txn-amount.out {
+        color: #b42318;
+    }
+
+    .cash-txn-amount.unknown {
+        color: #344054;
+    }
+
+.cash-txn-reason {
+    color: #344054;
+    font-weight: 800;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.cash-txn-note {
+    color: #667085;
+    font-weight: 650;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 767.98px) {
+    #cashTxnsModal .modal-dialog {
+        max-width: calc(100vw - 20px);
+    }
+}
+
+
+/* =========================================================
+   POS SHIFT HISTORY - PHASE 4D PRINT / EXPORT SHIFT REPORT
+   ========================================================= */
+
+.shift-report-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 14px;
+    padding: 12px 13px;
+    border: 1px solid #dbe5f1;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.shift-report-toolbar-copy {
+    min-width: 0;
+}
+
+.shift-report-toolbar-title {
+    color: #101828;
+    font-size: .92rem;
+    font-weight: 900;
+}
+
+.shift-report-toolbar-sub {
+    margin-top: 3px;
+    color: #667085;
+    font-size: .79rem;
+    font-weight: 650;
+    line-height: 1.4;
+}
+
+.shift-report-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.shift-report-btn {
+    min-height: 38px;
+    border-radius: 10px;
+    padding: 0 13px;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+    .shift-report-btn:disabled {
+        cursor: not-allowed;
+    }
+
+@media (max-width: 767.98px) {
+    .shift-report-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .shift-report-toolbar-actions {
+        width: 100%;
+    }
+
+    .shift-report-btn {
+        flex: 1;
+    }
+}

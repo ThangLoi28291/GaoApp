@@ -706,7 +706,7 @@ window.PosCustomer = (function () {
                 if (!input) return;
 
                 input.focus();
-                input.setSelectionRange?.(0, 999);
+                input.select?.();
             }, 150);
         }
 
@@ -867,7 +867,7 @@ window.PosCustomer = (function () {
                 input.focus();
 
                 setTimeout(() => {
-                    input.setSelectionRange?.(0, 999);
+                    input.select?.();
                 }, 50);
             });
 

@@ -1,0 +1,38 @@
+.pos-qr-history { padding: 14px; border: 1px solid #cddcf6; border-radius: 12px; background: #f7faff; }
+.pos-qr-history[hidden], .pos-qr-history [hidden] { display: none !important; }
+.pos-qr-history__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pos-qr-history__heading strong { color: #243e62; font-size: 13px; }
+.pos-qr-history__reload { border: 0; background: transparent; color: #496183; font-size: 12px; padding: 5px; }
+.pos-qr-history__primary { width: 100%; margin-top: 8px; font-weight: 600; }
+.pos-qr-history__status { margin: 9px 0 0; font-size: 12px; color: #526780; overflow-wrap: anywhere; }
+.pos-qr-history__status.is-error { color: #b42318; }
+.pos-qr-history details { margin-top: 12px; border-top: 1px solid #dce5f2; padding-top: 10px; }
+.pos-qr-history summary { cursor: pointer; color: #334c6f; font-size: 12px; font-weight: 600; }
+.pos-qr-history__list { max-height: 310px; overflow-y: auto; margin-top: 4px; }
+.pos-qr-history__row { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid #e0e8f3; }
+.pos-qr-history__row:last-child { border-bottom: 0; }
+.pos-qr-history__info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pos-qr-history__info strong { font-size: 16px; color: #1f334d; }
+.pos-qr-history__info small { font-size: 11px; color: #63758b; overflow-wrap: anywhere; }
+.pos-qr-history__code { font-size: 11px; font-weight: 600; color: #435c7b; overflow-wrap: anywhere; }
+.pos-qr-history__info .pos-qr-history__reason { color: #955d0a; }
+.pos-qr-history__actions { display: flex; flex-direction: column; gap: 7px; align-items: flex-end; flex-shrink: 0; }
+.pos-qr-history__badge { padding: 4px 7px; border-radius: 6px; background: #e9eef5; color: #526276; font-size: 10px; font-weight: 600; }
+.pos-qr-history__badge[data-status="Pending"] { background: #e6efff; color: #2456a6; }
+.pos-qr-history__badge[data-status="ReviewRequired"] { background: #fff0d5; color: #875407; }
+.pos-qr-history__badge[data-status="Received"], .pos-qr-history__badge[data-status="Completed"], .pos-qr-history__badge[data-status="Paid"], .pos-qr-history__badge[data-status="ManualConfirmed"] { background: #e0f4e8; color: #23713e; }
+.pos-qr-history__link { font-size: 11px; }
+.pos-qr-history__badge[data-status="Recorded"] { background: #e0f4e8; color: #23713e; }
+#paymentQrBox .pos-payment-workspace-qr__content { flex-wrap: wrap; }
+#paymentQrBox .pos-payment-workspace-qr__content > div { flex: 1 0 100%; }
+#paymentQrBox .btn { flex: 1; white-space: nowrap; }
+.pos-acb-countdown { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 12px 14px; border: 1px solid #d6e4fc; border-radius: 12px; background: #f1f6ff; color: #2456a6; }
+.pos-acb-countdown[hidden] { display: none; }
+.pos-acb-countdown__copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pos-acb-countdown__copy span { font-size: 12px; font-weight: 650; }
+.pos-acb-countdown__copy small { font-size: 11px; line-height: 1.4; color: #63758b; }
+.pos-acb-countdown strong { flex-shrink: 0; min-width: 5ch; text-align: right; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.pos-acb-countdown[data-phase="retry"] { border-color: #f0d59d; background: #fff8e9; color: #875407; }
+#paymentQrModal .pos-payment-qr-workspace { max-height: calc(100dvh - 48px); }
+#paymentQrModal .modal-body { min-height: 0; overflow-y: auto; }
+@media (max-width: 380px) { .pos-qr-history__row { flex-wrap: wrap; } .pos-qr-history__actions { align-items: flex-start; flex-direction: row; align-items: center; flex-wrap: wrap; } }

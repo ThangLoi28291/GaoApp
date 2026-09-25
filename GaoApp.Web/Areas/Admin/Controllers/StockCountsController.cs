@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common.Security;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using Microsoft.AspNetCore.Authorization;
@@ -39,6 +40,7 @@ public class StockCountsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.View)]
     public async Task<IActionResult> GetDetail(int id, CancellationToken ct)
     {
         var result = await _stockCountService.GetDetailAsync(id, ct);
@@ -68,6 +70,7 @@ public class StockCountsController : ControllerBase
     }
 
     [HttpPut("lines/{lineId:int}")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
     public async Task<IActionResult> UpdateLine(int lineId, [FromBody] UpdateStockCountLineRequest request, CancellationToken ct)
     {
         await _stockCountService.UpdateLineAsync(lineId, request, ct);
@@ -75,6 +78,7 @@ public class StockCountsController : ControllerBase
     }
 
     [HttpDelete("lines/{lineId:int}")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
     public async Task<IActionResult> DeleteLine(int lineId, CancellationToken ct)
     {
         await _stockCountService.DeleteLineAsync(lineId, ct);
@@ -92,6 +96,7 @@ public class StockCountsController : ControllerBase
     }
 
     [HttpPost("{stockCountDocumentId:int}/submit-approval")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
     public async Task<IActionResult> SubmitForApproval(int stockCountDocumentId, CancellationToken ct)
     {
         await _stockCountService.SubmitForApprovalAsync(stockCountDocumentId, ct);
@@ -99,12 +104,14 @@ public class StockCountsController : ControllerBase
     }
 
     [HttpPost("{stockCountDocumentId:int}/reject")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Approve)]
     public async Task<IActionResult> Reject(int stockCountDocumentId, CancellationToken ct)
     {
         await _stockCountService.RejectAsync(stockCountDocumentId, ct);
         return Ok(new { message = "Đã từ chối phiếu kiểm kê." });
     }
     [HttpPost("{stockCountDocumentId:int}/refresh-system-qty")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockCount.Update)]
     public async Task<IActionResult> RefreshSystemQty(int stockCountDocumentId, CancellationToken ct)
     {
         await _stockCountService.RefreshSystemQtyAsync(stockCountDocumentId, ct);

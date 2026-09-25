@@ -1,49 +1,57 @@
 ﻿@* =========================================================
-   PARTIAL VIEW: _HeldOrdersPanel.cshtml
-   Mục đích:
-   - Card đơn giữ gọn
-   - Giữ nguyên id="heldList" để pos.render.js tiếp tục render dữ liệu
+   POS v0.2 P1
+   Compact held-order launcher for Cockpit Header.
+
+   IMPORTANT:
+   - Giữ duy nhất id="heldList"
+   - Giữ id="btnOpenHeldOrders"
+   - pos.render.js vẫn được quyền replace innerHTML của heldList
 ========================================================= *@
 
-<div class="card pos-card pos-held-summary-card">
-    <div class="card-body">
-        <div id="heldList">
-            <button type="button"
-                    id="btnOpenHeldOrders"
-                    class="pos-held-summary-launcher pos-held-summary-launcher--compact"
-                    data-bs-toggle="modal"
-                    data-bs-target="#heldOrdersModal"
-                    aria-label="Mở danh sách đơn giữ">
+<div id="heldList" class="pos-cockpit-held-slot">
+    <button type="button"
+            id="btnOpenHeldOrders"
+            class="pos-held-summary-launcher"
+            data-bs-toggle="modal"
+            data-bs-target="#heldOrdersModal"
+            aria-label="Mở danh sách đơn giữ">
 
-                <div class="pos-held-summary-launcher__main">
-                    <div class="pos-held-summary-launcher__header">
-                        <div>
-                            <div class="pos-held-summary-launcher__title">
-                                Đơn giữ
-                            </div>
-                            <div class="pos-held-summary-launcher__hint">
-                                Bấm để xem danh sách
-                            </div>
-                        </div>
-
-                        <div class="pos-held-summary-launcher__total">
-                            0 đơn
-                        </div>
-                    </div>
-
-                    <div class="pos-held-summary-launcher__stats">
-                        <div class="pos-held-summary-stat">
-                            <div class="pos-held-summary-stat__label">Ca hiện tại</div>
-                            <div class="pos-held-summary-stat__value">0</div>
-                        </div>
-
-                        <div class="pos-held-summary-stat">
-                            <div class="pos-held-summary-stat__label">Ca khác</div>
-                            <div class="pos-held-summary-stat__value">0</div>
-                        </div>
-                    </div>
+        <div class="pos-held-summary-launcher__main">
+            <div class="pos-held-summary-launcher__header">
+                <div class="pos-held-summary-launcher__title">
+                    Đơn giữ
                 </div>
-            </button>
+
+                <div class="pos-held-summary-launcher__total">
+                    0 đơn
+                </div>
+            </div>
+
+            <div class="pos-held-summary-launcher__stats">
+                <div class="pos-held-summary-stat">
+                    <div class="pos-held-summary-stat__label">
+                        Ca hiện tại
+                    </div>
+                    <div class="pos-held-summary-stat__value">0</div>
+                </div>
+
+                <div class="pos-held-summary-stat">
+                    <div class="pos-held-summary-stat__label">
+                        Ca khác
+                    </div>
+                    <div class="pos-held-summary-stat__value">0</div>
+                </div>
+            </div>
+
+            <div class="pos-held-summary-launcher__footer">
+                <span class="pos-held-summary-launcher__hint">
+                    Bấm để xem chi tiết
+                </span>
+
+                <span class="pos-held-summary-launcher__hint-key">
+                    F6
+                </span>
+            </div>
         </div>
-    </div>
+    </button>
 </div>

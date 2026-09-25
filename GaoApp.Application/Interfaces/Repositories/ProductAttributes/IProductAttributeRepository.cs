@@ -7,6 +7,18 @@ public interface IProductAttributeRepository
     Task<(IReadOnlyList<ProductAttribute> Items, int TotalItems)> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default);
 
+    Task<(IReadOnlyList<ProductAttribute> Items, int TotalItems)> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<ProductAttribute?> GetByIdAsync(int storeId, int id, CancellationToken ct = default);
 
     Task<bool> ExistsCodeAsync(int storeId, string code, int? excludeId, CancellationToken ct = default);

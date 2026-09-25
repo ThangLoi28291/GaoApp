@@ -1,0 +1,123 @@
+@using GaoApp.Application.DTOs.Media
+@using GaoApp.Application.Common.Options
+@using GaoApp.Web.Services.Media
+@model MediaLibraryPage
+@{
+    ViewData["Title"] = "Quản lý hình ảnh";
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+    var options = (MediaCleanupOptions)ViewBag.CleanupOptions;
+    var run = (MediaCleanupRun?)ViewBag.LastRun;
+    var canManage = (bool)ViewBag.CanManage;
+    var filters = new Dictionary<string, string> { ["all"] = "Tất cả ảnh", ["used"] = "Đang sử dụng", ["temp"] = "Ảnh tải tạm", ["unused"] = "Chưa sử dụng", ["waiting"] = "Chờ dọn", ["ready"] = "Đến hạn dọn", ["deleted"] = "Đã dọn" };
+    string Size(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1048576 ? $"{bytes / 1024d:0.#} KB" : bytes < 1073741824 ? $"{bytes / 1048576d:0.#} MB" : $"{bytes / 1073741824d:0.##} GB";
+}
+@section header {
+    <div class="gds-page-header w-100" data-gao-ui="modern">
+        <div class="gds-page-header__main">
+            <h3 class="gds-page-header__title">Quản lý hình ảnh</h3>
+            <p class="gds-page-header__subtitle mb-0">Thư viện ảnh sản phẩm của cửa hàng.</p>
+        </div>
+        <div class="gds-page-header__actions">
+            <a href="/Admin/Product" class="btn btn-outline-primary"><i class="bx bx-package me-1" aria-hidden="true"></i> Thêm ảnh cho sản phẩm</a>
+        </div>
+    </div>
+}
+<link rel="stylesheet" href="~/Admin/css/media-library.css" asp-append-version="true" />
+<div class="media-library" data-media-library>
+    @Html.AntiForgeryToken()
+    <div class="media-summary" aria-label="Tổng quan thư viện">
+        <article class="card"><span>Tổng dung lượng ảnh</span><strong>@Size(Model.Summary.Bytes)</strong><small>@Model.Summary.Total ảnh trong thư viện</small></article>
+        <article class="card"><span>Đang sử dụng</span><strong>@Model.Summary.Used</strong><small>Gắn với sản phẩm hoặc nội dung</small></article>
+        <article class="card"><span>Tạm &amp; chờ dọn</span><strong>@(Model.Summary.Temporary + Model.Summary.Waiting)</strong><small>Được giữ trong thời gian chờ</small></article>
+        <article class="card media-summary-ready"><span>Đến hạn dọn</span><strong>@Model.Summary.Ready</strong><small>@Size(Model.Summary.ReadyBytes) theo bản ghi ảnh</small></article>
+    </div>
+    <section class="card media-policy" aria-label="Chính sách dọn ảnh">
+        <i class="bx bx-check-shield" aria-hidden="true"></i>
+        <div>
+            <strong>@(options.Enabled ? "Tự động dọn ảnh đã bật" : "Tự động dọn ảnh đang tắt")</strong>
+            <p>Ảnh tải tạm hết hạn sau @options.TempLifetimeHours giờ. Ảnh không còn sử dụng được giữ thêm @options.UnusedRetentionDays ngày kể từ lần kiểm tra phát hiện.</p>
+            <small>Ảnh còn được sử dụng luôn được giữ. @(options.Enabled ? $"Kiểm tra mỗi {options.IntervalMinutes} phút khi ứng dụng đang chạy." : "Bạn vẫn có thể kiểm tra và dọn thủ công.")</small>
+            @if (run != null)
+            {
+                <small class="d-block mt-1">Lượt xử lý gần nhất trong phiên chạy này: <time data-local-time datetime="@run.AtUtc.ToString("O")">@run.AtUtc.ToString("dd/MM/yyyy HH:mm") UTC</time> · Đã dọn @run.Result.Deleted · Chờ thử lại @run.Result.Failed</small>
+            }
+        </div>
+        @if (canManage)
+        {
+            <button type="button" class="btn btn-primary" data-cleanup-all><i class="bx bx-refresh me-1" aria-hidden="true"></i> Kiểm tra &amp; dọn ảnh</button>
+        }
+    </section>
+    <div class="alert d-none" role="status" aria-live="polite" data-media-message></div>
+    <section class="card media-collection" aria-label="Danh sách ảnh">
+        <form method="get" action="/admin/media-library" class="media-toolbar">
+            <div class="media-search"><label for="mediaSearch">Tìm ảnh</label><input class="form-control" id="mediaSearch" name="search" value="@Model.Search" maxlength="150" placeholder="Nhập tên tập tin…" /></div>
+            <div><label for="mediaStatus">Trạng thái</label><select class="form-select" id="mediaStatus" name="statusFilter">
+                @foreach (var filter in filters)
+                {
+                    <option value="@filter.Key" selected="@(Model.Status == filter.Key)">@filter.Value</option>
+                }
+            </select></div>
+            <button class="btn btn-outline-primary" type="submit">Lọc ảnh</button>
+            <span class="media-count">@Model.FilteredCount ảnh</span>
+        </form>
+        @if (Model.Items.Count == 0)
+        {
+            <div class="media-empty"><i class="bx bx-images" aria-hidden="true"></i><h5>Chưa có ảnh trong nhóm này</h5><p>Thử đổi bộ lọc hoặc tải ảnh từ trang chỉnh sửa sản phẩm.</p><a href="/admin/media-library">Xem tất cả ảnh</a></div>
+        }
+        else
+        {
+            <div class="media-grid">
+                @foreach (var item in Model.Items)
+                {
+                    <article class="media-card" data-asset-id="@item.Id">
+                        <div class="media-preview">
+                            @if (item.Status != "deleted")
+                            {
+                                <button type="button" data-preview="/admin/media-library/@item.Id/preview" data-name="@item.Name" aria-label="Xem ảnh @item.Name"><img src="/admin/media-library/@item.Id/preview" alt="@item.Name" loading="lazy" data-media-image /></button>
+                                <span class="media-missing" hidden>Không tải được ảnh</span>
+                            }
+                            else { <span class="text-muted">Đã dọn file</span> }
+                            <span class="media-badge media-badge-@item.Status">@filters[item.Status]</span>
+                        </div>
+                        <div class="media-info">
+                            <h6 title="@item.Name">@item.Name</h6>
+                            <div class="media-meta"><span>@Size(item.SizeBytes)</span><span>#@item.Id</span></div>
+                            <small>Tải lên <time data-local-time datetime="@item.CreatedAtUtc.ToString("O")">@item.CreatedAtUtc.ToString("dd/MM/yyyy")</time></small>
+                            @if (item.ExpireAtUtc != null && !item.Used)
+                            {
+                                <small>Dọn từ <time data-local-time datetime="@item.ExpireAtUtc.Value.ToString("O")">@item.ExpireAtUtc.Value.ToString("dd/MM/yyyy HH:mm") UTC</time></small>
+                            }
+                            <div class="media-usage">
+                                @foreach (var product in item.Products)
+                                {
+                                    <a asp-area="Admin" asp-controller="Product" asp-action="Detail" asp-route-id="@product.Id" title="@product.Name"><i class="bx bx-link" aria-hidden="true"></i> @product.Name</a>
+                                }
+                                @if (item.Used && item.Products.Count == 0) { <span>Được giữ bởi nội dung đang sử dụng ảnh.</span> }
+                                @if (!item.Used && item.Status != "deleted") { <span>Chưa có sản phẩm sử dụng.</span> }
+                            </div>
+                            @if (canManage && !item.Used)
+                            {
+                                @if (item.Status == "ready" || item.Status == "unused")
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" data-media-action="cleanup" data-id="@item.Id">@(item.Status == "ready" ? "Dọn ảnh đến hạn" : "Đưa vào chờ dọn")</button>
+                                }
+                                @if (item.Status == "temp")
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100" data-media-action="cancel-temp" data-id="@item.Id">Hủy ảnh tải tạm</button>
+                                }
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+            <nav class="media-pagination" aria-label="Phân trang ảnh">
+                @if (Model.Page > 1) { <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index", new { search = Model.Search, statusFilter = Model.Status, page = Model.Page - 1 })">Trang trước</a> }
+                <span>Trang @Model.Page / @Model.Pages</span>
+                @if (Model.Page < Model.Pages) { <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index", new { search = Model.Search, statusFilter = Model.Status, page = Model.Page + 1 })">Trang sau</a> }
+            </nav>
+        }
+    </section>
+    <dialog class="media-lightbox" data-media-lightbox><button type="button" class="btn btn-light" data-close-preview aria-label="Đóng ảnh">Đóng ×</button><img alt="" /><p></p></dialog>
+</div>
+<script src="~/Admin/js/media-library.js" asp-append-version="true" defer></script>

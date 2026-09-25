@@ -32,14 +32,18 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [ApiController]
 [Authorize] // yêu cầu đã đăng nhập trước, sau đó từng action sẽ chặn theo policy cụ thể
 [AutoValidateAntiforgeryToken]
-public class StockDocumentsController : ControllerBase
+public class StockDocumentsController : Controller
 {
     private readonly IStockDocumentService _stockDocumentService;
     private readonly IBarcodeLookupService _barcodeLookupService;
     private readonly IStockDocumentLookupService _stockDocumentLookupService;
     private readonly ITenantContext _tenantContext;
     private readonly IInputInvoiceXmlService _inputInvoiceXmlService;
+    private readonly IInputInvoicePickerService? _inputInvoicePickerService;
     private readonly IAuthorizationService _authorizationService;
+    private readonly IStockDocumentSplitService? _stockDocumentSplitService;
+    private readonly IInputInvoiceReconciliationService? _inputInvoiceReconciliationService;
+    private readonly AppDbContext? _db;
 
     public StockDocumentsController(
       IStockDocumentService stockDocumentService,
@@ -47,7 +51,11 @@ public class StockDocumentsController : ControllerBase
       IBarcodeLookupService barcodeLookupService,
       ITenantContext tenantContext,
       IInputInvoiceXmlService inputInvoiceXmlService,
-      IAuthorizationService authorizationService)
+      IAuthorizationService authorizationService,
+      IInputInvoicePickerService? inputInvoicePickerService = null,
+      IStockDocumentSplitService? stockDocumentSplitService = null,
+      IInputInvoiceReconciliationService? inputInvoiceReconciliationService = null,
+      AppDbContext? db = null)
     {
         _stockDocumentService = stockDocumentService;
         _stockDocumentLookupService = stockDocumentLookupService;
@@ -55,6 +63,10 @@ public class StockDocumentsController : ControllerBase
         _tenantContext = tenantContext;
         _inputInvoiceXmlService = inputInvoiceXmlService;
         _authorizationService = authorizationService;
+        _inputInvoicePickerService = inputInvoicePickerService;
+        _stockDocumentSplitService = stockDocumentSplitService;
+        _inputInvoiceReconciliationService = inputInvoiceReconciliationService;
+        _db = db;
     }
 
 
@@ -64,9 +76,13 @@ public class StockDocumentsController : ControllerBase
     /// </summary>
 
     [HttpGet("product-variants/{variantId:int}/units")]
-    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
-    public async Task<IActionResult> GetVariantUnits(int variantId, CancellationToken ct)
+    public async Task<IActionResult> GetVariantUnits(
+        int variantId,
+        [FromQuery] int? stockDocumentId,
+        CancellationToken ct)
     {
+        if (!await HasMappingLookupPermissionAsync(stockDocumentId, ct))
+            return Forbid();
         if (variantId <= 0)
         {
             return BadRequest(new
@@ -85,13 +101,35 @@ public class StockDocumentsController : ControllerBase
             });
         }
 
+        var baseConversion = units.FirstOrDefault(x => x.IsBaseUnit);
+        int? baseUnitId = baseConversion?.UnitId;
+        string? baseUnitName = baseConversion?.UnitName;
+        if (_db is not null)
+        {
+            var canonicalBaseUnit = await _db.ProductVariants
+                .AsNoTracking()
+                .Where(x => x.Id == variantId &&
+                            x.StoreId == _tenantContext.StoreId)
+                .Select(x => new
+                {
+                    UnitId = x.Product.BaseUnitId,
+                    UnitName = x.Product.BaseUnit.Name
+                })
+                .SingleOrDefaultAsync(ct);
+            baseUnitId = canonicalBaseUnit?.UnitId;
+            baseUnitName = canonicalBaseUnit?.UnitName;
+        }
+
         return Ok(units.Select(x => new
         {
+            productUnitConversionId = x.ProductUnitConversionId,
             unitId = x.UnitId,
             unitName = x.UnitName,
             factor = x.Factor,
             isBaseUnit = x.IsBaseUnit,
-            isDefaultForSale = x.IsDefaultForSale
+            isDefaultForSale = x.IsDefaultForSale,
+            baseUnitId,
+            baseUnitName
         }));
     }
 
@@ -237,9 +275,13 @@ public class StockDocumentsController : ControllerBase
     /// Cần quyền tạo/sửa chứng từ kho.
     /// </summary>
     [HttpGet("search-products")]
-    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Create)]
-    public async Task<IActionResult> SearchProducts([FromQuery] string keyword, CancellationToken ct)
+    public async Task<IActionResult> SearchProducts(
+        [FromQuery] string keyword,
+        [FromQuery] int? stockDocumentId,
+        CancellationToken ct)
     {
+        if (!await HasMappingLookupPermissionAsync(stockDocumentId, ct))
+            return Forbid();
         // Lookup chứng từ kho phải thấy cả sản phẩm đang chờ hoàn thiện
         // (IsSellable = false); chỉ POS mới được phép lọc theo IsSellable.
         var result = await _barcodeLookupService.SearchForStockDocumentSelect2Async(keyword, 20, ct);
@@ -519,65 +561,385 @@ public class StockDocumentsController : ControllerBase
             : directReceiptPolicy;
         return (await _authorizationService.AuthorizeAsync(User, null, policy)).Succeeded;
     }
-    [HttpPost("{id:int}/input-invoices/upload-xml")]
-    public async Task<IActionResult> UploadInputInvoiceXml(
-    int id,
-    IFormFile file,
-    CancellationToken ct)
+
+    private async Task<bool> HasMappingLookupPermissionAsync(
+        int? stockDocumentId,
+        CancellationToken ct)
+    {
+        if ((await _authorizationService.AuthorizeAsync(
+                User,
+                resource: null,
+                policyName: PermissionCodes.Inventory.StockDocument.Create)).Succeeded)
+            return true;
+
+        return stockDocumentId is > 0 && await HasWorkflowPermissionAsync(
+            stockDocumentId.Value,
+            PermissionCodes.Purchase.Receipt.Approve,
+            PermissionCodes.Inventory.StockDocument.Approve,
+            ct);
+    }
+
+    private IInputInvoicePickerService RequirePicker() =>
+        _inputInvoicePickerService
+        ?? throw new InvalidOperationException("Input-invoice picker is not configured.");
+
+    private IStockDocumentSplitService RequireSplitService() =>
+        _stockDocumentSplitService
+        ?? throw new InvalidOperationException("Purchase-receipt split service is not configured.");
+
+    [HttpPost("{id:int}/split")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> SplitReceipt(
+        int id,
+        [FromBody] PurchaseReceiptSplitRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await RequireSplitService().SplitAsync(id, request, ct);
+            return Ok(new
+            {
+                message = "Đã tách phiếu nhập.",
+                resultLinks = result.Results
+            });
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("split/invoice-picker/browse")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> BrowseSplitInvoicePicker(
+        [FromQuery] int supplierId,
+        [FromQuery] int warehouseId,
+        [FromQuery] InputInvoicePickerBrowseRequest request,
+        CancellationToken ct)
+    {
+        // BrowseForSupplierAsync remains the supplier-only compatibility contract;
+        // split adds Warehouse owner context through the same existing route.
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            return Ok(await RequirePicker().BrowseForSupplierAndWarehouseAsync(
+                _tenantContext.StoreId.Value, supplierId, warehouseId, request, ct));
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("split/invoice-picker/pdf")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> PreviewSplitInvoicePdf(
+        [FromQuery] int supplierId,
+        [FromQuery] string documentKey,
+        CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var preview = await RequirePicker().GetPdfForSupplierAsync(
+                _tenantContext.StoreId.Value, supplierId, documentKey, ct);
+            return File(preview.Content, "application/pdf", enableRangeProcessing: true);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("split/invoice-picker/xml")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> PreviewSplitInvoiceXml(
+        [FromQuery] int supplierId,
+        [FromQuery] int warehouseId,
+        [FromQuery] string documentKey,
+        CancellationToken ct)
+    {
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            // GetXmlPreviewForSupplierAsync remains the supplier-only compatibility contract;
+            // split preview adds Warehouse owner context through the same existing route.
+            var preview = await RequirePicker().GetXmlPreviewForSupplierAndWarehouseAsync(
+                _tenantContext.StoreId.Value, supplierId, warehouseId, documentKey, ct);
+            return PartialView(
+                "~/Areas/Admin/Views/StockDocumentManagement/_InputInvoiceXmlPreview.cshtml",
+                preview);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+    [HttpGet("{id:int}/input-invoices/picker/candidates")]
+    public async Task<IActionResult> BrowseInputInvoicePicker(
+        int id,
+        [FromQuery] InputInvoicePickerBrowseRequest request,
+        CancellationToken ct)
     {
         if (!await HasWorkflowPermissionAsync(
-                id,
-                PermissionCodes.Purchase.Receipt.Approve,
-                PermissionCodes.Inventory.StockDocument.Approve,
-                ct))
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
             return Forbid();
-
         if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
         {
-            return BadRequest(new
-            {
-                message = "Không xác định được cửa hàng hiện tại."
-            });
+            var result = await RequirePicker().BrowseAsync(
+                _tenantContext.StoreId.Value, id, request, ct);
+            return Ok(result);
         }
-
-        if (file == null || file.Length == 0)
+        catch (BusinessRuleException exception)
         {
-            return BadRequest(new
-            {
-                message = "Vui lòng chọn file XML."
-            });
+            return BadRequest(new { message = exception.SafeMessage });
         }
-
-        var ext = Path.GetExtension(file.FileName);
-        if (!string.Equals(ext, ".xml", StringComparison.OrdinalIgnoreCase))
-        {
-            return BadRequest(new
-            {
-                message = "Chỉ hỗ trợ file XML."
-            });
-        }
-
-        await using var ms = new MemoryStream();
-        await file.CopyToAsync(ms, ct);
-
-        var result = await _inputInvoiceXmlService.UploadXmlAsync(
-            _tenantContext.StoreId.Value,
-            new UploadInputInvoiceXmlRequest
-            {
-                StockDocumentId = id,
-                OriginalFileName = file.FileName,
-                FileBytes = ms.ToArray()
-            },
-            ct);
-
-        return Ok(new
-        {
-            message = result.IsExistingInvoice
-                ? "XML này đã tồn tại, đã gắn vào phiếu nhập hiện tại."
-                : "Đã upload và đọc XML thành công.",
-            data = result
-        });
     }
+
+    [HttpGet("{id:int}/input-invoices/association")]
+    public async Task<IActionResult> GetInputInvoiceAssociation(
+        int id,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            return Ok(await RequirePicker().GetAssociationContextAsync(
+                _tenantContext.StoreId.Value, id, ct));
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("{id:int}/input-invoices/picker/pdf")]
+    public async Task<IActionResult> PreviewInputInvoicePdf(
+        int id, [FromQuery] string documentKey, CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var preview = await RequirePicker().GetPdfAsync(
+                _tenantContext.StoreId.Value, id, documentKey, ct);
+            return File(preview.Content, "application/pdf", enableRangeProcessing: true);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("{id:int}/input-invoices/picker/xml")]
+    public async Task<IActionResult> PreviewInputInvoiceXml(
+        int id, [FromQuery] string documentKey, CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var preview = await RequirePicker().GetXmlPreviewAsync(
+                _tenantContext.StoreId.Value, id, documentKey, ct);
+            return PartialView(
+                "~/Areas/Admin/Views/StockDocumentManagement/_InputInvoiceXmlPreview.cshtml",
+                preview);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpPost("{id:int}/input-invoices/picker/select")]
+    public async Task<IActionResult> SelectInputInvoiceFromPicker(
+        int id,
+        [FromBody] SelectInputInvoiceDocumentRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var result = await RequirePicker().SelectAsync(
+                _tenantContext.StoreId.Value, id, request, ct);
+            return Ok(new { message = "Đã liên kết hóa đơn với phiếu nhập.", data = result });
+        }
+        catch (InputInvoiceAssociationException exception)
+        {
+            return Conflict(new
+            {
+                code = exception.Code,
+                message = exception.SafeMessage,
+                currentInputInvoiceHeadId = exception.CurrentInputInvoiceHeadId
+            });
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("{id:int}/input-invoices/{inputInvoiceId:int}/preview/pdf")]
+    public async Task<IActionResult> PreviewLinkedInputInvoicePdf(
+        int id,
+        int inputInvoiceId,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var preview = await RequirePicker().GetLinkedPdfAsync(
+                _tenantContext.StoreId.Value, id, inputInvoiceId, ct);
+            return File(preview.Content, "application/pdf", enableRangeProcessing: true);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpGet("{id:int}/input-invoices/{inputInvoiceId:int}/preview/xml")]
+    public async Task<IActionResult> PreviewLinkedInputInvoiceXml(
+        int id,
+        int inputInvoiceId,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var preview = await RequirePicker().GetLinkedXmlPreviewAsync(
+                _tenantContext.StoreId.Value, id, inputInvoiceId, ct);
+            return PartialView(
+                "~/Areas/Admin/Views/StockDocumentManagement/_InputInvoiceXmlPreview.cshtml",
+                preview);
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpPost("{id:int}/input-invoices/{inputInvoiceId:int}/unlink")]
+    public async Task<IActionResult> UnlinkInputInvoice(
+        int id,
+        int inputInvoiceId,
+        [FromBody] UnlinkInputInvoiceRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (!_tenantContext.StoreId.HasValue)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            if (request.ExpectedCurrentInputInvoiceHeadId <= 0)
+                request.ExpectedCurrentInputInvoiceHeadId = inputInvoiceId;
+            if (request.ExpectedCurrentInputInvoiceHeadId != inputInvoiceId)
+                return Conflict(new
+                {
+                    code = InputInvoiceAssociationException.AssociationChangedCode,
+                    message = "Hóa đơn hiện tại không khớp yêu cầu. Vui lòng tải lại."
+                });
+            var result = await RequirePicker().UnlinkAsync(
+                _tenantContext.StoreId.Value, id, request, ct);
+            return Ok(new
+            {
+                message = result.Outcome == InputInvoiceAssociationMutationOutcomes.Applied
+                    ? "Đã gỡ liên kết hóa đơn khỏi phiếu nhập."
+                    : "Hóa đơn đã được gỡ liên kết trước đó.",
+                data = result
+            });
+        }
+        catch (InputInvoiceAssociationException exception)
+        {
+            return Conflict(new
+            {
+                code = exception.Code,
+                message = exception.SafeMessage,
+                currentInputInvoiceHeadId = exception.CurrentInputInvoiceHeadId
+            });
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
+    [HttpPost("{id:int}/input-invoices/relink")]
+    public async Task<IActionResult> RelinkInputInvoice(
+        int id,
+        [FromBody] RelinkInputInvoiceRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(
+                id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0)
+            return BadRequest(new { message = "Không xác định được cửa hàng hiện tại." });
+        try
+        {
+            var result = await RequirePicker().RelinkAsync(
+                _tenantContext.StoreId.Value, id, request, ct);
+            return Ok(new
+            {
+                message = result.Outcome == InputInvoiceAssociationMutationOutcomes.Applied
+                    ? "Đã thay hóa đơn liên kết."
+                    : "Hóa đơn thay thế đã được áp dụng trước đó.",
+                data = result
+            });
+        }
+        catch (InputInvoiceAssociationException exception)
+        {
+            return Conflict(new
+            {
+                code = exception.Code,
+                message = exception.SafeMessage,
+                currentInputInvoiceHeadId = exception.CurrentInputInvoiceHeadId
+            });
+        }
+        catch (BusinessRuleException exception)
+        {
+            return BadRequest(new { message = exception.SafeMessage });
+        }
+    }
+
     [HttpGet("{id:int}/input-invoices")]
     public async Task<IActionResult> GetInputInvoices(
     int id,
@@ -605,6 +967,7 @@ public class StockDocumentsController : ControllerBase
 
         return Ok(result);
     }
+
     [HttpGet("{id:int}/input-invoices/line-maps")]
     public async Task<IActionResult> GetInputInvoiceLineMaps(
     int id,
@@ -702,6 +1065,7 @@ public class StockDocumentsController : ControllerBase
                 _tenantContext.StoreId.Value,
                 id,
                 request.UseInputInvoice,
+                request.ExclusionReason,
                 ct);
 
             return Ok(new
@@ -717,6 +1081,115 @@ public class StockDocumentsController : ControllerBase
             {
                 message = ex.SafeMessage
             });
+        }
+    }
+
+    [HttpGet("{id:int}/input-invoices/reconciliation")]
+    public async Task<IActionResult> GetInputInvoiceReconciliation(
+        int id, CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(id,
+                PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0 ||
+            _inputInvoiceReconciliationService is null)
+            return BadRequest(new { message = "Dịch vụ đối chiếu chưa sẵn sàng." });
+        try
+        {
+            return Ok(await _inputInvoiceReconciliationService.GetForReceiptAsync(
+                _tenantContext.StoreId.Value, id, ct));
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { message = ex.SafeMessage });
+        }
+    }
+
+    [HttpPost("{id:int}/input-invoices/reconciliation/preview")]
+    public async Task<IActionResult> PreviewInputInvoiceReconciliation(
+        int id, [FromBody] InputInvoiceCommercialPreviewRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(id,
+                PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0 ||
+            _inputInvoiceReconciliationService is null)
+            return BadRequest(new { message = "Dịch vụ đối chiếu chưa sẵn sàng." });
+        try
+        {
+            return Ok(await _inputInvoiceReconciliationService.PreviewCommercialAsync(
+                _tenantContext.StoreId.Value, id, request, ct));
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { message = ex.SafeMessage });
+        }
+    }
+
+    [HttpPost("{id:int}/input-invoices/reconciliation/details/{detailId:int}/ignore")]
+    public Task<IActionResult> IgnoreInputInvoiceDetail(
+        int id, int detailId,
+        [FromBody] InputInvoiceReconciliationReasonRequest request,
+        CancellationToken ct)
+        => SetInputInvoiceDetailIgnored(id, detailId, true, request, ct);
+
+    [HttpPost("{id:int}/input-invoices/reconciliation/details/{detailId:int}/unignore")]
+    public Task<IActionResult> UnignoreInputInvoiceDetail(
+        int id, int detailId,
+        [FromBody] InputInvoiceReconciliationReasonRequest request,
+        CancellationToken ct)
+        => SetInputInvoiceDetailIgnored(id, detailId, false, request, ct);
+
+    [HttpPost("{id:int}/input-invoices/reconciliation/accept")]
+    public async Task<IActionResult> AcceptInputInvoiceReconciliation(
+        int id, [FromBody] AcceptInputInvoiceReconciliationRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(id,
+                PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0 ||
+            _inputInvoiceReconciliationService is null)
+            return BadRequest(new { message = "Dịch vụ đối chiếu chưa sẵn sàng." });
+        try
+        {
+            return Ok(await _inputInvoiceReconciliationService
+                .AcceptMismatchWithinTransactionAsync(
+                    _tenantContext.StoreId.Value, id, request.Reason,
+                    request.ExpectedEvidenceFingerprint, ct));
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { message = ex.SafeMessage });
+        }
+    }
+
+    private async Task<IActionResult> SetInputInvoiceDetailIgnored(
+        int id, int detailId, bool ignored,
+        InputInvoiceReconciliationReasonRequest request,
+        CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(id,
+                PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
+        if (_tenantContext.StoreId is not > 0 ||
+            _inputInvoiceReconciliationService is null)
+            return BadRequest(new { message = "Dịch vụ đối chiếu chưa sẵn sàng." });
+        try
+        {
+            return Ok(await _inputInvoiceReconciliationService
+                .IgnoreXmlDetailWithinTransactionAsync(
+                    _tenantContext.StoreId.Value, id, detailId, ignored,
+                    request.Reason, ct));
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { message = ex.SafeMessage });
         }
     }
     /// <summary>

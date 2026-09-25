@@ -16,7 +16,7 @@ public class ViettelInvoicePayloadResultDto
 
     public int? InvoiceProviderSettingId { get; set; }
 
-    public int OrderId { get; set; }
+    public int? OrderId { get; set; }
 
     public string? OrderNumber { get; set; }
 

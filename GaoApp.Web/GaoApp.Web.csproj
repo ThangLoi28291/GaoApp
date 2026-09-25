@@ -46,4 +46,13 @@
     <Folder Include="wwwroot\lib\NewFolder\" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <GaoAppDeploymentSettings>$(MSBuildThisFileDirectory)..\eng\deployment\web.appsettings.json</GaoAppDeploymentSettings>
+  </PropertyGroup>
+  <Import Project="..\eng\deployment\PublishSafety.targets" />
+  <ItemGroup>
+    <!-- Runtime uploads use the external storage middleware. Exclude them from
+         the SDK's separate static-web-assets publish pipeline as well. -->
+    <Content Remove="wwwroot/uploads/**;App_Data/**" />
+  </ItemGroup>
 </Project>

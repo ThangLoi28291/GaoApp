@@ -8,4 +8,5 @@ public sealed class UnitListItemDto
     public bool Status { get; set; }
     public bool IsBase { get; set; }
     public int SortOrder { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
 }

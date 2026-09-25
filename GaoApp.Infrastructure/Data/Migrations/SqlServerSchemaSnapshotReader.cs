@@ -503,7 +503,7 @@ public sealed class SqlServerSchemaSnapshotReader
                 new DatabaseCheckConstraintSchema(
                     DatabaseSchemaNormalization.NormalizeIdentifier(
                         reader.GetString(2)),
-                    DatabaseSchemaNormalization.NormalizeSqlExpression(
+                    DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(
                         reader.GetString(3))
                     ?? string.Empty,
                     reader.GetBoolean(4),

@@ -48,6 +48,11 @@ public class StockDocumentLineConfiguration : IEntityTypeConfiguration<StockDocu
         builder.Property(x => x.FreightAllocation).HasPrecision(18, 2);
         builder.Property(x => x.ShortageReason).HasMaxLength(500);
         builder.Property(x => x.TaxNameSnapshot).HasMaxLength(100);
+        builder.Property(x => x.ReceiptAllocationKind)
+            .HasDefaultValue(GaoApp.Domain.Enums.ReceiptAllocationKind.Direct);
+        builder.Property(x => x.OutsidePoDecisionStatus)
+            .HasDefaultValue(GaoApp.Domain.Enums.OutsidePoDecisionStatus.NotApplicable);
+        builder.Property(x => x.OutsidePoDecisionNote).HasMaxLength(1000);
         builder.Property(x => x.RowVersion).IsRowVersion();
 
         builder.HasIndex(x => new { x.StockDocumentId, x.LineNo })
@@ -56,6 +61,31 @@ public class StockDocumentLineConfiguration : IEntityTypeConfiguration<StockDocu
         builder.HasIndex(x => x.StockDocumentId);
         builder.HasIndex(x => x.ProductVariantId);
         builder.HasIndex(x => x.PurchaseOrderLineId);
+        builder.HasIndex(x => new
+            {
+                x.StockDocumentId,
+                x.PurchaseOrderLineId,
+                x.ProductUnitConversionId
+            })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0 AND [ReceiptAllocationKind] = 1 AND [PurchaseOrderLineId] IS NOT NULL AND [ProductUnitConversionId] IS NOT NULL")
+            .HasDatabaseName("UX_StockDocumentLine_PoReceivingComponent");
+        builder.HasIndex(x => new
+            {
+                x.StockDocumentId,
+                x.ProductVariantId,
+                x.ProductUnitConversionId
+            })
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0 AND [ReceiptAllocationKind] = 2 AND [ProductUnitConversionId] IS NOT NULL")
+            .HasDatabaseName("UX_StockDocumentLine_OutsideReceivingComponent");
+
+        builder.ToTable("StockDocumentLine", table => table.HasCheckConstraint(
+            "CK_StockDocumentLine_ReceivingAllocation",
+            "[ReceiptAllocationKind] = 0 AND [OutsidePoDecisionStatus] = 0 OR " +
+            "[ReceiptAllocationKind] = 1 AND [PurchaseOrderLineId] IS NOT NULL AND [OutsidePoDecisionStatus] = 0 OR " +
+            "[ReceiptAllocationKind] = 2 AND [PurchaseOrderLineId] IS NULL AND " +
+            "([OutsidePoDecisionStatus] = 1 OR [OutsidePoDecisionStatus] = 2 OR [OutsidePoDecisionStatus] = 3)"));
 
         builder.HasOne(x => x.ProductVariant)
             .WithMany()

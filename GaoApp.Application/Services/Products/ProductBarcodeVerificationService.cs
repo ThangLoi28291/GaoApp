@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Products.BarcodeVerification;
+using GaoApp.Application.DTOs.Products.BarcodeVerification;
 using GaoApp.Application.Interfaces.Repositories.Products;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Entities;
@@ -11,11 +11,13 @@ namespace GaoApp.Infrastructure.Services.Products;
 public class ProductBarcodeVerificationService : IProductBarcodeVerificationService
 {
     private readonly IProductBarcodeVerificationRepository _repository;
+    private readonly IReceiptBarcodeProposalService _proposals;
 
     public ProductBarcodeVerificationService(
-        IProductBarcodeVerificationRepository repository)
+        IProductBarcodeVerificationRepository repository, IReceiptBarcodeProposalService proposals)
     {
         _repository = repository;
+        _proposals = proposals;
     }
 
     public Task<List<MissingBarcodeUnitDto>> GetMissingUnitsForStockDocumentAsync(
@@ -123,115 +125,14 @@ public class ProductBarcodeVerificationService : IProductBarcodeVerificationServ
         return _repository.GetManagementListAsync(storeId, status, keyword, ct);
     }
 
-    public async Task ApproveAsync(
-        int storeId,
-        int requestId,
-        int managerUserId,
-        string? managerNote,
-        CancellationToken ct = default)
-    {
-        var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
+    public Task ApproveAsync(int storeId, int requestId, int managerUserId, string? managerNote, CancellationToken ct = default)
+        => _proposals.ResolveAsync(storeId, null, requestId, managerUserId, BarcodeVerificationRequestStatus.Approved, managerNote, ct);
 
-        if (request == null)
-            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
+    public Task RejectAsync(int storeId, int requestId, int managerUserId, string? managerNote, CancellationToken ct = default)
+        => _proposals.ResolveAsync(storeId, null, requestId, managerUserId, BarcodeVerificationRequestStatus.Rejected, managerNote, ct);
 
-        if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
-
-        if (request.RequestType != BarcodeVerificationRequestType.SupplierBarcode)
-            throw new BusinessRuleException("Yêu cầu này không phải loại đề xuất barcode.");
-
-        var barcode = NormalizeBarcode(request.SuggestedBarcode);
-
-        if (string.IsNullOrWhiteSpace(barcode))
-            throw new BusinessRuleException("Yêu cầu này chưa có barcode để duyệt.");
-
-        var exists = await _repository.BarcodeExistsAsync(storeId, barcode, ct);
-
-        if (exists)
-            throw new BusinessRuleException($"Barcode {barcode} đã tồn tại trong hệ thống.");
-
-        var conversion = await _repository.GetConversionForBarcodeCreateAsync(
-            storeId,
-            request.ProductUnitConversionId,
-            ct);
-
-        if (conversion == null)
-            throw new BusinessRuleException("Không tìm thấy đơn vị quy đổi cần tạo barcode.");
-
-        var newBarcode = new ProductVariantUnitBarcode
-        {
-            StoreId = storeId,
-            ProductUnitConversionId = conversion.Id,
-            Barcode = barcode,
-            BarcodeType = BarcodeType.Supplier,
-            IsPrimary = false,
-            IsActive = true,
-            Note = $"Duyệt từ yêu cầu chuẩn hóa barcode #{request.Id}",
-            CreatedAtUtc = DateTime.UtcNow,
-            CreatedBy = managerUserId,
-            UpdatedAtUtc = DateTime.UtcNow,
-            UpdatedBy = managerUserId
-        };
-
-        await _repository.AddBarcodeAsync(newBarcode, ct);
-        await _repository.SaveChangesAsync(ct);
-
-        request.Status = BarcodeVerificationRequestStatus.Approved;
-        request.ManagerNote = managerNote?.Trim();
-        request.ResolvedByUserId = managerUserId;
-        request.ResolvedAtUtc = DateTime.UtcNow;
-        request.CreatedBarcodeId = newBarcode.Id;
-
-        await _repository.SaveChangesAsync(ct);
-    }
-
-    public async Task RejectAsync(
-        int storeId,
-        int requestId,
-        int managerUserId,
-        string? managerNote,
-        CancellationToken ct = default)
-    {
-        var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
-
-        if (request == null)
-            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
-
-        if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
-
-        request.Status = BarcodeVerificationRequestStatus.Rejected;
-        request.ManagerNote = managerNote?.Trim();
-        request.ResolvedByUserId = managerUserId;
-        request.ResolvedAtUtc = DateTime.UtcNow;
-
-        await _repository.SaveChangesAsync(ct);
-    }
-
-    public async Task ConfirmNoBarcodeAsync(
-        int storeId,
-        int requestId,
-        int managerUserId,
-        string? managerNote,
-        CancellationToken ct = default)
-    {
-        var request = await _repository.GetRequestForUpdateAsync(storeId, requestId, ct);
-
-        if (request == null)
-            throw new BusinessRuleException("Không tìm thấy yêu cầu chuẩn hóa barcode.");
-
-        if (request.Status != BarcodeVerificationRequestStatus.Pending)
-            throw new BusinessRuleException("Yêu cầu này đã được xử lý.");
-
-        request.Status = BarcodeVerificationRequestStatus.ConfirmedNoBarcode;
-        request.ManagerNote = managerNote?.Trim();
-        request.ResolvedByUserId = managerUserId;
-        request.ResolvedAtUtc = DateTime.UtcNow;
-
-        await _repository.SaveChangesAsync(ct);
-    }
-
+    public Task ConfirmNoBarcodeAsync(int storeId, int requestId, int managerUserId, string? managerNote, CancellationToken ct = default)
+        => _proposals.ResolveAsync(storeId, null, requestId, managerUserId, BarcodeVerificationRequestStatus.ConfirmedNoBarcode, managerNote, ct);
     private static string? NormalizeBarcode(string? barcode)
     {
         barcode = barcode?.Trim();

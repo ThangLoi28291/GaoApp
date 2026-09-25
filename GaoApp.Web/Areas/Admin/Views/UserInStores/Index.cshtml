@@ -1,722 +1,238 @@
-﻿@model GaoApp.Application.DTOs.Security.UserInStores.UserInStoreIndexVm
-@using Microsoft.AspNetCore.Mvc.Rendering
-
 @{
     ViewData["Title"] = "Nhân viên cửa hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
 
     var canCreate = (bool?)ViewBag.CanCreate == true;
     var canUpdate = (bool?)ViewBag.CanUpdate == true;
-    var canDelete = (bool?)ViewBag.CanDelete == true;
-
-    var roleOptions = ViewBag.RoleFilterOptions as List<SelectListItem> ?? new();
 }
 
-<div class="container-fluid userinstore-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h3 class="mb-1">Nhân viên cửa hàng</h3>
-            <div class="text-muted">Quản lý nhân viên, vai trò truy cập và trạng thái làm việc.</div>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Nhân viên cửa hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Theo dõi vai trò, thông tin liên hệ và trạng thái làm việc trong cửa hàng hiện tại.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnEmployeeReload">
+                    <i class="bx bx-refresh"></i><span>Tải lại</span>
+                </button>
+                @if (canCreate)
+                {
+                    <a asp-area="Admin" asp-controller="UserInStores" asp-action="Create" class="btn btn-primary gds-action-button">
+                        <i class="bx bx-user-plus"></i><span>Thêm nhân viên</span>
+                    </a>
+                }
+            </div>
         </div>
-
-        @if (canCreate)
-        {
-            <a asp-area="Admin"
-                   asp-controller="UserInStores"
-                   asp-action="Create"
-                   class="btn btn-primary">
-                <i class="bi bi-person-plus me-1"></i> Thêm nhân viên
-            </a>
-        }
     </div>
+}
 
-    @if (TempData["Success"] != null)
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/employee-index.css" asp-append-version="true" />
+}
+
+<div class="employee-index-page gds-page"
+     data-gao-ui="modern"
+     data-employee-index
+     data-data-url="@Url.Action("GetEmployeeIndexData", "UserInStores", new { area = "Admin" })"
+     data-edit-url="@Url.Action("Edit", "UserInStores", new { area = "Admin" })"
+     data-reset-url="@Url.Action("ResetPassword", "UserInStores", new { area = "Admin" })"
+     data-toggle-url="@Url.Action("ToggleActive", "UserInStores", new { area = "Admin" })"
+     data-can-update="@canUpdate.ToString().ToLowerInvariant()">
+
+    @if (TempData["Success"] is string success)
     {
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            @TempData["Success"]
+        <div class="alert alert-success alert-dismissible mb-0" role="alert">
+            @success
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger alert-dismissible mb-0" role="alert">
+            @error
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Info"] is string info)
+    {
+        <div class="alert alert-info alert-dismissible mb-0" role="alert">
+            @info
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Warning"] is string warning)
+    {
+        <div class="alert alert-warning alert-dismissible mb-0" role="alert">
+            @warning
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     }
 
-    @if (TempData["Error"] != null)
-    {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            @TempData["Error"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card shadow-sm border-0 h-100 dashboard-card">
-                <div class="card-body">
-                    <div class="text-muted small">Đang làm việc</div>
-                    <div class="fs-3 fw-bold mt-2 text-success">@Model.TotalActiveUsers</div>
+    <section aria-label="Tổng quan nhân viên">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col">
+                <button type="button" class="employee-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-employee-kpi="total" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-primary"><i class="bx bx-group"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng nhân viên</span><span class="gds-kpi-card__value text-primary" id="employeeStatTotal">0</span><small>Trong phạm vi tra cứu</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="employee-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-employee-kpi="active" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-success"><i class="bx bx-user-check"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đang làm việc</span><span class="gds-kpi-card__value text-success" id="employeeStatActive">0</span><small>Đang hoạt động tại cửa hàng</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="employee-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-employee-kpi="inactive" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-secondary text-secondary"><i class="bx bx-user-x"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Ngưng làm</span><span class="gds-kpi-card__value text-secondary" id="employeeStatInactive">0</span><small>Đã khóa tại cửa hàng</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <div class="employee-index-kpi card shadow-sm border-0 gds-kpi-card h-100" data-employee-kpi="roles">
+                    <span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-shield-quarter"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Vai trò đang dùng</span><span class="gds-kpi-card__value text-warning" id="employeeStatRoles">0</span><small>Số vai trò trong kết quả</small></span>
                 </div>
             </div>
         </div>
+    </section>
 
-        <div class="col-md-3">
-            <div class="card shadow-sm border-0 h-100 dashboard-card">
-                <div class="card-body">
-                    <div class="text-muted small">Đã khóa / ngưng làm</div>
-                    <div class="fs-3 fw-bold mt-2 text-danger">@Model.TotalInactiveUsers</div>
+    <section class="card shadow-sm border-0 employee-index-filter-panel" aria-label="Bộ lọc nhân viên">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <div class="d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span>
+                <div><h5 class="mb-0 text-dark">Tra cứu nhân viên</h5><small class="text-muted">Tìm theo tên, tài khoản, liên hệ hoặc chức vụ và lọc theo vai trò.</small></div>
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="employee-index-filter-bar">
+                <div class="employee-index-search-wrap">
+                    <label for="employeeKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label>
+                    <div class="gds-search-field">
+                        <i class="bx bx-search"></i>
+                        <input type="search" id="employeeKeyword" class="form-control" placeholder="Họ tên, tài khoản, email, điện thoại..." autocomplete="off" />
+                        <button type="button" id="employeeClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button>
+                    </div>
+                </div>
+                <div class="employee-index-desktop-filters">
+                    <div><label for="employeeRole" class="form-label">Vai trò</label><select id="employeeRole" class="form-select"><option value="">Tất cả vai trò</option></select></div>
+                    <div><label for="employeeLifecycle" class="form-label">Trạng thái</label><select id="employeeLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang làm việc</option><option value="inactive">Ngưng làm</option></select></div>
+                    <div class="employee-index-compact-filter"><label for="employeePageSize" class="form-label">Số dòng / trang</label><select id="employeePageSize" class="form-select"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option></select></div>
+                    <button type="button" class="gds-icon-button employee-index-reset-button d-none" id="employeeResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
+                </div>
+                <button type="button" class="btn btn-label-primary employee-index-mobile-filter-button" id="employeeOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#employeeMobileFilterSheet">
+                    <i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="employeeActiveFilterCount">0</span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="gds-list-panel employee-index-results-panel" id="employeeResultsPanel" aria-label="Danh sách nhân viên" aria-live="polite" aria-busy="false">
+        <div class="employee-index-results-heading">
+            <div><h5 class="mb-1 text-dark">Danh sách nhân viên</h5><small class="text-muted">Trạng thái thể hiện quyền làm việc tại cửa hàng hiện tại; thao tác bảo mật vẫn qua xác nhận.</small></div>
+            <span class="employee-index-default-scope"><i class="bx bx-list-check"></i> Mặc định: Tất cả</span>
+        </div>
+        <div class="employee-index-desktop-list" id="employeeDesktopList">
+            <div class="table-responsive">
+                <table class="table align-middle gds-table mb-0 employee-index-table">
+                    <thead><tr><th>Nhân viên</th><th>Liên hệ</th><th>Vai trò / chức vụ</th><th>Ngày vào làm</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead>
+                    <tbody id="employeeTableBody"><tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="employee-index-mobile-list" id="employeeMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+
+    <div class="gds-list-footer employee-index-list-footer">
+        <div class="gds-list-footer__summary" id="employeePagingInfo">0 kết quả</div>
+        <nav aria-label="Phân trang nhân viên"><ul class="pagination pagination-sm mb-0 employee-index-pagination" id="employeePageNumbers"></ul></nav>
+    </div>
+
+    <div class="offcanvas offcanvas-bottom employee-index-filter-sheet" tabindex="-1" id="employeeMobileFilterSheet" aria-labelledby="employeeMobileFilterTitle">
+        <div class="offcanvas-header">
+            <div><h5 class="offcanvas-title" id="employeeMobileFilterTitle">Bộ lọc nhân viên</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="row g-3">
+                <div class="col-12"><label for="employeeMobileRole" class="form-label">Vai trò</label><select id="employeeMobileRole" class="form-select"><option value="">Tất cả vai trò</option></select></div>
+                <div class="col-12"><label for="employeeMobileLifecycle" class="form-label">Trạng thái</label><select id="employeeMobileLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang làm việc</option><option value="inactive">Ngưng làm</option></select></div>
+                <div class="col-12"><label for="employeeMobilePageSize" class="form-label">Số dòng / trang</label><select id="employeeMobilePageSize" class="form-select"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option></select></div>
+            </div>
+        </div>
+        <div class="offcanvas-footer employee-index-filter-sheet__footer">
+            <button type="button" class="btn btn-label-secondary" id="employeeMobileClearFilters">Xóa lọc</button>
+            <button type="button" class="btn btn-primary flex-grow-1" id="employeeMobileApplyFilters">Áp dụng</button>
+        </div>
+    </div>
+
+    <div class="modal fade employee-index-quick-sheet" id="employeeQuickView" tabindex="-1" aria-labelledby="employeeQuickViewTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header border-0">
+                    <div><h5 class="modal-title" id="employeeQuickViewTitle">Thông tin nhân viên</h5><small class="text-muted">Thông tin trong phạm vi cửa hàng hiện tại.</small></div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="employee-index-profile-head">
+                        <div class="employee-index-avatar is-large" id="employeeQuickAvatar">?</div>
+                        <div class="employee-index-profile-copy"><h4 id="employeeQuickName">—</h4><span id="employeeQuickUsername">—</span><div id="employeeQuickStatus" class="mt-2"></div></div>
+                    </div>
+                    <div class="employee-index-quick-grid">
+                        <div class="employee-index-quick-item"><span>Email</span><strong id="employeeQuickEmail">—</strong></div>
+                        <div class="employee-index-quick-item"><span>Số điện thoại</span><strong id="employeeQuickPhone">—</strong></div>
+                        <div class="employee-index-quick-item"><span>Vai trò</span><strong id="employeeQuickRole">—</strong></div>
+                        <div class="employee-index-quick-item"><span>Chức vụ</span><strong id="employeeQuickPosition">—</strong></div>
+                        <div class="employee-index-quick-item"><span>Ngày vào làm</span><strong id="employeeQuickJoined">—</strong></div>
+                        <div class="employee-index-quick-item"><span>Ngày gán vào cửa hàng</span><strong id="employeeQuickAssigned">—</strong></div>
+                        <div class="employee-index-quick-item is-wide"><span>Ghi chú</span><strong id="employeeQuickNote">—</strong></div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>
+                    <a class="btn btn-primary d-none" id="employeeQuickEdit" href="#"><i class="bx bx-edit-alt"></i> Sửa thông tin</a>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 mb-4 filter-card">
-        <div class="card-body">
-            <form method="get"
-                  asp-area="Admin"
-                  asp-controller="UserInStores"
-                  asp-action="Index">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Từ khóa</label>
-                        <input name="Keyword"
-                               value="@Model.Query.Keyword"
-                               class="form-control"
-                               placeholder="Tìm theo username, họ tên, email" />
+    <div class="modal fade employee-index-security-modal" id="employeeResetPasswordModal" tabindex="-1" aria-labelledby="employeeResetPasswordTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="employeeResetPasswordForm" asp-area="Admin" asp-controller="UserInStores" asp-action="ResetPassword" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="UserId" id="employeeResetUserId" />
+                    <div class="modal-header border-0"><div><h5 class="modal-title" id="employeeResetPasswordTitle">Đặt lại mật khẩu</h5><small class="text-muted" id="employeeResetIdentity">—</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <div class="mb-3"><label for="employeeNewPassword" class="form-label fw-semibold">Mật khẩu mới</label><input id="employeeNewPassword" name="NewPassword" type="password" class="form-control" minlength="12" maxlength="128" required autocomplete="new-password" placeholder="Từ 12 đến 128 ký tự" /></div>
+                        <div class="mb-3"><label for="employeeConfirmPassword" class="form-label fw-semibold">Nhập lại mật khẩu</label><input id="employeeConfirmPassword" name="ConfirmPassword" type="password" class="form-control" minlength="12" maxlength="128" required autocomplete="new-password" placeholder="Nhập lại mật khẩu mới" /></div>
+                        <div class="alert alert-warning small mb-0">Nhân viên cần dùng mật khẩu mới trong lần đăng nhập tiếp theo.</div>
                     </div>
-
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Vai trò</label>
-                        <select name="RoleId" class="form-select">
-                            <option value="">-- Tất cả vai trò --</option>
-                            @foreach (var item in roleOptions)
-                            {
-                                <option value="@item.Value" selected="@item.Selected">@item.Text</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div class="col-md-2">
-                        <label class="form-label fw-semibold">Trạng thái</label>
-                        <select name="IsActive" class="form-select">
-                            <option value="">-- Tất cả --</option>
-                            <option value="true" selected="@(Model.Query.IsActive == true)">Đang làm việc</option>
-                            <option value="false" selected="@(Model.Query.IsActive == false)">Ngưng làm</option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-1">
-                        <label class="form-label fw-semibold">Số dòng</label>
-                        <select name="PageSize" class="form-select">
-                            @foreach (var size in new[] { 10, 20, 50 })
-                            {
-                                <option value="@size" selected="@(Model.Query.PageSize == size)">@size</option>
-                            }
-                        </select>
-                    </div>
-
-                    <div class="col-md-2 d-flex gap-2">
-                        <button type="submit" class="btn btn-primary flex-fill">
-                            <i class="bi bi-search me-1"></i> Lọc
-                        </button>
-
-                        <a asp-area="Admin"
-                               asp-controller="UserInStores"
-                               asp-action="Index"
-                               class="btn btn-light border">
-                            Reset
-                        </a>
-                    </div>
-                </div>
-
-                <input type="hidden" name="Page" value="1" />
-            </form>
+                    <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="submit" class="btn btn-primary">Lưu mật khẩu mới</button></div>
+                </form>
+            </div>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 table-card">
-        <div class="table-responsive">
-            <table class="table align-middle mb-0 employee-table">
-                <thead>
-                    <tr>
-                        <th style="width:70px;">#</th>
-                        <th>Người dùng</th>
-                        <th>Email</th>
-                        <th>Vai trò</th>
-                        <th>Trạng thái</th>
-                        <th>Ngày gán</th>
-                        <th style="width:260px;">Thao tác</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @if (Model.Items.Items == null || !Model.Items.Items.Any())
-                    {
-                        <tr>
-                            <td colspan="7" class="text-center py-5 text-muted">
-                                Chưa có dữ liệu nhân viên.
-                            </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        var startNo = ((Model.Items.Page - 1) * Model.Items.PageSize) + 1;
-
-                        @for (int i = 0; i < Model.Items.Items.Count; i++)
-                        {
-                            var item = Model.Items.Items[i];
-                            var modalId = $"resetPasswordModal_{item.Id}";
-
-                            <tr>
-                                <td>@(startNo + i)</td>
-
-                                <td>
-                                    <button type="button"
-                                            class="employee-name-btn"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#employeeQuickView_@item.Id">
-                                        <span class="employee-fullname">@item.FullName</span>
-                                        <span class="employee-username">@item.Username</span>
-                                    </button>
-                                    <div class="modal fade"
-                                         id="employeeQuickView_@item.Id"
-                                         tabindex="-1"
-                                         aria-hidden="true">
-                                        <div class="modal-dialog modal-dialog-centered modal-lg">
-                                            <div class="modal-content employee-quick-modal">
-                                                <div class="modal-header border-0">
-                                                    <div>
-                                                        <h5 class="modal-title mb-1">Thông tin nhân viên</h5>
-                                                        <div class="text-muted small">
-                                                            Xem nhanh thông tin và quyền truy cập trong cửa hàng.
-                                                        </div>
-                                                    </div>
-
-                                                    <button type="button"
-                                                            class="btn-close"
-                                                            data-bs-dismiss="modal"></button>
-                                                </div>
-
-                                                <div class="modal-body">
-                                                    <div class="employee-profile-head mb-4">
-                                                        <div class="employee-avatar">
-                                                            @{
-                                                                var displayName = string.IsNullOrWhiteSpace(item.FullName)
-                                                                    ? item.Username
-                                                                    : item.FullName;
-
-                                                                var firstChar = string.IsNullOrWhiteSpace(displayName)
-                                                                    ? "?"
-                                                                    : displayName.Trim().Substring(0, 1).ToUpper();
-                                                            }
-                                                            @firstChar
-                                                        </div>
-
-                                                        <div>
-                                                            <div class="employee-profile-name">@displayName</div>
-                                                            <div class="text-muted">@item.Username</div>
-
-                                                            <div class="mt-2">
-                                                                @if (item.IsActive)
-                                                                {
-                                                                    <span class="status-pill status-active readonly-pill">Đang hoạt động</span>
-                                                                }
-                                                                else
-                                                                {
-                                                                    <span class="status-pill status-inactive readonly-pill">Đang khóa</span>
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div class="row g-3">
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Email</div>
-                                                                <div class="quick-value">
-                                                                    @(string.IsNullOrWhiteSpace(item.Email) ? "-" : item.Email)
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Số điện thoại</div>
-                                                                <div class="quick-value">
-                                                                    @(string.IsNullOrWhiteSpace(item.PhoneNumber) ? "-" : item.PhoneNumber)
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Vai trò</div>
-                                                                <div class="quick-value">@item.RoleName</div>
-                                                                <div class="text-muted small">@item.RoleCode</div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Chức vụ</div>
-                                                                <div class="quick-value">
-                                                                    @(string.IsNullOrWhiteSpace(item.PositionName) ? "-" : item.PositionName)
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Ngày vào làm</div>
-                                                                <div class="quick-value">
-                                                                    @(item.JoinedDate.HasValue
-                                                                        ? item.JoinedDate.Value.ToString("dd/MM/yyyy")
-                                                                        : "-")
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-6">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Ngày gán vào store</div>
-                                                                <div class="quick-value">
-                                                                    @item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="col-md-12">
-                                                            <div class="quick-info-box">
-                                                                <div class="quick-label">Ghi chú</div>
-                                                                <div class="quick-value">
-                                                                    @(string.IsNullOrWhiteSpace(item.Note) ? "-" : item.Note)
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div class="modal-footer border-0">
-                                                    <button type="button"
-                                                            class="btn btn-light border"
-                                                            data-bs-dismiss="modal">
-                                                        Đóng
-                                                    </button>
-
-                                                    @if (canUpdate)
-                                                    {
-                                                        <a asp-area="Admin"
-                                                               asp-controller="UserInStores"
-                                                               asp-action="Edit"
-                                                               asp-route-id="@item.Id"
-                                                               class="btn btn-primary">
-                                                            Sửa thông tin
-                                                        </a>
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td>@(string.IsNullOrWhiteSpace(item.Email) ? "-" : item.Email)</td>
-
-                                <td>
-                                    <div class="fw-semibold">@item.RoleName</div>
-                                    <div class="text-muted small">@item.RoleCode</div>
-                                </td>
-
-                                <td>
-                                    @if (canUpdate)
-                                    {
-                                        <button type="button"
-                                                class="status-pill @(item.IsActive ? "status-active" : "status-inactive")"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#toggleStatusModal_@item.Id"
-                                                title="Bấm để đổi trạng thái">
-                                            @(item.IsActive ? "Đang hoạt động" : "Đang khóa")
-                                        </button>
-                                        <div class="modal fade"
-                                             id="toggleStatusModal_@item.Id"
-                                             tabindex="-1"
-                                             aria-hidden="true">
-                                            <div class="modal-dialog modal-dialog-centered">
-                                                <div class="modal-content status-modal">
-                                                    <form asp-area="Admin"
-                                                          asp-controller="UserInStores"
-                                                          asp-action="ToggleActive"
-                                                          asp-route-id="@item.Id"
-                                                          method="post">
-                                                        @Html.AntiForgeryToken()
-
-                                                        <div class="modal-header border-0">
-                                                            <div>
-                                                                <h5 class="modal-title mb-1">
-                                                                    @(item.IsActive ? "Khóa nhân viên" : "Mở khóa nhân viên")
-                                                                </h5>
-                                                                <div class="text-muted small">
-                                                                    @item.FullName (@item.Username)
-                                                                </div>
-                                                            </div>
-
-                                                            <button type="button"
-                                                                    class="btn-close"
-                                                                    data-bs-dismiss="modal"></button>
-                                                        </div>
-
-                                                        <div class="modal-body">
-                                                            @if (item.IsActive)
-                                                            {
-                                                                <div class="alert alert-warning mb-0">
-                                                                    Sau khi khóa, nhân viên này sẽ không thể sử dụng quyền trong cửa hàng hiện tại.
-                                                                </div>
-                                                            }
-                                                            else
-                                                            {
-                                                                <div class="alert alert-success mb-0">
-                                                                    Sau khi mở khóa, nhân viên này có thể tiếp tục sử dụng quyền trong cửa hàng hiện tại.
-                                                                </div>
-                                                            }
-                                                        </div>
-
-                                                        <div class="modal-footer border-0">
-                                                            <button type="button"
-                                                                    class="btn btn-light border"
-                                                                    data-bs-dismiss="modal">
-                                                                Hủy
-                                                            </button>
-
-                                                            <button type="submit"
-                                                                    class="btn @(item.IsActive ? "btn-warning" : "btn-success")">
-                                                                @(item.IsActive ? "Xác nhận khóa" : "Xác nhận mở khóa")
-                                                            </button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        if (item.IsActive)
-                                        {
-                                            <span class="status-pill status-active">Đang hoạt động</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="status-pill status-inactive">Đang khóa</span>
-                                        }
-                                    }
-                                </td>
-
-                                <td>
-                                    @item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                </td>
-
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        @if (canUpdate)
-                                        {
-                                            <a asp-area="Admin"
-                                                   asp-controller="UserInStores"
-                                                   asp-action="Edit"
-                                                   asp-route-id="@item.Id"
-                                                   class="btn btn-sm btn-outline-primary">
-                                                Sửa
-                                            </a>
-
-                                            <button type="button"
-                                                    class="btn btn-sm btn-outline-dark"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#@modalId">
-                                                Reset mật khẩu
-                                            </button>
-                                        }
-                                    </div>
-
-                                    @if (canUpdate)
-                                    {
-                                        <div class="modal fade"
-                                             id="@modalId"
-                                             tabindex="-1"
-                                             aria-hidden="true">
-                                            <div class="modal-dialog modal-dialog-centered">
-                                                <div class="modal-content reset-pass-modal">
-                                                    <form asp-area="Admin"
-                                                          asp-controller="UserInStores"
-                                                          asp-action="ResetPassword"
-                                                          method="post">
-                                                        @Html.AntiForgeryToken()
-
-                                                        <input type="hidden" name="UserId" value="@item.UserId" />
-
-                                                        <div class="modal-header border-0">
-                                                            <div>
-                                                                <h5 class="modal-title mb-1">Reset mật khẩu</h5>
-                                                                <div class="text-muted small">
-                                                                    @item.FullName (@item.Username)
-                                                                </div>
-                                                            </div>
-
-                                                            <button type="button"
-                                                                    class="btn-close"
-                                                                    data-bs-dismiss="modal"
-                                                                    aria-label="Close"></button>
-                                                        </div>
-
-                                                        <div class="modal-body">
-                                                            <div class="mb-3">
-                                                                <label class="form-label fw-semibold">Mật khẩu mới</label>
-                                                                <input name="NewPassword"
-                                                                       type="password"
-                                                                       class="form-control"
-                                                                       minlength="6"
-                                                                       required
-                                                                       placeholder="Tối thiểu 6 ký tự" />
-                                                            </div>
-
-                                                            <div class="mb-3">
-                                                                <label class="form-label fw-semibold">Nhập lại mật khẩu</label>
-                                                                <input name="ConfirmPassword"
-                                                                       type="password"
-                                                                       class="form-control"
-                                                                       minlength="6"
-                                                                       required
-                                                                       placeholder="Nhập lại mật khẩu mới" />
-                                                            </div>
-
-                                                            <div class="alert alert-warning small mb-0">
-                                                                Sau khi đổi mật khẩu, nhân viên cần dùng mật khẩu mới để đăng nhập.
-                                                            </div>
-                                                        </div>
-
-                                                        <div class="modal-footer border-0">
-                                                            <button type="button"
-                                                                    class="btn btn-light border"
-                                                                    data-bs-dismiss="modal">
-                                                                Hủy
-                                                            </button>
-
-                                                            <button type="submit"
-                                                                    class="btn btn-primary">
-                                                                Lưu mật khẩu mới
-                                                            </button>
-                                                        </div>
-                                                    </form>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        @if (Model.Items.TotalPages > 1)
-        {
-            <div class="card-footer bg-white">
-                <nav>
-                    <ul class="pagination mb-0 flex-wrap">
-                        @{
-                            var currentPage = Model.Items.Page;
-                            var totalPages = Model.Items.TotalPages;
-                        }
-
-                        <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
-                            <a class="page-link"
-                                   asp-area="Admin"
-                                   asp-controller="UserInStores"
-                                   asp-action="Index"
-                                   asp-route-Page="@(currentPage - 1)"
-                                   asp-route-PageSize="@Model.Query.PageSize"
-                                   asp-route-Keyword="@Model.Query.Keyword"
-                                   asp-route-RoleId="@Model.Query.RoleId"
-                                   asp-route-IsActive="@Model.Query.IsActive">
-                                Trước
-                            </a>
-                        </li>
-
-                        @for (int p = 1; p <= totalPages; p++)
-                        {
-                            <li class="page-item @(p == currentPage ? "active" : "")">
-                                <a class="page-link"
-                                       asp-area="Admin"
-                                       asp-controller="UserInStores"
-                                       asp-action="Index"
-                                       asp-route-Page="@p"
-                                       asp-route-PageSize="@Model.Query.PageSize"
-                                       asp-route-Keyword="@Model.Query.Keyword"
-                                       asp-route-RoleId="@Model.Query.RoleId"
-                                       asp-route-IsActive="@Model.Query.IsActive">
-                                    @p
-                                </a>
-                            </li>
-                        }
-
-                        <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
-                            <a class="page-link"
-                                   asp-area="Admin"
-                                   asp-controller="UserInStores"
-                                   asp-action="Index"
-                                   asp-route-Page="@(currentPage + 1)"
-                                   asp-route-PageSize="@Model.Query.PageSize"
-                                   asp-route-Keyword="@Model.Query.Keyword"
-                                   asp-route-RoleId="@Model.Query.RoleId"
-                                   asp-route-IsActive="@Model.Query.IsActive">
-                                Sau
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
+    <div class="modal fade employee-index-security-modal" id="employeeToggleModal" tabindex="-1" aria-labelledby="employeeToggleTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <form id="employeeToggleForm" asp-area="Admin" asp-controller="UserInStores" asp-action="ToggleActive" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" id="employeeToggleMappingId" />
+                    <div class="modal-header border-0"><div><h5 class="modal-title" id="employeeToggleTitle">Cập nhật trạng thái</h5><small class="text-muted" id="employeeToggleIdentity">—</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body"><div class="alert mb-0" id="employeeToggleMessage"></div></div>
+                    <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="submit" class="btn" id="employeeToggleConfirm">Xác nhận</button></div>
+                </form>
             </div>
-        }
+        </div>
     </div>
 </div>
 
-<style>
-    .userinstore-page .dashboard-card,
-    .userinstore-page .filter-card,
-    .userinstore-page .table-card {
-        border-radius: 18px;
-    }
-
-    .employee-table thead th {
-        background: #e5e7eb;
-        color: #111827;
-        text-transform: uppercase;
-        font-size: 13px;
-        font-weight: 700;
-        border-bottom: 0;
-        padding: 16px 20px;
-    }
-
-    .employee-table tbody td {
-        padding: 15px 20px;
-        vertical-align: middle;
-    }
-
-    .status-pill {
-        border: 0;
-        border-radius: 999px;
-        padding: 8px 16px;
-        font-size: 13px;
-        font-weight: 700;
-        min-width: 132px;
-        cursor: pointer;
-        transition: 0.15s ease;
-    }
-
-        .status-pill:hover {
-            transform: translateY(-1px);
-            filter: brightness(0.98);
-        }
-
-    .status-active {
-        color: #22c55e;
-        background: #dcfce7;
-    }
-
-    .status-inactive {
-        color: #ef4444;
-        background: #fee2e2;
-    }
-
-    .reset-pass-modal {
-        border: 0;
-        border-radius: 18px;
-        overflow: hidden;
-    }
-
-        .reset-pass-modal .form-control {
-            min-height: 44px;
-            border-radius: 10px;
-        }
-
-    .status-modal {
-        border: 0;
-        border-radius: 18px;
-        overflow: hidden;
-    }
-
-    .employee-name-btn {
-        border: 0;
-        background: transparent;
-        padding: 0;
-        text-align: left;
-        display: inline-flex;
-        flex-direction: column;
-        cursor: pointer;
-    }
-
-        .employee-name-btn:hover .employee-fullname {
-            color: #4f46e5;
-            text-decoration: underline;
-        }
-
-    .employee-fullname {
-        font-weight: 700;
-        color: #374151;
-    }
-
-    .employee-username {
-        color: #6b7280;
-        font-size: 13px;
-    }
-
-    .employee-quick-modal {
-        border: 0;
-        border-radius: 20px;
-        overflow: hidden;
-    }
-
-    .employee-profile-head {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 18px;
-        border-radius: 18px;
-        background: #f8fafc;
-    }
-
-    .employee-avatar {
-        width: 58px;
-        height: 58px;
-        border-radius: 18px;
-        background: #4f46e5;
-        color: #fff;
-        font-size: 26px;
-        font-weight: 800;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .employee-profile-name {
-        font-size: 22px;
-        font-weight: 800;
-        color: #111827;
-    }
-
-    .quick-info-box {
-        border: 1px solid #e5e7eb;
-        border-radius: 16px;
-        padding: 14px 16px;
-        background: #fff;
-        min-height: 78px;
-    }
-
-    .quick-label {
-        color: #6b7280;
-        font-size: 13px;
-        margin-bottom: 6px;
-    }
-
-    .quick-value {
-        font-weight: 700;
-        color: #111827;
-    }
-
-    .readonly-pill {
-        cursor: default;
-        display: inline-flex;
-        min-width: auto;
-    }
-</style>
+@section PageScripts {
+    <script src="~/Admin/js/employee-index.js" asp-append-version="true"></script>
+}

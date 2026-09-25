@@ -342,8 +342,12 @@ public class InventoryReservationService : IInventoryReservationService
                 if (!warehouse.AllowNegativeInventory &&
                     balance.AvailableQty < reserveQty)
                 {
-                    throw new InvalidOperationException(
-                        $"Không đủ tồn khả dụng để giữ hàng. SP: {line.ItemName}, khả dụng: {balance.AvailableQty:0.###}, cần giữ: {reserveQty:0.###}.");
+                    throw BuildLegacyHoldInsufficientInventoryError(
+                        order,
+                        line,
+                        warehouse,
+                        balance.AvailableQty,
+                        reserveQty);
                 }
 
                 balance.ReservedQty += reserveQty;
@@ -567,6 +571,68 @@ public class InventoryReservationService : IInventoryReservationService
         // Reservation luôn tính theo đơn vị gốc.
         var reserveQty = line.BaseQuantity > 0 ? line.BaseQuantity : line.Quantity;
         return reserveQty < 0 ? 0 : reserveQty;
+    }
+
+    private static PosAppException BuildLegacyHoldInsufficientInventoryError(
+        Order order,
+        OrderLine line,
+        Warehouse warehouse,
+        decimal availableBaseQty,
+        decimal requiredBaseQty)
+    {
+        var itemName = CleanText(
+            line.ItemName,
+            $"Variant #{line.VariantId}");
+        var warehouseName = CleanText(
+            warehouse.Name,
+            $"Kho #{warehouse.Id}");
+        var multiplier = line.Multiplier;
+        var sellingUnitName = CleanText(
+            line.SellingUnitName,
+            CleanText(line.UnitName, "đơn vị bán"));
+        var baseUnitName = string.IsNullOrWhiteSpace(line.BaseUnitName)
+            ? multiplier == 1m
+                ? sellingUnitName
+                : "đơn vị gốc"
+            : line.BaseUnitName.Trim();
+        const string actionHint =
+            "Hãy giảm số lượng hoặc kiểm tra tồn kho rồi thử lại.";
+
+        var hasUnitConversion =
+            line.Quantity > 0 &&
+            line.BaseQuantity > 0 &&
+            multiplier != 1m;
+
+        var quantityDetail = hasUnitConversion
+            ? $"Đơn đang giữ: {line.Quantity:0.###} {sellingUnitName}; " +
+              $"cần giữ theo đơn vị gốc: {requiredBaseQty:0.###} {baseUnitName}. " +
+              $"Kho hiện khả dụng {availableBaseQty:0.###} {baseUnitName}."
+            : $"Khả dụng: {availableBaseQty:0.###} {baseUnitName}; " +
+              $"cần giữ: {requiredBaseQty:0.###} {baseUnitName}.";
+
+        var message =
+            $"Không thể giữ đơn vì {itemName} không đủ tồn khả dụng tại {warehouseName}. " +
+            $"{quantityDetail} {actionHint}";
+
+        return PosAppException.StateConflict(
+            PosErrorCodes.CartHoldInsufficientInventory,
+            message,
+            actionHint,
+            new
+            {
+                orderId = order.Id,
+                orderLineId = line.Id,
+                variantId = line.VariantId,
+                itemName,
+                warehouseId = warehouse.Id,
+                warehouseName,
+                availableBaseQty,
+                requiredBaseQty,
+                baseUnitName,
+                sellingQuantity = line.Quantity,
+                sellingUnitName,
+                multiplier
+            });
     }
 
     private static string BuildReserveNote(

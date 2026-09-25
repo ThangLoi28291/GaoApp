@@ -12,6 +12,9 @@ public class InvoiceDetailConfiguration : IEntityTypeConfiguration<InvoiceDetail
         b.ToTable("InvoiceDetails");
 
         b.HasKey(x => x.Id);
+        b.Property(x => x.LegacyUnitFactor).HasPrecision(18, 4);
+        b.Property(x => x.LegacyImportedHash).HasColumnType("binary(32)");
+        b.HasIndex(x => new { x.StoreId, x.LegacySourceId }).IsUnique().HasFilter("[LegacySourceId] IS NOT NULL");
 
         b.Property(x => x.StoreId)
             .IsRequired();

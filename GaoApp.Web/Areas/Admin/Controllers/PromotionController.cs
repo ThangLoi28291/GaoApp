@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Promotions;
 using GaoApp.Application.Interfaces.Services.Promotions;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Authorize]
+[Authorize(Policy = PermissionCodes.Catalog.Promotion.View)]
 public sealed class PromotionController : BaseAdminController
 {
     private readonly IPromotionAdminService _service;
@@ -124,6 +126,7 @@ public sealed class PromotionController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Promotion.Manage)]
     public async Task<IActionResult> Save([FromBody] SavePromotionRequest request, CancellationToken ct = default)
     {
         if (request == null)
@@ -172,6 +175,7 @@ public sealed class PromotionController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Promotion.Manage)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         var result = await _service.ToggleStatusAsync(CurrentStoreId, id, userId: null, ct);
@@ -187,6 +191,7 @@ public sealed class PromotionController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Promotion.Manage)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         var result = await _service.SoftDeleteAsync(CurrentStoreId, id, userId: null, ct);
@@ -202,6 +207,7 @@ public sealed class PromotionController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Promotion.Manage)]
     public async Task<IActionResult> Duplicate(int id, CancellationToken ct = default)
     {
         var result = await _service.DuplicateAsync(CurrentStoreId, id, userId: null, ct);

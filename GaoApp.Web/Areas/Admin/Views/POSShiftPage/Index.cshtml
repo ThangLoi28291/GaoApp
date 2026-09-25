@@ -27,13 +27,25 @@
         <div id="posErrorBannerHint" class="small mt-1"></div>
     </div>
 
-    <div class="shift-hero-card">
+    <div class="shift-hero-card shift-command-bar">
         <div class="shift-hero-card__content">
-            <div class="shift-hero-card__meta">
-                <div class="shift-hero-card__title">Điều hành ca POS</div>
+            <div class="shift-command-identity">
+                <div id="shiftStatusBadge" class="shift-status-pill loading" aria-live="polite">
+                    <i class="bx bx-loader-alt"></i>
+                    <span>Đang tải...</span>
+                </div>
+
+                <div class="shift-command-copy">
+                    <div class="shift-hero-card__title">Điều hành ca POS</div>
+                    <div class="shift-command-meta" aria-label="Thông tin ca hiện tại">
+                        <span>Mã ca <strong id="shiftId">-</strong></span>
+                        <span>Mã hệ thống <strong id="shiftCode">-</strong></span>
+                        <span>Mở lúc <strong id="openedAt">-</strong></span>
+                    </div>
+                </div>
             </div>
 
-            <div class="shift-action-group">
+            <div class="shift-action-group" aria-label="Tác vụ ca POS">
                 <button id="btnShowOpenModal" type="button" class="btn btn-primary shift-toolbar-btn" style="display:none;">
                     <i class="bx bx-play-circle"></i>
                     <span>Mở ca</span>
@@ -67,27 +79,6 @@
     </div>
 
     <div id="openShiftSection" style="display:none;">
-        <div class="shift-overview-grid">
-            <div class="shift-overview-card">
-                <div class="shift-overview-card__label">Mã ca</div>
-                <div id="shiftId" class="shift-overview-card__value">-</div>
-            </div>
-
-            <div class="shift-overview-card">
-                <div class="shift-overview-card__label">Mã ca hệ thống</div>
-                <div id="shiftCode" class="shift-overview-card__value">-</div>
-            </div>
-
-            <div class="shift-overview-card">
-                <div class="shift-overview-card__label">Mở lúc</div>
-                <div id="openedAt" class="shift-overview-card__value">-</div>
-            </div>
-
-            <div class="shift-overview-card shift-overview-card--accent">
-                <div class="shift-overview-card__label">Tiền mặt dự kiến cuối ca</div>
-                <div id="closingCashExpected" class="shift-overview-card__value money">0</div>
-            </div>
-        </div>
 
         <div class="shift-tabs-nav">
             <button type="button" class="shift-tab-btn active" data-shift-tab="summaryTab">Thông tin ca hiện tại</button>
@@ -95,81 +86,104 @@
         </div>
 
         <div id="summaryTab" class="shift-tab-pane active">
-            <div class="card shift-card">
-                <div class="card-body">
-                    <div class="shift-section-head">
+            <div class="shift-summary-layout">
+                <section class="shift-cash-position-card" aria-labelledby="shiftCashPositionTitle">
+                    <div class="shift-cash-position-head">
                         <div>
-                            <h4 class="shift-section-title">Tổng quan ca hiện tại</h4>
-                            
+                            <div class="shift-section-eyebrow">Vị trí tiền mặt trong ca</div>
+                            <h4 id="shiftCashPositionTitle" class="shift-section-title">Dòng tiền quầy thu ngân</h4>
+                            <div class="shift-cash-position-sub">Số liệu lấy trực tiếp từ tổng hợp ca hiện tại.</div>
+                        </div>
+                        <i class="bx bx-wallet-alt shift-cash-position-icon" aria-hidden="true"></i>
+                    </div>
+
+                    <div class="shift-cash-flow" aria-label="Thành phần tiền mặt cuối ca">
+                        <div class="shift-cash-flow-row opening">
+                            <div class="shift-cash-flow-label">
+                                <span class="shift-cash-flow-sign">•</span>
+                                <span>Tiền đầu ca</span>
+                            </div>
+                            <div id="openingCash" class="shift-cash-flow-value money">0</div>
+                        </div>
+
+                        <div class="shift-cash-flow-row positive">
+                            <div class="shift-cash-flow-label">
+                                <span class="shift-cash-flow-sign">+</span>
+                                <span>Doanh thu tiền mặt</span>
+                            </div>
+                            <div id="cashSalesTotal" class="shift-cash-flow-value money">0</div>
+                        </div>
+
+                        <div class="shift-cash-flow-row positive">
+                            <div class="shift-cash-flow-label">
+                                <span class="shift-cash-flow-sign">+</span>
+                                <span>Thu thêm tiền mặt</span>
+                            </div>
+                            <div id="cashInTotal" class="shift-cash-flow-value positive">0</div>
+                        </div>
+
+                        <div class="shift-cash-flow-row negative">
+                            <div class="shift-cash-flow-label">
+                                <span class="shift-cash-flow-sign">−</span>
+                                <span>Hoàn tiền mặt</span>
+                            </div>
+                            <div id="cashRefundTotal" class="shift-cash-flow-value negative">0</div>
+                        </div>
+
+                        <div class="shift-cash-flow-row negative">
+                            <div class="shift-cash-flow-label">
+                                <span class="shift-cash-flow-sign">−</span>
+                                <span>Chi tiền mặt</span>
+                            </div>
+                            <div id="cashOutTotal" class="shift-cash-flow-value negative">0</div>
                         </div>
                     </div>
 
-                    <div class="shift-stat-grid shift-stat-grid--primary">
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Tiền đầu ca</div>
-                            <div id="openingCash" class="shift-stat-value money">0</div>
+                    <div class="shift-cash-position-total">
+                        <div>
+                            <div class="shift-cash-position-total__label">Tiền mặt dự kiến cuối ca</div>
+                            <div class="shift-cash-position-total__hint">Số liệu do hệ thống tổng hợp, dùng để đối soát khi đóng ca.</div>
                         </div>
+                        <div id="closingCashExpected" class="shift-cash-position-total__value money">0</div>
+                    </div>
+                </section>
 
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Doanh thu tiền mặt</div>
-                            <div id="cashSalesTotal" class="shift-stat-value money">0</div>
-                        </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Doanh thu không tiền mặt</div>
-                            <div id="nonCashSalesTotal" class="shift-stat-value">0</div>
-                        </div>
-
-                        <div class="shift-stat-box accent">
-                            <div class="shift-stat-label">Tiền mặt dự kiến cuối ca</div>
-                            <div id="closingCashExpectedMirror" class="shift-stat-value money">0</div>
+                <aside class="shift-secondary-card" aria-labelledby="shiftSecondaryTitle">
+                    <div class="shift-secondary-head">
+                        <div>
+                            <div class="shift-section-eyebrow">Thông tin bổ sung</div>
+                            <h4 id="shiftSecondaryTitle" class="shift-section-title">Chỉ số bổ sung</h4>
                         </div>
                     </div>
 
-                    <div class="shift-section-divider"></div>
-
-                    <div class="shift-stat-grid shift-stat-grid--secondary">
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Hoàn tiền mặt</div>
-                            <div id="cashRefundTotal" class="shift-stat-value negative">0</div>
+                    <div class="shift-secondary-grid">
+                        <div class="shift-secondary-item">
+                            <span>Doanh thu không tiền mặt</span>
+                            <strong id="nonCashSalesTotal">0</strong>
                         </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Hoàn không tiền mặt</div>
-                            <div id="nonCashRefundTotal" class="shift-stat-value negative">0</div>
+                        <div class="shift-secondary-item">
+                            <span>Hoàn không tiền mặt</span>
+                            <strong id="nonCashRefundTotal" class="negative">0</strong>
                         </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Tổng tiền hoàn</div>
-                            <div id="refundTotalShift" class="shift-stat-value negative">0</div>
+                        <div class="shift-secondary-item">
+                            <span>Tổng tiền hoàn</span>
+                            <strong id="refundTotalShift" class="negative">0</strong>
                         </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Số giao dịch hoàn</div>
-                            <div id="refundCountShift" class="shift-stat-value">0</div>
+                        <div class="shift-secondary-item">
+                            <span>Số giao dịch hoàn</span>
+                            <strong id="refundCountShift">0</strong>
                         </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Số đơn void</div>
-                            <div id="voidCountShift" class="shift-stat-value">0</div>
-                        </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Thu thêm tiền mặt</div>
-                            <div id="cashInTotal" class="shift-stat-value positive">0</div>
-                        </div>
-
-                        <div class="shift-stat-box">
-                            <div class="shift-stat-label">Chi tiền mặt</div>
-                            <div id="cashOutTotal" class="shift-stat-value negative">0</div>
+                        <div class="shift-secondary-item">
+                            <span>Số đơn void</span>
+                            <strong id="voidCountShift">0</strong>
                         </div>
                     </div>
 
-                    <div class="shift-note-box mt-3">
+                    <div class="shift-note-box shift-note-box--compact">
                         <div class="shift-note-label">Ghi chú mở ca</div>
                         <div id="openNote" class="shift-note-text">-</div>
                     </div>
-                </div>
+                </aside>
             </div>
         </div>
 
@@ -458,44 +472,67 @@
     </div>
 </div>
 <!-- Cash Transaction Modal -->
-<div class="modal fade shift-modal" id="cashTxnModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade shift-modal shift-cash-txn-modal" id="cashTxnModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
                     <h5 class="modal-title">Thu / Chi tiền mặt</h5>
-                    <div class="shift-modal-subtitle">Ghi nhận các khoản phát sinh ngoài đơn bán trong ca</div>
+                    <div class="shift-modal-subtitle">Ghi nhận khoản phát sinh ngoài đơn bán trong ca hiện tại.</div>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <div class="modal-body">
-                <div class="mb-3">
+                <div class="shift-cash-type-block">
                     <label class="shift-form-label">Loại giao dịch</label>
-                    <select id="cashTxnType" class="form-select">
+                    <div class="shift-cash-type-segment" role="group" aria-label="Loại giao dịch tiền mặt">
+                        <button type="button"
+                                class="shift-cash-type-btn active"
+                                data-cash-txn-type="1"
+                                aria-pressed="true">
+                            <i class="bx bx-plus-circle"></i>
+                            <span>Thu tiền</span>
+                        </button>
+                        <button type="button"
+                                class="shift-cash-type-btn"
+                                data-cash-txn-type="2"
+                                aria-pressed="false">
+                            <i class="bx bx-minus-circle"></i>
+                            <span>Chi tiền</span>
+                        </button>
+                    </div>
+
+                    <select id="cashTxnType" class="form-select visually-hidden" tabindex="-1" aria-label="Giá trị loại giao dịch">
                         <option value="1">Thu tiền mặt</option>
                         <option value="2">Chi tiền mặt</option>
                     </select>
                 </div>
 
-                <div class="mb-3">
-                    <label class="shift-form-label">Số tiền</label>
-                    <input id="cashTxnAmount"
-                           type="number"
-                           step="0.01"
-                           class="form-control"
-                           value="0" />
+                <div class="shift-cash-amount-block">
+                    <label class="shift-form-label" for="cashTxnAmount">Số tiền</label>
+                    <div class="shift-cash-amount-wrap">
+                        <input id="cashTxnAmount"
+                               type="number"
+                               step="0.01"
+                               inputmode="decimal"
+                               class="form-control shift-cash-amount-input"
+                               value="0" />
+                        <span class="shift-cash-amount-currency">đ</span>
+                    </div>
                 </div>
 
                 <div class="mb-3">
-                    <label class="shift-form-label">Lý do</label>
+                    <label class="shift-form-label" for="cashTxnReason">
+                        Lý do <span class="shift-required-badge">Bắt buộc</span>
+                    </label>
                     <input id="cashTxnReason"
                            class="form-control"
                            placeholder="Ví dụ: bổ sung tiền lẻ, mua vật tư, thu hoàn ứng..." />
                 </div>
 
                 <div class="mb-0">
-                    <label class="shift-form-label">Ghi chú</label>
+                    <label class="shift-form-label" for="cashTxnNote">Ghi chú</label>
                     <textarea id="cashTxnNote"
                               class="form-control"
                               rows="4"
@@ -503,9 +540,15 @@
                 </div>
             </div>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">Hủy</button>
-                <button id="btnAddCashTxn" type="button" class="btn btn-primary shift-modal-btn">OK - Ghi nhận</button>
+            <div class="modal-footer shift-cash-txn-footer">
+                <div class="shift-keyboard-hint">
+                    <kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd>
+                    <span>để ghi nhận</span>
+                </div>
+                <div class="shift-cash-txn-actions">
+                    <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">Hủy</button>
+                    <button id="btnAddCashTxn" type="button" class="btn btn-primary shift-modal-btn">OK - Ghi nhận</button>
+                </div>
             </div>
         </div>
     </div>
@@ -716,19 +759,4 @@
 @section PageScripts {
     <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.shift.page.js" asp-append-version="true"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const source = document.getElementById('closingCashExpected');
-            const mirror = document.getElementById('closingCashExpectedMirror');
-            if (!source || !mirror || !window.MutationObserver) return;
-
-            mirror.textContent = source.textContent || '0';
-
-            const ob = new MutationObserver(function () {
-                mirror.textContent = source.textContent || '0';
-            });
-
-            ob.observe(source, { childList: true, subtree: true, characterData: true });
-        });
-    </script>
 }

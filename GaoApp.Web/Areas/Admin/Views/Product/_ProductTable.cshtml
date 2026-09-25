@@ -1,447 +1,377 @@
-﻿@using GaoApp.Web.Areas.Admin.ViewModels.Products
+@using GaoApp.Web.Areas.Admin.ViewModels.Products
 @model ProductIndexVM
 
-<style>
-    .product-table-wrap {
-        padding: 0 22px 22px;
-    }
-
-    .product-table {
-        margin-bottom: 0;
-    }
-
-        .product-table thead th {
-            background: #f8fafc;
-            color: #475569;
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            font-weight: 900;
-            border-bottom: 1px solid #e5e7eb;
-            padding: 14px 12px;
-            white-space: nowrap;
-        }
-
-        .product-table tbody td {
-            padding: 16px 12px;
-            vertical-align: middle;
-            border-bottom: 1px solid #edf2f7;
-        }
-
-    .product-row:hover {
-        background: #f8fafc;
-    }
-
-    .product-id {
-        font-weight: 900;
-        color: #64748b;
-    }
-
-    .product-thumb {
-        width: 58px;
-        height: 58px;
-        border-radius: 16px;
-        overflow: hidden;
-        background: #f1f5f9;
-        border: 1px solid #e2e8f0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-        .product-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-    .product-thumb-empty {
-        width: 58px;
-        height: 58px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #f8fafc, #e2e8f0);
-        color: #94a3b8;
-        font-size: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px dashed #cbd5e1;
-    }
-
-    .product-name {
-        font-weight: 900;
-        color: #1f2937;
-        line-height: 1.35;
-    }
-
-    .product-sub {
-        margin-top: 4px;
-        color: #64748b;
-        font-size: 13px;
-        font-weight: 700;
-    }
-
-    .product-pending-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        margin-top: 7px;
-        padding: 4px 8px;
-        border-radius: 999px;
-        background: #fff7ed;
-        color: #c2410c;
-        border: 1px solid #fed7aa;
-        font-size: 11px;
-        font-weight: 900;
-    }
-
-    .product-code-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 9px;
-        border-radius: 999px;
-        background: #eef2ff;
-        color: #4f46e5;
-        font-size: 12px;
-        font-weight: 900;
-        max-width: 210px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .product-category {
-        font-weight: 800;
-        color: #334155;
-    }
-
-    .product-unit {
-        display: inline-flex;
-        min-width: 46px;
-        justify-content: center;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: #f1f5f9;
-        color: #475569;
-        font-weight: 900;
-    }
-
-    .product-price {
-        font-weight: 900;
-        color: #0f172a;
-        font-size: 16px;
-    }
-
-    .product-status {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 7px 12px;
-        border-radius: 999px;
-        font-weight: 900;
-        font-size: 12px;
-        cursor: pointer;
-        user-select: none;
-    }
-
-        .product-status.is-active {
-            background: #dcfce7;
-            color: #15803d;
-        }
-
-        .product-status.is-inactive {
-            background: #e5e7eb;
-            color: #475569;
-        }
-
-    .product-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 6px;
-        flex-wrap: wrap;
-    }
-
-        .product-actions .btn {
-            border-radius: 10px;
-            font-weight: 800;
-        }
-
-    .product-empty-state {
-        padding: 58px 20px;
-        text-align: center;
-    }
-
-    .product-empty-icon {
-        width: 76px;
-        height: 76px;
-        border-radius: 24px;
-        margin: 0 auto 16px;
-        background: #f1f5f9;
-        color: #94a3b8;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 34px;
-    }
-
-    .product-empty-title {
-        font-size: 20px;
-        font-weight: 900;
-        color: #334155;
-    }
-
-    .product-empty-text {
-        color: #64748b;
-        font-weight: 600;
-        margin-top: 6px;
-    }
-
-    .product-pager {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        padding-top: 18px;
-    }
-
-    .product-pager-info {
-        color: #64748b;
-        font-weight: 700;
-    }
-
-    .product-pager .page-link {
-        border-radius: 10px;
-        margin: 0 2px;
-        font-weight: 900;
-    }
-
-    @@media (max-width: 992px) {
-        .product-table-wrap {
-            padding: 0 12px 16px;
-        }
-
-        .product-table {
-            min-width: 980px;
-        }
-
-        .product-pager {
-            align-items: stretch;
-            flex-direction: column;
-        }
-    }
-</style>
-
-@if (Model.Paged.Items == null || !Model.Paged.Items.Any())
-{
-    <div class="product-empty-state" data-current-page="@Model.Paged.Page">
-        <div class="product-empty-icon">
-            <i class="bx bx-package"></i>
-        </div>
-        <div class="product-empty-title">Không có sản phẩm</div>
-        <div class="product-empty-text">
-            Thử đổi từ khóa tìm kiếm hoặc tạo sản phẩm mới.
-        </div>
-    </div>
+@{
+    var items = Model.Paged.Items;
+    var totalItems = Model.Paged.TotalItems;
+    var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
+    var currentPage = Model.Page <= 0 ? 1 : Model.Page;
+    var totalPages = (int)Math.Ceiling((double)totalItems / pageSize);
+    var firstItem = totalItems == 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+    var lastItem = totalItems == 0 ? 0 : Math.Min(currentPage * pageSize, totalItems);
+    var returnUrl = Url.Action(
+        "Index",
+        "Product",
+        new
+        {
+            area = "Admin",
+            search = Model.SearchString,
+            categoryId = Model.CategoryId,
+            lifecycle = Model.Lifecycle,
+            page = currentPage,
+            pageSize
+        }) ?? "/Admin/Product";
 }
-else
-{
-    <div class="product-table-wrap">
-        <div class="table-responsive">
-            <table class="table align-middle product-table">
-                <thead>
-                    <tr>
-                        <th style="width:80px;">Mã</th>
-                        <th style="width:84px;">Ảnh</th>
-                        <th>Sản phẩm</th>
-                        <th style="width:230px;">Barcode / Alias</th>
-                        <th style="width:150px;">Danh mục</th>
-                        <th style="width:110px;" class="text-center">Đơn vị</th>
-                        <th style="width:130px;" class="text-end">Giá</th>
-                        <th style="width:130px;" class="text-center">Trạng thái</th>
-                        <th style="width:250px;" class="text-end">Thao tác</th>
-                    </tr>
-                </thead>
 
-                <tbody>
-                    @foreach (var x in Model.Paged.Items)
-                    {
-                        var returnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+<div data-product-result
+     data-current-page="@currentPage"
+     data-total-pages="@totalPages"
+     data-total-products="@Model.TotalProductCount"
+     data-pos-allowed-products="@Model.PosAllowedProductCount"
+     data-not-for-pos-products="@Model.NotForPosProductCount"
+     data-inactive-products="@Model.InactiveProductCount">
 
-                        <tr class="product-row">
-                            <td>
-                                <div class="product-id">#@x.Id</div>
-                            </td>
+    <section class="gds-list-panel" aria-label="Danh sách sản phẩm">
+        @if (items == null || !items.Any())
+        {
+            <div class="gds-empty">
+                <div class="gds-empty__icon" aria-hidden="true">
+                    <i class="bx bx-package"></i>
+                </div>
+                <div class="fw-semibold mb-1">Chưa có sản phẩm phù hợp</div>
+                <div class="gds-empty__copy">
+                    Thử thay đổi từ khóa, danh mục hoặc trạng thái sẵn sàng bán.
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="gds-desktop-list">
+                <div class="table-responsive">
+                    <table class="table align-middle gds-table">
+                        <thead>
+                            <tr>
+                                <th>Sản phẩm</th>
+                                <th>Danh mục</th>
+                                <th>Đơn vị &amp; đơn giá</th>
+                                <th class="text-center">Biến thể</th>
+                                <th>Trạng thái</th>
+                                <th class="text-end">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var product in items)
+                            {
+                                var stateLabel = !product.IsActive
+                                    ? "Ngừng hoạt động"
+                                    : product.IsSellable
+                                        ? "Được phép bán POS"
+                                        : "Chưa bán tại POS";
+                                var stateClass = !product.IsActive
+                                    ? "is-neutral"
+                                    : product.IsSellable
+                                        ? "is-success"
+                                        : "is-warning";
+                                var detailUrl = Url.Action(
+                                    "Detail",
+                                    "Product",
+                                    new { area = "Admin", id = product.Id }) ?? $"/Admin/Product/Detail/{product.Id}";
+                                var priceLabel = $"{product.BasePrice:n0} ₫";
 
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(x.PrimaryImageUrl))
-                                {
-                                    <div class="product-thumb">
-                                        <img src="@x.PrimaryImageUrl"
-                                             alt="@x.Name"
-                                             loading="lazy"
-                                             onerror="this.closest('.product-thumb').outerHTML='<div class=&quot;product-thumb-empty&quot;><i class=&quot;bx bx-image&quot;></i></div>';" />
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="product-thumb-empty">
-                                        <i class="bx bx-image"></i>
-                                    </div>
-                                }
-                            </td>
+                                <tr data-product-row
+                                    tabindex="0"
+                                    title="Nhấp đúp để xem nhanh"
+                                    data-quick-name="@product.Name"
+                                    data-quick-alias="@product.Alias"
+                                    data-quick-brand="@product.BrandName"
+                                    data-quick-category="@product.CategoryName"
+                                    data-quick-supplier="@product.SupplierName"
+                                    data-quick-tax="@product.TaxName"
+                                    data-quick-unit="@product.BaseUnitName"
+                                    data-quick-price="@priceLabel"
+                                    data-quick-variants="@product.VariantCount"
+                                    data-quick-state="@stateLabel"
+                                    data-quick-state-class="@stateClass"
+                                    data-quick-image="@product.PrimaryImageUrl"
+                                    data-quick-detail-url="@detailUrl">
+                                    <td>
+                                        <div class="d-flex align-items-center gap-3">
+                                            <button type="button"
+                                                    class="avatar avatar-lg rounded bg-label-secondary flex-shrink-0 overflow-hidden border-0 p-0 js-product-image js-quick-view"
+                                                    aria-label="Phóng ảnh và xem nhanh sản phẩm @product.Name"
+                                                    title="Phóng ảnh và xem nhanh">
+                                                @if (!string.IsNullOrWhiteSpace(product.PrimaryImageUrl))
+                                                {
+                                                    <img src="@product.PrimaryImageUrl"
+                                                         alt="Ảnh sản phẩm @product.Name"
+                                                         class="w-100 h-100 rounded"
+                                                         style="object-fit: cover;"
+                                                         loading="lazy" />
+                                                }
+                                                else
+                                                {
+                                                    <i class="bx bx-image fs-4" aria-hidden="true"></i>
+                                                }
+                                            </button>
 
-                            <td>
-                                <div class="product-name">@x.Name</div>
-                                <div class="product-sub">
-                                    ID sản phẩm: @x.Id
-                                </div>
-                                @if (!x.IsSellable)
-                                {
-                                    <span class="product-pending-badge"><i class="bx bx-time-five"></i>Chờ hoàn thiện · chưa bán tại POS</span>
-                                }
-                            </td>
+                                            <div class="min-w-0">
+                                                <div class="fs-6 fw-bold text-dark lh-sm">@product.Name</div>
+                                                <div class="gds-code mt-1 text-truncate">@product.Alias</div>
+                                                @if (!string.IsNullOrWhiteSpace(product.BrandName))
+                                                {
+                                                    <div class="gds-table__secondary text-truncate mt-1">
+                                                        <i class="bx bx-purchase-tag-alt me-1" aria-hidden="true"></i>@product.BrandName
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="fw-semibold text-dark">
+                                            @(string.IsNullOrWhiteSpace(product.CategoryName) ? "—" : product.CategoryName)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold text-dark">
+                                            @(string.IsNullOrWhiteSpace(product.BaseUnitName) ? "—" : product.BaseUnitName)
+                                        </div>
+                                        <div class="fw-bold text-primary fs-6 mt-1">
+                                            Đơn giá: @priceLabel
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="gds-code">@product.VariantCount</span>
+                                    </td>
+                                    <td>
+                                        <button type="button"
+                                                class="gds-status gds-status--dot gds-status-button js-toggle-status @stateClass"
+                                                data-id="@product.Id"
+                                                data-name="@product.Name"
+                                                data-status="@product.IsActive.ToString().ToLowerInvariant()"
+                                                aria-label="@(product.IsActive ? $"Ngừng hoạt động sản phẩm {product.Name}" : $"Kích hoạt lại sản phẩm {product.Name}")"
+                                                title="@(product.IsActive ? "Bấm để ngừng hoạt động" : "Bấm để kích hoạt lại")"
+                                                data-bs-toggle="tooltip"
+                                                data-bs-placement="top">
+                                            @stateLabel
+                                        </button>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="gds-row-actions justify-content-end">
+                                            <button type="button"
+                                               class="gds-icon-button gds-action-button js-quick-view"
+                                               aria-label="Xem nhanh sản phẩm @product.Name"
+                                               title="Xem nhanh"
+                                               data-bs-toggle="tooltip"
+                                               data-bs-placement="top">
+                                                <i class="bx bx-show" aria-hidden="true"></i>
+                                            </button>
 
-                            <td>
-                                @if (!string.IsNullOrWhiteSpace(x.Alias))
-                                {
-                                    <span class="product-code-chip" title="@x.Alias">
-                                        <i class="bx bx-barcode"></i>
-                                        @x.Alias
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted fw-bold">—</span>
-                                }
-                            </td>
+                                            <a asp-area="Admin"
+                                               asp-controller="Product"
+                                               asp-action="Edit"
+                                               asp-route-id="@product.Id"
+                                               asp-route-returnUrl="@returnUrl"
+                                               class="gds-icon-button gds-action-button"
+                                               aria-label="Mở sản phẩm @product.Name"
+                                               title="Mở sản phẩm"
+                                               data-bs-toggle="tooltip"
+                                               data-bs-placement="top">
+                                                <i class="bx bx-edit" aria-hidden="true"></i>
+                                            </a>
 
-                            <td>
-                                <div class="product-category">
-                                    @(string.IsNullOrWhiteSpace(x.CategoryName) ? "—" : x.CategoryName)
-                                </div>
-                            </td>
-
-                            <td class="text-center">
-                                <span class="product-unit">
-                                    @(string.IsNullOrWhiteSpace(x.BaseUnitName) ? "—" : x.BaseUnitName)
-                                </span>
-                            </td>
-
-                            <td class="text-end">
-                                <div class="product-price">@x.BasePrice.ToString("n0")</div>
-                            </td>
-
-                            <td class="text-center">
-                                <span class="product-status @(x.IsActive ? "is-active" : "is-inactive")"
-                                      role="button"
-                                      title="Bấm để đổi trạng thái"
-                                      data-toggle-id="@x.Id">
-                                    <i class="bx @(x.IsActive ? "bx-check-circle" : "bx-pause-circle")"></i>
-                                    @(x.IsActive ? "Hoạt động" : "Ngưng")
-                                </span>
-                            </td>
-
-                            <td>
-                                <div class="product-actions">
-                                    <a class="btn btn-sm btn-light border"
-                                           href="/Admin/Product/Detail/@x.Id">
-                                        <i class="bx bx-show me-1"></i>
-                                        Chi tiết
-                                    </a>
-
-                                    <a class="btn btn-sm btn-outline-primary"
-                                           asp-area="Admin"
-                                           asp-controller="Product"
-                                           asp-action="Edit"
-                                           asp-route-id="@x.Id"
-                                           asp-route-returnUrl="@returnUrl">
-                                        <i class="bx bx-edit me-1"></i>
-                                        Sửa
-                                    </a>
-
-                                    <button class="btn btn-sm btn-outline-danger"
-                                            type="button"
-                                            data-delete-id="@x.Id"
-                                            data-product-name="@x.Name">
-                                        <i class="bx bx-trash me-1"></i>
-                                        Xóa
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        <div class="product-pager">
-            <div class="product-pager-info"
-                 data-current-page="@Model.Paged.Page">
-                Trang @Model.Paged.Page / @Model.Paged.TotalPages
-                · @Model.Paged.TotalItems dòng
+                                            <button type="button"
+                                                    class="gds-icon-button gds-action-button is-danger js-delete"
+                                                    data-id="@product.Id"
+                                                    data-name="@product.Name"
+                                                    aria-label="Xóa sản phẩm @product.Name"
+                                                    title="Xóa"
+                                                    data-bs-toggle="tooltip"
+                                                    data-bs-placement="top">
+                                                <i class="bx bx-trash" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            @if (Model.Paged.TotalPages > 1)
+            <div class="gds-mobile-list" aria-label="Danh sách sản phẩm trên thiết bị di động">
+                @foreach (var product in items)
+                {
+                    var stateLabel = !product.IsActive
+                        ? "Ngừng hoạt động"
+                        : product.IsSellable
+                            ? "Được phép bán POS"
+                            : "Chưa bán tại POS";
+                    var stateClass = !product.IsActive
+                        ? "is-neutral"
+                        : product.IsSellable
+                            ? "is-success"
+                            : "is-warning";
+                    var detailUrl = Url.Action(
+                        "Detail",
+                        "Product",
+                        new { area = "Admin", id = product.Id }) ?? $"/Admin/Product/Detail/{product.Id}";
+                    var priceLabel = $"{product.BasePrice:n0} ₫";
+
+                    <article class="gds-row-card"
+                             data-product-row
+                             tabindex="0"
+                             title="Nhấp đúp để xem nhanh"
+                             data-quick-name="@product.Name"
+                             data-quick-alias="@product.Alias"
+                             data-quick-brand="@product.BrandName"
+                             data-quick-category="@product.CategoryName"
+                             data-quick-supplier="@product.SupplierName"
+                             data-quick-tax="@product.TaxName"
+                             data-quick-unit="@product.BaseUnitName"
+                             data-quick-price="@priceLabel"
+                             data-quick-variants="@product.VariantCount"
+                             data-quick-state="@stateLabel"
+                             data-quick-state-class="@stateClass"
+                             data-quick-image="@product.PrimaryImageUrl"
+                             data-quick-detail-url="@detailUrl">
+                        <div class="gds-row-card__header">
+                            <div class="d-flex align-items-center gap-3 min-w-0">
+                                <button type="button"
+                                        class="avatar avatar-lg rounded bg-label-secondary flex-shrink-0 overflow-hidden border-0 p-0 js-product-image js-quick-view"
+                                        aria-label="Phóng ảnh và xem nhanh sản phẩm @product.Name">
+                                    @if (!string.IsNullOrWhiteSpace(product.PrimaryImageUrl))
+                                    {
+                                        <img src="@product.PrimaryImageUrl"
+                                             alt="Ảnh sản phẩm @product.Name"
+                                             class="w-100 h-100 rounded"
+                                             style="object-fit: cover;"
+                                             loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <i class="bx bx-image fs-4" aria-hidden="true"></i>
+                                    }
+                                </button>
+
+                                <div class="min-w-0">
+                                    <div class="gds-row-card__title fs-6 fw-bold text-dark">@product.Name</div>
+                                    <div class="gds-code mt-1 text-truncate">@product.Alias</div>
+                                    @if (!string.IsNullOrWhiteSpace(product.BrandName))
+                                    {
+                                        <div class="gds-table__secondary text-truncate">@product.BrandName</div>
+                                    }
+                                </div>
+                            </div>
+
+                            <button type="button"
+                                    class="gds-status gds-status--dot gds-status-button js-toggle-status @stateClass"
+                                    data-id="@product.Id"
+                                    data-name="@product.Name"
+                                    data-status="@product.IsActive.ToString().ToLowerInvariant()"
+                                    aria-label="@(product.IsActive ? $"Ngừng hoạt động sản phẩm {product.Name}" : $"Kích hoạt lại sản phẩm {product.Name}")">
+                                @stateLabel
+                            </button>
+                        </div>
+
+                        <div class="gds-row-card__meta row g-2">
+                            <span class="col-6">
+                                <i class="bx bx-category me-1" aria-hidden="true"></i>
+                                @(string.IsNullOrWhiteSpace(product.CategoryName) ? "—" : product.CategoryName)
+                            </span>
+                            <span class="col-6">
+                                <i class="bx bx-cube me-1" aria-hidden="true"></i>
+                                @(string.IsNullOrWhiteSpace(product.BaseUnitName) ? "—" : product.BaseUnitName)
+                            </span>
+                            <span class="col-6">
+                                <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i>
+                                <strong class="text-primary">Đơn giá @priceLabel</strong>
+                            </span>
+                            <span class="col-6">
+                                <i class="bx bx-layer me-1" aria-hidden="true"></i>
+                                @product.VariantCount biến thể
+                            </span>
+                        </div>
+
+                        <div class="gds-row-card__actions">
+                            <button type="button"
+                                    class="btn btn-sm btn-label-primary gds-action-button js-quick-view">
+                                <i class="bx bx-show me-1" aria-hidden="true"></i>Xem nhanh
+                            </button>
+
+                            <a asp-area="Admin"
+                               asp-controller="Product"
+                               asp-action="Edit"
+                               asp-route-id="@product.Id"
+                               asp-route-returnUrl="@returnUrl"
+                               class="btn btn-sm btn-primary gds-action-button flex-grow-1">
+                                <i class="bx bx-edit me-1" aria-hidden="true"></i>Mở sản phẩm
+                            </a>
+
+                            <button type="button"
+                                    class="btn btn-sm btn-label-danger gds-action-button js-delete"
+                                    data-id="@product.Id"
+                                    data-name="@product.Name">
+                                <i class="bx bx-trash" aria-hidden="true"></i>
+                                <span class="visually-hidden">Xóa @product.Name</span>
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <div class="gds-list-footer">
+        <div class="gds-list-footer__summary">
+            @if (totalItems == 0)
             {
-                var cur = Model.Paged.Page;
-                var total = Model.Paged.TotalPages;
-
-                var start = Math.Max(1, cur - 2);
-                var end = Math.Min(total, cur + 2);
-
-                <nav>
-                    <ul class="pagination pagination-sm mb-0">
-                        <li class="page-item @(cur == 1 ? "disabled" : "")">
-                            <a class="page-link" href="#" data-page="@(cur - 1)">
-                                <i class="bx bx-chevron-left"></i>
-                            </a>
-                        </li>
-
-                        @if (start > 1)
-                        {
-                            <li class="page-item">
-                                <a class="page-link" href="#" data-page="1">1</a>
-                            </li>
-
-                            @if (start > 2)
-                            {
-                                <li class="page-item disabled">
-                                    <span class="page-link">...</span>
-                                </li>
-                            }
-                        }
-
-                        @for (int i = start; i <= end; i++)
-                        {
-                            <li class="page-item @(i == cur ? "active" : "")">
-                                <a class="page-link" href="#" data-page="@i">@i</a>
-                            </li>
-                        }
-
-                        @if (end < total)
-                        {
-                            @if (end < total - 1)
-                            {
-                                <li class="page-item disabled">
-                                    <span class="page-link">...</span>
-                                </li>
-                            }
-
-                            <li class="page-item">
-                                <a class="page-link" href="#" data-page="@total">@total</a>
-                            </li>
-                        }
-
-                        <li class="page-item @(cur == total ? "disabled" : "")">
-                            <a class="page-link" href="#" data-page="@(cur + 1)">
-                                <i class="bx bx-chevron-right"></i>
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
+                <span>0 kết quả</span>
+            }
+            else
+            {
+                <span><strong>@firstItem–@lastItem</strong> / @totalItems kết quả</span>
             }
         </div>
+
+        @if (totalPages > 1)
+        {
+            <nav aria-label="Phân trang danh sách sản phẩm">
+                <ul class="pagination mb-0">
+                    <li class="page-item @(currentPage <= 1 ? "disabled" : string.Empty)">
+                        <a href="#"
+                           class="page-link js-page-link"
+                           data-page="@(currentPage - 1)"
+                           aria-label="Trang trước">
+                            <i class="bx bx-chevron-left" aria-hidden="true"></i>
+                        </a>
+                    </li>
+
+                    @{
+                        var start = Math.Max(1, currentPage - 3);
+                        var end = Math.Min(totalPages, start + 6);
+                        start = Math.Max(1, end - 6);
+                    }
+
+                    @for (var page = start; page <= end; page++)
+                    {
+                        <li class="page-item @(page == currentPage ? "active" : string.Empty)">
+                            <a href="#"
+                               class="page-link js-page-link"
+                               data-page="@(page)"
+                               aria-current="@(page == currentPage ? "page" : null)">@(page)</a>
+                        </li>
+                    }
+
+                    <li class="page-item @(currentPage >= totalPages ? "disabled" : string.Empty)">
+                        <a href="#"
+                           class="page-link js-page-link"
+                           data-page="@(currentPage + 1)"
+                           aria-label="Trang sau">
+                            <i class="bx bx-chevron-right" aria-hidden="true"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        }
     </div>
-}
+</div>

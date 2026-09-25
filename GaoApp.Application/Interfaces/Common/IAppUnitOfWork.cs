@@ -5,6 +5,8 @@
 /// </summary>
 public interface IAppUnitOfWork
 {
+    void EnsureCanCommit() { }
+    Task RunDeferredActionsAsync(CancellationToken ct = default) => Task.CompletedTask;
     /// <summary>
     /// Lưu thay đổi hiện tại.
     /// </summary>

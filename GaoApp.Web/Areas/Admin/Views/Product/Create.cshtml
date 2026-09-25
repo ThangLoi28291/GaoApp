@@ -3,6 +3,8 @@
 
 @{
     ViewData["Title"] = "Tạo sản phẩm";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 
     var categories = (List<SelectListItem>)ViewBag.Categories;
@@ -362,6 +364,7 @@
         }
 
     </style>
+    <link href="~/admin/css/product-setup-workspace.css" rel="stylesheet" asp-append-version="true" />
 }
 
 @section header {
@@ -371,18 +374,17 @@
     </div>
 }
 
-<div class="gm-page">
-    <div class="gm-banner mb-3">
-        <div><b>Mẹo nhập nhanh:</b> Gõ tên → Alias tự sinh. Nhấn <b>Ctrl + Enter</b> để lưu.</div>
-        <div class="text-muted">Tồn kho sẽ nhập ở <b>Phiếu nhập</b> (không nhập ở màn này).</div>
-    </div>
-
+<div class="gm-page product-setup-workspace"
+     data-product-setup-workspace
+     data-product-setup-stage="create">
     <form asp-area="Admin"
           asp-controller="Product"
           asp-action="Create"
+          id="productSetupForm"
           method="post"
           novalidate
           data-submit-guard
+          data-upload-state="ready"
           data-submit-loading-text="Đang lưu...">
         @Html.AntiForgeryToken()
 
@@ -458,9 +460,9 @@
 
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label">Giá cơ bản</label>
+                                <label class="form-label">Giá bán lẻ</label>
                                 <input asp-for="BasePrice" class="form-control" id="txtBasePrice" type="number" min="0" step="1000" placeholder="VD: 12000" />
-                                <div class="help">Nếu biến thể không có giá riêng sẽ dùng giá này.</div>
+                                <div class="help">Dùng khi biến thể hoặc đơn vị bán chưa có giá riêng.</div>
                                 <span asp-validation-for="BasePrice" class="text-danger"></span>
                             </div>
 
@@ -487,10 +489,11 @@
                             </div>
 
                             <div class="col-12">
-                                <div class="form-check form-switch p-3 border rounded-3 bg-light">
+                                <div class="form-check form-switch psw-pos-switch">
                                     <input asp-for="IsSellable" class="form-check-input" role="switch" />
                                     <label asp-for="IsSellable" class="form-check-label fw-bold">Cho phép bán tại POS</label>
                                     <div class="help mb-0">Tắt nếu sản phẩm mới chỉ được tạo để nhập kho và còn chờ hoàn thiện mã, giá bán hoặc thông tin danh mục.</div>
+                                    <span class="psw-pos-state" data-pos-state>Đang tắt</span>
                                 </div>
                             </div>
 
@@ -529,7 +532,20 @@
                                 <img id="mainPreviewImg" alt="preview" style="display:none;" />
                                 <div class="gm-main-badge" id="mainBadge" style="display:none;">ẢNH CHÍNH</div>
                             </div>
-                            <div class="gm-main-tip">Click để xem • Nhấp 2 lần: đặt ảnh chính</div>
+                            <div class="psw-context-help">
+                                <i class="bx bx-info-circle fs-5"></i>
+                                <span>Kéo thả để đổi thứ tự; chọn thumbnail để xem và đặt ảnh đang xem làm ảnh chính.</span>
+                            </div>
+                            <button type="button"
+                                    class="btn btn-outline-primary btn-sm w-100 mt-2"
+                                    id="btnSetPrimaryImage"
+                                    data-set-primary-image>
+                                <i class="bx bx-star me-1"></i> Đặt ảnh đang xem làm ảnh chính
+                            </button>
+                            <div class="psw-upload-state mt-2" id="productUploadState" aria-live="polite">
+                                <i class="bx bx-check-circle"></i>
+                                <span>Ảnh đã sẵn sàng.</span>
+                            </div>
 
 
                             <!-- Thumbnail strip -->
@@ -548,35 +564,100 @@
                         </div>
                     </div>
 
-                    <div class="gm-summary">
-                        <h6>🧾 Tóm tắt bạn đang tạo</h6>
-
-                        <div class="rowline"><div class="k">Tên</div><div class="v" id="sumName">—</div></div>
-                        <div class="rowline"><div class="k">Danh mục</div><div class="v" id="sumCategory">—</div></div>
-                        <div class="rowline"><div class="k">Nhà cung cấp</div><div class="v" id="sumSupplier">—</div></div>
-                        <div class="rowline"><div class="k">Đơn vị</div><div class="v" id="sumUnit">—</div></div>
-                        <div class="rowline"><div class="k">Thương hiệu</div><div class="v" id="sumBrand">—</div></div>
-                        <div class="rowline"><div class="k">Thuế</div><div class="v" id="sumTax">—</div></div>
-                        <div class="rowline"><div class="k">Giá</div><div class="v" id="sumPrice">—</div></div>
-                        <div class="rowline"><div class="k">Ảnh đã chọn</div><div class="v" id="sumImages">0</div></div>
-
-                        <div class="help mt-2">Nếu thấy “—” nghĩa là bạn chưa chọn mục đó.</div>
+                    <div class="d-none" aria-hidden="true">
+                        <span id="sumName">—</span>
+                        <span id="sumCategory">—</span>
+                        <span id="sumSupplier">—</span>
+                        <span id="sumUnit">—</span>
+                        <span id="sumImages">0</span>
+                        <span class="d-none" id="sumBrand">—</span>
+                        <span class="d-none" id="sumTax">—</span>
+                        <span class="d-none" id="sumPrice">—</span>
                     </div>
 
                 </div>
             </div>
         </div>
 
+        <section id="variants"
+                 class="psw-variant-locked"
+                 data-variant-step-locked
+                 aria-disabled="true">
+            <div class="psw-step-number">3</div>
+            <div>
+                <h5>Thiết lập biến thể</h5>
+                <p>Sau khi lưu thông tin chung, phần này sẽ mở ngay trên màn hình chỉnh sửa để bạn tạo màu sắc, kích cỡ hoặc quy cách sản phẩm.</p>
+            </div>
+            <span class="psw-lock-pill"><i class="bx bx-lock-alt"></i> Cần lưu sản phẩm</span>
+        </section>
+
         <!-- ACTION BAR -->
         <div class="gm-actions mt-3">
             <div class="gm-actions-inner">
-                <div class="text-muted">
-                    <div class="fw-bold">Lưu ý</div>
-                    <div class="small">Nhấn <b>Ctrl + Enter</b> để lưu nhanh.</div>
+                <div class="psw-progress" data-completion-progress data-readiness-checklist>
+                    <button type="button"
+                            class="psw-progress-trigger"
+                            data-completion-toggle
+                            aria-expanded="false"
+                            aria-controls="productCompletionPanel">
+                        <span class="psw-progress-title">
+                            <span>Hoàn thiện hồ sơ</span>
+                            <strong class="psw-progress-percent"><span data-completion-percent>0</span>%</strong>
+                        </span>
+                        <span class="psw-progress-track"
+                              data-completion-track
+                              role="progressbar"
+                              aria-label="Mức độ hoàn thiện hồ sơ"
+                              aria-valuemin="0"
+                              aria-valuemax="100"
+                              aria-valuenow="0">
+                            <span class="psw-progress-bar" data-completion-bar></span>
+                        </span>
+                        <span class="psw-progress-meta">
+                            <span data-completion-count>0/10 tiêu chí hoàn tất</span>
+                            <span data-product-save-state>Chưa lưu</span>
+                        </span>
+                    </button>
+
+                    <div class="psw-completion-backdrop" data-completion-backdrop hidden></div>
+                    <section class="psw-completion-panel"
+                             id="productCompletionPanel"
+                             data-completion-panel
+                             aria-label="Chi tiết hoàn thiện hồ sơ"
+                             hidden>
+                        <div class="psw-completion-head">
+                            <div>
+                                <h6>Hoàn thiện hồ sơ sản phẩm</h6>
+                                <p><span data-completion-count>0/10 tiêu chí hoàn tất</span> · không chặn thao tác lưu.</p>
+                            </div>
+                            <button type="button" class="btn-close" data-completion-close aria-label="Đóng"></button>
+                        </div>
+                        <div class="psw-completion-body">
+                            <div class="psw-completion-group">
+                                <div class="psw-completion-group-title">Bắt buộc / nền tảng</div>
+                                <button type="button" class="psw-completion-item" data-readiness-item="name" data-completion-target="#txtName"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Tên sản phẩm</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="alias" data-completion-target="#txtName"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Mã hiển thị</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="category" data-completion-target="#ddlCategory"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Danh mục</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="supplier" data-completion-target="#ddlSupplier"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Nhà cung cấp</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="unit" data-completion-target="#ddlUnit"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Đơn vị cơ bản</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="variant" data-completion-target="#variants"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Biến thể đã lưu</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                            </div>
+                            <div class="psw-completion-group">
+                                <div class="psw-completion-group-title">Khuyến nghị bán hàng</div>
+                                <button type="button" class="psw-completion-item" data-readiness-item="price" data-completion-target="#txtBasePrice"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Giá bán lẻ</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="images" data-completion-target=".gm-pond-wrap"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Ảnh chính</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="selling-unit" data-completion-target="#variants"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Đơn vị bán đang hoạt động</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                                <button type="button" class="psw-completion-item" data-readiness-item="barcode" data-completion-target="#variants"><span class="psw-completion-icon"><i class="bx bx-right-arrow-alt"></i></span><span class="psw-completion-label">Barcode đang hoạt động</span><span class="psw-completion-status" data-readiness-status>Chưa có</span></button>
+                            </div>
+                            <div class="psw-pos-summary"><span>Trạng thái bán tại POS</span><strong class="psw-pos-state" data-pos-state>Đang tắt</strong></div>
+                        </div>
+                    </section>
                 </div>
 
                 <div class="d-flex gap-2">
-                    <button class="btn btn-primary btn-lg" type="submit">Lưu sản phẩm</button>
+                    <button class="btn btn-primary btn-lg" type="submit" data-product-primary-action>
+                        Lưu và thiết lập biến thể
+                    </button>
                     <a class="btn btn-light btn-lg" asp-area="Admin" asp-controller="Product" asp-action="Index">Quay lại</a>
                 </div>
             </div>
@@ -717,6 +798,7 @@
                 if (!res.ok) return;
                 const data = await res.json();
                 $alias.value = data.alias || '';
+                window.GaoProductSetup?.syncReadiness();
             } catch { }
         }
 
@@ -759,6 +841,42 @@
         let primaryToken = '';
         let activePondId = '';
         let mainBlobUrl = '';
+
+        function hasPendingProductUploads() {
+            return !!pond && pond.getFiles().some(file => !file.serverId);
+        }
+
+        function syncProductUploadState() {
+            const pending = hasPendingProductUploads();
+            const form = document.getElementById('productSetupForm');
+            const submit = form?.querySelector('[data-product-primary-action]');
+
+            if (form) form.dataset.uploadState = pending ? 'pending' : 'ready';
+            if (submit) submit.disabled = pending;
+
+            window.GaoProductSetup?.setUploadState({
+                pending,
+                count: pond ? pond.getFiles().length : 0
+            });
+        }
+
+        function setActiveImageAsPrimary() {
+            if (!pond || !activePondId) return;
+
+            const current = pond.getFiles().find(file => file.id === activePondId);
+            const token = current?.serverId || '';
+            if (!token) {
+                toastr?.info('Vui lòng chờ ảnh tải lên xong.');
+                syncProductUploadState();
+                return;
+            }
+
+            primaryToken = token;
+            $('#PrimaryTempToken').val(primaryToken);
+            rebuildThumbStrip();
+            toastr?.success('Đã chọn ảnh chính.');
+        }
+
                 function ensurePrimaryAfterProcess(item) {
             if (!item || !item.serverId) return;
 
@@ -897,24 +1015,15 @@
 
                 thumb.addEventListener('dblclick', function (e) {
                     e.preventDefault();
-                    const t = this.dataset.token || '';
-                    if (!t) return; // chưa upload xong thì chưa set primary
-
-                    primaryToken = t;
-                    $('#PrimaryTempToken').val(primaryToken);
-
-                    document.querySelectorAll('.gm-thumb').forEach(x => x.classList.remove('is-primary'));
-                    this.classList.add('is-primary');
-
-                    const current = pond.getFiles().find(x => x.id === activePondId);
-                    setMainPreviewFromItem(current);
+                    activePondId = this.dataset.pondId || activePondId;
+                    setActiveImageAsPrimary();
                 });
 
                 btnRemove.addEventListener('click', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
                     const pondId = thumb.dataset.pondId;
-                    pond.removeFile(pondId);
+                    pond.removeFile(pondId, { revert: true });
                 });
 
                 thumb.appendChild(img);
@@ -1009,10 +1118,14 @@
                     }
                 });
 
-                pond.on('addfile', () => rebuildThumbStrip());
+                pond.on('addfile', () => {
+                    rebuildThumbStrip();
+                    syncProductUploadState();
+                });
                        pond.on('processfile', (error, file) => {
             if (!error) ensurePrimaryAfterProcess(file);
             rebuildThumbStrip();
+            syncProductUploadState();
         });
 
                       pond.on('removefile', () => {
@@ -1033,23 +1146,42 @@
 
             // 🔴 BƯỚC 3: rebuild UI
             rebuildThumbStrip();
+            syncProductUploadState();
         });
+
+                pond.on('processfileabort', syncProductUploadState);
+                pond.on('processfilerevert', syncProductUploadState);
+                pond.on('error', syncProductUploadState);
 
 
                 rebuildThumbStrip();
                 syncSummary(pond.getFiles().length);
+                syncProductUploadState();
 
                 // ✅ bind drop vào preview sau khi pond có rồi
                 bindMainPreviewDrop();
             } else {
                 setMainPreviewFromItem(null);
                 syncSummary(0);
+                syncProductUploadState();
             }
 
-            $('form').on('submit', function () {
+            document.getElementById('btnSetPrimaryImage')
+                ?.addEventListener('click', setActiveImageAsPrimary);
+
+            $('#productSetupForm').on('submit', function (event) {
+                if (hasPendingProductUploads()) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    syncProductUploadState();
+                    toastr?.warning('Vui lòng chờ tất cả hình ảnh tải lên xong trước khi lưu.');
+                    return false;
+                }
+
                 updateHiddenTokensBeforeSubmit();
+                return true;
             });
         });
     </script>
+    <script src="~/admin/js/product-setup-workspace.js" asp-append-version="true"></script>
 }
-

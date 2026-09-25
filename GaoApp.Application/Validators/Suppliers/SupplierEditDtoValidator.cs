@@ -35,6 +35,15 @@ public sealed class SupplierEditDtoValidator : AbstractValidator<SupplierEditDto
             .MaximumLength(50).WithMessage("Mã số thuế không được vượt quá 50 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.TaxCode));
 
+        RuleFor(x => x.BankAccountNumber)
+            .MaximumLength(50).WithMessage("Số tài khoản tối đa 50 ký tự");
+
+        RuleFor(x => x.BankAccountName)
+            .MaximumLength(250).WithMessage("Tên chủ tài khoản tối đa 250 ký tự");
+
+        RuleFor(x => x.BankName)
+            .MaximumLength(250).WithMessage("Tên ngân hàng tối đa 250 ký tự");
+
         RuleFor(x => x.Note)
             .MaximumLength(1000).WithMessage("Ghi chú không được vượt quá 1000 ký tự.")
             .When(x => !string.IsNullOrWhiteSpace(x.Note));

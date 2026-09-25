@@ -1,4 +1,7 @@
-﻿using GaoApp.Application.Common;
+using Microsoft.AspNetCore.Authorization;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Brands;
 using GaoApp.Application.Interfaces.Services.Categories;
@@ -17,6 +20,10 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class ProductController : BaseAdminController
 {
     private const int DropdownPageSize = 500;
+    private const string PosAllowedLifecycle = "pos-allowed";
+    private const string NotForPosLifecycle = "not-for-pos";
+    private const string InactiveLifecycle = "inactive";
+    private const string ProductSetupFreshIdKey = "ProductSetupFreshId";
 
     private readonly ITenantContext _tenant;
     private readonly IProductService _productService;
@@ -62,6 +69,95 @@ public class ProductController : BaseAdminController
         if (pageSize > 200) pageSize = 200;
     }
 
+    private static string? NormalizeLifecycle(string? lifecycle)
+    {
+        if (string.IsNullOrWhiteSpace(lifecycle))
+            return null;
+
+        return lifecycle.Trim().ToLowerInvariant() switch
+        {
+            PosAllowedLifecycle => PosAllowedLifecycle,
+            NotForPosLifecycle => NotForPosLifecycle,
+            InactiveLifecycle => InactiveLifecycle,
+            _ => null
+        };
+    }
+
+    private static (bool? IsActive, bool? IsSellable) ResolveLifecycle(
+        string? lifecycle)
+        => lifecycle switch
+        {
+            PosAllowedLifecycle => (true, true),
+            NotForPosLifecycle => (true, false),
+            InactiveLifecycle => (false, null),
+            _ => (null, null)
+        };
+
+    private async Task<ProductIndexVM> BuildProductIndexAsync(
+        int storeId,
+        string? search,
+        int? categoryId,
+        string? lifecycle,
+        int page,
+        int pageSize,
+        bool includeCategoryOptions,
+        CancellationToken ct)
+    {
+        if (categoryId <= 0)
+            categoryId = null;
+
+        lifecycle = NormalizeLifecycle(lifecycle);
+        var (isActive, isSellable) = ResolveLifecycle(lifecycle);
+
+        var paged = await _productService.GetPagedAsync(
+            storeId,
+            search,
+            categoryId,
+            isActive,
+            isSellable,
+            page,
+            pageSize,
+            ct);
+
+        var summary = await _productService.GetSummaryAsync(storeId, ct);
+
+        IReadOnlyList<ProductCategoryFilterOptionVM> categoryOptions =
+            Array.Empty<ProductCategoryFilterOptionVM>();
+
+        if (includeCategoryOptions)
+        {
+            var categories = await _categoryService.GetPagedAsync(
+                search: null,
+                page: 1,
+                pageSize: DropdownPageSize,
+                ct);
+
+            categoryOptions = categories.Items
+                .OrderBy(x => x.Name)
+                .Select(x => new ProductCategoryFilterOptionVM
+                {
+                    Id = x.Id,
+                    Name = x.Name
+                })
+                .ToList();
+        }
+
+        return new ProductIndexVM
+        {
+            SearchString = search,
+            CategoryId = categoryId,
+            Lifecycle = lifecycle,
+            Page = paged.Page,
+            PageSize = paged.PageSize,
+            TotalProductCount = summary.TotalItems,
+            PosAllowedProductCount = summary.PosAllowedItems,
+            NotForPosProductCount = summary.NotForPosItems,
+            InactiveProductCount = summary.InactiveItems,
+            CategoryOptions = categoryOptions,
+            Paged = paged
+        };
+    }
+
     private async Task PopulateDropdownsAsync(int storeId, CancellationToken ct)
     {
         var cats = await _categoryService.GetPagedAsync(null, 1, DropdownPageSize, ct);
@@ -80,44 +176,59 @@ public class ProductController : BaseAdminController
     // =========================================================
     // PRODUCT LIST
     // =========================================================
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
 
-    public async Task<IActionResult> Index(string? search, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Index(
+        string? search = "",
+        int? categoryId = null,
+        string? lifecycle = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         var storeId = RequireStoreId();
         Normalize(ref page, ref pageSize);
 
-        var paged = await _productService.GetPagedAsync(storeId, search, page, pageSize, ct);
-
-        var vm = new ProductIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        };
+        var vm = await BuildProductIndexAsync(
+            storeId,
+            search,
+            categoryId,
+            lifecycle,
+            page,
+            pageSize,
+            includeCategoryOptions: true,
+            ct);
 
         return View(vm);
     }
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
 
-    public async Task<IActionResult> Search(string? search, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<IActionResult> Search(
+        string? search = "",
+        int? categoryId = null,
+        string? lifecycle = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         var storeId = RequireStoreId();
         Normalize(ref page, ref pageSize);
 
-        var paged = await _productService.GetPagedAsync(storeId, search, page, pageSize, ct);
-
-        var vm = new ProductIndexVM
-        {
-            SearchString = search,
-            Page = page,
-            PageSize = pageSize,
-            Paged = paged
-        };
+        var vm = await BuildProductIndexAsync(
+            storeId,
+            search,
+            categoryId,
+            lifecycle,
+            page,
+            pageSize,
+            includeCategoryOptions: false,
+            ct);
 
         return PartialView("_ProductTable", vm);
     }
 
     [HttpGet]
+    [RequireAnyPermission(PermissionCodes.Catalog.Product.Create, PermissionCodes.Catalog.Product.Update)]
     public async Task<IActionResult> GetUniqueAlias(string input, int? excludeId, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -130,6 +241,7 @@ public class ProductController : BaseAdminController
     // =========================================================
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Create)]
     public async Task<IActionResult> Create(CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -139,6 +251,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Create)]
     public async Task<IActionResult> Create(ProductCreateDto dto, string? TempImageTokensJson, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -161,8 +274,13 @@ public class ProductController : BaseAdminController
             return View(dto);
         }
 
-        TempData["ToastSuccess"] = "Đã tạo sản phẩm.";
-        return RedirectToAction(nameof(Index));
+        TempData["ToastSuccess"] = "Đã tạo sản phẩm. Tiếp tục thiết lập biến thể.";
+        TempData[ProductSetupFreshIdKey] = result.Value;
+
+        var editUrl = Url.Action(nameof(Edit), new { id = result.Value })
+            ?? $"/Admin/Product/Edit/{result.Value}";
+
+        return Redirect($"{editUrl}#variants");
     }
 
     // =========================================================
@@ -170,6 +288,7 @@ public class ProductController : BaseAdminController
     // =========================================================
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -178,11 +297,22 @@ public class ProductController : BaseAdminController
         var model = await _productService.GetForEditAsync(storeId, id, ct);
         if (model == null) return NotFound();
 
+        var isInitialProductSetup = false;
+        if (TempData.TryGetValue(ProductSetupFreshIdKey, out var freshProductId) &&
+            int.TryParse(freshProductId?.ToString(), out var parsedFreshProductId) &&
+            parsedFreshProductId == id)
+        {
+            isInitialProductSetup = true;
+        }
+
+        ViewBag.IsInitialProductSetup = isInitialProductSetup;
+
         return View(model);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Update)]
     public async Task<IActionResult> Edit(
         UpdateProductRequest dto,
         string? returnUrl,
@@ -228,6 +358,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -247,6 +378,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Delete)]
     public async Task<IActionResult> SoftDelete(int id, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -269,6 +401,7 @@ public class ProductController : BaseAdminController
     // =========================================================
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
     public async Task<IActionResult> Detail(int id, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -283,6 +416,7 @@ public class ProductController : BaseAdminController
     // =========================================================
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
     public async Task<IActionResult> AttributesData(CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -291,6 +425,7 @@ public class ProductController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
     public async Task<IActionResult> VariantsData(int productId, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -300,6 +435,8 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductVariant.Create)]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductVariant.Update)]
     public async Task<IActionResult> SaveVariants([FromBody] SaveProductVariantsRequest req, CancellationToken ct)
     {
         if (req == null || req.ProductId <= 0)
@@ -322,6 +459,7 @@ public class ProductController : BaseAdminController
     }
 
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.View)]
     public async Task<IActionResult> ImagesData(int productId, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -336,6 +474,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductVariant.Update)]
     public async Task<IActionResult> ToggleVariantStatus([FromBody] IdRequest req, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -354,6 +493,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductVariant.Delete)]
     public async Task<IActionResult> DeleteVariant([FromBody] IdRequest req, CancellationToken ct)
     {
         var storeId = RequireStoreId();
@@ -378,6 +518,7 @@ public class ProductController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.ProductVariant.Update)]
     public async Task<IActionResult> SetVariantImage([FromBody] SetVariantImageRequest req, CancellationToken ct)
     {
         if (req is null || req.VariantId <= 0)

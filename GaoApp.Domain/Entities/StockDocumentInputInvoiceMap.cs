@@ -6,11 +6,15 @@ namespace GaoApp.Domain.Entities;
 
 /// <summary>
 /// Map giữa phiếu nhập kho và hóa đơn XML đầu vào.
-/// Cho phép 1 phiếu nhập gắn nhiều XML.
+/// Mỗi phiếu chỉ có tối đa một map hoạt động; một hóa đơn vẫn có thể phục vụ
+/// nhiều phiếu đủ điều kiện.
 /// </summary>
 [Table("StockDocumentInputInvoiceMap")]
 public class StockDocumentInputInvoiceMap : BaseStoreEntity, IAuditTrackedEntity
 {
+    public const string ActiveReceiptIndexName =
+        "UX_StockDocumentInputInvoiceMap_StoreId_StockDocumentId_Active";
+
     public int StockDocumentId { get; set; }
     public StockDocument StockDocument { get; set; } = default!;
 

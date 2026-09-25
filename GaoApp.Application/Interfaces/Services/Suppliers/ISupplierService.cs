@@ -14,6 +14,18 @@ public interface ISupplierService
         int pageSize,
         CancellationToken ct = default);
 
+    Task<PagedResult<SupplierListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<Result<SupplierEditDto>> GetForEditAsync(
         int storeId,
         int id,

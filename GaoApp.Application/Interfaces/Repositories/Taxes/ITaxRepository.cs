@@ -7,6 +7,18 @@ public interface ITaxRepository
     Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default);
 
+    Task<(IReadOnlyList<Tax> Items, int TotalItems)> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<Tax?> GetByIdAsync(int storeId, int id, CancellationToken ct = default);
 
     Task<bool> ExistsCodeAsync(int storeId, string code, int? excludeId, CancellationToken ct = default);

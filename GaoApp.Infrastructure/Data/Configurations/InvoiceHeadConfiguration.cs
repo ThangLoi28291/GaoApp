@@ -10,7 +10,7 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 {
     public void Configure(EntityTypeBuilder<InvoiceHead> b)
     {
-        b.ToTable("InvoiceHeads");
+        b.ToTable("InvoiceHeads", t => t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1"));
 
         b.HasKey(x => x.Id);
 
@@ -18,9 +18,16 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
         b.Property(x => x.StoreId)
             .IsRequired();
 
+        b.Property(x => x.IsAutoInvoiceGroup)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         // OrderId
         b.Property(x => x.OrderId)
-            .IsRequired();
+            .IsRequired(false);
+        b.Property(x => x.LegacyMergeId).HasMaxLength(15);
+        b.Property(x => x.LegacyImportedHash).HasColumnType("binary(32)");
+        b.HasIndex(x => new { x.StoreId, x.LegacySourceId }).IsUnique().HasFilter("[LegacySourceId] IS NOT NULL");
 
         // =====================================================
         // UNIQUE HÓA ĐƠN GỐC THEO ORDER / LEGAL ENTITY
@@ -28,12 +35,12 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
         // Legacy: một Order chỉ có một InvoiceHead gốc không gắn LegalEntity.
         b.HasIndex(x => new { x.StoreId, x.OrderId })
             .IsUnique()
-            .HasFilter("[IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NULL");
+            .HasFilter("[OrderId] IS NOT NULL AND [IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NULL");
 
         // Multi LegalEntity: một Order có tối đa một InvoiceHead gốc cho mỗi HKD.
         b.HasIndex(x => new { x.StoreId, x.OrderId, x.LegalEntityId })
             .IsUnique()
-            .HasFilter("[IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NOT NULL");
+            .HasFilter("[OrderId] IS NOT NULL AND [IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NOT NULL");
 
         // InvoiceNumber nội bộ hoặc số hóa đơn sau khi phát hành.
         b.Property(x => x.InvoiceNumber)
@@ -215,6 +222,8 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.HasIndex(x => new { x.StoreId, x.LegalEntityId, x.InvoiceDate, x.IsDeleted });
         b.HasIndex(x => new { x.StoreId, x.InvoiceProviderSettingId, x.IsDeleted });
+
+        b.HasIndex(x => new { x.StoreId, x.IsAutoInvoiceGroup, x.IsDeleted });
 
         // FK InvoiceHead -> Order
         b.HasOne(x => x.Order)

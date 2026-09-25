@@ -103,6 +103,10 @@ public class POSShiftConfiguration : IEntityTypeConfiguration<POSShift>
         b.Property(x => x.OpenNote)
             .HasMaxLength(300);
 
+        b.Property(x => x.CashReceivedAmount).HasPrecision(18, 2);
+        b.Property(x => x.CashReceiptNote).HasMaxLength(500);
+        b.HasIndex(x => new { x.StoreId, x.CashReceivedAtUtc });
+
         b.Property(x => x.CloseNote)
             .HasMaxLength(300);
 

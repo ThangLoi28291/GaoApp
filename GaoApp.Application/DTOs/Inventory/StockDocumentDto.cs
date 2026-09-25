@@ -1,5 +1,7 @@
 ﻿using GaoApp.Domain.Enums;
 
+using GaoApp.Application.DTOs.Purchases;
+
 namespace GaoApp.Application.DTOs.Inventory;
 
 public class StockDocumentDto
@@ -21,6 +23,7 @@ public class StockDocumentDto
 
     public int? SupplierId { get; set; }
     public string? SupplierName { get; set; }
+    public string? SupplierTaxCode { get; set; }
 
     public string? Note { get; set; }
 
@@ -28,6 +31,7 @@ public class StockDocumentDto
     public PurchaseReceiptSource ReceiptSource { get; set; }
     public int? PurchaseOrderId { get; set; }
     public string? PurchaseOrderNumber { get; set; }
+    public string? PurchaseOrderTitle { get; set; }
     public string? DirectReceiptReason { get; set; }
     public bool HasVat { get; set; }
     public bool IncludeVatInInventoryCost { get; set; }
@@ -54,6 +58,8 @@ public class StockDocumentDto
 
     public DateTime? ConfirmedAtUtc { get; set; }
     public int? ConfirmedByUserId { get; set; }
+    public int? ConfirmedLegalEntityId { get; set; }
+    public string? ConfirmedLegalEntityName { get; set; }
 
     public bool CanEditHeader { get; set; }
     public bool CanEditLines { get; set; }
@@ -65,4 +71,7 @@ public class StockDocumentDto
     public int? RevisionResolvedByUserId { get; set; }
 
     public List<StockDocumentLineDto> Lines { get; set; } = new();
+    public List<StockDocumentProvisionalItemDto> ProvisionalItems { get; set; } = new();
+    public int UnresolvedProvisionalCount => ProvisionalItems.Count(x =>
+        x.Status == StockDocumentProvisionalItemStatus.Unresolved);
 }

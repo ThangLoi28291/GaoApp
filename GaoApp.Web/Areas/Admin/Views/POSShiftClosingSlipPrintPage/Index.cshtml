@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = null;
     var slipId = ViewBag.SlipId as int?;
     var shiftId = ViewBag.ShiftId as int?;
@@ -138,6 +138,7 @@
     </style>
 </head>
 <body>
+    @Html.AntiForgeryToken()
     <button class="btn-print" onclick="window.print()">In lại</button>
 
     <div class="receipt">
@@ -220,6 +221,7 @@
         </div>
     </div>
 
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true" data-auto-close></script>
     <script src="~/lib/jsbarcode/JsBarcode.all.min.js" asp-append-version="true"></script>
 
     <script>
@@ -300,7 +302,9 @@
             });
 
             fetch(`/admin/pos/shift-closing-slips/${x.id}/mark-printed`, {
-                method: 'POST'
+                method: 'POST',
+                keepalive: true,
+                headers: { 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value }
             }).catch(() => { });
 
             setTimeout(() => window.print(), 500);

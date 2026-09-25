@@ -1,5 +1,5 @@
-﻿using GaoApp.Application.Interfaces.Repositories.Brands;
 using GaoApp.Application.Common;
+using GaoApp.Application.Interfaces.Repositories.Brands;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -8,30 +8,105 @@ namespace GaoApp.Infrastructure.Repositories.Brands;
 
 public sealed class BrandRepository : IBrandRepository
 {
+    private const string AccentInsensitiveSearchCollation =
+        "Latin1_General_100_CI_AI";
+
     private readonly AppDbContext _db;
+
     public BrandRepository(AppDbContext db) => _db = db;
 
+    public Task<(IReadOnlyList<Brand> Items, int TotalItems)> GetPagedAsync(
+        int storeId,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
     public async Task<(IReadOnlyList<Brand> Items, int TotalItems)> GetPagedAsync(
-        int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 200) pageSize = 200;
 
-        var q = _db.Set<Brand>().AsNoTracking()
+        var query = _db.Set<Brand>()
+            .AsNoTracking()
             .Where(x => x.StoreId == storeId);
 
         if (!string.IsNullOrWhiteSpace(search))
-            q = q.Where(x => x.Code.Contains(search) || x.Name.Contains(search));
+        {
+            var normalizedSearch = search.Trim();
 
-        var total = await q.CountAsync(ct);
+            if (_db.Database.IsRelational())
+            {
+                var accentInsensitiveSearch = normalizedSearch
+                    .Replace('Đ', 'D')
+                    .Replace('đ', 'd');
 
-        var items = await q.OrderByDescending(x => x.Id)
+                query = query.Where(x =>
+                    EF.Functions.Collate(
+                        x.Code,
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch));
+            }
+            else
+            {
+                query = query.Where(x =>
+                    x.Code.Contains(normalizedSearch) ||
+                    x.Name.Contains(normalizedSearch));
+            }
+        }
+
+        if (status.HasValue)
+            query = query.Where(x => x.IsActive == status.Value);
+
+        var totalItems = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderByDescending(x => x.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
 
-        return (items, total);
+        return (items, totalItems);
+    }
+
+    public async Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        var counts = await _db.Set<Brand>()
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId)
+            .GroupBy(x => x.IsActive)
+            .Select(group => new
+            {
+                IsActive = group.Key,
+                Count = group.Count()
+            })
+            .ToListAsync(ct);
+
+        var activeItems = counts
+            .Where(x => x.IsActive)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        var inactiveItems = counts
+            .Where(x => !x.IsActive)
+            .Select(x => x.Count)
+            .FirstOrDefault();
+
+        return (activeItems + inactiveItems, activeItems, inactiveItems);
     }
 
     public Task<Brand?> GetByIdAsync(int storeId, int id, CancellationToken ct = default)

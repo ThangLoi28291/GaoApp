@@ -16,11 +16,12 @@ public sealed class MediaAssetRepository : IMediaAssetRepository
 
     public Task<MediaAsset?> GetTempByTokenAsync(string token, int storeId, CancellationToken ct = default)
         => _db.MediaAssets.FirstOrDefaultAsync(x =>
-            x.StoreId == storeId && x.IsTemp && x.TempToken == token, ct);
+            x.StoreId == storeId && !x.IsDeleted && x.IsTemp && x.TempToken == token, ct);
 
     public Task<List<MediaAsset>> GetTempsByTokensAsync(List<string> tokens, int storeId, CancellationToken ct = default)
         => _db.MediaAssets
-            .Where(x => x.StoreId == storeId && x.IsTemp && x.TempToken != null && tokens.Contains(x.TempToken))
+            .Where(x => x.StoreId == storeId && !x.IsDeleted && x.IsTemp && x.TempToken != null &&
+                x.ExpireAtUtc > DateTime.UtcNow && x.StoragePath.StartsWith("uploads/products/") && tokens.Contains(x.TempToken))
             .ToListAsync(ct);
 
     public void Update(MediaAsset asset) => _db.MediaAssets.Update(asset);

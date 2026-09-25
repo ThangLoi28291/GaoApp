@@ -138,6 +138,12 @@ public class OrderLine : BaseStoreEntity
     [Column(TypeName = "decimal(18,2)")]
     public decimal OriginalUnitPrice { get; set; }
 
+    /// <summary>Retail price of one base unit when the server last priced this line.</summary>
+    public decimal? RewardBaseUnitPrice { get; set; }
+
+    /// <summary>Amount actually eligible at checkout. Null denotes a legacy/unfinished line.</summary>
+    public decimal? RewardableAmountSnapshot { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal PromotionDiscount { get; set; }
 

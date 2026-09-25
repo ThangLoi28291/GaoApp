@@ -1,0 +1,45 @@
+@using GaoApp.Application.Common.Security
+@using GaoApp.Application.DTOs.Customers
+@using GaoApp.Application.Interfaces.Services.Security
+@using GaoApp.Web.Common.Security
+@inject ICurrentStorePermissionService PermissionService
+@inject GaoApp.Application.Common.ITenantContext TenantContext
+@model CustomerEditDto
+
+@{
+    var isCreate = Model.Id == 0;
+    ViewData["Title"] = isCreate ? "Thêm khách hàng" : "Cập nhật khách hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+    var permission = isCreate ? PermissionCodes.Catalog.Customer.Create : PermissionCodes.Catalog.Customer.Update;
+    var canSave = await ViewPermissionHelper.HasPermissionAsync(PermissionService, TenantContext, User, permission);
+}
+
+@section header {
+    <div class="gds-page-header gds-page-header--compact w-100"><div class="gds-page-header__main"><h3 class="gds-page-header__title">@ViewData["Title"]</h3><p class="gds-page-header__subtitle mb-0">Thông tin hồ sơ và chính sách bán hàng của khách tại cửa hàng hiện tại.</p></div></div>
+}
+
+<div data-gao-ui="modern" data-layout-consistency><div class="gds-page"><div class="row justify-content-center"><div class="col-12 col-xl-9"><section class="gds-section">
+    <div class="d-flex align-items-center gap-3 mb-4"><span class="customer-form-icon"><i class="bx bx-user"></i></span><div><h5 class="mb-1">Hồ sơ khách hàng</h5><div class="text-muted small"><span class="text-danger">*</span> là thông tin bắt buộc</div></div></div>
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+    <form asp-area="Admin" asp-controller="Customer" asp-action="@(isCreate ? "Create" : "Edit")" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" /><input type="hidden" asp-for="RowVersion" />
+        <div class="row g-3">
+            <div class="col-md-8"><label asp-for="Name" class="form-label">Tên khách hàng <span class="text-danger">*</span></label><input asp-for="Name" class="form-control" autofocus placeholder="Nhập tên khách hàng" /><span asp-validation-for="Name" class="text-danger"></span></div>
+            <div class="col-md-4"><label asp-for="Code" class="form-label">Mã khách hàng</label><input asp-for="Code" class="form-control text-uppercase" placeholder="Nhập mã nếu có" /><span asp-validation-for="Code" class="text-danger"></span></div>
+            <div class="col-md-6"><label asp-for="Phone" class="form-label">Số điện thoại</label><input asp-for="Phone" class="form-control" inputmode="tel" /><span asp-validation-for="Phone" class="text-danger"></span></div>
+            <div class="col-md-6"><label asp-for="Email" class="form-label">Email</label><input asp-for="Email" class="form-control" type="email" /><span asp-validation-for="Email" class="text-danger"></span></div>
+            <div class="col-md-6"><label asp-for="TaxCode" class="form-label">Mã số thuế</label><input asp-for="TaxCode" class="form-control text-uppercase" /><span asp-validation-for="TaxCode" class="text-danger"></span></div>
+            <div class="col-md-6"><label asp-for="PriceTier" class="form-label">Nhóm giá</label><select asp-for="PriceTier" class="form-select"><option value="RETAIL">Khách lẻ</option><option value="WHOLESALE">Khách sỉ</option></select><span asp-validation-for="PriceTier" class="text-danger"></span></div>
+            <div class="col-12"><label asp-for="Address" class="form-label">Địa chỉ</label><input asp-for="Address" class="form-control" /><span asp-validation-for="Address" class="text-danger"></span></div>
+            <div class="col-12"><label asp-for="Note" class="form-label">Ghi chú</label><textarea asp-for="Note" class="form-control" rows="3"></textarea><span asp-validation-for="Note" class="text-danger"></span></div>
+            <div class="col-md-6"><div class="form-check form-switch border rounded-3 p-3 ps-5 h-100"><input asp-for="HaveDebt" class="form-check-input" /><label asp-for="HaveDebt" class="form-check-label fw-semibold">Được phép công nợ</label><div class="small text-muted">Đây là quyền sử dụng công nợ, không phải số dư thực tế.</div></div></div>
+            <div class="col-md-6"><div class="form-check form-switch border rounded-3 p-3 ps-5 h-100"><input asp-for="IsActive" class="form-check-input" /><label asp-for="IsActive" class="form-check-label fw-semibold">Đang hoạt động</label><div class="small text-muted">Khách ngừng hoạt động vẫn được giữ nguyên lịch sử.</div></div></div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4"><a asp-area="Admin" asp-controller="Customer" asp-action="Index" class="btn btn-label-secondary">Hủy</a>@if (canSave) { <button type="submit" class="btn btn-primary"><i class="bx bx-save me-1"></i>Lưu khách hàng</button> }</div>
+    </form>
+</section></div></div></div></div>
+
+@section Scripts { @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); } }

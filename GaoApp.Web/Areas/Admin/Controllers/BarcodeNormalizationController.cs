@@ -1,4 +1,6 @@
-﻿using System.Security.Claims;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using System.Security.Claims;
 using GaoApp.Application.DTOs.Products.BarcodeVerification;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Enums;
@@ -14,6 +16,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [AutoValidateAntiforgeryToken]
 [Route("admin/barcode-normalization")]
 
+[Authorize(Policy = PermissionCodes.Catalog.Barcode.View)]
 public class BarcodeNormalizationController : Controller
 {
     private readonly IProductBarcodeVerificationService _service;
@@ -48,6 +51,7 @@ public class BarcodeNormalizationController : Controller
     }
 
     [HttpPost("{id:int}/approve")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Update)]
     public async Task<IActionResult> Approve(
         int id,
         [FromBody] BarcodeVerificationResolveRequest request,
@@ -77,6 +81,7 @@ public class BarcodeNormalizationController : Controller
     }
 
     [HttpPost("{id:int}/reject")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Update)]
     public async Task<IActionResult> Reject(
         int id,
         [FromBody] BarcodeVerificationResolveRequest request,
@@ -106,6 +111,7 @@ public class BarcodeNormalizationController : Controller
     }
 
     [HttpPost("{id:int}/confirm-no-barcode")]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Update)]
     public async Task<IActionResult> ConfirmNoBarcode(
         int id,
         [FromBody] BarcodeVerificationResolveRequest request,

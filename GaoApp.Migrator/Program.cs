@@ -1,15 +1,30 @@
-﻿using GaoApp.Application;
+using GaoApp.Application;
 using GaoApp.Application.Common.Options;
+using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Interfaces.Services.Products;
+using GaoApp.Application.Interfaces.Services.Purchases;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Infrastructure;
 using GaoApp.Infrastructure.Data.Migrations;
 using GaoApp.Infrastructure.Data.Seed;
 using GaoApp.Migrator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Hosting;
 using Serilog;
 using Serilog.Events;
+
+MigratorMode mode;
+try { mode = MigratorCommand.Parse(args); }
+catch (MigratorConfigurationException)
+{
+    Console.Error.WriteLine(MigratorCommand.Usage);
+    Environment.ExitCode = 2;
+    return;
+}
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -21,7 +36,7 @@ try
 {
     Log.Information("Starting GaoApp.Migrator");
 
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = Host.CreateApplicationBuilder(Array.Empty<string>());
 
     // QUAN TRỌNG:
     // ép base path về thư mục output của chính executable
@@ -50,7 +65,17 @@ try
     // AppDbContext and the security seeders. Registering the whole Application
     // graph here also pulls in request/POS services that only make sense in the
     // Web host (for example ICurrentPOSContext).
-    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
+    // The migrator only needs persistence, schema inspection and seed services.
+    // Remove Web/POS runtime services whose constructors require request-scoped
+    // application contexts that intentionally do not exist in this host.
+    builder.Services.RemoveAll<IReceiptBarcodeProposalService>();
+    builder.Services.RemoveAll<IReceiptIntakeCatalog>();
+    builder.Services.RemoveAll<ICustomerDepositService>();
+    builder.Services.RemoveAll<ICustomerReceivableService>();
+    builder.Services.AddSingleton<
+        IInputInvoiceXmlDocumentParser,
+        InputInvoiceXmlDocumentParser>();
     builder.Services.AddSingleton<IWebHostEnvironment>(sp =>
         new MigratorWebHostEnvironment(
             sp.GetRequiredService<IHostEnvironment>()));
@@ -98,18 +123,21 @@ try
     using var scope = host.Services.CreateScope();
 
     Log.Information(
-        "Running migration and seed for environment: {EnvironmentName}",
+        "Running explicit Migrator operation for environment: {EnvironmentName}",
         builder.Environment.EnvironmentName);
 
     var runner = scope.ServiceProvider.GetRequiredService<MigrationRunner>();
-    await runner.RunAsync();
+    await runner.RunAsync(mode);
 
     Log.Information("GaoApp.Migrator completed successfully");
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "GaoApp.Migrator terminated unexpectedly");
-    throw;
+    // Provider exceptions can include sensitive connection details.
+    Log.Fatal("GaoApp.Migrator failed: {ErrorType}", ex.GetType().Name);
+    if (ex is MigratorConfigurationException or DatabaseCompatibilityException or ProductionBootstrapStateException)
+        Console.Error.WriteLine(ex.Message);
+    Environment.ExitCode = 1;
 }
 finally
 {

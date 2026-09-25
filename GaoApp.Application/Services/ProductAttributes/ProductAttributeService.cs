@@ -26,10 +26,25 @@ public sealed class ProductAttributeService : IProductAttributeService
     public Task<List<ProductAttribute>> GetAllAsync(int storeId, CancellationToken ct = default)
         => _repo.GetAllAsync(storeId, ct);
 
-    public async Task<PagedResult<ProductAttributeListItemDto>> GetPagedAsync(
+    public Task<PagedResult<ProductAttributeListItemDto>> GetPagedAsync(
         int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<ProductAttributeListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
-        var (items, total) = await _repo.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var (items, total) = await _repo.GetPagedAsync(
+            storeId,
+            search,
+            status,
+            page,
+            pageSize,
+            ct);
 
         return new PagedResult<ProductAttributeListItemDto>
         {
@@ -39,6 +54,11 @@ public sealed class ProductAttributeService : IProductAttributeService
             Items = items.Select(static item => item.ToListItemDto()).ToList()
         };
     }
+
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+        => _repo.GetSummaryAsync(storeId, ct);
 
     public async Task<Result<ProductAttributeEditDto>> GetForEditAsync(
         int storeId,

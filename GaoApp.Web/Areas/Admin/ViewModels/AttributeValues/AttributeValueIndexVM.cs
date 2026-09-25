@@ -12,6 +12,9 @@ public sealed class AttributeValueIndexVM
     public int PageSize { get; set; }
 
     public bool? Status { get; set; }
+    public int TotalValueCount { get; set; }
+    public int ActiveValueCount { get; set; }
+    public int InactiveValueCount { get; set; }
     public PagedResult<AttributeValueListItemDto> Paged { get; set; } = new();
 
     public List<ProductAttribute> Attributes { get; set; } = new(); // dropdown

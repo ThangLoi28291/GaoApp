@@ -1,0 +1,122 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
+@model GaoApp.Application.Interfaces.Services.Orders.ReceivablePageDto
+@{
+    ViewData["Title"] = "Công nợ khách hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+    var canCollect = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.Collect)).Succeeded;
+    var balance = Model.Orders.Sum(x => x.Balance);
+    var runningBalance = balance;
+    var selected = Model.CustomerId.HasValue;
+    var openOrders = Model.Orders.Count(x => x.Balance > 0);
+    var totalOutstanding = selected ? balance : Model.Customers.Sum(x => x.Balance);
+    var openCount = selected ? openOrders : Model.Customers.Count(x => x.Balance > 0);
+    var settledCount = selected ? Model.Orders.Count(x => x.Balance == 0) : Model.Customers.Count(x => x.Balance == 0);
+    var debtToday = DateTime.UtcNow.AddHours(7).Date;
+    var overdueBalance = selected
+        ? Model.Orders.Where(x => x.Balance > 0 && x.DueDate.HasValue && x.DueDate.Value.Date < debtToday).Sum(x => x.Balance)
+        : Model.Customers.Sum(x => x.Overdue);
+    string Kind(string value) => value switch { "Sale" => "Bán nợ", "Collection" => "Thu nợ", "Return" => "Trả hàng giảm nợ", "Void" => "Hủy đơn", _ => value };
+}
+
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Công nợ khách hàng</h3>
+                <p class="gds-page-header__subtitle mb-0">Theo dõi số dư, thu nợ và đối chiếu từng giao dịch tại cửa hàng.</p>
+            </div>
+            @if (selected)
+            {
+                <div class="gds-page-header__actions debt-actions">
+                    <a href="/admin/customer-debt" class="btn btn-outline-secondary gds-action-button"><i class="bx bx-arrow-back"></i><span>Danh sách khách</span></a>
+                    <a href="/admin/customer-debt/export?customerId=@Model.CustomerId" class="btn btn-outline-primary gds-action-button"><i class="bx bx-spreadsheet"></i><span>Xuất Excel</span></a>
+                    <button type="button" id="debtPrint" class="btn btn-primary gds-action-button gds-action-button--primary"><i class="bx bx-printer"></i><span>In đối chiếu</span></button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div data-gao-ui="modern">
+<div id="customerDebtPage" class="gds-page" data-customer-id="@Model.CustomerId">
+    @Html.AntiForgeryToken()
+    <section aria-label="Tổng quan công nợ">
+      <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
+        <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100"><div class="gds-kpi-card__icon is-primary"><i class="bx bx-wallet"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Còn phải thu</div><div class="gds-kpi-card__value fw-bold text-primary">@totalOutstanding.ToString("N0") <small>đ</small></div></div></article></div>
+        <div class="col"><article class="card shadow-sm border-0 gds-kpi-card h-100"><div class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-time-five"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">@(selected ? "Đơn còn công nợ" : "Khách còn công nợ")</div><div class="gds-kpi-card__value fw-bold text-warning">@openCount</div></div></article></div>
+        <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100"><div class="gds-kpi-card__icon is-success"><i class="bx bx-check-circle"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">@(selected ? "Đơn đã hết nợ" : "Khách đã hết nợ")</div><div class="gds-kpi-card__value fw-bold text-success">@settledCount</div></div></article></div>
+        <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--neutral h-100"><div class="gds-kpi-card__icon is-neutral"><i class="bx bx-error-circle"></i></div><div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Quá hạn</div><div class="gds-kpi-card__value fw-bold text-secondary">@overdueBalance.ToString("N0") <small>đ</small></div></div></article></div>
+      </div>
+    </section>
+    @if (!selected)
+    {
+        <section class="debt-surface card shadow-sm border-0">
+            <div class="debt-section-heading"><div class="d-flex align-items-center gap-2"><span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-search-alt"></i></span><div><h2>Tra cứu công nợ</h2><p>@Model.Customers.Count khách đang hiển thị · ưu tiên số dư lớn</p></div></div></div>
+            <form method="get" class="debt-search"><div class="debt-search-field"><label for="debtCustomerSearch" class="form-label fw-semibold text-dark">Tìm kiếm</label><div class="gds-search-field"><i class="bx bx-search"></i><input id="debtCustomerSearch" name="search" value="@ViewBag.Search" class="form-control" placeholder="Tên hoặc số điện thoại..." aria-label="Tìm khách công nợ" maxlength="100" /></div></div><button class="btn btn-primary">Tìm kiếm</button></form>
+            <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Khách hàng</th><th>Trạng thái</th><th class="text-end">Còn phải thu (₫)</th><th class="text-end">Quá hạn (₫)</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>
+            @foreach (var c in Model.Customers)
+            { <tr><td><a class="debt-name" href="/admin/customer-debt?customerId=@c.Id">@c.Name</a><small class="debt-secondary">@(string.IsNullOrWhiteSpace(c.Phone) ? "Chưa có số điện thoại" : c.Phone)</small></td><td><span class="debt-badge @(c.Balance > 0 ? "debt-badge--amber" : "debt-badge--green")">@(c.Balance > 0 ? "Còn công nợ" : "Đã hết nợ")</span></td><td class="text-end debt-balance">@c.Balance.ToString("N0")</td><td class="text-end @(c.Overdue > 0 ? "debt-negative" : "debt-muted")">@(c.Overdue > 0 ? c.Overdue.ToString("N0") : "—")</td><td class="text-end"><a href="/admin/customer-debt?customerId=@c.Id" class="btn btn-sm btn-outline-primary">Đối chiếu →</a></td></tr> }
+            @if (Model.Customers.Count == 0) { <tr><td colspan="5" class="debt-empty"><strong>Chưa có công nợ phù hợp</strong><span>Thử tên hoặc số điện thoại khác để tìm khách.</span></td></tr> }
+            </tbody></table></div>
+            <footer class="debt-table-note">Tối đa 200 khách. Tìm kiếm để thu hẹp kết quả. Quá hạn chỉ tính với đơn đã có hạn trả.</footer>
+        </section>
+    }
+    else
+    {
+        <div class="debt-workspace @(canCollect && balance > 0 ? "debt-workspace--collect" : "")">
+        <main class="debt-surface debt-records card shadow-sm border-0">
+            <div class="debt-section-heading"><div><span class="debt-eyebrow">KHÁCH HÀNG ĐANG ĐỐI CHIẾU</span><h2>@Model.CustomerName</h2><p>Đơn vị: VND · Sổ phát sinh hiển thị giao dịch mới nhất trước</p></div></div>
+            <nav class="debt-tabs" aria-label="Nội dung đối chiếu">
+                <button type="button" data-debt-tab="orders" aria-pressed="true" class="is-active">Đơn công nợ <span>@Model.Orders.Count</span></button>
+                <button type="button" data-debt-tab="journal" aria-pressed="false">Sổ phát sinh <span>@Model.Journal.Count</span></button>
+                <button type="button" data-debt-tab="receipts" aria-pressed="false">Phiếu thu <span>@Model.Receipts.Count</span></button>
+                <button type="button" data-debt-tab="refunds" aria-pressed="false">Chi hoàn tiền <span>@Model.Refunds.Count</span></button>
+            </nav>
+            <section data-debt-panel="orders" aria-label="Đơn công nợ">
+            <h3 class="debt-print-title">Đơn công nợ</h3>
+            <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Đơn hàng / hạn trả</th><th>Trạng thái</th><th class="text-end">Tổng đơn</th><th class="text-end">Đã thanh toán</th><th class="text-end">Còn nợ</th></tr></thead><tbody>
+            @foreach(var o in Model.Orders) { <tr><td><a class="debt-name" href="/admin/pos/order-detail/@o.Id">@o.Number</a><small class="debt-secondary">@(o.DueDate.HasValue ? "Hạn trả " + o.DueDate.Value.ToString("dd/MM/yyyy") : "Chưa đặt hạn trả")</small></td><td><span class="debt-badge @(o.Balance > 0 ? "debt-badge--amber" : "debt-badge--green")">@(o.Balance > 0 ? "Còn nợ" : "Hết nợ")</span></td><td class="text-end">@o.Total.ToString("N0")</td><td class="text-end debt-positive">@o.Paid.ToString("N0")</td><td class="text-end debt-balance">@o.Balance.ToString("N0")</td></tr> }
+            @if(Model.Orders.Count == 0) { <tr><td colspan="5" class="debt-empty">Chưa có đơn công nợ.</td></tr> }
+            </tbody><tfoot><tr><td colspan="4">TỔNG CÒN PHẢI THU</td><td class="text-end debt-balance">@balance.ToString("N0")</td></tr></tfoot></table></div>
+            </section>
+            <section data-debt-panel="journal" aria-label="Sổ phát sinh">
+            <h3 class="debt-print-title">Sổ phát sinh</h3><p class="debt-table-note">Tăng nợ: màu cam · Giảm nợ: màu xanh · Tối đa 500 phát sinh gần nhất</p>
+            <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Thời gian / người ghi</th><th>Nghiệp vụ / chứng từ</th><th class="text-end">Tăng nợ</th><th class="text-end">Giảm nợ</th><th class="text-end">Số dư sau</th><th>Ghi chú</th></tr></thead><tbody>
+            @foreach(var e in Model.Journal) { <tr><td>@e.At.ToLocalTime().ToString("dd/MM/yyyy")<small class="debt-secondary">@e.At.ToLocalTime().ToString("HH:mm") · NV #@e.UserId</small></td><td><span class="debt-badge @(e.Amount > 0 ? "debt-badge--amber" : "debt-badge--green")">@Kind(e.Kind)</span><small class="debt-secondary">@e.OrderNumber</small>@if(e.ReceiptId.HasValue) { <small class="debt-secondary">PTCN-@e.ReceiptId.Value.ToString("D6")</small> }</td><td class="text-end debt-negative">@(e.Amount > 0 ? "+" + e.Amount.ToString("N0") : "—")</td><td class="text-end debt-positive">@(e.Amount < 0 ? "−" + (-e.Amount).ToString("N0") : "—")</td><td class="text-end debt-balance">@runningBalance.ToString("N0")</td><td class="debt-note">@(e.Note ?? "—")</td></tr> runningBalance -= e.Amount; }
+            @if(Model.Journal.Count == 0) { <tr><td colspan="6" class="debt-empty">Chưa có phát sinh công nợ.</td></tr> }
+            </tbody></table></div></section>
+            <section data-debt-panel="receipts" aria-label="Phiếu thu">
+            <h3 class="debt-print-title">Phiếu thu</h3><p class="debt-table-note">Các khoản tiền thực nhận · Tối đa 200 phiếu gần nhất</p>
+            <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th class="text-end">Thực thu</th><th>Phương thức / tài khoản</th><th>Ca / người thu</th><th>Tham chiếu / ghi chú</th></tr></thead><tbody>
+            @foreach(var r in Model.Receipts) { <tr><td><strong class="debt-name">PTCN-@r.Id.ToString("D6")</strong><small class="debt-secondary">@r.At.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-positive debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method<small class="debt-secondary">@r.Bank</small></td><td>Ca #@r.ShiftId<small class="debt-secondary">NV #@r.UserId</small></td><td class="debt-note">@(r.Reference ?? "—")<small class="debt-secondary">@r.Note</small></td></tr> }
+            @if(Model.Receipts.Count == 0) { <tr><td colspan="5" class="debt-empty"><strong>Chưa có phiếu thu</strong><span>Phiếu sẽ xuất hiện sau khi ghi nhận khách trả nợ.</span></td></tr> }
+            </tbody></table></div></section>
+            <section data-debt-panel="refunds" aria-label="Chi hoàn tiền">
+            <h3 class="debt-print-title">Chi hoàn tiền</h3><p class="debt-table-note">Tiền thực chi hoàn cho khách · Tối đa 200 khoản gần nhất</p>
+            <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th class="text-end">Thực chi</th><th>Phương thức</th><th>Ca</th><th>Tham chiếu</th></tr></thead><tbody>
+            @foreach(var r in Model.Refunds) { <tr><td><strong class="debt-name">@r.Number</strong><small class="debt-secondary">@r.At.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-negative debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method</td><td>#@r.ShiftId</td><td class="debt-note">@(r.Reference ?? "—")</td></tr> }
+            @if(Model.Refunds.Count == 0) { <tr><td colspan="5" class="debt-empty"><strong>Chưa phát sinh chi hoàn tiền</strong><span>Các khoản hoàn từ đơn công nợ sẽ được liệt kê tại đây.</span></td></tr> }
+            </tbody></table></div></section>
+        </main>
+        @if (canCollect && balance > 0)
+        {
+            <form id="debtCollectForm" class="debt-collection card shadow-sm border-0"><div class="debt-section-heading"><div><span class="debt-eyebrow">GHI NHẬN THANH TOÁN</span><h2>Thu công nợ</h2></div><span class="debt-badge debt-badge--green">Ca hiện tại</span></div><div class="card-body">
+                <div class="row g-3"><div class="col-12"><label for="debtOrder" class="form-label">Phân bổ vào đơn</label><select id="debtOrder" class="form-select"><option value="">Tự động phân bổ</option>@foreach(var o in Model.Orders.Where(x => x.Balance > 0)) { <option value="@o.Id">@o.Number · còn @o.Balance.ToString("N0") ₫</option> }</select></div>
+                <div class="col-12"><label for="debtAmount" class="form-label">Số tiền thu (₫)</label><input id="debtAmount" class="form-control" type="number" min="1" max="@balance" step="1" required /></div>
+                <div class="col-12"><label for="debtMethod" class="form-label">Phương thức</label><select id="debtMethod" class="form-select"><option value="0">Tiền mặt</option><option value="1">Chuyển khoản đã đối soát</option></select></div>
+                <div class="col-12"><label for="debtBank" class="form-label">Tài khoản nhận</label><select id="debtBank" class="form-select" disabled><option value="">Chọn tài khoản</option>@foreach(var b in Model.Banks) { <option value="@b.Id">@b.Label</option> }</select></div>
+                <div class="col-12"><label for="debtReference" class="form-label">Mã giao dịch ngân hàng</label><input id="debtReference" maxlength="100" class="form-control" /></div>
+                <div class="col-12"><label for="debtNote" class="form-label">Ghi chú</label><input id="debtNote" maxlength="500" class="form-control" /></div></div>
+                <p id="debtMessage" class="mt-3" role="status" aria-live="polite"></p><button id="debtSubmit" class="btn btn-primary w-100">Xác nhận thu nợ</button>
+            </div></form>
+        }
+        </div>
+    }
+</div>
+</div>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script> }

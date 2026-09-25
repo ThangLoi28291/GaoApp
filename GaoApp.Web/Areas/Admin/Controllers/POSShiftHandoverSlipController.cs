@@ -20,6 +20,7 @@ public class POSShiftHandoverSlipController : ControllerBase
         _service = service;
     }
 
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpPost("")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.Open)]
     public async Task<IActionResult> Create(
@@ -30,6 +31,7 @@ public class POSShiftHandoverSlipController : ControllerBase
         return Ok(result);
     }
 
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpGet("{id:int}")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
@@ -41,6 +43,16 @@ public class POSShiftHandoverSlipController : ControllerBase
 
         return Ok(result);
     }
+
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
+    [HttpGet("assignments")]
+    public async Task<IActionResult> Assignments(CancellationToken ct)
+        => Ok(await _service.GetAssignmentsAsync(ct));
+
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
+    [HttpPost("{id:int}/update")]
+    public async Task<IActionResult> Update(int id, [FromBody] UpdatePOSShiftHandoverSlipRequest request, CancellationToken ct)
+        => Ok(await _service.UpdateAsync(id, request, ct));
 
     [HttpGet("barcode")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
@@ -56,6 +68,7 @@ public class POSShiftHandoverSlipController : ControllerBase
         return Ok(result);
     }
 
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpGet("")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
     public async Task<IActionResult> Query(
@@ -87,14 +100,16 @@ public class POSShiftHandoverSlipController : ControllerBase
         return Ok(result);
     }
 
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpPost("{id:int}/mark-printed")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.Open)]
-    public async Task<IActionResult> MarkPrinted(int id, CancellationToken ct)
+    public async Task<IActionResult> MarkPrinted(int id, [FromQuery] string? barcodeValue, CancellationToken ct)
     {
-        var result = await _service.MarkPrintedAsync(id, ct);
+        var result = await _service.MarkPrintedAsync(id, ct, barcodeValue);
         return Ok(result);
     }
 
+    [GaoApp.Web.Common.POS.StoreAdminOnly]
     [HttpPost("{id:int}/cancel")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.Open)]
     public async Task<IActionResult> Cancel(

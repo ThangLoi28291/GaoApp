@@ -1,4 +1,4 @@
-﻿@model GaoApp.Application.DTOs.Security.UserInStores.CreateUserInStoreRequest
+@model GaoApp.Application.DTOs.Security.UserInStores.CreateUserInStoreRequest
 @using GaoApp.Application.DTOs.Security.UserInStores
 @using Microsoft.AspNetCore.Mvc.Rendering
 
@@ -13,7 +13,7 @@
         <div>
             <h3 class="mb-1">Thêm nhân viên</h3>
             <div class="text-muted">
-                Tạo nhân viên mới hoặc gán user có sẵn vào cửa hàng hiện tại.
+                Tạo tài khoản nhân viên cho cửa hàng hiện tại. Tài khoản dùng chung cần quản trị hệ thống gán quyền.
             </div>
         </div>
 
@@ -56,6 +56,8 @@
                     </button>
                 </li>
 
+                @if (ViewBag.CanAssignExistingUsers == true)
+                {
                 <li class="nav-item" role="presentation">
                     <button class="nav-link"
                             id="existing-user-tab"
@@ -67,6 +69,7 @@
                         Gán user có sẵn
                     </button>
                 </li>
+                }
             </ul>
         </div>
 
@@ -120,9 +123,9 @@
                                            id="newPassword"
                                            type="password"
                                            class="form-control"
-                                           placeholder="Tối thiểu 6 ký tự"
+                                           placeholder="Từ 12 đến 128 ký tự"
                                            required
-                                           minlength="6" />
+                                           minlength="12" maxlength="128" />
                                     <button class="btn btn-outline-secondary"
                                             type="button"
                                             id="togglePasswordBtn">
@@ -214,6 +217,8 @@
                 <!-- ===================================================== -->
                 <!-- TAB 2: GÁN USER CÓ SẴN -->
                 <!-- ===================================================== -->
+                @if (ViewBag.CanAssignExistingUsers == true)
+                {
                 <div class="tab-pane fade"
                      id="existing-user-pane"
                      role="tabpanel"
@@ -348,6 +353,7 @@
                         </div>
                     </form>
                 </div>
+                }
             </div>
         </div>
     </div>

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Exceptions.Pos;
@@ -82,7 +82,7 @@ public class GlobalExceptionMiddleware
 
         var mapped = MapException(exception);
 
-        if (mapped.StatusCode < StatusCodes.Status500InternalServerError)
+        if (mapped.StatusCode < StatusCodes.Status500InternalServerError || exception is ReportBusyException)
         {
             _logger.LogWarning(
                 "Expected request failure handled. TraceId={TraceId}; ErrorCode={ErrorCode}; ErrorType={ErrorType}; StatusCode={StatusCode}; Path={Path}; ExceptionType={ExceptionType}",
@@ -112,6 +112,7 @@ public class GlobalExceptionMiddleware
         context.Response.Clear();
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.StatusCode = mapped.StatusCode;
+        if (exception is ReportBusyException) context.Response.Headers.RetryAfter = "5";
 
         var payload = new ErrorResponse
         {
@@ -166,6 +167,24 @@ public class GlobalExceptionMiddleware
         // =========================================================
         // 2) APP EXCEPTIONS CÓ SẴN TRONG HỆ THỐNG
         // =========================================================
+        if (exception is GaoApp.Web.Services.Acb.AcbApiException acbEx)
+        {
+            return new ErrorEnvelope
+            {
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+                Message = acbEx.Message,
+                ErrorCode = "ACB_REQUEST_FAILED",
+                ActionHint = acbEx.BusinessRequestNotSent
+                    ? "Yêu cầu này chưa được gửi tới ACB. Kiểm tra kết nối và thử lại."
+                    : "Tra cứu trạng thái QR trước khi thực hiện lại thao tác.",
+                ErrorType = PosErrorTypes.Technical
+            };
+        }
+
+        if (exception is ReportBusyException reportBusy)
+            return new ErrorEnvelope { StatusCode = StatusCodes.Status503ServiceUnavailable,
+                Message = reportBusy.Message, ErrorCode = "REPORT_BUSY", ErrorType = PosErrorTypes.Technical };
+
         if (exception is ValidationAppException validationEx)
         {
             return new ErrorEnvelope

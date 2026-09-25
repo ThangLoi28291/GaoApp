@@ -1,0 +1,208 @@
+﻿@model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
+
+@{
+    var shiftText = Model.HasOpenShift
+        ? Model.ShiftCode
+        : "Chưa mở ca";
+
+    var warehouseText = string.IsNullOrWhiteSpace(Model.WarehouseName)
+        ? "Chưa chọn kho"
+        : Model.WarehouseName;
+
+    var terminalText = string.IsNullOrWhiteSpace(Model.TerminalName)
+        ? "Chưa xác định máy POS"
+        : Model.TerminalName;
+
+    var userText = string.IsNullOrWhiteSpace(Model.UserName)
+        ? "Chưa xác định nhân viên"
+        : Model.UserName;
+
+    var readinessClass = Model.HasOpenShift
+        ? "is-ready"
+        : "is-warning";
+
+    var readinessText = Model.HasOpenShift
+        ? "Sẵn sàng"
+        : "Chưa mở ca";
+}
+
+<header class="pos-prime-header"
+        data-pos-prime-header>
+
+    <div class="pos-prime-header__identity">
+
+        <button type="button"
+                id="btnOpenPosPrimeAdminDrawer"
+                class="pos-prime-header__menu-button"
+                data-bs-toggle="offcanvas"
+                data-bs-target="#posPrimeAdminDrawer"
+                aria-controls="posPrimeAdminDrawer"
+                aria-label="Mở menu quản trị">
+            <i class="bx bx-menu"
+               aria-hidden="true"></i>
+        </button>
+
+        <div class="pos-prime-header__brand">
+            <span>GAOAPP POS</span>
+            <strong>BÁN HÀNG</strong>
+        </div>
+
+        <div class="pos-prime-header__context"
+             aria-label="Ngữ cảnh bán hàng hiện tại">
+
+            <span class="pos-prime-context-item"
+                  title="Ca POS hiện tại">
+                <i class="bx bx-time-five"
+                   aria-hidden="true"></i>
+                <strong>@shiftText</strong>
+            </span>
+
+            <span class="pos-prime-context-divider"
+                  aria-hidden="true">·</span>
+
+            <span class="pos-prime-context-item"
+                  title="Kho bán">
+                <i class="bx bx-package"
+                   aria-hidden="true"></i>
+                <span>@warehouseText</span>
+            </span>
+
+            <span class="pos-prime-context-divider"
+                  aria-hidden="true">·</span>
+
+            <span class="pos-prime-context-item"
+                  title="Máy POS">
+                <i class="bx bx-desktop"
+                   aria-hidden="true"></i>
+                <span>@terminalText</span>
+            </span>
+
+            <span class="pos-prime-context-divider"
+                  aria-hidden="true">·</span>
+
+            <span class="pos-prime-context-item"
+                  title="Nhân viên">
+                <i class="bx bx-user"
+                   aria-hidden="true"></i>
+                <span>@userText</span>
+            </span>
+        </div>
+    </div>
+
+    <div class="pos-prime-header__actions">
+
+        <div class="pos-prime-readiness @readinessClass"
+             title="Trạng thái ca POS">
+            <span class="pos-prime-readiness__dot"
+                  aria-hidden="true"></span>
+            <span>@readinessText</span>
+        </div>
+
+        <partial name="_HeldOrdersPanel" />
+
+        <button type="button"
+                class="pos-prime-header__action"
+                data-pos-shortcuts-toggle
+                aria-controls="posCockpitShortcutPanel"
+                aria-expanded="false"
+                title="Xem phím tắt">
+            <i class="bx bx-keyboard"
+               aria-hidden="true"></i>
+            <span>Phím tắt</span>
+        </button>
+
+        <div class="dropdown">
+            <button type="button"
+                    class="pos-prime-header__action pos-prime-header__action--icon"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    aria-label="Mở thêm chức năng POS">
+                <i class="bx bx-dots-horizontal-rounded"
+                   aria-hidden="true"></i>
+            </button>
+
+            <ul class="dropdown-menu dropdown-menu-end pos-prime-more-menu">
+                <li><a class="dropdown-item" href="/admin/receipt-templates" target="_blank" rel="noopener"><i class="bx bx-printer me-2" aria-hidden="true"></i>Mẫu hóa đơn & máy in</a></li>
+                <li>
+                    <a class="dropdown-item"
+                       href="/admin/pos-shift">
+                        <i class="bx bx-time-five me-2"
+                           aria-hidden="true"></i>
+                        Ca POS
+                    </a>
+                </li>
+
+                <li>
+                    <a class="dropdown-item"
+                       href="/admin/pos-shift/history">
+                        <i class="bx bx-history me-2"
+                           aria-hidden="true"></i>
+                        Lịch sử ca
+                    </a>
+                </li>
+
+                <li>
+                    <a class="dropdown-item"
+                       href="/admin/pos/orders-page">
+                        <i class="bx bx-receipt me-2"
+                           aria-hidden="true"></i>
+                        Đơn POS
+                    </a>
+                </li>
+
+                <li>
+                    <a class="dropdown-item"
+                       href="/admin/pos/dashboard">
+                        <i class="bx bx-bar-chart-alt-2 me-2"
+                           aria-hidden="true"></i>
+                        Dashboard
+                    </a>
+                </li>
+
+                <li>
+                    <hr class="dropdown-divider" />
+                </li>
+
+                <li>
+                    <button type="button"
+                            id="btnOpenCustomerDisplay"
+                            class="dropdown-item"
+                            data-url="/admin/pos/customer-display">
+                        <i class="bx bx-desktop me-2"
+                           aria-hidden="true"></i>
+                        Màn hình khách
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="gao-account-toolbar-slot" data-account-toolbar-slot></div>
+    </div>
+
+    <div id="posCockpitShortcutPanel"
+         class="pos-cockpit-shortcuts pos-prime-shortcuts"
+         hidden>
+
+        <div class="pos-cockpit-shortcuts__header">
+            <strong>Phím tắt POS</strong>
+
+            <button type="button"
+                    class="pos-cockpit-shortcuts__close"
+                    data-pos-shortcuts-close
+                    aria-label="Đóng bảng phím tắt">
+                <i class="bx bx-x"
+                   aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div class="pos-cockpit-shortcuts__grid">
+            <div><kbd>F2</kbd><span>Giữ đơn</span></div>
+            <div><kbd>F3</kbd><span>Thanh toán</span></div>
+            <div><kbd>F4</kbd><span>Chốt đơn</span></div>
+            <div><kbd>F6</kbd><span>Đơn giữ</span></div>
+            <div><kbd>F8</kbd><span>Sửa số lượng</span></div>
+            <div><kbd>Alt+F7</kbd><span>Giảm giá dòng</span></div>
+            <div><kbd>Ctrl+Del</kbd><span>Hủy giỏ</span></div>
+            <div><kbd>Esc</kbd><span>Về ô quét</span></div>
+        </div>
+    </div>
+</header>

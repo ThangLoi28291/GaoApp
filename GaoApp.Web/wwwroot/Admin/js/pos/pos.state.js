@@ -272,6 +272,8 @@
     }
 
     function isPosOnline(posState) {
+        // Action availability can include durable offline handling; the banner reports connectivity.
+        if (window.PosOffline?.canWork()) return true;
         if (posState?.offline?.isOnline === false) {
             return false;
         }

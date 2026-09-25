@@ -1,0 +1,11 @@
+@model int
+@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService LabelAuthorization
+@if ((await LabelAuthorization.AuthorizeAsync(User, null, PermissionCodes.System.ProductLabel.Print)).Succeeded)
+{
+    <div class="d-flex gap-2 flex-wrap align-items-center mb-3" data-label-receipt="@Model">
+        <button type="button" class="btn btn-outline-primary" data-label-add="@Model"><i class="bx bx-barcode me-1"></i>Đưa vào in tem</button>
+        <a href="/admin/label-printing" class="btn btn-outline-secondary">Danh sách in tem</a>
+        <span class="small text-muted" data-label-progress="@Model"></span>
+    </div>
+}

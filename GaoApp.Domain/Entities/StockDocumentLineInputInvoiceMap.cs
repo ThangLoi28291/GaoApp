@@ -40,4 +40,7 @@ public class StockDocumentLineInputInvoiceMap : BaseStoreEntity, IAuditTrackedEn
 
     [StringLength(1000)]
     public string? Note { get; set; }
+
+    [StringLength(1000)]
+    public string? ExclusionReason { get; set; }
 }

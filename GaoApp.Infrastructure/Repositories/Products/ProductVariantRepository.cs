@@ -197,9 +197,11 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         .Include(x => x.AttributeValues)
 
         // NEW:
-        // Load đơn vị quy đổi để màn Variant lấy giá lẻ/giá sỉ của đơn vị gốc.
+        // Load đơn vị quy đổi (để hiển thị danh sách đơn vị/barcode và giá gốc)
         .Include(x => x.UnitConversions.Where(c => !c.IsDeleted))
             .ThenInclude(c => c.Unit)
+        .Include(x => x.UnitConversions.Where(c => !c.IsDeleted))
+            .ThenInclude(c => c.Barcodes.Where(b => !b.IsDeleted))
 
         .ToListAsync(ct);
 
@@ -836,7 +838,7 @@ public sealed class ProductVariantRepository : IProductVariantRepository
         // Bước 1 chỉ tìm ID. Không Include collection tại đây vì ProductImages x
         // UnitConversions x Barcodes có thể tạo một result set rất lớn trước khi
         // EF dựng lại entity, làm autocomplete POS chậm và dễ bị browser hủy.
-        var matchedIds = await _db.ProductVariants
+        var candidates = _db.ProductVariants
             .AsNoTracking()
             .Where(x =>
                 !x.IsDeleted &&
@@ -844,8 +846,47 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                 x.Product != null &&
                 !x.Product.IsDeleted &&
                 x.Product.IsActive &&
-                (!requireSellable || x.Product.IsSellable) &&
-                (
+                (!requireSellable || x.Product.IsSellable));
+
+        // The global tenant filter permits a null tenant for administrative jobs.
+        // POS has a concrete store: make that equality explicit so SQL can use
+        // store indexes without planning for the cross-store OR branch.
+        if (_db.CurrentStoreId is int storeId)
+            candidates = candidates.Where(x => x.StoreId == storeId && x.Product.StoreId == storeId);
+
+        List<int> matchedIds;
+        if (_db.Database.IsSqlServer())
+        {
+            // Imported/older rows can have a missing or stale normalized name.
+            // POS and stock lookup must also search the actual display names
+            // without accents/case, independently of the cached normalized name.
+            // Keep filtering/limiting in SQL before loading the product graph.
+            const string searchCollation = "Latin1_General_100_CI_AI";
+            // Separate matches on different tables. An OR spanning product,
+            // variant and a correlated unit lookup can produce an expensive
+            // nested-loop plan. UNION keeps each filter local and removes duplicates.
+            // Project only the ID and sort keys before combining the branches.
+            var matches = candidates.Where(x =>
+                (!string.IsNullOrEmpty(x.ProductVariantNameNormalized) && x.ProductVariantNameNormalized.Contains(normalizedKeyword)) ||
+                (!string.IsNullOrEmpty(x.ProductVariantName) && EF.Functions.Collate(x.ProductVariantName, searchCollation).Contains(normalizedKeyword)) ||
+                (!string.IsNullOrEmpty(x.Sku) && x.Sku.Contains(keyword)))
+                .Select(x => new { x.Id, x.ProductVariantName, x.Sku });
+            matches = matches.Union(candidates.Where(x =>
+                EF.Functions.Collate(x.Product.Name, searchCollation).Contains(normalizedKeyword))
+                .Select(x => new { x.Id, x.ProductVariantName, x.Sku }));
+            var matchingConversions = _db.ProductUnitConversions.AsNoTracking().Where(c =>
+                !c.IsDeleted && c.IsActive && c.Unit != null && !c.Unit.IsDeleted &&
+                EF.Functions.Collate(c.Unit.Name, searchCollation).Contains(normalizedKeyword));
+            var unitMatches = from conversion in matchingConversions
+                              join variant in candidates on conversion.ProductVariantId equals variant.Id
+                              select new { variant.Id, variant.ProductVariantName, variant.Sku };
+            matchedIds = await matches.Union(unitMatches)
+                .OrderBy(x => x.ProductVariantName).ThenBy(x => x.Sku)
+                .Select(x => x.Id).Take(take).ToListAsync(ct);
+        }
+        else
+        {
+            candidates = candidates.Where(x =>
                     (!string.IsNullOrEmpty(x.ProductVariantNameNormalized) && x.ProductVariantNameNormalized.Contains(normalizedKeyword)) ||
                     (!string.IsNullOrEmpty(x.ProductVariantName) && x.ProductVariantName.Contains(keyword)) ||
                     (!string.IsNullOrEmpty(x.Sku) && x.Sku.Contains(keyword)) ||
@@ -856,21 +897,27 @@ public sealed class ProductVariantRepository : IProductVariantRepository
                         c.Unit != null &&
                         !c.Unit.IsDeleted &&
                         c.Unit.Name.Contains(keyword))
-                ))
-            .OrderBy(x => x.ProductVariantName)
-            .ThenBy(x => x.Sku)
-            .Select(x => x.Id)
-            .Take(take)
-            .ToListAsync(ct);
+                );
+            matchedIds = await candidates
+                .OrderBy(x => x.ProductVariantName)
+                .ThenBy(x => x.Sku)
+                .Select(x => x.Id)
+                .Take(take)
+                .ToListAsync(ct);
+        }
 
         if (matchedIds.Count == 0)
             return new List<ProductVariant>();
 
         // Bước 2 chỉ nạp graph cho số ID đã giới hạn. AsSplitQuery tránh phép
         // nhân dòng giữa các collection Include độc lập.
-        var variants = await _db.ProductVariants
+        var selectedVariants = _db.ProductVariants
             .AsNoTracking()
-            .Where(x => matchedIds.Contains(x.Id))
+            .Where(x => matchedIds.Contains(x.Id));
+        if (_db.CurrentStoreId is int selectedStoreId)
+            selectedVariants = selectedVariants.Where(x => x.StoreId == selectedStoreId && x.Product.StoreId == selectedStoreId);
+
+        var variants = await selectedVariants
 
             // Product + BaseUnit
             .Include(x => x.Product)

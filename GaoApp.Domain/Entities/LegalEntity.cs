@@ -25,6 +25,10 @@ public sealed class LegalEntity : BaseStoreEntity
     [StringLength(50)]
     public string? TaxCode { get; set; }
 
+    /// <summary>Canonical tax identity used for exact invoice buyer-owner resolution.</summary>
+    [StringLength(50)]
+    public string? NormalizedTaxCode { get; private set; }
+
     [StringLength(1200)]
     public string? Address { get; set; }
 

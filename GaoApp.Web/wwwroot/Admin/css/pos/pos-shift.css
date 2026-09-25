@@ -35,7 +35,25 @@
 /* =========================================================
    Page Shell
    ========================================================= */
+/* =========================================================
+   POS SHIFT P1 - COMPACT PAGE WORKSPACE
+   Chỉ áp dụng cho POS Shift vì pos-shift.css là page-local.
+   Mục tiêu: đưa view sát sidebar như các trang admin chuẩn.
+   ========================================================= */
 
+.layout-page .content-wrapper > .container-xxl {
+    width: 100% !important;
+    max-width: none !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+}
+
+@media (max-width: 991.98px) {
+    .layout-page .content-wrapper > .container-xxl {
+        padding-left: 16px !important;
+        padding-right: 16px !important;
+    }
+}
 .shift-shell {
     display: flex;
     flex-direction: column;
@@ -1963,4 +1981,578 @@
     font-size: 13px;
     font-weight: 800;
     line-height: 1.5;
+}
+/* =========================================================
+   POS SHIFT P1 — OPERATIONAL CONTROL CENTER
+   Page-local modernization only; business/runtime owners unchanged.
+   ========================================================= */
+
+.pos-context-bar.pos-context-bar {
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 16px;
+    background: #f5f8fc;
+    border-color: #dfe7f1;
+}
+
+.pos-context-grid.pos-context-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.pos-context-item.pos-context-item {
+    min-height: 72px;
+    padding: 10px 12px;
+    border-radius: 13px;
+    box-shadow: none;
+}
+
+.pos-context-item.pos-context-item:hover {
+    transform: none;
+    box-shadow: 0 5px 14px rgba(15, 23, 42, .045);
+}
+
+.pos-context-label.pos-context-label {
+    margin-bottom: 5px;
+    font-size: .68rem;
+    letter-spacing: .055em;
+    color: #58667a;
+}
+
+.pos-context-value.pos-context-value {
+    font-size: .94rem;
+    line-height: 1.25;
+    color: #172033;
+}
+
+.pos-context-sub.pos-context-sub {
+    margin-top: 5px;
+    font-size: .74rem;
+    color: #64748b;
+}
+
+.pos-context-inline-meta.pos-context-inline-meta {
+    margin-top: 5px;
+    padding: 4px 8px;
+    font-size: .72rem;
+}
+
+.pos-shift-pill.pos-shift-pill {
+    padding: 6px 9px;
+    font-size: .76rem;
+}
+
+.shift-command-bar {
+    padding: 16px 18px;
+    border-color: #dbe5f1;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .065);
+}
+
+.shift-command-bar::after {
+    width: 120px;
+    height: 120px;
+}
+
+.shift-command-identity {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.shift-command-copy {
+    min-width: 0;
+}
+
+.shift-command-bar .shift-hero-card__title {
+    color: #101828;
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.shift-command-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 5px;
+    color: #667085;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.shift-command-meta span {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+.shift-command-meta strong {
+    color: #25324a;
+    font-weight: 850;
+}
+
+.shift-command-bar .shift-status-pill {
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+.shift-command-bar .shift-toolbar-btn {
+    min-width: 148px;
+    height: 42px;
+}
+
+.shift-summary-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(310px, .8fr);
+    gap: 16px;
+    align-items: stretch;
+}
+
+.shift-cash-position-card,
+.shift-secondary-card {
+    border: 1px solid #dfe7f1;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, .055);
+}
+
+.shift-cash-position-card {
+    padding: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+}
+
+.shift-cash-position-head,
+.shift-secondary-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.shift-section-eyebrow {
+    margin-bottom: 5px;
+    color: #3658d4;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.shift-cash-position-sub {
+    margin-top: 4px;
+    color: #667085;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.shift-cash-position-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #edf2ff;
+    color: #4f5bd5;
+    font-size: 22px;
+}
+
+.shift-cash-flow {
+    display: grid;
+    gap: 2px;
+    border: 1px solid #e8edf4;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #f8fafc;
+}
+
+.shift-cash-flow-row {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 14px;
+    background: #fff;
+}
+
+.shift-cash-flow-row + .shift-cash-flow-row {
+    border-top: 1px solid #eef2f6;
+}
+
+.shift-cash-flow-label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #344054;
+    font-size: 13px;
+    font-weight: 750;
+}
+
+.shift-cash-flow-sign {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #f2f4f7;
+    color: #667085;
+    font-size: 15px;
+    font-weight: 950;
+}
+
+.shift-cash-flow-row.positive .shift-cash-flow-sign {
+    background: #ecfdf3;
+    color: #067647;
+}
+
+.shift-cash-flow-row.negative .shift-cash-flow-sign {
+    background: #fff1f2;
+    color: #c21f39;
+}
+
+.shift-cash-flow-value {
+    color: #101828;
+    font-size: 16px;
+    font-weight: 900;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.shift-cash-flow-value.positive {
+    color: #067647;
+}
+
+.shift-cash-flow-value.negative {
+    color: #c21f39;
+}
+
+.shift-cash-position-total {
+    margin-top: 14px;
+    padding: 16px 18px;
+    border: 1px solid #c9d6ff;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    background: linear-gradient(135deg, #eef3ff 0%, #f8faff 100%);
+}
+
+.shift-cash-position-total__label {
+    color: #233876;
+    font-size: 13px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .035em;
+}
+
+.shift-cash-position-total__hint {
+    margin-top: 4px;
+    color: #60708f;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.shift-cash-position-total__value {
+    color: #203dcc;
+    font-size: 34px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: -.7px;
+    white-space: nowrap;
+}
+
+.shift-secondary-card {
+    padding: 20px;
+}
+
+.shift-secondary-grid {
+    display: grid;
+    gap: 0;
+    border-top: 1px solid #edf1f5;
+}
+
+.shift-secondary-item {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    border-bottom: 1px solid #edf1f5;
+    color: #667085;
+    font-size: 12px;
+}
+
+.shift-secondary-item strong {
+    color: #25324a;
+    font-size: 15px;
+    font-weight: 900;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.shift-secondary-item strong.negative {
+    color: #b42318;
+}
+
+.shift-note-box--compact {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 13px;
+    background: #f8fafc;
+}
+
+.shift-tabs-nav {
+    margin-top: 0;
+}
+
+.shift-tab-btn {
+    min-height: 42px;
+    color: #475467;
+}
+
+.shift-table thead th {
+    color: #344054;
+    font-size: 12px;
+    letter-spacing: .025em;
+    text-transform: uppercase;
+}
+
+.cash-amount {
+    font-size: 15px;
+    font-weight: 900;
+}
+
+.cash-reason {
+    color: #25324a;
+    font-weight: 800;
+}
+
+.cash-note {
+    color: #667085;
+}
+
+.shift-cash-txn-modal .modal-content {
+    border: 1px solid #dde5ef;
+}
+
+.shift-cash-txn-modal .modal-body {
+    padding: 20px 22px 18px;
+}
+
+.shift-cash-type-block,
+.shift-cash-amount-block {
+    margin-bottom: 18px;
+}
+
+.shift-cash-type-segment {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.shift-cash-type-btn {
+    min-height: 48px;
+    border: 1px solid #d8e1ec;
+    border-radius: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #fff;
+    color: #475467;
+    font-size: 14px;
+    font-weight: 850;
+    transition: border-color .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+.shift-cash-type-btn i {
+    font-size: 19px;
+}
+
+.shift-cash-type-btn:hover {
+    border-color: #b8c5e6;
+    background: #f8faff;
+}
+
+.shift-cash-type-btn.active[data-cash-txn-type="1"] {
+    border-color: #9ed8b7;
+    background: #ecfdf3;
+    color: #067647;
+    box-shadow: 0 0 0 2px rgba(6, 118, 71, .06);
+}
+
+.shift-cash-type-btn.active[data-cash-txn-type="2"] {
+    border-color: #fecaca;
+    background: #fff1f2;
+    color: #b42318;
+    box-shadow: 0 0 0 2px rgba(180, 35, 24, .05);
+}
+
+.shift-cash-amount-wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 28px;
+    align-items: center;
+    gap: 10px;
+}
+
+.shift-cash-amount-input {
+    min-height: 58px;
+    border-radius: 14px;
+    font-size: 27px;
+    font-weight: 950;
+    text-align: right;
+    color: #101828;
+}
+
+.shift-cash-amount-currency {
+    color: #344054;
+    font-size: 16px;
+    font-weight: 900;
+}
+
+.shift-required-badge {
+    margin-left: 6px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: #fff1f2;
+    color: #b42318;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+}
+
+.shift-cash-txn-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.shift-keyboard-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #667085;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.shift-keyboard-hint kbd {
+    min-width: 28px;
+    padding: 3px 7px;
+    border: 1px solid #d6deea;
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: #f8fafc;
+    color: #344054;
+    box-shadow: none;
+    font-size: 11px;
+    text-align: center;
+}
+
+.shift-cash-txn-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.shift-open-cashier-modal .shift-open-block-title,
+.shift-open-cashier-modal .shift-form-label {
+    color: #27364f;
+}
+
+.shift-open-cashier-modal .shift-modal-subtitle {
+    color: #667085;
+}
+
+.shift-close-cashier-modal .shift-close-compare-box {
+    border-color: #dfe6ef;
+    box-shadow: 0 7px 18px rgba(15, 23, 42, .04);
+}
+
+@media (max-width: 1199.98px) {
+    .pos-context-grid.pos-context-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .shift-summary-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-secondary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: 18px;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .pos-context-grid.pos-context-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-context-item.pos-context-item {
+        min-height: auto;
+    }
+
+    .shift-command-identity {
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    .shift-command-meta {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 3px;
+    }
+
+    .shift-command-bar .shift-action-group {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .shift-cash-position-card,
+    .shift-secondary-card {
+        padding: 16px;
+    }
+
+    .shift-cash-flow-row,
+    .shift-cash-position-total,
+    .shift-secondary-item {
+        align-items: flex-start;
+    }
+
+    .shift-cash-position-total {
+        flex-direction: column;
+    }
+
+    .shift-cash-position-total__value {
+        font-size: 30px;
+        white-space: normal;
+    }
+
+    .shift-secondary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-cash-type-segment {
+        grid-template-columns: 1fr;
+    }
+
+    .shift-cash-txn-footer {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .shift-cash-txn-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
 }

@@ -1,76 +1,124 @@
 ﻿@{
-    ViewData["Title"] = "Nhân viên nhập kho";
+    ViewData["Title"] = "Nhập hàng nhanh";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
+}
+
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Nhập hàng nhanh</h3>
+                <p class="gds-page-header__subtitle mb-0">
+                    Tiếp tục phiếu đang nhập, theo dõi phiếu chờ duyệt và xử lý phiếu cần sửa.
+                </p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button"
+                        class="btn btn-primary gds-action-button gds-action-button--primary"
+                        id="btnOpenCreateReceiving">
+                    <i class="bx bx-plus" aria-hidden="true"></i>
+                    <span>Tạo phiếu nhập nhanh</span>
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
 @section VendorStyles {
     <link href="~/admin/css/warehouse-receiving.css" rel="stylesheet" />
 }
 
-<div class="container-xxl flex-grow-1 container-p-y wr-page">
-
-    <div class="wr-header">
-        <div>
-            <h3>Nhân viên nhập kho</h3>
-            <div class="wr-muted">
-                Chỉ hiển thị phiếu đang làm, chờ duyệt hoặc bị trả về sửa.
+<div data-gao-ui="modern" data-warehouse-receiving-index class="gds-page wr-page">
+    <section aria-label="Tổng quan nhập hàng nhanh">
+        <div class="row row-cols-1 row-cols-sm-3 row-cols-xl-3 g-3">
+            <div class="col">
+                <button type="button"
+                        class="wr-kpi-filter card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100"
+                        data-status-filter="1"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon" aria-hidden="true"><i class="bx bx-edit"></i></span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Đang nhập</span>
+                        <span class="gds-kpi-card__value" id="wrDraftCount">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button"
+                        class="wr-kpi-filter card shadow-sm border-0 gds-kpi-card h-100 w-100"
+                        data-status-filter="2"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-warning text-warning" aria-hidden="true"><i class="bx bx-time-five"></i></span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Chờ duyệt</span>
+                        <span class="gds-kpi-card__value text-warning" id="wrPendingCount">0</span>
+                    </span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button"
+                        class="wr-kpi-filter card shadow-sm border-0 gds-kpi-card h-100 w-100"
+                        data-status-filter="4"
+                        aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-danger text-danger" aria-hidden="true"><i class="bx bx-error-circle"></i></span>
+                    <span class="gds-kpi-card__body">
+                        <span class="gds-kpi-card__label">Cần sửa</span>
+                        <span class="gds-kpi-card__value text-danger" id="wrRejectedCount">0</span>
+                    </span>
+                </button>
             </div>
         </div>
+    </section>
 
-        <button type="button" class="btn btn-primary wr-btn-main" id="btnOpenCreateReceiving">
-            + Tạo phiếu nhập
-        </button>
-    </div>
+    <section class="card shadow-sm border-0" aria-label="Tra cứu phiếu nhập nhanh">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <div class="d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-search" aria-hidden="true"></i></span>
+                <div>
+                    <h5 class="mb-0 text-dark">Phiếu cần xử lý</h5>
+                    <small class="text-muted">Tìm theo tên phiếu hoặc mã phiếu; kết quả cập nhật ngay khi nhập.</small>
+                </div>
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="wr-toolbar">
+                <div class="gds-search-field">
+                    <i class="bx bx-search" aria-hidden="true"></i>
+                    <input type="search"
+                           id="wrSearch"
+                           class="form-control"
+                           autocomplete="off"
+                           placeholder="Tìm tên phiếu hoặc mã phiếu..." />
+                </div>
+                <button type="button"
+                        class="btn btn-outline-secondary gds-icon-button"
+                        id="wrBtnReload"
+                        aria-label="Tải lại danh sách"
+                        title="Tải lại">
+                    <i class="bx bx-refresh" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+    </section>
 
-    <div class="wr-stat-grid">
-        <div class="wr-stat">
-            <div class="wr-stat-label">Đang làm</div>
-            <div class="wr-stat-value" id="wrDraftCount">0</div>
+    <section class="gds-list-panel wr-list-panel" aria-label="Danh sách phiếu nhập nhanh">
+        <div id="wrReceiptList" class="wr-list">
+            <div class="wr-empty">Đang tải danh sách phiếu...</div>
         </div>
 
-        <div class="wr-stat">
-            <div class="wr-stat-label">Chờ duyệt</div>
-            <div class="wr-stat-value text-warning" id="wrPendingCount">0</div>
+        <div class="gds-list-footer wr-pagination">
+            <div class="gds-list-footer__summary wr-page-info" id="wrPageInfo">
+                Hiển thị 0 - 0 / 0 phiếu
+            </div>
+            <div class="btn-group wr-page-actions">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="wrBtnPrevPage">Trước</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm disabled wr-page-current" id="wrCurrentPageText">1 / 1</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="wrBtnNextPage">Sau</button>
+            </div>
         </div>
-
-        <div class="wr-stat">
-            <div class="wr-stat-label">Bị trả về</div>
-            <div class="wr-stat-value text-danger" id="wrRejectedCount">0</div>
-        </div>
-    </div>
-
-    <div class="wr-toolbar">
-        <input type="text"
-               id="wrSearch"
-               class="form-control"
-               placeholder="Tìm tên phiếu hoặc mã phiếu..." />
-
-        <button type="button" class="btn btn-outline-secondary" id="wrBtnReload">
-            Tải lại
-        </button>
-    </div>
-
-    <div id="wrReceiptList" class="wr-list">
-        <div class="wr-empty">Đang tải danh sách phiếu...</div>
-    </div>
-
-    <div class="wr-pagination">
-        <div class="wr-page-info" id="wrPageInfo">
-            Hiển thị 0 - 0 / 0 phiếu
-        </div>
-
-        <div class="wr-page-actions">
-            <button type="button" class="btn btn-outline-secondary" id="wrBtnPrevPage">
-                Trước
-            </button>
-
-            <span id="wrCurrentPageText" class="wr-page-current">1 / 1</span>
-
-            <button type="button" class="btn btn-outline-secondary" id="wrBtnNextPage">
-                Sau
-            </button>
-        </div>
-    </div>
+    </section>
 </div>
 
 <div class="modal fade" id="wrCreateModal" tabindex="-1" aria-hidden="true">

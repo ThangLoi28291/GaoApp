@@ -1,0 +1,49 @@
+@model GaoApp.Application.DTOs.Inventory.StockDocumentDto
+@using GaoApp.Domain.Enums
+@{
+    var editable = Model.Status == StockDocumentStatus.Draft || Model.Status == StockDocumentStatus.Rejected;
+    var status = Model.Status switch {
+        StockDocumentStatus.Draft => "Đang nhập",
+        StockDocumentStatus.Rejected => "Cần sửa",
+        StockDocumentStatus.PendingApproval => "Chờ duyệt",
+        _ => Model.Status.ToString()
+    };
+}
+<header class="wra-header wra-mobile">
+    <a href="/admin/warehouse-receiving" class="wra-icon" aria-label="Quay lại danh sách phiếu"><i class="bx bx-arrow-back" aria-hidden="true"></i></a>
+    <div class="wra-heading"><small>NHẬP HÀNG <span class="wra-badge">@status</span></small><h1>@(Model.DocumentTitle ?? "Phiếu nhập kho")</h1><p>@Model.DocumentNo · @Model.WarehouseName</p></div>
+    <button type="button" class="wra-icon" id="wraMore" aria-label="Thao tác khác" aria-haspopup="dialog"><i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i></button>
+</header>
+<footer class="wra-dock wra-mobile">
+    <div class="wra-dock-status"><span id="wraStatus" role="status" aria-live="polite">@(editable ? "Sẵn sàng nhận hàng" : "Phiếu đang ở chế độ xem")</span><button type="button" id="wraRetry" hidden>Lưu lại</button><span id="wraSummary"></span></div>
+    @if (editable) { <div id="wraDockActions" class="wra-dock-actions"></div> }
+    <nav class="wra-tabs" aria-label="Nội dung phiếu nhập" role="tablist">
+        <button type="button" data-wra-tab="items" role="tab" aria-selected="true"><i class="bx bx-package" aria-hidden="true"></i>Hàng nhập <span id="wraCount">0</span></button>
+        <button type="button" data-wra-tab="info" role="tab" aria-selected="false"><i class="bx bx-info-circle" aria-hidden="true"></i>Thông tin <span id="wraPending" hidden></span></button>
+    </nav>
+</footer>
+<div class="modal fade wra-sheet" id="wraMoreModal" tabindex="-1" aria-labelledby="wraMoreTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title" id="wraMoreTitle">Thao tác phiếu nhập</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body wra-menu">
+            @if (editable) {
+                <button type="button" id="wraNew"><i class="bx bx-plus-circle" aria-hidden="true"></i><span><strong>Hàng chưa có / quy cách mới</strong><small>Ghi nhận hàng và chụp ảnh cho quản lý</small></span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+            }
+            <button type="button" id="wraShowInfo"><i class="bx bx-clipboard" aria-hidden="true"></i><span><strong>Thông tin và mục cần xử lý</strong><small>Kho, nhà cung cấp, barcode và ảnh hàng</small></span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+            <a href="/admin/warehouse-receiving"><i class="bx bx-list-ul" aria-hidden="true"></i><span><strong>Danh sách phiếu nhập</strong><small>Quay lại chọn phiếu khác</small></span><i class="bx bx-chevron-right" aria-hidden="true"></i></a>
+        </div>
+    </div></div>
+</div>
+<div class="modal fade wra-sheet" id="wraQuantityModal" tabindex="-1" aria-labelledby="wraQuantityTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h2 class="modal-title" id="wraQuantityTitle">Số lượng thực nhận</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <strong id="wraQuantityName" class="wra-quantity-name"></strong><p id="wraQuantityMeta" class="wra-quantity-meta"></p>
+            <label for="wraQuantity">Số lượng <span id="wraQuantityUnit"></span></label>
+            <div class="wra-sheet-stepper"><button type="button" data-wra-quantity-step="-1" aria-label="Giảm số lượng">−</button><input id="wraQuantity" type="text" inputmode="decimal" autocomplete="off" /><button type="button" data-wra-quantity-step="1" aria-label="Tăng số lượng">+</button></div>
+            <p class="wra-quantity-help">Nhập tổng số lượng đang có trên dòng này.</p><p id="wraQuantityError" class="text-danger" role="alert"></p>
+            <button type="button" id="wraRemove" class="wra-remove"><i class="bx bx-trash" aria-hidden="true"></i> Xóa dòng hàng</button>
+        </div>
+        <div class="modal-footer"><button type="button" id="wraSaveQuantity" class="btn wra-primary">Lưu số lượng</button></div>
+    </div></div>
+</div>

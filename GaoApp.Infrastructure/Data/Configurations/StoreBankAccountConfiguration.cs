@@ -45,6 +45,11 @@ public class StoreBankAccountConfiguration : IEntityTypeConfiguration<StoreBankA
 
         builder.HasIndex(x => new { x.StoreId, x.IsDefault });
 
+        builder.HasIndex(x => x.StoreId)
+            .HasDatabaseName("UX_StoreBankAccounts_OneDefaultPerStore")
+            .IsUnique()
+            .HasFilter("[IsDefault] = 1 AND [IsDeleted] = 0");
+
         builder.HasMany(x => x.QrRequests)
             .WithOne(x => x.BankAccount)
             .HasForeignKey(x => x.BankAccountId)

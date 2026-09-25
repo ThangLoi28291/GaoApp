@@ -5,6 +5,11 @@ namespace GaoApp.Domain.Entities;
 public class Store : BaseEntity
 {
     public string Name { get; set; } = default!;
+    public string? ReceiptName { get; set; }
+    public string? ReceiptAddress { get; set; }
+    public string? ReceiptPhone { get; set; }
+    public string? GuestWifiName { get; set; }
+    public string? GuestWifiPassword { get; set; }
 
     public string SubDomain { get; set; } = default!;
     public string SubDomainNormalized { get; set; } = default!;

@@ -1,0 +1,19 @@
+<Project>
+  <ItemGroup>
+    <!-- The static-web-assets SDK has a copy pipeline of its own. Remove
+         sensitive files from its inputs, before the final publish filter. -->
+    <Content Remove="wwwroot/**/appsettings*.json;wwwroot/**/secrets*.json;wwwroot/**/.env*;wwwroot/**/*.pfx;wwwroot/**/*.p12;wwwroot/**/*.pem;wwwroot/**/*.key;wwwroot/**/*.bak;wwwroot/**/*.mdf;wwwroot/**/*.ldf;wwwroot/**/*.db;wwwroot/**/*.sqlite;wwwroot/**/*.zip;wwwroot/**/*.log;wwwroot/**/*.pdb;wwwroot/**/*.user" />
+  </ItemGroup>
+  <!-- Local configuration remains available to dotnet run/build. A publish gets
+       only the reviewed, secret-free template selected by the entry project. -->
+  <Target Name="GaoAppSanitizePublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.RelativePath)', '(?i)(^|[/\\])(App_Data|Logs|uploads|Properties)([/\\]|$)|(^|[/\\])appsettings[^/\\]*\.json$|(^|[/\\])\.env[^/\\]*$|(^|[/\\])secrets[^/\\]*\.json$|\.(pfx|p12|pem|key|bak|mdf|ldf|db|sqlite|zip|log|pdb|user)$'))" />
+      <ResolvedFileToPublish Include="$(GaoAppDeploymentSettings)">
+        <RelativePath>appsettings.json</RelativePath>
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

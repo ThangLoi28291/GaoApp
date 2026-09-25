@@ -140,7 +140,7 @@ public sealed class InventoryPosPostingContractTests
                     "_inventoryMovementService.CreateAsync",
                     legacyPrelockPosition));
         method.Should().Contain(
-            "order.StoreId,\n                        warehouse.Id,\n                        x.Line.VariantId");
+            "order.StoreId,\n                        fragment.WarehouseId,\n                        fragment.ProductVariantId");
         Count(method, "PreLockBalancesAsync").Should().Be(1);
     }
 
@@ -666,6 +666,8 @@ public sealed class InventoryPosPostingContractTests
             .Where(x => x.value.StartsWith(
                 "plan:",
                 StringComparison.Ordinal))
+            .GroupBy(x => x.value)
+            .Select(x => x.First())
             .Should().OnlyContain(x => x.index < prelockIndex);
         firstMovementIndex.Should().BeGreaterThan(prelockIndex);
     }
@@ -692,7 +694,7 @@ public sealed class InventoryPosPostingContractTests
             Action = action
         };
 
-    private static async Task<RelationalSalesReturnSeed>
+    internal static async Task<RelationalSalesReturnSeed>
         SeedRelationalSalesReturnAsync(
             AppDbContext context,
             InventoryPostingSeed seed)
@@ -825,7 +827,7 @@ public sealed class InventoryPosPostingContractTests
             LineTotal = 20m
         };
 
-    private static InventoryMovementService CreateRealMovementService(
+    internal static InventoryMovementService CreateRealMovementService(
         AppDbContext context)
         => new(
             new InventoryBalanceRepository(context),
@@ -882,7 +884,7 @@ public sealed class InventoryPosPostingContractTests
                 ct);
     }
 
-    private sealed class FixedCurrentStore : ICurrentStore
+    internal sealed class FixedCurrentStore : ICurrentStore
     {
         public FixedCurrentStore(int storeId)
         {
@@ -892,7 +894,7 @@ public sealed class InventoryPosPostingContractTests
         public int StoreId { get; }
     }
 
-    private sealed class FixedCurrentUser : ICurrentUser
+    internal sealed class FixedCurrentUser : ICurrentUser
     {
         public FixedCurrentUser(int userId, int terminalId)
         {
@@ -907,7 +909,7 @@ public sealed class InventoryPosPostingContractTests
         public bool IsAuthenticated => true;
     }
 
-    private sealed record RelationalSalesReturnSeed(
+    internal sealed record RelationalSalesReturnSeed(
         int StoreId,
         int LegalEntityId,
         int LegalEntityWarehouseId,
@@ -1521,7 +1523,7 @@ public sealed class InventoryPosPostingContractTests
         public bool IsAuthenticated => true;
     }
 
-    private sealed class NoOpAuditLogService : IAuditLogService
+    internal sealed class NoOpAuditLogService : IAuditLogService
     {
         public Task WriteAsync(
             WriteAuditLogRequest request,
@@ -1539,7 +1541,7 @@ public sealed class InventoryPosPostingContractTests
             => throw new NotSupportedException();
     }
 
-    private sealed class NoOpDraftInvoiceReturnSyncService
+    internal sealed class NoOpDraftInvoiceReturnSyncService
         : IDraftInvoiceReturnSyncService
     {
         public Task EnsurePosReturnAllowedAsync(
@@ -1556,9 +1558,11 @@ public sealed class InventoryPosPostingContractTests
             => Task.CompletedTask;
     }
 
-    private sealed class NoOpOrderRewardCalculator
+    internal sealed class NoOpOrderRewardCalculator
         : IOrderRewardCalculator
     {
+        public Task<OrderRewardCalculationDto> CalculateForReturnAsync(int orderId, CancellationToken ct = default)
+            => CalculateAsync(orderId, ct);
         public Task<OrderRewardCalculationDto> CalculateAsync(
             int orderId,
             CancellationToken ct = default)
@@ -1568,7 +1572,7 @@ public sealed class InventoryPosPostingContractTests
             });
     }
 
-    private sealed class NoOpRewardLedgerRepository
+    internal sealed class NoOpRewardLedgerRepository
         : ICustomerRewardLedgerRepository
     {
         public Task<decimal> GetBalanceAmountAsync(

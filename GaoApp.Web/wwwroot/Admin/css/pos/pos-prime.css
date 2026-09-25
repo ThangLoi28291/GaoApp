@@ -1,0 +1,4047 @@
+/*
+ * GAOAPP POS V3 PRIME — V3-P4 utilities / P2-P3 presentation retained
+ * F01 / AD-13: loaded instead of pos-cockpit-v2.css in Prime only.
+ * pos.css remains the shared compatibility foundation.
+ * Canonical markup, financial values, scripts and handlers are unchanged.
+ * Common Payment / QR / Reward / Voucher / Held styles are layout-scoped.
+ * Desktop: one primary cart scroll; expanded/long content retains safe overflow.
+ * P2 safety fallbacks, P3 enhancement and P4 utilities keep separate ownership.
+ */
+
+/* 01. PRIME THEME — no global Admin takeover */
+
+.pos-prime-layout,
+.pos-prime-admin-drawer {
+    --pos-prime-border: #dce3ec;
+    --pos-prime-border-strong: #cbd5e1;
+    --pos-prime-surface: #ffffff;
+    --pos-prime-soft: #f8fafc;
+    --pos-prime-text: #0f172a;
+    --pos-prime-text-secondary: #1e293b;
+    --pos-prime-muted: #334155;
+    --pos-prime-primary: #2563eb;
+    --pos-prime-primary-dark: #1d4ed8;
+    --pos-prime-success: #15803d;
+    --pos-prime-warning: #92400e;
+    --pos-prime-danger: #b91c1c;
+    --pos-prime-radius: 14px;
+    --pos-prime-shadow: 0 4px 14px rgb(15 23 42 / 6%);
+    --bs-secondary-color: #334155;
+    --bs-secondary-color-rgb: 51,65,85;
+    color: var(--pos-prime-text);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.pos-prime-layout {
+    min-height: 100dvh;
+    padding: 10px;
+    background: #f3f6fb;
+}
+
+.pos-prime-layout__content {
+    min-width: 0;
+}
+
+.pos-cockpit-v2.pos-prime {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    height: calc(100dvh - 20px);
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    color: var(--pos-prime-text);
+}
+
+.pos-prime button:focus-visible,
+.pos-prime input:focus-visible,
+.pos-prime textarea:focus-visible,
+.pos-prime select:focus-visible,
+.pos-prime a:focus-visible {
+    outline: 2px solid #1d4ed8;
+    outline-offset: 2px;
+}
+
+.pos-prime button,
+.pos-prime input,
+.pos-prime textarea,
+.pos-prime select {
+    font: inherit;
+}
+
+.pos-prime [hidden] {
+    display: none;
+}
+
+/* 02. OPERATION HEADER — existing command and held-order hooks */
+
+.pos-prime .pos-prime-header {
+    position: relative;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 56px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: var(--pos-prime-radius);
+    background: #0f172a;
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .16);
+}
+
+.pos-prime .pos-prime-header__identity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.pos-prime .pos-prime-header__menu-button,
+.pos-prime .pos-prime-header__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .08);
+    color: #ffffff;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color .16s ease,
+        background-color .16s ease,
+        transform .08s ease;
+}
+
+.pos-prime .pos-prime-header__menu-button {
+    width: 40px;
+    padding: 0;
+    font-size: 20px;
+}
+
+.pos-prime .pos-prime-header__action--icon {
+    width: 38px;
+    padding: 0;
+    font-size: 1.15rem;
+}
+
+.pos-prime .pos-prime-header__menu-button:hover,
+.pos-prime .pos-prime-header__action:hover {
+    border-color: rgba(255, 255, 255, .28);
+    background: rgba(255, 255, 255, .14);
+}
+
+.pos-prime .pos-prime-header__menu-button:active,
+.pos-prime .pos-prime-header__action:active {
+    transform: scale(.98);
+}
+
+.pos-prime .pos-prime-header__menu-button:focus-visible,
+.pos-prime .pos-prime-header__action:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 3px;
+}
+
+.pos-prime .pos-prime-header__brand {
+    display: grid;
+    gap: 1px;
+    flex: 0 0 auto;
+}
+
+.pos-prime .pos-prime-header__brand span {
+    color: #93c5fd;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .095em;
+}
+
+.pos-prime .pos-prime-header__brand strong {
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: .035em;
+}
+
+.pos-prime .pos-prime-header__context {
+    display: flex;
+    align-items: center;
+    gap: 4px 8px;
+    min-width: 0;
+    overflow: visible;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: normal;
+    flex-wrap: wrap;
+}
+
+.pos-prime .pos-prime-context-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    max-width: none;
+    overflow: visible;
+    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-prime-context-item span,
+.pos-prime .pos-prime-context-item strong {
+    overflow: visible;
+    text-overflow: ellipsis;
+}
+
+.pos-prime .pos-prime-context-item strong {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.pos-prime .pos-prime-context-item i {
+    flex: 0 0 auto;
+    color: #94a3b8;
+}
+
+.pos-prime .pos-prime-context-divider {
+    flex: 0 0 auto;
+    color: #475569;
+}
+
+.pos-prime .pos-prime-header__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.pos-prime .pos-prime-readiness {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 9px;
+    border-radius: 10px;
+    font-size: .74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-prime-readiness.is-ready {
+    background: rgba(22, 163, 74, .17);
+    color: #bbf7d0;
+}
+
+.pos-prime .pos-prime-readiness.is-warning {
+    background: rgba(217, 119, 6, .18);
+    color: #fde68a;
+}
+
+.pos-prime .pos-prime-readiness__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.pos-prime .pos-cockpit-held-slot .pos-held-summary-launcher {
+    min-width: 104px;
+    min-height: 38px;
+    border-color: rgba(255, 255, 255, .16);
+    background: rgba(255, 255, 255, .08);
+    color: #ffffff;
+}
+
+.pos-prime .pos-cockpit-held-slot .pos-held-summary-launcher:hover {
+    border-color: rgba(255, 255, 255, .28);
+    background: rgba(255, 255, 255, .14);
+}
+
+.pos-prime .pos-cockpit-held-slot .pos-held-summary-launcher__title::after {
+    color: #ffffff;
+}
+
+.pos-prime .pos-cockpit-held-slot .pos-held-summary-launcher__total {
+    color: #93c5fd;
+}
+
+.pos-prime .pos-prime-more-menu {
+    min-width: 220px;
+    padding: 6px;
+    border: 1px solid var(--pos-prime-border);
+    border-radius: 11px;
+    box-shadow: 0 16px 38px rgba(15, 23, 42, .18);
+    z-index: 1000;
+}
+
+.pos-prime .pos-prime-more-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 650;
+    white-space: normal;
+}
+
+.pos-prime .pos-prime-shortcuts {
+    top: calc(100% + 8px);
+    right: 12px;
+    position: absolute;
+    z-index: 45;
+    width: min(460px, calc(100vw - 32px));
+    max-height: calc(100dvh - 100px);
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid var(--pos-prime-border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--pos-prime-text);
+    box-shadow: 0 12px 32px rgb(15 23 42 / 16%);
+}
+
+.pos-prime .pos-prime-header__action,
+.pos-prime .pos-prime-readiness {
+    font-size: 12px;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher {
+    min-width: 108px;
+    min-height: 38px;
+    width: auto;
+    height: auto;
+    max-height: none;
+    padding: 0;
+    border-radius: 9px;
+    box-shadow: none;
+    transform: none;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__title {
+    font-size: 12px;
+    line-height: 1.3;
+    color: #fff;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__title::after {
+    content: none;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__total {
+    font-size: 12px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #bfdbfe;
+}
+
+.pos-prime .pos-cockpit-shortcuts__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.pos-prime .pos-cockpit-shortcuts__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 8px;
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.pos-prime .pos-cockpit-shortcuts__grid {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    gap: 10px;
+}
+
+.pos-prime .pos-cockpit-shortcuts__grid > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 13px;
+}
+
+.pos-prime .pos-cockpit-shortcuts kbd {
+    min-width: 58px;
+    padding: 4px 6px;
+    font-size: 12px;
+    color: #0f172a;
+    background: #e2e8f0;
+    box-shadow: none;
+    text-align: center;
+}
+
+/* 03. SOURCE-OWNED STATUS */
+
+.pos-prime #posNetworkStateBanner,
+.pos-prime #posErrorBanner,
+.pos-prime #posScreenRetryState {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.pos-prime #posBootstrapError:empty {
+    display: none;
+}
+
+.pos-prime .pos-network-banner {
+    display: flex;
+    align-items: baseline;
+    gap: 6px 12px;
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 7px 12px;
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.pos-prime .pos-network-banner__title,
+.pos-prime .pos-network-banner__message {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+/* 04. DESKTOP WORKSPACE / SINGLE PRIMARY SCROLL */
+
+.pos-prime .pos-prime-workspace {
+    display: grid;
+    grid-template-areas: "context sale checkout";
+    grid-template-columns: 232px minmax(0,1fr) 350px;
+    grid-template-rows: minmax(0,1fr);
+    gap: 12px;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.pos-prime .pos-prime-context,
+.pos-prime .pos-prime-checkout,
+.pos-prime .pos-prime-cart {
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid var(--pos-prime-border);
+    border-radius: var(--pos-prime-radius);
+    background: #fff;
+    box-shadow: var(--pos-prime-shadow);
+}
+
+
+.pos-prime .pos-prime-sale {
+    grid-area: sale;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.pos-prime .pos-prime-context {
+    grid-area: context;
+    display: flex;
+    flex-direction: column;
+}
+
+.pos-prime .pos-prime-context__body {
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+}
+
+.pos-prime .pos-prime-checkout {
+    grid-area: checkout;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+    border-color: #cbd5e1;
+    background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    box-shadow: 0 10px 28px rgb(15 23 42 / 9%);
+}
+
+.pos-prime .pos-prime-checkout__summary {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+}
+
+.pos-prime .pos-prime-checkout__actions {
+    flex: 0 0 auto;
+    padding: 12px;
+    border-top: 1px solid var(--pos-prime-border);
+}
+
+/* 05. CUSTOMER / TOOLS — no micro-font / no absolute identity actions */
+
+.pos-prime .pos-cockpit-section {
+    padding: 12px;
+    border-bottom: 1px solid var(--pos-prime-border);
+}
+
+.pos-prime .pos-cockpit-section__header,
+.pos-prime .pos-cockpit-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.pos-prime .pos-cockpit-section__eyebrow {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    color: #1e293b;
+}
+
+.pos-prime .pos-cockpit-section__icon-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid #dce3ec;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 18px;
+}
+
+.pos-prime .pos-cockpit-section__icon-action:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.pos-prime #customerInfoBox {
+    margin-top: 10px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.pos-prime .pos-customer-empty {
+    padding: 4px 0;
+}
+
+.pos-prime .pos-customer-empty__name {
+    font-size: 16px;
+    font-weight: 750;
+    color: #0f172a;
+}
+
+.pos-prime .pos-customer-empty__hint {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 550;
+    color: #334155;
+}
+
+.pos-prime .pos-customer-compact {
+    display: grid;
+    gap: 10px;
+}
+
+.pos-prime .pos-customer-identity__main {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.pos-prime .pos-customer-identity__name {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 16px;
+    line-height: 1.35;
+    font-weight: 750;
+    color: #0f172a;
+}
+
+.pos-prime .pos-customer-identity__phone {
+    margin-top: 3px;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 600;
+    color: #475569;
+}
+
+.pos-prime .pos-customer-tier {
+    display: inline-flex;
+    padding: 3px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.3;
+}
+
+.pos-prime .pos-customer-tier--retail {
+    background: #eef2f7;
+    color: #334155;
+}
+
+.pos-prime .pos-customer-tier--wholesale {
+    background: #eaf8ee;
+    color: #166534;
+}
+
+.pos-prime .pos-customer-benefit-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 6px;
+}
+
+.pos-prime .pos-customer-benefit-card {
+    display: grid;
+    grid-template-columns: 28px minmax(0,1fr);
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 54px;
+    padding: 8px;
+    border: 1px solid #dce3ec;
+    border-radius: 9px;
+    background: #f8fafc;
+    color: #334155;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 120ms ease,border-color 120ms ease;
+}
+
+.pos-prime .pos-customer-benefit-card:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+}
+
+.pos-prime .pos-customer-benefit-card__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    font-size: 18px;
+}
+
+.pos-prime .pos-customer-benefit-card--points .pos-customer-benefit-card__icon {
+    background: #ffefcc;
+    color: #92400e;
+}
+
+.pos-prime .pos-customer-benefit-card--voucher .pos-customer-benefit-card__icon {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.pos-prime .pos-customer-benefit-card__content {
+    min-width: 0;
+}
+
+.pos-prime .pos-customer-benefit-card__value {
+    display: inline;
+    font-size: 15px;
+    line-height: 1.3;
+    font-weight: 750;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime .pos-customer-benefit-card__label {
+    display: inline;
+    margin-left: 3px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.pos-prime .pos-customer-benefit-card__meta {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #475569;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-customer-benefit-card__amount {
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 1.3;
+    font-weight: 750;
+    color: #5b21b6;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-customer-compact__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.pos-prime .pos-customer-compact__hint {
+    display: none;
+}
+
+.pos-prime .pos-customer-clear-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    min-height: 28px;
+    padding: 3px 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #b91c1c;
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.pos-prime .pos-customer-clear-link:hover {
+    background: #fff1f2;
+}
+
+.pos-prime .pos-order-tools-grid {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.pos-prime .pos-order-tool {
+    min-width: 0;
+    margin: 0;
+    padding: 8px;
+    border: 1px solid #dce3ec;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.pos-prime .pos-order-tool:not(.is-collapsed) {
+    background: #f8fafc;
+}
+
+.pos-prime .pos-meta-section__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+}
+
+.pos-prime .pos-meta-section__header > div {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.pos-prime .pos-meta-section__title {
+    font-size: 14px;
+    line-height: 1.3;
+    font-weight: 750;
+    color: #1e293b;
+}
+
+.pos-prime .pos-meta-summary {
+    margin-top: 3px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-meta-toggle.btn {
+    flex: 0 0 auto;
+    min-width: 40px;
+    min-height: 32px;
+    padding: 4px 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 650;
+    box-shadow: none;
+}
+
+.pos-prime .pos-meta-toggle:hover {
+    background: #eaf2ff;
+    border-color: #93c5fd;
+}
+
+.pos-prime .pos-order-tool .pos-note-box {
+    margin-top: 8px;
+    padding: 0;
+    background: transparent;
+}
+
+.pos-prime .pos-order-tool .form-control {
+    font-size: 14px;
+}
+
+.pos-prime .pos-meta-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 4px;
+    padding: 1px 4px;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 4px;
+}
+
+.pos-prime .pos-applied-voucher-box {
+    margin: 0;
+    padding: 8px;
+    border: 1px solid #ddd6fe;
+    border-radius: 8px;
+    background: #faf8ff;
+}
+
+.pos-prime .pos-applied-voucher-box > .fw-bold {
+    font-size: 12px;
+    color: #5b21b6;
+}
+
+.pos-prime .pos-applied-voucher-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 22px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.pos-prime .pos-applied-voucher-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: #334155;
+}
+
+.pos-prime .pos-applied-voucher-row strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    color: #5b21b6;
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 06. BARCODE / SEARCH / EXISTING AUTOCOMPLETE */
+
+.pos-prime .pos-cockpit-command {
+    position: relative;
+    z-index: 30;
+    flex: 0 0 auto;
+    padding: 10px;
+    border: 1px solid #bfd4fb;
+    border-radius: 12px;
+    background: #eff6ff;
+    box-shadow: var(--pos-prime-shadow);
+}
+
+.pos-prime .pos-cockpit-search {
+    position: relative;
+}
+
+.pos-prime .pos-cockpit-search__icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    font-size: 20px;
+    color: #334155;
+    pointer-events: none;
+}
+
+.pos-prime .pos-cockpit-search__input {
+    height: 50px;
+    padding: 10px 12px 10px 44px;
+    border: 1px solid #7fa9ed;
+    border-radius: 9px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: none;
+}
+
+.pos-prime .pos-cockpit-search__input::placeholder {
+    color: #334155;
+    opacity: 1;
+}
+
+.pos-prime .pos-cockpit-search__input:focus {
+    border-color: #2563eb;
+    outline: 2px solid #bfdbfe;
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+.pos-prime .pos-cockpit-command__hints {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.pos-prime .pos-cockpit-command-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 4px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #fff;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.pos-prime .pos-cockpit-command-chip:hover {
+    border-color: #60a5fa;
+    background: #dbeafe;
+}
+
+.pos-prime .pos-cockpit-command-chip__symbol {
+    color: #1d4ed8;
+    font-weight: 750;
+}
+
+.pos-prime .pos-autocomplete-menu {
+    z-index: 35;
+    max-height: min(420px, 60dvh);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.pos-prime .pos-ac-title {
+    font-size: 15px;
+    line-height: 1.35;
+    color: #0f172a;
+}
+
+.pos-prime .pos-ac-meta-chip,
+.pos-prime .pos-ac-side {
+    font-size: 12px;
+    color: #334155;
+}
+
+/* 07. CART GEOMETRY / READABLE LINES */
+
+.pos-prime .pos-prime-cart {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+}
+
+.pos-prime .pos-prime-cart__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 0 0 auto;
+    min-height: 46px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #dce3ec;
+}
+
+.pos-prime .pos-prime-cart__heading > div:first-child {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.pos-prime .pos-prime-zone-eyebrow {
+    font-size: 13px;
+    font-weight: 750;
+    color: #0f172a;
+    letter-spacing: .03em;
+}
+
+.pos-prime .pos-prime-cart__count,
+.pos-prime .pos-prime-cart__hint {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #334155;
+    font-weight: 650;
+}
+
+.pos-prime .pos-prime-cart__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.pos-prime .pos-prime-cart__body > .pos-cart-card {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0 0 13px 13px;
+    box-shadow: none;
+    overflow: visible;
+}
+
+.pos-prime .pos-prime-cart__body > .pos-cart-card > .card-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.pos-prime .pos-prime-cart__body .pos-table-wrap {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    border-radius: 0 0 13px 13px;
+    overflow: visible;
+}
+
+.pos-prime .pos-prime-cart__body .pos-cart-scroll {
+    flex: 1 1 auto;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+    border-radius: 0 0 13px 13px;
+}
+
+.pos-prime #paymentListBox {
+    display: none;
+}
+
+.pos-prime .pos-line-table {
+    width: 100%;
+    min-width: 0;
+    table-layout: auto;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0;
+}
+
+.pos-prime .pos-col-product {
+    width: auto;
+}
+
+.pos-prime .pos-col-qty {
+    width: 126px;
+}
+
+.pos-prime .pos-col-price {
+    width: 92px;
+    text-align: right;
+}
+
+.pos-prime .pos-col-total {
+    width: 106px;
+    text-align: right;
+}
+
+.pos-prime .pos-col-actions {
+    width: 40px;
+}
+
+.pos-prime .pos-line-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: #edf2f8;
+}
+
+.pos-prime .pos-line-table thead th {
+    padding: 9px 8px;
+    border: 0;
+    border-bottom: 1px solid #cbd5e1;
+    background: #edf2f8;
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.4;
+    letter-spacing: .025em;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-line-table tbody td {
+    padding: 10px 8px;
+    border: 0;
+    border-bottom: 1px solid #e2e8f0;
+    background: transparent;
+    vertical-align: middle;
+    box-shadow: none;
+}
+
+.pos-prime .pos-line-table tbody tr {
+    height: auto;
+    transition: background-color 120ms ease;
+}
+
+.pos-prime .pos-line-name-cell {
+    width: auto;
+    min-width: 0;
+    max-width: 0;
+    white-space: normal;
+    overflow: visible;
+}
+
+.pos-prime .pos-line-name-wrap,
+.pos-prime .pos-line-name-main {
+    min-width: 0;
+}
+
+.pos-prime .pos-line-product-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.pos-prime .pos-line-thumb-wrap,
+.pos-prime .pos-line-thumb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    border: 1px solid #dce3ec;
+    border-radius: 9px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 650;
+    overflow: hidden;
+}
+
+.pos-prime .pos-line-thumb {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pos-prime .pos-line-name {
+    display: block;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    -webkit-line-clamp: unset;
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 750;
+    line-height: 1.4;
+}
+
+.pos-prime .pos-line-submeta {
+    display: block;
+    margin-top: 4px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-qty-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.pos-prime .pos-qty-inline .qty-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 36px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #94a3b8;
+    border-radius: 7px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 700;
+    box-shadow: none;
+}
+
+.pos-prime .pos-qty-inline .qty-btn:hover:not(:disabled) {
+    background: #eaf2ff;
+    border-color: #2563eb;
+}
+
+.pos-prime .pos-qty-inline .qty-input {
+    width: 48px;
+    min-width: 0;
+    height: 36px;
+    padding: 4px 2px;
+    border: 1px solid #94a3b8;
+    border-radius: 7px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    box-shadow: none;
+    appearance: textfield;
+}
+
+.pos-prime .pos-qty-inline .qty-input::-webkit-inner-spin-button,
+.pos-prime .pos-qty-inline .qty-input::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+}
+
+.pos-prime .pos-qty-inline :disabled {
+    opacity: 1;
+    color: #64748b;
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+.pos-prime .pos-qty-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px 4px;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+    font-weight: 600;
+    color: #334155;
+    white-space: normal;
+}
+
+.pos-prime .pos-qty-base {
+    color: #475569;
+}
+
+.pos-prime .pos-line-money-cell,
+.pos-prime .pos-line-total-cell {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-line-money {
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 650;
+    color: #1e293b;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-line-total {
+    font-size: 17px;
+    line-height: 1.4;
+    font-weight: 800;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-line-actions-cell {
+    width: 40px;
+    text-align: center;
+    white-space: normal;
+}
+
+.pos-prime .pos-line-actions-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #334155;
+    font-size: 20px;
+    box-shadow: none;
+}
+
+.pos-prime .pos-line-actions-toggle:hover {
+    background: #e2e8f0;
+}
+
+.pos-prime .pos-line-actions-menu {
+    min-width: 200px;
+    max-width: min(270px,calc(100vw - 32px));
+    padding: 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgb(15 23 42 / 16%);
+    z-index: 20;
+}
+
+.pos-prime .pos-line-actions-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+/* 08. SELECTION / GIFTS / PROMOTIONS */
+
+.pos-prime .pos-line-table tbody tr.is-active-line {
+    background: #eff6ff;
+    box-shadow: inset 3px 0 0 #2563eb;
+}
+
+.pos-prime .pos-line-table tbody tr.is-active-line .pos-line-name {
+    font-size: 16px;
+    font-weight: 750;
+}
+
+.pos-prime .pos-line-table tbody tr.is-active-line .pos-line-total {
+    font-size: 17px;
+}
+
+.pos-prime .pos-line-table tbody tr.is-active-line::after,
+.pos-prime .pos-line-table tbody tr.is-active-line .pos-line-name-cell::after {
+    content: none;
+    display: none;
+}
+
+.pos-prime .pos-line-table tbody tr.is-active-line .qty-btn {
+    box-shadow: none;
+}
+
+.pos-prime .pos-line-table tbody tr:not(.is-active-line):not(.is-promotion-gift):hover {
+    background: #f1f5f9;
+}
+
+.pos-prime .pos-line-table tbody tr.is-promotion-gift {
+    background: #f0fdf4;
+}
+
+.pos-prime .pos-line-table tbody tr.is-promotion-gift .pos-line-product-wrap {
+    border-left: 2px solid #22c55e;
+    padding-left: 8px;
+}
+
+.pos-prime .pos-gift-inline-label {
+    display: none;
+}
+
+.pos-prime .pos-gift-relation {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-bottom: 3px;
+    color: #166534;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.pos-prime .pos-gift-badge,
+.pos-prime .pos-line-combo-badge,
+.pos-prime .pos-line-adjustment-note {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+    padding: 2px 5px;
+    border-radius: 5px;
+    background: #fef3c7;
+    color: #78350f;
+    font-size: 12px;
+    font-weight: 650;
+    line-height: 1.4;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-gift-note,
+.pos-prime .pos-gift-lock-text {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #475569;
+    white-space: normal;
+}
+
+.pos-prime .pos-line-price-stack {
+    display: grid;
+    justify-items: end;
+    gap: 3px;
+    min-width: 0;
+}
+
+.pos-prime .pos-line-original-price {
+    color: #475569;
+    font-size: 12px;
+    text-decoration: line-through;
+}
+
+.pos-prime .pos-line-promo-price {
+    font-size: 14px;
+    color: #92400e;
+    font-weight: 750;
+}
+
+.pos-prime .pos-line-promo-badge,
+.pos-prime .pos-line-gift-badge {
+    max-width: 100%;
+    padding: 2px 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-line-promo-save,
+.pos-prime .pos-line-gift-note {
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal;
+    color: #475569;
+}
+
+.pos-prime .pos-line-table tbody tr.pos-line-just-added td {
+    animation: none;
+}
+
+.pos-prime .pos-line-table tbody tr.pos-line-just-added:not(.is-active-line) {
+    background: #ecfdf3;
+}
+
+/* 09. RECEIPT SUMMARY + NEXT ACTION */
+
+.pos-prime .pos-cockpit-summary-section {
+    padding: 16px;
+}
+
+.pos-prime .pos-cockpit-summary-breakdown {
+    display: grid;
+    grid-template-columns: minmax(0,1fr);
+    gap: 10px;
+    margin-top: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #dce3ec;
+}
+
+.pos-prime .pos-cockpit-summary-breakdown__item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.pos-prime .pos-cockpit-summary-breakdown__item strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: 800;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime .pos-summary-hero {
+    margin: 14px -2px;
+    padding: 12px 10px 14px;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
+    background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.pos-prime .pos-summary-hero__label {
+    margin: 0 0 4px;
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.pos-prime .pos-summary-hero__value {
+    display: block;
+    font-size: 40px;
+    line-height: 1.15;
+    font-weight: 850;
+    letter-spacing: -.025em;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-summary-hero__state {
+    margin-top: 7px;
+    font-size: 14px;
+    line-height: 1.4;
+    font-weight: 650;
+    color: #334155;
+    white-space: normal;
+}
+
+.pos-prime .pos-summary-hero--due .pos-summary-hero__state {
+    color: #b91c1c;
+}
+
+.pos-prime .pos-summary-hero--paid .pos-summary-hero__state {
+    color: #166534;
+}
+
+.pos-prime .pos-summary-hero--change .pos-summary-hero__state {
+    color: #075985;
+}
+
+.pos-prime .pos-cockpit-payment-status {
+    display: grid;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px solid #dce3ec;
+}
+
+.pos-prime .pos-cockpit-payment-status__row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.pos-prime .pos-cockpit-payment-status__row strong {
+    font-size: 17px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: #0f172a;
+}
+
+.pos-prime .pos-cockpit-payment-status__row.is-due strong {
+    color: #b91c1c;
+}
+
+.pos-prime .pos-cockpit-action-shell {
+    position: static;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.pos-prime .pos-cockpit-actions {
+    display: block;
+}
+
+.pos-prime .pos-cockpit-primary-actions {
+    display: grid;
+    gap: 6px;
+}
+
+.pos-prime .pos-cockpit-secondary-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.pos-prime .pos-cockpit-actions .pos-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 9px 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: 15px;
+    line-height: 1.4;
+    font-weight: 750;
+    box-shadow: none;
+    transform: none;
+    transition: background-color 120ms ease,border-color 120ms ease;
+}
+
+.pos-prime .pos-cockpit-actions .shortcut-badge {
+    padding: 2px 5px;
+    margin-left: 4px;
+    border-radius: 4px;
+    background: rgb(0 0 0 / 6%);
+    color: inherit;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.pos-prime .pos-cockpit-actions #btnOpenPayment {
+    min-height: 54px;
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgb(37 99 235 / 18%);
+}
+
+.pos-prime .pos-cockpit-actions #btnOpenPayment .shortcut-badge {
+    background: rgb(255 255 255 / 20%);
+}
+
+.pos-prime .pos-cockpit-actions #btnFinalizeCart {
+    background: #fff;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
+.pos-prime .pos-cockpit-actions.is-paid #btnFinalizeCart,
+.pos-prime .pos-cockpit-actions.is-change #btnFinalizeCart {
+    min-height: 50px;
+    border-color: #15803d;
+    background: #15803d;
+    color: #fff;
+}
+
+.pos-prime .pos-cockpit-actions.is-paid #btnOpenPayment,
+.pos-prime .pos-cockpit-actions.is-change #btnOpenPayment {
+    background: #fff;
+    border-color: #cbd5e1;
+    color: #334155;
+    min-height: 38px;
+    font-size: 14px;
+}
+
+.pos-prime .pos-cockpit-actions #btnCancelCart {
+    background: #fff;
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+
+.pos-prime .pos-cockpit-actions #btnOpenPayment:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
+.pos-prime .pos-cockpit-actions.is-paid #btnFinalizeCart:hover:not(:disabled),
+.pos-prime .pos-cockpit-actions.is-change #btnFinalizeCart:hover:not(:disabled) {
+    background: #166534;
+    border-color: #166534;
+}
+
+.pos-prime .pos-cockpit-actions #btnCancelCart:hover:not(:disabled) {
+    background: #fef2f2;
+}
+
+.pos-prime .pos-cockpit-actions .pos-action-btn:disabled {
+    opacity: 1;
+    background: #f1f5f9;
+    border-color: #dce3ec;
+    color: #64748b;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* 09A. HOLD ORDER — fast note entry / scoped Prime polish */
+
+.pos-prime-layout #holdModal .modal-dialog {
+    max-width: 560px;
+}
+
+.pos-prime-layout #holdModal .modal-content {
+    border: 0;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 22px 60px rgb(15 23 42 / 24%);
+}
+
+.pos-prime-layout #holdModal .modal-header {
+    align-items: flex-start;
+    padding: 22px 24px 10px;
+    border-bottom: 0;
+}
+
+.pos-prime-layout #holdModal .modal-title {
+    color: #0f172a;
+    font-size: 21px;
+    line-height: 1.25;
+    font-weight: 850;
+    letter-spacing: -.01em;
+}
+
+.pos-prime-layout #holdModal .pos-modal-subtitle {
+    margin-top: 4px;
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.45;
+    font-weight: 600;
+}
+
+.pos-prime-layout #holdModal .modal-body {
+    padding: 10px 24px 8px;
+}
+
+.pos-prime-layout #holdModal .form-label {
+    margin-bottom: 7px;
+    color: #1e293b;
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.pos-prime-layout #holdModal #txtHoldNote {
+    min-height: 112px;
+    padding: 12px 14px;
+    border: 1px solid #94a3b8;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 15px;
+    line-height: 1.5;
+    font-weight: 550;
+    resize: vertical;
+    box-shadow: none;
+}
+
+.pos-prime-layout #holdModal #txtHoldNote::placeholder {
+    color: #64748b;
+    opacity: 1;
+}
+
+.pos-prime-layout #holdModal #txtHoldNote:focus {
+    border-color: #2563eb;
+    outline: 2px solid #bfdbfe;
+    outline-offset: 1px;
+    box-shadow: none;
+}
+
+.pos-prime-layout #holdModal .pos-prime-hold-shortcut-hint {
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 650;
+    text-align: right;
+}
+
+.pos-prime-layout #holdModal .modal-footer {
+    gap: 10px;
+    padding: 12px 24px 22px;
+    border-top: 0;
+}
+
+.pos-prime-layout #holdModal .modal-footer .btn {
+    min-height: 44px;
+    padding: 9px 18px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: 750;
+}
+
+.pos-prime-layout #holdModal #btnConfirmHold {
+    min-width: 168px;
+    border-color: #f59e0b;
+    background: #f59e0b;
+    color: #ffffff;
+    box-shadow: 0 7px 16px rgb(245 158 11 / 20%);
+}
+
+.pos-prime-layout #holdModal #btnConfirmHold:hover:not(:disabled) {
+    border-color: #d97706;
+    background: #d97706;
+    color: #ffffff;
+}
+
+/* 10. BOOTSTRAP ADMIN DRAWER — permission/menu source unchanged */
+
+.pos-prime-admin-drawer {
+    --bs-offcanvas-width: min(340px, 88vw);
+    border: 0;
+    background: #ffffff;
+    box-shadow: 18px 0 50px rgba(15, 23, 42, .22);
+}
+
+.pos-prime-admin-drawer__header {
+    min-height: 68px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--bs-border-color, #e2e8f0);
+}
+
+.pos-prime-admin-drawer__eyebrow {
+    color: #2563eb;
+    font-size: .63rem;
+    font-weight: 800;
+    letter-spacing: .09em;
+}
+
+.pos-prime-admin-drawer__body {
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.pos-prime-menu-host {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #ffffff;
+}
+
+.pos-prime-admin-drawer #layout-menu.layout-menu {
+    position: static;
+    inset: auto;
+    width: 100%;
+    height: auto;
+    min-height: 100%;
+    transform: none;
+    border: 0;
+    box-shadow: none;
+}
+
+.pos-prime-admin-drawer #layout-menu .app-brand .layout-menu-toggle {
+    display: none;
+}
+
+.pos-prime-admin-drawer #layout-menu .menu-inner {
+    height: auto;
+    overflow: visible;
+}
+
+.pos-prime-admin-drawer__footer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+
+/* 11. F01 COMMON-SURFACE COMPATIBILITY — source properties retained */
+
+.pos-prime-layout .pos-payment-workspace-modal {
+    --pos-pay-border: #eaecf0;
+    --pos-pay-border-strong: #d0d5dd;
+    --pos-pay-text: #101828;
+    --pos-pay-secondary: #475467;
+    --pos-pay-muted: #667085;
+    --pos-pay-subtle: #98a2b3;
+    --pos-pay-primary: #2563eb;
+}
+
+.pos-prime-layout .pos-payment-workspace-modal .pos-payment-workspace-dialog {
+    width: min(480px, calc(100vw - 28px));
+    max-width: 480px;
+    min-height: calc(100% - 28px);
+    margin: 14px 14px 14px auto;
+    display: flex;
+    align-items: stretch;
+}
+
+.pos-prime-layout .pos-payment-workspace-modal .pos-payment-workspace {
+    width: 100%;
+    max-height: calc(100dvh - 28px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 20px 54px rgba(16, 24, 40, .20);
+}
+
+.pos-prime-layout .pos-payment-workspace__header {
+    flex: 0 0 auto;
+    padding: 15px 17px 11px;
+    border-bottom: 1px solid var(--pos-pay-border);
+}
+
+.pos-prime-layout .pos-payment-workspace__eyebrow {
+    margin-bottom: 3px;
+    color: var(--pos-pay-muted);
+    font-size: .66rem;
+    font-weight: 750;
+    letter-spacing: .07em;
+}
+
+.pos-prime-layout .pos-payment-workspace__title {
+    margin: 0;
+    color: var(--pos-pay-text);
+    font-size: 1.12rem;
+    font-weight: 800;
+}
+
+.pos-prime-layout .pos-payment-workspace__subtitle {
+    margin-top: 3px;
+    color: var(--pos-pay-muted);
+    font-size: .74rem;
+    line-height: 1.35;
+}
+
+.pos-prime-layout .pos-payment-workspace__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 13px 15px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--pos-pay-border-strong) transparent;
+}
+
+.pos-prime-layout .pos-payment-workspace__body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pos-prime-layout .pos-payment-workspace__body::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: var(--pos-pay-border-strong);
+}
+
+.pos-prime-layout .pos-payment-workspace-summary {
+    padding: 13px;
+    border: 1px solid #dbe7ff;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
+}
+
+.pos-prime-layout .pos-payment-workspace-total__label {
+    color: var(--pos-pay-muted);
+    font-size: .72rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout .pos-payment-workspace-total__value {
+    margin-top: 2px;
+    color: var(--pos-pay-text);
+    font-size: 2.05rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -.035em;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-workspace-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 14px;
+    margin-top: 11px;
+    padding-top: 9px;
+    border-top: 1px solid #dbe7ff;
+}
+
+.pos-prime-layout .pos-payment-summary-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    color: var(--pos-pay-muted);
+    font-size: .73rem;
+}
+
+.pos-prime-layout .pos-payment-summary-item strong {
+    color: var(--pos-pay-secondary);
+    font-size: .78rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-summary-item.is-due strong {
+    color: #b42318;
+}
+
+.pos-prime-layout .pos-payment-summary-item.is-paid strong {
+    color: #027a48;
+}
+
+.pos-prime-layout .pos-payment-summary-item.is-change strong {
+    color: #026aa2;
+}
+
+.pos-prime-layout .pos-payment-workspace-section {
+    margin-top: 14px;
+}
+
+.pos-prime-layout .pos-payment-workspace-section__label {
+    margin-bottom: 7px;
+    color: var(--pos-pay-secondary);
+    font-size: .71rem;
+    font-weight: 750;
+    letter-spacing: .03em;
+}
+
+.pos-prime-layout .pos-payment-method-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.pos-prime-layout .pos-payment-method-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 7px 8px;
+    border: 1px solid var(--pos-pay-border-strong);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--pos-pay-secondary);
+    font-size: .73rem;
+    font-weight: 700;
+}
+
+.pos-prime-layout .pos-payment-method-button i {
+    font-size: 1.02rem;
+}
+
+.pos-prime-layout .pos-payment-method-button:hover {
+    border-color: #84adff;
+    background: #f5f8ff;
+    color: #175cd3;
+}
+
+.pos-prime-layout .pos-payment-method-button.is-active {
+    border-color: #528bff;
+    background: #edf4ff;
+    color: #175cd3;
+    box-shadow: inset 0 0 0 1px rgba(82, 139, 255, .15);
+}
+
+.pos-prime-layout .pos-payment-method-notes {
+    margin-top: 6px;
+    color: var(--pos-pay-muted);
+    font-size: .67rem;
+    line-height: 1.35;
+}
+
+.pos-prime-layout .pos-payment-method-notes [data-payment-method-note] {
+    display: none;
+}
+
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="0"] [data-payment-method-note="0"],
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="1"] [data-payment-method-note="1"],
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="2"] [data-payment-method-note="2"] {
+    display: block;
+}
+
+.pos-prime-layout .pos-payment-amount-wrap {
+    position: relative;
+}
+
+.pos-prime-layout .pos-payment-workspace-amount {
+    height: 54px;
+    padding-right: 42px;
+    border-radius: 10px;
+    color: var(--pos-pay-text);
+    text-align: right;
+    font-size: 1.26rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-amount-unit {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--pos-pay-subtle);
+    font-size: .78rem;
+    font-weight: 700;
+    pointer-events: none;
+}
+
+.pos-prime-layout .pos-payment-quick-cash {
+    margin-top: 8px;
+}
+
+.pos-prime-layout .pos-payment-quick-cash__label {
+    margin-bottom: 5px;
+    color: var(--pos-pay-subtle);
+    font-size: .65rem;
+    font-weight: 700;
+}
+
+.pos-prime-layout .pos-payment-quick-cash__buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.pos-prime-layout .pos-payment-quick-cash__dynamic {
+    display: contents;
+}
+
+.pos-prime-layout .pos-payment-quick-button {
+    min-height: 32px;
+    padding: 5px 9px;
+    border: 1px solid var(--pos-pay-border);
+    border-radius: 999px;
+    background: #f9fafb;
+    color: var(--pos-pay-secondary);
+    font-size: .7rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-quick-button:hover {
+    border-color: #84adff;
+    background: #eff6ff;
+    color: #175cd3;
+}
+
+.pos-prime-layout .pos-payment-quick-button--exact {
+    border-color: #abefc6;
+    background: #ecfdf3;
+    color: #027a48;
+}
+
+.pos-prime-layout .pos-payment-quick-button--exact strong {
+    margin-left: 3px;
+}
+
+.pos-prime-layout .pos-payment-preview {
+    margin-top: 12px;
+    margin-bottom: 0;
+    padding: 10px 12px;
+    border-radius: 11px;
+}
+
+.pos-prime-layout .pos-payment-preview__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: .73rem;
+}
+
+.pos-prime-layout .pos-payment-preview__row strong {
+    font-size: .8rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-preview__row.is-change strong {
+    color: #027a48;
+}
+
+.pos-prime-layout .pos-payment-workspace-extra {
+    margin-top: 12px;
+}
+
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="0"] .pos-payment-workspace-extra {
+    display: none;
+}
+
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="1"] .pos-payment-workspace-extra,
+.pos-prime-layout .pos-payment-workspace-modal[data-payment-method="2"] .pos-payment-workspace-extra {
+    display: block;
+}
+
+.pos-prime-layout .pos-payment-workspace-qr {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #b2ddff;
+    border-radius: 11px;
+    background: #f0f9ff;
+}
+
+.pos-prime-layout .pos-payment-workspace-qr__content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pos-prime-layout .pos-payment-workspace-qr__status {
+    color: var(--pos-pay-secondary);
+    font-size: .71rem;
+    line-height: 1.35;
+}
+
+.pos-prime-layout .pos-payment-workspace-submit {
+    min-height: 46px;
+    border-radius: 10px;
+    font-size: .86rem;
+    font-weight: 750;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--pos-pay-border);
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace__list {
+    display: grid;
+    gap: 7px;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 9px 10px 9px 18px;
+    border: 1px solid var(--pos-pay-border);
+    border-radius: 9px;
+    background: #fff;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item::before {
+    content: "✓";
+    position: absolute;
+    left: 7px;
+    top: 11px;
+    color: #16a34a;
+    font-size: .7rem;
+    font-weight: 750;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item__title {
+    font-size: .75rem;
+    font-weight: 700;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item__amount {
+    font-size: .8rem;
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item__meta {
+    margin-top: 2px;
+    color: var(--pos-pay-muted);
+    font-size: .65rem;
+}
+
+.pos-prime-layout .pos-payment-ledger-workspace .pos-payment-ledger-item__remove-btn {
+    padding: 3px 7px;
+    font-size: .67rem;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--pos-pay-border);
+    background: #fff;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer .pos-payment-footer__state-text {
+    color: var(--pos-pay-muted);
+    font-size: .69rem;
+    line-height: 1.3;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer .pos-payment-footer__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer #btnFinalizeFromPaymentModal {
+    min-width: 100px;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer #btnFinalizeFromPaymentModal:disabled {
+    border-color: var(--pos-pay-border);
+    background: var(--pos-pay-soft, #f2f4f7);
+    color: var(--pos-pay-subtle);
+    opacity: 1;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer #btnFinalizeFromPaymentModal.is-payment-finalize-ready {
+    border-color: #84cc16;
+    background: #84cc16;
+    color: #fff;
+    cursor: pointer;
+}
+
+.pos-prime-layout .pos-payment-workspace__footer #btnFinalizeFromPaymentModal.is-payment-finalize-ready:hover {
+    border-color: #65a30d;
+    background: #65a30d;
+}
+
+.pos-prime-layout .pos-payment-qr-dialog {
+    max-width: 430px;
+}
+
+.pos-prime-layout .pos-payment-qr-workspace {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 20px 54px rgba(16, 24, 40, .20);
+}
+
+.pos-prime-layout .pos-payment-qr-amount {
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.pos-prime-layout .pos-payment-qr-amount div {
+    color: #667085;
+    font-size: .7rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout .pos-payment-qr-amount strong {
+    display: block;
+    margin-top: 2px;
+    color: #101828;
+    font-size: 1.7rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout .pos-payment-qr-image-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.pos-prime-layout .pos-payment-qr-image {
+    width: min(260px, 70vw);
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: contain;
+}
+
+.pos-prime-layout .pos-payment-qr-bank {
+    display: grid;
+    gap: 5px;
+    margin-top: 12px;
+}
+
+.pos-prime-layout .pos-payment-qr-bank > div,
+.pos-prime-layout .pos-payment-qr-transfer-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: .73rem;
+}
+
+.pos-prime-layout .pos-payment-qr-bank span,
+.pos-prime-layout .pos-payment-qr-transfer-content span {
+    color: #667085;
+}
+
+.pos-prime-layout .pos-payment-qr-bank strong,
+.pos-prime-layout .pos-payment-qr-transfer-content strong {
+    color: #344054;
+    text-align: right;
+    font-weight: 700;
+}
+
+.pos-prime-layout .pos-payment-qr-transfer-content {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eaecf0;
+}
+
+.pos-prime-layout .pos-payment-qr-shortcuts {
+    margin-top: 10px;
+    color: #98a2b3;
+    text-align: center;
+    font-size: .66rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout #customerRewardModal .modal-dialog {
+    max-width: 520px;
+}
+
+.pos-prime-layout #customerRewardModal .modal-content,
+.pos-prime-layout #useRewardVoucherModal .modal-content {
+    border: 0;
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(16, 24, 40, .18);
+}
+
+.pos-prime-layout #customerRewardModal .modal-header,
+.pos-prime-layout #useRewardVoucherModal .modal-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #eaecf0;
+}
+
+.pos-prime-layout #customerRewardModal .modal-body,
+.pos-prime-layout #useRewardVoucherModal .modal-body {
+    padding: 13px 16px;
+}
+
+.pos-prime-layout #customerRewardModal .modal-footer,
+.pos-prime-layout #useRewardVoucherModal .modal-footer {
+    padding: 10px 16px 13px;
+    border-top: 1px solid #eaecf0;
+}
+
+.pos-prime-layout #customerRewardModal .pos-reward-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.pos-prime-layout #customerRewardModal .pos-reward-modal-grid > div {
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid #eaecf0;
+    border-radius: 9px;
+    background: #f9fafb;
+}
+
+.pos-prime-layout #customerRewardModal .pos-reward-modal-grid span {
+    display: block;
+    color: #667085;
+    font-size: .66rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout #customerRewardModal .pos-reward-modal-grid strong {
+    display: block;
+    margin-top: 4px;
+    color: #101828;
+    font-size: .96rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout #customerRewardModal #rewardVoucherCount {
+    height: 44px;
+    border-radius: 9px;
+    text-align: center;
+    font-size: .96rem;
+    font-weight: 750;
+}
+
+.pos-prime-layout #customerRewardModal #btnRedeemRewardVoucher {
+    min-width: 120px;
+    font-weight: 750;
+}
+
+.pos-prime-layout #useRewardVoucherModal .modal-dialog {
+    max-width: 560px;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-list {
+    display: grid;
+    gap: 7px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #d0d5dd transparent;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-list::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #d0d5dd;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 9px;
+    background: #fff;
+    cursor: pointer;
+    transition: border-color .14s ease, background-color .14s ease;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-item:hover {
+    border-color: #b2ccff;
+    background: #f8faff;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-left {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    min-width: 0;
+}
+
+.pos-prime-layout #useRewardVoucherModal .use-voucher-check {
+    flex: 0 0 auto;
+    margin-top: 3px;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-code {
+    overflow: hidden;
+    color: #101828;
+    font-size: .77rem;
+    font-weight: 750;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-desc {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #667085;
+    font-size: .66rem;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-value {
+    color: #5925dc;
+    font-size: .82rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-total {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px;
+    border: 1px solid #d9d6fe;
+    border-radius: 9px;
+    background: #f4f3ff;
+    color: #475467;
+    font-size: .74rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout #useRewardVoucherModal .pos-use-voucher-total strong {
+    color: #5925dc;
+    font-size: .92rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout #heldOrdersModal .modal-dialog {
+    max-width: min(1180px, calc(100vw - 36px));
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 20px 54px rgba(16, 24, 40, .20);
+}
+
+.pos-prime-layout #heldOrdersModal .modal-header {
+    padding: 15px 18px 10px;
+}
+
+.pos-prime-layout #heldOrdersModal .modal-body {
+    padding: 10px 18px 16px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section {
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section--current {
+    border-color: #b2ccff;
+    background: linear-gradient(180deg, #f8faff 0%, #ffffff 32%);
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section--other {
+    border-color: #fedf89;
+    background: linear-gradient(180deg, #fffcf5 0%, #ffffff 32%);
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__header {
+    margin-bottom: 8px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__title {
+    color: #101828;
+    font-size: .8rem;
+    font-weight: 750;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__subtitle {
+    margin-top: 2px;
+    color: #667085;
+    font-size: .66rem;
+    line-height: 1.35;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__body {
+    display: grid;
+    gap: 8px;
+    max-height: 58vh;
+    overflow-y: auto;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: #d0d5dd transparent;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-section__body::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #d0d5dd;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card {
+    position: relative;
+    display: grid;
+    gap: 7px;
+    padding: 10px;
+    border: 1px solid #eaecf0;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card--current {
+    border-left: 3px solid #528bff;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card--other {
+    border-left: 3px solid #f79009;
+    background: #fffdf8;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card--high {
+    box-shadow: 0 0 0 1px rgba(247, 144, 9, .12);
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__identity {
+    min-width: 0;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__code {
+    color: #101828;
+    font-size: .74rem;
+    font-weight: 750;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__customer {
+    margin-top: 2px;
+    overflow: hidden;
+    color: #344054;
+    font-size: .76rem;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__phone,
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__submeta {
+    margin-top: 2px;
+    color: #98a2b3;
+    font-size: .63rem;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__money {
+    flex: 0 0 auto;
+    color: #101828;
+    font-size: .88rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__meta-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-meta-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #f2f4f7;
+    color: #667085;
+    font-size: .61rem;
+    font-weight: 650;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__note {
+    padding: 6px 7px;
+    border-radius: 8px;
+    background: #f9fafb;
+    color: #475467;
+    font-size: .65rem;
+    line-height: 1.35;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__other-shift-box {
+    display: grid;
+    gap: 3px;
+    padding: 7px 8px;
+    border: 1px solid #fedf89;
+    border-radius: 8px;
+    background: #fffaeb;
+    color: #854a0e;
+    font-size: .63rem;
+    line-height: 1.3;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-order-card__actions [data-resume-btn-id] {
+    min-width: 92px;
+    border-radius: 8px;
+    font-size: .69rem;
+    font-weight: 700;
+}
+
+.pos-prime-layout #heldOrdersModal .pos-held-modal-empty {
+    padding: 18px 10px;
+    color: #98a2b3;
+    text-align: center;
+    font-size: .72rem;
+}
+
+.pos-prime-layout .pos-payment-workspace {
+    min-width: 0;
+}
+
+/* 02. OPERATION HEADER — existing command and held-order hooks */
+
+.pos-prime .pos-cockpit-held-slot {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__main {
+    padding: 8px 10px;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+}
+
+.pos-prime .pos-prime-header .pos-held-summary-launcher__stats,
+.pos-prime .pos-prime-header .pos-held-summary-launcher__footer {
+    display: none;
+}
+
+/* 08. SELECTION / GIFTS / PROMOTIONS */
+
+.pos-prime .pos-line-promo-badge span {
+    overflow: visible;
+    white-space: normal;
+}
+
+.pos-prime .pos-line-original-price::after {
+    content: none;
+}
+
+/* 07. CART GEOMETRY / READABLE LINES */
+
+.pos-prime .pos-line-money,
+.pos-prime .pos-line-total {
+    text-align: right;
+}
+
+/* 09. RECEIPT SUMMARY + NEXT ACTION */
+
+.pos-prime #posSummaryActionGrid #btnOpenPayment:disabled,
+.pos-prime #posSummaryActionGrid #btnFinalizeCart:disabled,
+.pos-prime #posSummaryActionGrid #btnHoldCart:disabled,
+.pos-prime #posSummaryActionGrid #btnCancelCart:disabled {
+    opacity: 1;
+    background: #f1f5f9;
+    border-color: #dce3ec;
+    color: #64748b;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+@media (min-width: 1100px) and (max-width: 1499.98px) {
+
+    /* 11. F01 COMMON-SURFACE COMPATIBILITY — source properties retained */
+
+    .pos-prime-layout #heldOrdersModal .pos-held-modal-section__body {
+        max-height: 55vh;
+    }
+
+    .pos-prime-layout .pos-payment-workspace-modal .pos-payment-workspace-dialog {
+        width: 450px;
+        max-width: 450px;
+    }
+
+    .pos-prime-layout .pos-payment-workspace-total__value {
+        font-size: 1.9rem;
+    }
+
+    .pos-prime-layout .pos-payment-workspace__body {
+        padding: 12px 14px;
+    }
+
+    .pos-prime-layout .pos-payment-method-button {
+        min-height: 40px;
+    }
+}
+
+@media (max-width: 767.98px) {
+
+    /* 11. F01 COMMON-SURFACE COMPATIBILITY — source properties retained */
+
+    .pos-prime-layout .pos-payment-workspace-modal .pos-payment-workspace-dialog {
+        width: auto;
+        max-width: none;
+        min-height: calc(100% - 12px);
+        margin: 6px;
+    }
+
+    .pos-prime-layout .pos-payment-workspace-modal .pos-payment-workspace {
+        max-height: calc(100dvh - 12px);
+        border-radius: 14px;
+    }
+
+    .pos-prime-layout .pos-payment-method-grid,
+    .pos-prime-layout .pos-payment-workspace-summary-grid,
+    .pos-prime-layout .pos-payment-workspace__footer {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-prime-layout .pos-payment-workspace__footer .pos-payment-footer__actions {
+        justify-content: stretch;
+    }
+
+    .pos-prime-layout .pos-payment-workspace__footer .pos-payment-footer__actions .btn {
+        flex: 1 1 auto;
+    }
+
+    .pos-prime-layout #customerRewardModal .pos-reward-modal-grid,
+    .pos-prime-layout #heldOrdersModal .pos-held-modal__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pos-prime-layout #heldOrdersModal .pos-held-modal-section__body {
+        max-height: none;
+        overflow: visible;
+    }
+
+    /* 16. PHONE SAFETY FALLBACK — P3 interaction still pending */
+
+    .pos-prime .pos-prime-cart {
+        height: 560px;
+    }
+
+    .pos-prime .pos-prime-cart__body .pos-cart-scroll {
+        height: auto;
+        overflow: auto;
+    }
+
+    .pos-prime .pos-line-table tbody tr.pos-line-row {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        padding: 12px;
+        border-bottom: 1px solid #dce3ec;
+        margin: 0;
+    }
+
+    .pos-prime .pos-line-name-cell {
+        max-width: none;
+        width: 100%;
+    }
+
+    .pos-prime .pos-line-qty-cell {
+        width: auto;
+        margin: 8px 0;
+    }
+
+    .pos-prime .pos-line-money-cell,
+    .pos-prime .pos-line-total-cell {
+        width: auto;
+        margin: 8px 0;
+    }
+
+    .pos-prime .pos-line-actions-cell {
+        width: auto;
+    }
+
+    .pos-prime .pos-qty-inline {
+        justify-content: flex-start;
+    }
+
+    .pos-prime .pos-qty-summary {
+        justify-content: flex-start;
+    }
+
+    .pos-prime .pos-line-actions-menu {
+        z-index: 20;
+    }
+
+    .pos-prime .pos-prime-cart__hint {
+        display: none;
+    }
+
+    .pos-prime .pos-cockpit-shortcuts__grid {
+        grid-template-columns: minmax(0,1fr);
+    }
+
+    .pos-prime .pos-autocomplete-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        max-height: 55dvh;
+        z-index: 35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    /* 11. F01 COMMON-SURFACE COMPATIBILITY — source properties retained */
+
+    .pos-prime-layout .pos-payment-workspace-modal * {
+        scroll-behavior: auto;
+    }
+
+    /* 19. REDUCED MOTION */
+
+    .pos-prime-layout *,
+    .pos-prime-layout *::before,
+    .pos-prime-layout *::after,
+    .pos-prime-layout .pos-cockpit-v2.pos-prime *,
+    .pos-prime-layout .pos-cockpit-v2.pos-prime *::before,
+    .pos-prime-layout .pos-cockpit-v2.pos-prime *::after,
+    .pos-prime-admin-drawer {
+        transition: none;
+        animation: none;
+        scroll-behavior: auto;
+    }
+}
+
+@media (min-width: 1200px) and (max-height: 820px) {
+
+    /* 12. LOW-HEIGHT DESKTOP — spacing only; core text never micro-sized */
+
+    .pos-prime .pos-cockpit-section {
+        padding: 10px;
+    }
+
+    .pos-prime .pos-customer-compact {
+        gap: 8px;
+    }
+
+    .pos-prime .pos-customer-benefit-card {
+        padding: 7px;
+    }
+
+    .pos-prime .pos-order-tools-grid {
+        gap: 6px;
+        margin-top: 8px;
+    }
+
+    .pos-prime .pos-order-tool {
+        padding: 7px;
+    }
+
+    .pos-prime .pos-cockpit-summary-section {
+        padding: 12px;
+    }
+
+    .pos-prime .pos-summary-hero {
+        margin: 12px 0;
+    }
+
+    .pos-prime .pos-prime-checkout__actions {
+        padding: 10px;
+    }
+}
+
+@media (min-width: 1600px) {
+
+    /* 13. WIDE DESKTOP — bounded readable columns */
+
+    .pos-prime .pos-prime-workspace {
+        grid-template-columns: 240px minmax(0,1fr) 360px;
+    }
+
+    .pos-prime .pos-col-qty {
+        width: 156px;
+    }
+
+    .pos-prime .pos-col-price {
+        width: 124px;
+    }
+
+    .pos-prime .pos-col-total {
+        width: 140px;
+    }
+
+    .pos-prime .pos-qty-inline .qty-btn {
+        width: 36px;
+        min-width: 36px;
+        height: 38px;
+    }
+
+    .pos-prime .pos-qty-inline .qty-input {
+        width: 54px;
+        height: 38px;
+    }
+}
+
+@media (max-width: 1199.98px) {
+
+    /* 14. TABLET FALLBACK — preserve usability pending V3-P3 */
+
+    .pos-prime-layout {
+        padding: 8px;
+    }
+
+    .pos-cockpit-v2.pos-prime {
+        height: auto;
+        min-height: calc(100dvh - 16px);
+    }
+
+    .pos-prime .pos-prime-header__context {
+        display: none;
+    }
+
+    .pos-prime .pos-prime-workspace {
+        grid-template-areas: "sale checkout" "context context";
+        grid-template-columns: minmax(0,1fr) 320px;
+        grid-template-rows: auto auto;
+        align-items: start;
+    }
+
+    .pos-prime .pos-prime-cart {
+        height: 560px;
+    }
+
+    .pos-prime .pos-prime-context__body {
+        display: grid;
+        grid-template-columns: repeat(2,minmax(0,1fr));
+        max-height: none;
+        overflow: visible;
+    }
+
+    .pos-prime .pos-prime-checkout {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .pos-prime .pos-col-qty {
+        width: 120px;
+    }
+
+    .pos-prime .pos-col-price {
+        width: 80px;
+    }
+
+    .pos-prime .pos-col-total {
+        width: 90px;
+    }
+}
+
+@media (max-width: 991.98px) {
+
+    /* 15. NARROW FALLBACK — one column, no loss of controls */
+
+    .pos-prime .pos-prime-header {
+        flex-wrap: wrap;
+    }
+
+    .pos-prime .pos-prime-header__actions {
+        flex-wrap: wrap;
+    }
+
+    .pos-prime .pos-prime-workspace {
+        grid-template-areas: "sale" "context" "checkout";
+        grid-template-columns: minmax(0,1fr);
+    }
+
+    .pos-prime .pos-prime-context__body {
+        grid-template-columns: minmax(0,1fr);
+    }
+
+    .pos-prime .pos-customer-benefit-grid {
+        grid-template-columns: repeat(2,minmax(0,1fr));
+    }
+
+    .pos-prime .pos-prime-cart {
+        height: 560px;
+    }
+}
+
+@media (max-width: 575.98px) {
+
+    /* 17. SMALL PHONE */
+
+    .pos-prime-layout {
+        padding: 6px;
+    }
+
+    .pos-prime .pos-prime-header {
+        gap: 8px;
+    }
+
+    .pos-prime .pos-prime-header__identity {
+        flex: 1 1 auto;
+    }
+
+    .pos-prime .pos-prime-header__actions {
+        gap: 6px;
+        width: 100%;
+        min-width: 0;
+        flex: 1 1 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .pos-prime .pos-prime-header__brand span {
+        font-size: 11px;
+    }
+
+    .pos-prime .pos-prime-header__action span {
+        font-size: 12px;
+    }
+
+    .pos-prime .pos-customer-benefit-grid {
+        grid-template-columns: minmax(0,1fr);
+    }
+
+    .pos-prime .pos-cockpit-command-chip {
+        min-height: 34px;
+    }
+
+    .pos-prime .pos-summary-hero__value {
+        font-size: 32px;
+    }
+}
+
+@media (min-width: 1200px) and (max-height: 639.98px) {
+
+    /* 18. SHORT VIEWPORT SAFETY — access over artificial zero-scroll */
+
+    .pos-cockpit-v2.pos-prime {
+        height: auto;
+        min-height: calc(100dvh - 20px);
+    }
+
+    .pos-prime .pos-prime-workspace {
+        grid-template-rows: auto;
+        align-items: start;
+    }
+
+    .pos-prime .pos-prime-context__body,
+    .pos-prime .pos-prime-checkout {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .pos-prime .pos-prime-cart {
+        height: 480px;
+    }
+}
+
+/* 20. V3-P3 — progressive enhancement. P2 fallback above is intentional.
+ * These new surfaces remain absent without a successfully mounted adapter.
+ * Desktop >=1200px retains the P2 geometry and common modal presentation.
+ */
+.pos-prime .pos-prime-context-strip,
+.pos-prime .pos-prime-mobile-dock,
+.pos-prime-layout .pos-prime-payment-submit-host {
+    display: none;
+}
+
+.pos-prime .pos-prime-sheet {
+    --bs-offcanvas-height: min(88dvh, 760px);
+    border: 1px solid #cbd5e1;
+    border-radius: 18px 18px 0 0;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 -8px 28px rgb(15 23 42 / 12%);
+    transition: transform 200ms ease-in-out;
+}
+
+.pos-prime .pos-prime-sheet .offcanvas-header {
+    flex: 0 0 auto;
+    min-height: 60px;
+    padding: 8px 16px;
+    gap: 10px;
+    border-bottom: 1px solid #dce3ec;
+}
+
+.pos-prime .pos-prime-sheet .offcanvas-title {
+    margin: 0;
+    color: #0f172a;
+    font-size: 17px;
+    font-weight: 750;
+    line-height: 1.3;
+}
+
+.pos-prime .pos-prime-sheet .btn-close {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    background-size: 14px;
+    background-position: center;
+}
+
+.pos-prime .pos-prime-sheet .offcanvas-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0 0 max(16px, env(safe-area-inset-bottom));
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 transparent;
+}
+
+.pos-prime .pos-prime-sheet .pos-prime-context__body,
+.pos-prime .pos-prime-sheet .pos-prime-checkout__summary {
+    display: block;
+    max-height: none;
+    overflow: visible;
+}
+
+.pos-prime .pos-prime-sheet .pos-customer-benefit-grid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+}
+
+.pos-prime .pos-prime-sheet .pos-customer-identity__name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.pos-prime .pos-prime-sheet input,
+.pos-prime .pos-prime-sheet textarea,
+.pos-prime .pos-prime-sheet select {
+    font-size: 16px;
+}
+
+.pos-prime .pos-prime-sheet .pos-meta-toggle,
+.pos-prime .pos-prime-sheet .pos-note-box .btn,
+.pos-prime .pos-prime-sheet .pos-cockpit-section__icon-action,
+.pos-prime .pos-prime-sheet .pos-customer-clear-link {
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.pos-prime #posPrimeMoneyActions {
+    padding: 0 16px 16px;
+}
+
+.pos-prime #posPrimeMoneyActions .pos-cockpit-secondary-actions {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap: 10px;
+    margin: 0;
+}
+
+.pos-prime #posPrimeMoneyActions .pos-action-btn {
+    min-height: 48px;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: normal;
+}
+
+/* Tablet: Customer/Tools sheet; sale + receipt. */
+@media (max-width: 1199.98px) {
+    .pos-prime-layout[data-prime-ui="ready"] {
+        min-height: 0;
+        height: 100dvh;
+        padding: 8px;
+        overflow: hidden;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-layout__content {
+        height: 100%;
+        min-height: 0;
+    }
+
+    .pos-cockpit-v2.pos-prime[data-prime-ui="ready"] {
+        height: 100%;
+        min-height: 0;
+        gap: 8px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-workspace {
+        grid-template-areas: "sale checkout";
+        grid-template-columns: minmax(0,1fr) 300px;
+        grid-template-rows: minmax(0,1fr);
+        align-items: stretch;
+        min-height: 0;
+        gap: 10px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-sale {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        gap: 8px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-cart {
+        height: auto;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-checkout {
+        max-height: 100%;
+        overflow: auto;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context-strip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 auto;
+        min-height: 54px;
+        min-width: 0;
+        width: 100%;
+        padding: 7px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background: #fff;
+        text-align: left;
+        color: #0f172a;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context-strip > i {
+        flex: 0 0 auto;
+        font-size: 22px;
+        color: #2563eb;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context-strip__text {
+        display: grid;
+        gap: 2px;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context-strip strong {
+        font-size: 15px;
+        font-weight: 750;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-context-strip__text > span {
+        color: #475569;
+        font-size: 12px;
+        line-height: 1.3;
+        white-space: normal;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-sheet {
+        height: min(88dvh, calc(var(--pos-prime-visible-height, 100dvh) - 8px));
+        max-height: calc(var(--pos-prime-visible-height, 100dvh) - 8px);
+        bottom: var(--pos-prime-visible-bottom, 0px);
+    }
+}
+
+/* Compact tablet and phone: one accessible row/card per original tr. */
+@media (max-width: 991.98px) {
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table {
+        display: block;
+        table-layout: auto;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: -1px;
+        padding: 0;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #currentDraftBody {
+        display: block;
+        width: 100%;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #currentDraftBody > tr.pos-line-row {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) 92px 44px;
+        gap: 8px 6px;
+        position: relative;
+        height: auto;
+        min-width: 0;
+        padding: 12px;
+        border-bottom: 1px solid #dce3ec;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table tbody td {
+        display: block;
+        padding: 0;
+        min-width: 0;
+        max-width: none;
+        width: auto;
+        border: 0;
+        margin: 0;
+        box-shadow: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table .pos-line-name-cell {
+        display: contents;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table tr.is-active-line {
+        background: #eff6ff;
+        box-shadow: inset 3px 0 0 #2563eb;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table tr.is-active-line td {
+        background: transparent;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-table .pos-line-name-cell::after {
+        content: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-name-wrap {
+        grid-column: 1 / 3;
+        grid-row: 1;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-actions-cell {
+        grid-column: 3;
+        grid-row: 1;
+        align-self: start;
+        position: relative;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-qty-cell {
+        grid-column: 1;
+        grid-row: 3;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-money-cell {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        align-self: end;
+        text-align: left;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-total-cell {
+        grid-column: 2 / -1;
+        grid-row: 3;
+        align-self: end;
+        text-align: right;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-money-cell::before {
+        display: inline;
+        content: "Đơn giá: ";
+        font-size: 12px;
+        font-weight: 500;
+        color: #475569;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-total-cell::before {
+        display: block;
+        content: "Thành tiền";
+        font-size: 12px;
+        font-weight: 500;
+        color: #475569;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-product-wrap {
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-thumb-wrap,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-thumb-placeholder {
+        width: 56px;
+        height: 56px;
+        flex-basis: 56px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-name {
+        font-size: 15px;
+        line-height: 1.35;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-submeta {
+        font-size: 12px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-money,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-total {
+        white-space: nowrap;
+        overflow: visible;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-qty-inline,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-qty-summary {
+        justify-content: flex-start;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-qty-inline .qty-btn {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-qty-inline .qty-input {
+        width: 56px;
+        height: 44px;
+        font-size: 16px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-actions-toggle {
+        width: 44px;
+        min-width: 44px;
+        height: 44px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-actions-menu .dropdown-item {
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-price-stack {
+        justify-items: start;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-line-row.is-promotion-gift .pos-line-product-wrap {
+        padding-left: 8px;
+    }
+}
+
+/* Phone: viewport-height shell; only cart scrolls in normal sale mode. */
+@media (max-width: 767.98px) {
+    .pos-prime-layout[data-prime-ui="ready"] {
+        /* A fixed ancestor would trap common modals below Bootstrap's body backdrop. */
+        position: relative;
+        height: var(--pos-prime-visible-height, 100dvh);
+        min-height: 0;
+        padding: max(6px, env(safe-area-inset-top)) 6px max(6px, env(safe-area-inset-bottom));
+        overflow: hidden;
+    }
+
+    /* Keep the existing shortcut launcher/name; do not depend on an icon font glyph. */
+    .pos-prime-layout[data-prime-ui="ready"] [data-pos-shortcuts-toggle] .bx-keyboard {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] [data-pos-shortcuts-toggle]::before {
+        content: "?";
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-workspace {
+        grid-template-areas: "sale" "dock";
+        grid-template-columns: minmax(0,1fr);
+        grid-template-rows: minmax(0,1fr) auto;
+        gap: 8px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-checkout {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header {
+        flex-wrap: wrap;
+        min-height: 0;
+        padding: 6px 8px;
+        gap: 4px;
+        border-radius: 10px;
+        box-shadow: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__identity {
+        flex: 1 1 auto;
+        padding-right: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__brand span {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__brand strong {
+        font-size: 14px;
+        white-space: nowrap;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-readiness.is-ready {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__actions {
+        flex: 0 1 auto;
+        width: auto;
+        gap: 4px;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header [data-pos-shortcuts-toggle] {
+        width: 44px;
+        min-width: 44px;
+        padding: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header [data-pos-shortcuts-toggle] span,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header .pos-held-summary-launcher__title {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header .pos-held-summary-launcher {
+        min-width: 52px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header .pos-held-summary-launcher__main {
+        padding: 0 6px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-network-banner--online {
+        padding: 5px 10px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-network-banner--online .pos-network-banner__message {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__menu-button,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__action,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header .pos-held-summary-launcher {
+        min-height: 44px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__menu-button,
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header__action--icon {
+        width: 44px;
+        min-width: 44px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-cockpit-command {
+        padding: 6px;
+        border-radius: 10px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-cockpit-search__input {
+        height: 48px;
+        padding-left: 38px;
+        font-size: 16px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-cockpit-command__hints {
+        /* Redundant desktop shortcuts; same customer/tools are available in the strip/sheet. */
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-cockpit-command-chip {
+        min-height: 44px;
+        padding: 6px;
+        font-size: 12px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-cart__heading {
+        min-height: 36px;
+        padding: 5px 10px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-dock {
+        display: block;
+        grid-area: dock;
+        min-width: 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        background: #fff;
+        padding: 6px 10px 8px;
+        box-shadow: 0 -2px 8px rgb(15 23 42 / 5%);
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-dock__money {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 10px;
+        min-width: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-dock__balance {
+        display: grid;
+        min-width: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-dock__balance > span {
+        font-size: 12px;
+        color: #475569;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-mobile-dock__balance strong {
+        font-size: 22px;
+        color: #0f172a;
+        line-height: 1.2;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-detail-button {
+        min-height: 44px;
+        border: 0;
+        border-radius: 8px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        padding: 6px 8px;
+        font-size: 12px;
+        font-weight: 650;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #posPrimeDockActions .pos-prime-checkout__actions {
+        border: 0;
+        padding: 6px 0 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #posPrimeDockActions .pos-cockpit-primary-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1.7fr) minmax(0,1fr);
+        gap: 8px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #posPrimeDockActions .pos-action-btn {
+        min-height: 48px;
+        margin: 0;
+        padding: 8px;
+        font-size: 14px;
+        border-radius: 9px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #posPrimeDockActions .shortcut-badge {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-sheet .pos-summary-hero__value {
+        font-size: 30px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-autocomplete-menu {
+        max-height: min(320px, calc(var(--pos-prime-visible-height, 100dvh) - 180px));
+    }
+
+    /* Payment is the existing modal, not a second mobile form. */
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal {
+        top: var(--pos-prime-visible-top, 0px);
+        bottom: auto;
+        height: var(--pos-prime-visible-height, 100dvh);
+        overflow: hidden;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace-dialog {
+        width: 100%;
+        max-width: none;
+        min-height: 0;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace {
+        height: 100%;
+        min-height: 0;
+        max-height: 100%;
+        border-radius: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace__header {
+        padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+        min-height: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .modal-header .btn-close {
+        min-width: 44px;
+        min-height: 44px;
+        margin: 0;
+        padding: 0;
+        background-size: 14px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace__eyebrow {
+        display: none;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace__body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 10px 12px;
+        overscroll-behavior: contain;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-workspace__footer {
+        flex: 0 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0,1fr);
+        gap: 5px;
+        padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+        background: #fff;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-prime-payment-submit-host {
+        display: grid;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal #btnAddPayment {
+        width: 100%;
+        min-height: 48px;
+        margin: 0;
+        font-size: 16px;
+        white-space: normal;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-footer__status {
+        max-height: 64px;
+        overflow: auto;
+        font-size: 12px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-footer__actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-footer__actions .btn {
+        flex: 1 1 0;
+        min-height: 44px;
+        font-size: 14px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal input,
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal select {
+        min-height: 48px;
+        font-size: 16px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-method-grid {
+        grid-template-columns: repeat(3, minmax(0,1fr));
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-method-button {
+        min-height: 48px;
+        flex-wrap: wrap;
+        padding: 6px 4px;
+        font-size: 13px;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] #paymentModal .pos-payment-quick-button {
+        min-height: 44px;
+        font-size: 13px;
+    }
+}
+
+/* Short visual viewport (regardless of cause): accessible natural-flow fallback.
+   Payment still has its independent, keyboard-aware body/footer. */
+@media (max-width: 767.98px) {
+    .pos-prime-layout[data-prime-ui="ready"][data-prime-room="short"] {
+        overflow-y: auto;
+    }
+    .pos-prime-layout[data-prime-ui="ready"][data-prime-room="short"] .pos-cockpit-v2.pos-prime {
+        height: auto;
+        min-height: 100%;
+    }
+    .pos-prime-layout[data-prime-ui="ready"][data-prime-room="short"] .pos-prime-workspace {
+        grid-template-rows: auto auto;
+        flex: 0 0 auto;
+    }
+    .pos-prime-layout[data-prime-ui="ready"][data-prime-room="short"] .pos-prime-cart {
+        flex: 0 0 auto;
+        height: 260px;
+    }
+    .pos-prime-layout[data-prime-ui="ready"][data-prime-room="short"] .pos-prime-mobile-dock {
+        position: sticky;
+        bottom: 0;
+        z-index: 20;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-sheet {
+        transition: none;
+    }
+}
+
+/* 21. V3-P4 — held affordance / real exceptions.
+ * Layout and font contracts P2/P3 above remain unchanged.
+ */
+.pos-prime .pos-prime-header #btnOpenHeldOrders[data-prime-held] {
+    min-height: 44px;
+    min-width: 64px;
+}
+
+.pos-prime .pos-prime-header #btnOpenHeldOrders[data-prime-held="pending"] .pos-held-summary-launcher__total {
+    color: #dbeafe;
+    background: #1e40af;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 13px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-prime-header #btnOpenHeldOrders[data-prime-held="empty"] .pos-held-summary-launcher__total {
+    color: #e2e8f0;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.pos-prime .pos-prime-header #btnOpenHeldOrders[data-prime-held]:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 3px;
+}
+
+.pos-prime .pos-line-row.has-line-discount:not(.is-promotion-gift) .pos-line-adjustment-note {
+    border-color: #fcd34d;
+    background: #fffbeb;
+    color: #78350f;
+    font-weight: 700;
+}
+
+.pos-prime .pos-line-row.has-promotion:not(.is-promotion-gift) .pos-line-promo-badge {
+    background: #eff6ff;
+    color: #1e40af;
+    font-weight: 700;
+}
+
+.pos-prime .pos-prime-mobile-table tr.is-promotion-gift:not(.is-active-line) {
+    background: #f0fdf4;
+}
+
+.pos-prime .pos-prime-mobile-table tr.pos-line-just-added:not(.is-active-line) {
+    background: #f0fdf4;
+}
+
+@media (max-width: 767.98px) {
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header #btnOpenHeldOrders[data-prime-held] .pos-held-summary-launcher__header {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .pos-prime-layout[data-prime-ui="ready"] .pos-prime-header #btnOpenHeldOrders[data-prime-held] .pos-held-summary-launcher__title {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip-path: none;
+        white-space: nowrap;
+        font-size: 12px;
+        line-height: 1.25;
+    }
+}

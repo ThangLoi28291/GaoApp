@@ -16,9 +16,10 @@ public sealed class PurchaseReceiptManagedOverdeliveryUiContractTests
             root, "GaoApp.Web", "wwwroot", "Admin", "js",
             "purchase-receipt-approval.js"));
 
-        Assert.Contains("id=\"acceptOverdelivery\"", edit);
-        Assert.Contains("id=\"overdeliveryNote\"", edit);
-        Assert.DoesNotContain("required id=\"overdeliveryNote\"", edit);
+        Assert.DoesNotContain("id=\"acceptOverdelivery\"", edit);
+        Assert.Contains("id=\"acceptOverdelivery\"", workbench);
+        Assert.Contains("id=\"overdeliveryNote\"", workbench);
+        Assert.DoesNotContain("required id=\"overdeliveryNote\"", workbench);
         Assert.Contains("ProjectedOverdeliveryQuantity", workbench);
         Assert.Contains("acceptOverdelivery:", script);
         Assert.Contains("overdeliveryNote:", script);

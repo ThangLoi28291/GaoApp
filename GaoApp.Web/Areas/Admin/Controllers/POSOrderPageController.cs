@@ -1,4 +1,7 @@
-﻿using GaoApp.Application.Interfaces.Services.POSShifts;
+using Microsoft.AspNetCore.Authorization;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Interfaces.Services.POSShifts;
 using GaoApp.Web.Common.POS;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,6 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Route("admin/pos/orders-page")]
+[Authorize(Policy = PermissionCodes.Pos.Order.View)]
 public class POSOrderPageController : BasePOSPageController
 {
     public POSOrderPageController(

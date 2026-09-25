@@ -1,0 +1,114 @@
+@model GaoApp.Web.ViewComponents.EmployeeAccountMenuModel
+@{
+    var profile = Model.Profile;
+}
+<div class="gao-account" data-employee-account>
+    <div class="gao-account-control" data-account-control hidden>
+        <button type="button" class="gao-account-trigger" id="employeeAccountTrigger"
+                aria-expanded="false" aria-controls="employeeAccountMenu" aria-haspopup="menu"
+                aria-label="Tài khoản: @profile.DisplayName" title="@profile.DisplayName · @profile.RoleName">
+            <span class="gao-account-avatar" aria-hidden="true">@profile.Initials</span>
+            <span class="gao-account-signed-in" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    <div class="gao-account-menu" id="employeeAccountMenu" role="menu" aria-label="Tài khoản nhân viên" hidden>
+        <div class="gao-account-menu-heading" role="presentation">
+            <div class="gao-account-person"><span class="gao-account-avatar" aria-hidden="true">@profile.Initials</span>
+                <div><strong>@profile.DisplayName</strong><small>@profile.RoleName</small></div>
+            </div>
+            <div class="gao-account-store"><i class="bx bx-store" aria-hidden="true"></i><span>@profile.StoreName</span></div>
+        </div>
+        <div class="gao-account-menu-group" role="group" aria-label="Cá nhân">
+            <button type="button" role="menuitem" class="gao-account-item" data-account-panel="profile"><i class="bx bx-user" aria-hidden="true"></i><span>Hồ sơ của tôi</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" role="menuitem" class="gao-account-item" data-account-panel="password"><i class="bx bx-key" aria-hidden="true"></i><span>Đổi mật khẩu</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+        </div>
+        <div class="gao-account-menu-group" role="group" aria-label="Tiện ích">
+            @if (Model.CanUsePos)
+            {
+                <a asp-area="Admin" asp-controller="POS" asp-action="Index" role="menuitem" class="gao-account-item"><i class="bx bx-store-alt" aria-hidden="true"></i><span>Đến quầy bán hàng</span><i class="bx bx-link-external" aria-hidden="true"></i></a>
+            }
+            <button type="button" role="menuitem" class="gao-account-item" data-account-panel="help"><i class="bx bx-help-circle" aria-hidden="true"></i><span>Trợ giúp</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+        </div>
+        <form method="post" asp-area="Admin" asp-controller="Account" asp-action="Logout" class="gao-account-menu-group">
+            @Html.AntiForgeryToken()
+            <button type="submit" role="menuitem" class="gao-account-item gao-account-logout"><i class="bx bx-log-out" aria-hidden="true"></i><span>Đăng xuất</span></button>
+        </form>
+    </div>
+
+    <div class="offcanvas offcanvas-end gao-account-drawer" tabindex="-1" id="employeeAccountDrawer" aria-labelledby="employeeAccountTitle">
+        <div class="offcanvas-header">
+            <h2 class="offcanvas-title" id="employeeAccountTitle">Hồ sơ của tôi</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
+        </div>
+        <div class="offcanvas-body">
+            <section data-account-section="profile" aria-label="Thông tin nhân viên">
+                <div class="gao-account-profile-header">
+                    <span class="gao-account-avatar gao-account-avatar-large" aria-hidden="true">@profile.Initials</span>
+                    <strong>@profile.DisplayName</strong><span>@profile.RoleName</span>
+                </div>
+                <dl class="gao-account-details">
+                    <div><dt>Tên đăng nhập</dt><dd>@profile.UserName</dd></div>
+                    <div><dt>Họ và tên</dt><dd>@profile.DisplayName</dd></div>
+                    <div><dt>Email</dt><dd>@(string.IsNullOrWhiteSpace(profile.Email) ? "Chưa cập nhật" : profile.Email)</dd></div>
+                    <div><dt>Cửa hàng</dt><dd>@profile.StoreName</dd></div>
+                    <div><dt>Vai trò</dt><dd>@profile.RoleName</dd></div>
+                    <div><dt>Chức vụ</dt><dd>@(string.IsNullOrWhiteSpace(profile.PositionName) ? "Chưa cập nhật" : profile.PositionName)</dd></div>
+                    <div><dt>Số điện thoại</dt><dd>@(string.IsNullOrWhiteSpace(profile.PhoneNumber) ? "Chưa cập nhật" : profile.PhoneNumber)</dd></div>
+                    <div><dt>Ngày vào làm</dt><dd>@(profile.JoinedDate?.ToString("dd/MM/yyyy") ?? "Chưa cập nhật")</dd></div>
+                </dl>
+                <p class="gao-account-note">Liên hệ quản lý cửa hàng để cập nhật thông tin nhân viên hoặc quyền truy cập.</p>
+                <button type="button" class="btn btn-outline-primary" data-account-panel="password"><i class="bx bx-key me-2" aria-hidden="true"></i>Đổi mật khẩu</button>
+            </section>
+
+            <section data-account-section="password" aria-label="Đổi mật khẩu" hidden>
+                <p class="gao-account-note">Mật khẩu mới áp dụng cho tài khoản ở <strong>tất cả cửa hàng</strong>. Bạn và các thiết bị đang đăng nhập sẽ cần đăng nhập lại. Hãy lưu công việc đang làm trước khi đổi.</p>
+                <form method="post" asp-area="Admin" asp-controller="EmployeeAccount" asp-action="ChangePassword" data-account-password-form>
+                    @Html.AntiForgeryToken()
+                    <input type="text" name="UserName" value="@profile.UserName" autocomplete="username" hidden />
+                    <div class="gao-account-field">
+                        <label for="accountCurrentPassword" class="form-label">Mật khẩu hiện tại</label>
+                        <div class="gao-account-password-input">
+                            <input id="accountCurrentPassword" name="CurrentPassword" type="password" class="form-control" autocomplete="current-password" required maxlength="512" aria-describedby="accountCurrentPasswordError" />
+                            <button type="button" data-password-toggle="accountCurrentPassword" aria-label="Hiện mật khẩu hiện tại" aria-pressed="false"><i class="bx bx-show" aria-hidden="true"></i></button>
+                        </div>
+                        <div class="gao-account-field-error" id="accountCurrentPasswordError" data-account-error="CurrentPassword"></div>
+                    </div>
+                    <div class="gao-account-field">
+                        <label for="accountNewPassword" class="form-label">Mật khẩu mới</label>
+                        <div class="gao-account-password-input">
+                            <input id="accountNewPassword" name="NewPassword" type="password" class="form-control" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="accountPasswordHint accountNewPasswordError" />
+                            <button type="button" data-password-toggle="accountNewPassword" aria-label="Hiện mật khẩu mới" aria-pressed="false"><i class="bx bx-show" aria-hidden="true"></i></button>
+                        </div>
+                        <small id="accountPasswordHint">Từ 12 đến 128 ký tự. Có thể dùng một câu dễ nhớ.</small>
+                        <div class="gao-account-field-error" id="accountNewPasswordError" data-account-error="NewPassword"></div>
+                    </div>
+                    <div class="gao-account-field">
+                        <label for="accountConfirmPassword" class="form-label">Nhập lại mật khẩu mới</label>
+                        <div class="gao-account-password-input">
+                            <input id="accountConfirmPassword" name="ConfirmPassword" type="password" class="form-control" autocomplete="new-password" required maxlength="128" aria-describedby="accountConfirmPasswordError" />
+                            <button type="button" data-password-toggle="accountConfirmPassword" aria-label="Hiện mật khẩu xác nhận" aria-pressed="false"><i class="bx bx-show" aria-hidden="true"></i></button>
+                        </div>
+                        <div class="gao-account-field-error" id="accountConfirmPasswordError" data-account-error="ConfirmPassword"></div>
+                    </div>
+                    <div class="gao-account-status" data-account-status role="alert" hidden></div>
+                    <a asp-area="Admin" asp-controller="Account" asp-action="Login" data-account-login hidden>Đăng nhập lại</a>
+                    <button type="submit" class="btn btn-primary w-100" data-account-save>Đổi mật khẩu</button>
+                </form>
+            </section>
+
+            <section data-account-section="help" aria-label="Trợ giúp tài khoản" hidden>
+                <div class="gao-account-help-icon"><i class="bx bx-help-circle" aria-hidden="true"></i></div>
+                <h3>Sử dụng tài khoản của bạn</h3>
+                <p>Kiểm tra tên và cửa hàng trong menu tài khoản trước khi bắt đầu làm việc.</p>
+                <h3>Cập nhật hồ sơ</h3>
+                <p>Liên hệ quản lý cửa hàng khi cần sửa họ tên, email, số điện thoại hoặc quyền truy cập. Các thông tin này được quản lý trong danh sách nhân viên.</p>
+                <h3>Quên mật khẩu hiện tại</h3>
+                <p>Nhờ quản lý hỗ trợ đặt lại mật khẩu. Với tài khoản dùng ở nhiều cửa hàng, liên hệ quản trị hệ thống.</p>
+                <h3>Kết thúc sử dụng</h3>
+                <p>Lưu công việc đang làm và chọn Đăng xuất, nhất là khi dùng chung máy. Nếu đang có ca bán hàng, hãy thực hiện đóng hoặc bàn giao ca trong POS theo quy trình của cửa hàng.</p>
+                <div class="gao-account-help-context"><i class="bx bx-store" aria-hidden="true"></i><span>@profile.StoreName</span></div>
+            </section>
+        </div>
+    </div>
+</div>

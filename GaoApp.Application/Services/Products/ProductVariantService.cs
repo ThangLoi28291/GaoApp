@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Repositories.Products;
@@ -52,11 +52,16 @@ public sealed class ProductVariantService : IProductVariantService
 
         return list.Select(v =>
         {
+            var conversions = v.UnitConversions?.Where(c => !c.IsDeleted).ToList() ?? new();
+
+            var activeConversions = conversions.Where(c => c.IsActive).ToList();
+            var activeBarcodeCount = conversions
+                .Sum(c => c.Barcodes?.Count(b => !b.IsDeleted && b.IsActive) ?? 0);
+
             // NEW:
             // Giá bán hiển thị ngoài bảng Variant không lấy từ ProductVariant.Price nữa.
             // Vì mỗi variant luôn có 1 ProductUnitConversion gốc được tạo tự động.
-            var baseConversion = v.UnitConversions?
-                .Where(c => !c.IsDeleted)
+            var baseConversion = activeConversions
                 .OrderByDescending(c => c.IsBaseUnit)
                 .ThenBy(c => c.SortOrder)
                 .ThenBy(c => c.Id)
@@ -68,14 +73,17 @@ public sealed class ProductVariantService : IProductVariantService
                 Sku = v.Sku,
                 ProductVariantName = v.ProductVariantName,
                 CostPrice = v.CostPrice,
+                UnitConversionCount = conversions.Count,
+                ActiveBarcodeCount = activeBarcodeCount,
+                BaseUnitName = baseConversion?.Unit?.Name,
+                // Giá bán hiển thị ngoài bảng Variant dựa trên đơn vị gốc đang hoạt động nếu có;
+                // nếu chưa có đơn vị hoạt động sẽ fallback theo quy đổi đầu tiên.
+                BaseUnitPrice = baseConversion?.Price ?? activeConversions.FirstOrDefault()?.Price,
+                BaseUnitWholesalePrice = baseConversion?.WholesalePrice ?? activeConversions.FirstOrDefault()?.WholesalePrice,
 
                 // Giữ Price cũ để tránh vỡ DTO cũ, nhưng UI mới không dùng để nhập giá nữa.
                 Price = v.Price,
-
                 // NEW: hiển thị giá của đơn vị gốc
-                BaseUnitPrice = baseConversion?.Price,
-                BaseUnitWholesalePrice = baseConversion?.WholesalePrice,
-                BaseUnitName = baseConversion?.Unit?.Name,
 
                 IsActive = v.IsActive,
                 HasInputInvoice = v.HasInputInvoice,
@@ -106,6 +114,18 @@ public sealed class ProductVariantService : IProductVariantService
         int? userId,
         CancellationToken ct)
     {
+        // Validate the entire batch before the repository can write any variant.
+        var missingCost = variants.FindIndex(v => v.CostPrice <= 0m);
+        if (missingCost >= 0)
+        {
+            var variant = variants[missingCost];
+            var name = !string.IsNullOrWhiteSpace(variant.ProductVariantName)
+                ? variant.ProductVariantName.Trim()
+                : !string.IsNullOrWhiteSpace(variant.Sku) ? variant.Sku.Trim() : $"Biến thể {missingCost + 1}";
+            return Result.Failure(Error.Validation("ProductVariant.CostRequired",
+                $"Vui lòng nhập giá vốn lớn hơn 0 đ cho \"{name}\" trước khi lưu."));
+        }
+
         try
         {
             await _repo.SaveVariantsAsync(storeId, productId, variants, userId, ct);

@@ -44,17 +44,10 @@ public class POSPaymentQrService : IPOSPaymentQrService
 
         if (amount <= 0)
             throw new InvalidOperationException("Đơn hàng đã đủ tiền, không cần tạo QR.");
+        if (amount > currentDraft.BalanceDue || amount != decimal.Truncate(amount))
+            throw new InvalidOperationException("Số tiền QR phải là số đồng nguyên, không vượt quá số còn thiếu.");
 
-        StoreBankAccount? bank;
-
-        if (request.BankAccountId.HasValue && request.BankAccountId.Value > 0)
-        {
-            bank = await _bankRepository.GetByIdAsync(request.BankAccountId.Value, ct);
-        }
-        else
-        {
-            bank = await _bankRepository.GetDefaultActiveAsync(ct);
-        }
+        var bank = await _bankRepository.GetDefaultActiveAsync(ct);
 
         if (bank == null)
             throw new InvalidOperationException("Chưa cấu hình ngân hàng mặc định cho POS.");
@@ -68,7 +61,7 @@ public class POSPaymentQrService : IPOSPaymentQrService
         if (bank.ConfirmMode != BankQrConfirmMode.Manual)
             throw new InvalidOperationException("Ngân hàng này không phải chế độ xác nhận thủ công.");
 
-        var requestCode = $"QR-{DateTime.UtcNow:yyyyMMddHHmmss}-{currentDraft.OrderId}";
+        var requestCode = $"QR-{currentDraft.OrderId}-{Guid.NewGuid():N}";
         var content = BuildContent(bank.NoteTemplate, currentDraft.OrderId, requestCode);
 
         var raw = _localVietQrGenerator.BuildPayload(
@@ -84,6 +77,7 @@ public class POSPaymentQrService : IPOSPaymentQrService
             OrderId = currentDraft.OrderId,
             BankAccountId = bank.Id,
             Amount = amount,
+            ClientRequestId = request.ClientRequestId,
             Content = content,
             RequestCode = requestCode,
             QrRenderMode = BankQrRenderMode.LocalEmvQr,
@@ -141,6 +135,9 @@ public class POSPaymentQrService : IPOSPaymentQrService
         if (entity == null)
             throw new InvalidOperationException("Không tìm thấy QR thanh toán.");
 
+        if (entity.ConfirmMode != BankQrConfirmMode.Manual)
+            throw new InvalidOperationException("QR tự động phải được ngân hàng xác nhận.");
+
         if (entity.Status == PosPaymentQrStatus.ManualConfirmed ||
             entity.Status == PosPaymentQrStatus.Paid)
         {
@@ -166,6 +163,9 @@ public class POSPaymentQrService : IPOSPaymentQrService
 
         if (entity == null)
             throw new InvalidOperationException("Không tìm thấy QR thanh toán.");
+
+        if (entity.ConfirmMode != BankQrConfirmMode.Manual)
+            throw new InvalidOperationException("QR tự động phải được hủy qua ngân hàng.");
 
         if (entity.Status == PosPaymentQrStatus.ManualConfirmed ||
             entity.Status == PosPaymentQrStatus.Paid)
@@ -194,6 +194,9 @@ public class POSPaymentQrService : IPOSPaymentQrService
         }
 
         // Nếu QR đã bị hủy rồi thì bỏ qua
+        if (entity.ConfirmMode != BankQrConfirmMode.Manual)
+            throw new InvalidOperationException("QR tự động phải được xử lý qua luồng thanh toán ACB.");
+
         if (entity.Status == PosPaymentQrStatus.Cancelled)
         {
             return;

@@ -4,6 +4,7 @@ namespace GaoApp.Application.DTOs.POSPaymentQrs;
 
 public class POSPaymentQrDto
 {
+    public bool AutomaticConfirmation { get; set; }
     public int Id { get; set; }
 
     public int OrderId { get; set; }

@@ -1,4 +1,5 @@
-﻿using System.Security.Claims;
+using GaoApp.Web.Security;
+using System.Security.Claims;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Categories;
@@ -119,19 +120,25 @@ public class CategoryController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(
         string? searchString = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var paged = await _service.GetPagedAsync(searchString, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(searchString, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(ct);
 
         var vm = new CategoryIndexVM
         {
             SearchString = searchString ?? "",
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalCategoryCount = summary.TotalItems,
+            ActiveCategoryCount = summary.ActiveItems,
+            InactiveCategoryCount = summary.InactiveItems,
             Paged = paged
         };
 
@@ -149,19 +156,25 @@ public class CategoryController : Controller
     [HttpGet]
     public async Task<IActionResult> Search(
         string? searchString = "",
+        bool? status = null,
         int page = 1,
         int pageSize = 20,
         CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
-        var paged = await _service.GetPagedAsync(searchString, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(searchString, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(ct);
 
         var vm = new CategoryIndexVM
         {
             SearchString = searchString ?? "",
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalCategoryCount = summary.TotalItems,
+            ActiveCategoryCount = summary.ActiveItems,
+            InactiveCategoryCount = summary.InactiveItems,
             Paged = paged
         };
 
@@ -293,6 +306,7 @@ public class CategoryController : Controller
 
         return Json(AjaxResponse.FromResult(result, "Xóa danh mục thành công."));
     }
+    [Authorize(Policy = PermissionCodes.Catalog.Category.View)]
 
     public IActionResult Test403()
     {

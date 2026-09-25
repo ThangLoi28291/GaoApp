@@ -1,4 +1,6 @@
-﻿using System.Security.Claims;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using System.Security.Claims;
 using GaoApp.Application.DTOs.Products.BarcodeVerification;
 using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
@@ -14,6 +16,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [ApiController]
 [Route("admin/api/stock-documents/{stockDocumentId:int}/barcode-verification")]
 
+[Authorize(Policy = PermissionCodes.Inventory.StockDocument.View)]
 public class BarcodeVerificationController : ControllerBase
 {
     private readonly IProductBarcodeVerificationService _service;
@@ -41,6 +44,7 @@ public class BarcodeVerificationController : ControllerBase
     }
 
     [HttpPost("requests")]
+    [RequireAnyPermission(PermissionCodes.Inventory.StockDocument.Update, PermissionCodes.Inventory.StockDocument.Approve)]
     public async Task<IActionResult> Submit(
         int stockDocumentId,
         [FromBody] SubmitBarcodeVerificationRequest request,

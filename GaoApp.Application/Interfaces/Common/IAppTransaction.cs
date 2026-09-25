@@ -13,6 +13,7 @@
 /// </summary>
 public interface IAppTransaction : IAsyncDisposable
 {
+    Task AfterCommitAsync(Func<CancellationToken, Task> action, CancellationToken ct = default) => action(ct);
     /// <summary>
     /// Commit transaction.
     /// Toàn bộ thay đổi trong transaction sẽ được xác nhận.

@@ -1,0 +1,20 @@
+{
+  "PackageId": "GSTORE-04-inventory-V2",
+  "SourceTables": [
+    "ProductDetail",
+    "Product",
+    "Order",
+    "OrderDetail",
+    "HoaDonNhap",
+    "ChiTietNhapKho"
+  ],
+  "TargetTables": [
+    "StockDocument",
+    "StockDocumentLine",
+    "InventoryTransactions",
+    "InventoryValuationEntries",
+    "InventoryCostLayers",
+    "InventoryCostLayerAllocations",
+    "InventoryBalances"
+  ]
+}

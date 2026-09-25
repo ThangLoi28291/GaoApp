@@ -1,187 +1,74 @@
-﻿@{
+@{
     ViewData["Title"] = "Phiếu điều chỉnh kho";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 }
 
-@section VendorStyles {
-    <link rel="stylesheet" href="~/Admin/css/inventory-adjustment-documents.css" />
+@section header {
+    <div data-gao-ui="modern" class="w-100"><div class="gds-page-header gds-page-header--compact">
+        <div class="gds-page-header__main"><h3 class="gds-page-header__title">Phiếu điều chỉnh kho</h3><p class="gds-page-header__subtitle mb-0">Theo dõi các phiếu tăng, giảm tồn kho theo đúng trạng thái xử lý.</p></div>
+        <div class="gds-page-header__actions"><button type="button" class="btn btn-label-secondary gds-action-button" id="btnAdjReload"><i class="bx bx-refresh"></i><span>Tải lại</span></button><a class="btn btn-primary gds-action-button d-none" id="btnCreateDocument" href="/admin/inventory-adjustment-documents/create"><i class="bx bx-plus"></i><span>Tạo phiếu</span></a></div>
+    </div></div>
 }
 
-<div class="container-xxl flex-grow-1 container-p-y adj-page">
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/inventory-adjustment-documents.css" asp-append-version="true" />
+}
 
-    <div class="adj-hero mb-4">
-        <div>
-            <div class="adj-kicker">Inventory Adjustment</div>
-            <h4 class="mb-1">Phiếu điều chỉnh kho</h4>
-            <div class="text-muted">
-                Quản lý phiếu điều chỉnh tồn kho theo quy trình tạo phiếu → gửi duyệt → duyệt.
+<div class="inventory-adjustment-index-page gds-page"
+     data-gao-ui="modern"
+     data-inventory-adjustment-index
+     data-data-url="@Url.Action("GetData", "InventoryAdjustmentDocuments", new { area = "Admin" })"
+     data-options-url="@Url.Action("GetWarehouseOptions", "InventoryAdjustmentDocuments", new { area = "Admin" })"
+     data-quick-view-url="@Url.Action("GetQuickView", "InventoryAdjustmentDocuments", new { area = "Admin" })"
+     data-permissions-url="/admin/api/inventory-adjustment-documents/permissions">
+    <section aria-label="Tổng quan phiếu điều chỉnh kho"><div class="row row-cols-2 row-cols-xl-4 g-3">
+        <div class="col"><button type="button" class="adj-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100" data-adj-state="all" aria-pressed="false"><span class="gds-kpi-card__icon is-primary"><i class="bx bx-adjust"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng phiếu</span><span class="gds-kpi-card__value text-primary" id="statTotal">0</span></span></button></div>
+        <div class="col"><button type="button" class="adj-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-adj-state="working" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-info text-info"><i class="bx bx-edit"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Cần hoàn thiện</span><span class="gds-kpi-card__value text-info" id="statWorking">0</span></span></button></div>
+        <div class="col"><button type="button" class="adj-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-adj-state="pending" aria-pressed="false"><span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-time-five"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Chờ duyệt</span><span class="gds-kpi-card__value text-warning" id="statPending">0</span></span></button></div>
+        <div class="col"><button type="button" class="adj-index-kpi card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100 w-100" data-adj-state="approved" aria-pressed="false"><span class="gds-kpi-card__icon is-success"><i class="bx bx-check-shield"></i></span><span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đã duyệt</span><span class="gds-kpi-card__value text-success" id="statApproved">0</span></span></button></div>
+    </div></section>
+
+    <section class="card shadow-sm border-0" aria-label="Bộ lọc phiếu điều chỉnh kho">
+        <div class="card-header bg-transparent border-0 pb-0"><div class="d-flex align-items-center gap-2"><span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span><div><h5 class="mb-0 text-dark">Tra cứu phiếu điều chỉnh</h5><small class="text-muted">Tìm theo mã phiếu, kho hoặc ghi chú.</small></div></div></div>
+        <div class="card-body pt-3"><div class="adj-index-filter-bar">
+            <div class="adj-index-search-wrap"><label for="adjKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label><div class="gds-search-field"><i class="bx bx-search"></i><input type="search" id="adjKeyword" class="form-control" placeholder="Mã phiếu, kho hoặc ghi chú..." autocomplete="off" /><button type="button" id="adjClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button></div></div>
+            <div class="adj-index-desktop-filters">
+                <div><label for="adjWarehouse" class="form-label">Kho</label><select id="adjWarehouse" class="form-select"><option value="">Tất cả kho</option></select></div>
+                <div><label for="adjType" class="form-label">Hướng điều chỉnh</label><select id="adjType" class="form-select"><option value="">Tất cả</option><option value="30">Tăng kho</option><option value="31">Giảm kho</option></select></div>
+                <div><label for="adjReason" class="form-label">Lý do</label><select id="adjReason" class="form-select"><option value="">Tất cả lý do</option><option value="0">Khác</option><option value="1">Chênh lệch kiểm kê</option><option value="2">Hàng hư hỏng</option><option value="3">Hàng hết hạn</option><option value="4">Thất thoát</option><option value="5">Tìm thấy hàng</option><option value="6">Điều chỉnh tồn đầu kỳ</option><option value="7">Điều chỉnh giá vốn</option></select></div>
+                <div><label for="adjStatus" class="form-label">Trạng thái</label><select id="adjStatus" class="form-select"><option value="open" selected>Nháp + Chờ duyệt</option><option value="all">Tất cả trạng thái</option><option value="working">Cần hoàn thiện</option><option value="draft">Nháp</option><option value="pending">Chờ duyệt</option><option value="rejected">Từ chối</option><option value="approved">Đã duyệt</option><option value="cancelled">Đã hủy</option></select></div>
+                <div><label for="adjFromDate" class="form-label">Từ ngày</label><input type="date" id="adjFromDate" class="form-control" /></div>
+                <div><label for="adjToDate" class="form-label">Đến ngày</label><input type="date" id="adjToDate" class="form-control" /></div>
+                <div class="adj-index-compact-filter"><label for="adjPageSize" class="form-label">Số dòng / trang</label><select id="adjPageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+                <button type="button" class="gds-icon-button adj-index-reset-button d-none" id="adjResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
             </div>
-        </div>
+            <button type="button" class="btn btn-label-primary adj-index-mobile-filter-button" id="adjOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#inventoryAdjustmentMobileFilterSheet"><i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="adjActiveFilterCount">0</span></button>
+            <div class="adj-index-date-error d-none" id="adjDateError" role="alert">Từ ngày không được lớn hơn đến ngày.</div>
+        </div></div>
+    </section>
 
-        <div class="d-flex gap-2 flex-wrap">
-            <button class="btn btn-outline-secondary" id="btnAdjReload">
-                <i class="bx bx-refresh me-1"></i> Tải lại
-            </button>
+    <section class="gds-list-panel adj-index-results-panel" id="inventoryAdjustmentResultsPanel" aria-label="Danh sách phiếu điều chỉnh" aria-live="polite" aria-busy="false">
+        <div class="adj-index-results-heading"><div><h5 class="mb-1 text-dark">Danh sách phiếu điều chỉnh</h5><small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh.</small></div></div>
+        <div class="adj-index-desktop-list" id="inventoryAdjustmentDesktopList"><div class="table-responsive"><table class="table align-middle gds-table mb-0 adj-index-table"><thead><tr><th>Phiếu / ngày</th><th>Kho</th><th>Hướng &amp; lý do</th><th>Quy mô</th><th>Trạng thái</th><th>Ghi chú</th><th class="text-end">Thao tác</th></tr></thead><tbody id="adjTableBody"><tr><td colspan="7" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody></table></div></div>
+        <div class="adj-index-mobile-list" id="adjMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+    <div class="gds-list-footer adj-index-list-footer"><div class="gds-list-footer__summary" id="adjPagingInfo">0 kết quả</div><nav aria-label="Phân trang phiếu điều chỉnh"><ul class="pagination pagination-sm mb-0 adj-index-pagination" id="adjPageNumbers"></ul></nav></div>
 
-            <a class="btn btn-primary d-none"
-                   id="btnCreateDocument"
-                   href="/admin/inventory-adjustment-documents/create">
-                <i class="bx bx-plus me-1"></i> Tạo phiếu
-            </a>
-        </div>
-    </div>
+    <div class="modal fade" id="inventoryAdjustmentQuickViewModal" tabindex="-1" aria-labelledby="inventoryAdjustmentQuickViewTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable adj-index-quick-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><div><div class="text-primary fw-semibold small text-uppercase">Xem nhanh phiếu điều chỉnh</div><h4 class="modal-title text-dark" id="inventoryAdjustmentQuickViewTitle">Thông tin phiếu</h4><div class="d-flex flex-wrap gap-2 mt-1"><span class="gds-code" id="inventoryAdjustmentQuickDate">—</span><span class="gds-status gds-status--dot is-neutral" id="inventoryAdjustmentQuickState">—</span></div></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body" id="inventoryAdjustmentQuickViewBody"><div class="text-center text-muted py-5">Đang tải thông tin...</div></div><div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><a href="#" class="btn btn-primary" id="btnOpenInventoryAdjustmentDetail">Mở phiếu</a></div></div></div></div>
+    <div class="modal fade" id="inventoryAdjustmentImagePreviewModal" tabindex="-1" aria-labelledby="inventoryAdjustmentImagePreviewTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered adj-index-image-preview-dialog"><div class="modal-content border-0 shadow-lg"><div class="modal-header"><h5 class="modal-title" id="inventoryAdjustmentImagePreviewTitle">Ảnh sản phẩm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body adj-index-image-preview-body"><img id="inventoryAdjustmentImagePreviewImage" alt="Ảnh sản phẩm phóng to" /></div></div></div></div>
 
-    <div class="card adj-card mb-4">
-        <div class="card-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-lg-3 col-md-6">
-                    <label class="form-label fw-semibold">Tìm kiếm</label>
-                    <input type="text" class="form-control" id="filterKeyword"
-                           placeholder="Mã phiếu, ghi chú..." />
-                </div>
-
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label fw-semibold">Trạng thái</label>
-                    <select class="form-select" id="filterStatus">
-                        <option value="">Tất cả</option>
-                        <option value="0">Nháp</option>
-                        <option value="1">Chờ duyệt</option>
-                        <option value="2">Đã duyệt</option>
-                        <option value="3">Từ chối</option>
-                        <option value="4">Đã hủy</option>
-                    </select>
-                </div>
-
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label fw-semibold">Loại</label>
-                    <select class="form-select" id="filterAdjustmentType">
-                        <option value="">Tất cả</option>
-                        <option value="30">Tăng kho</option>
-                        <option value="31">Giảm kho</option>
-                    </select>
-                </div>
-
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label fw-semibold">Từ ngày</label>
-                    <input type="date" class="form-control" id="filterFromDate" />
-                </div>
-
-                <div class="col-lg-2 col-md-6">
-                    <label class="form-label fw-semibold">Đến ngày</label>
-                    <input type="date" class="form-control" id="filterToDate" />
-                </div>
-
-                <div class="col-lg-1 col-md-6 d-grid">
-                    <button class="btn btn-dark" id="btnAdjSearch">
-                        Lọc
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-3 col-6">
-            <div class="adj-stat">
-                <div class="adj-stat-label">Tổng phiếu</div>
-                <div class="adj-stat-value" id="statTotal">0</div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="adj-stat warning">
-                <div class="adj-stat-label">Chờ duyệt</div>
-                <div class="adj-stat-value" id="statPending">0</div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="adj-stat success">
-                <div class="adj-stat-label">Đã duyệt</div>
-                <div class="adj-stat-value" id="statApproved">0</div>
-            </div>
-        </div>
-        <div class="col-md-3 col-6">
-            <div class="adj-stat danger">
-                <div class="adj-stat-label">Từ chối / Hủy</div>
-                <div class="adj-stat-value" id="statClosed">0</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card adj-card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div class="fw-bold">Danh sách phiếu</div>
-            <div class="text-muted small" id="adjPagingInfo">-</div>
-        </div>
-
-        <div class="table-responsive d-none d-md-block">
-            <table class="table table-hover align-middle mb-0 adj-table">
-                <thead>
-                    <tr>
-                        <th>Mã phiếu</th>
-                        <th>Ngày</th>
-                        <th>Kho</th>
-                        <th>Loại</th>
-                        <th>Trạng thái</th>
-                        <th class="text-end">Số dòng</th>
-                        <th>Ghi chú</th>
-                        <th class="text-end">Thao tác</th>
-                    </tr>
-                </thead>
-                <tbody id="adjTableBody">
-                    <tr>
-                        <td colspan="8" class="text-center text-muted py-4">Đang tải dữ liệu...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div class="d-md-none p-3" id="adjMobileList">
-            <div class="text-center text-muted py-4">Đang tải dữ liệu...</div>
-        </div>
-
-        @* =========================================================
-   PHÂN TRANG DANH SÁCH PHIẾU
-   - adjPagingInfo: hiển thị tổng số phiếu
-   - adjPageSize: chọn số dòng/trang
-   - adjPageNumbers: render các nút số trang bằng JS
-   - btnPrevPage / btnNextPage: chuyển trang trước/sau
-========================================================= *@
-        <div class="adj-pagination-wrap">
-
-            <div class="small text-muted" id="adjPagingInfo">
-                0 phiếu
-            </div>
-
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-
-                <select class="form-select form-select-sm"
-                        id="adjPageSize"
-                        style="width: 92px">
-                    <option value="10">10 dòng</option>
-                    <option value="20" selected>20 dòng</option>
-                    <option value="50">50 dòng</option>
-                    <option value="100">100 dòng</option>
-                </select>
-
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary"
-                        id="btnPrevPage">
-                    Trước
-                </button>
-
-                <div class="adj-page-numbers" id="adjPageNumbers"></div>
-
-                <button type="button"
-                        class="btn btn-sm btn-outline-secondary"
-                        id="btnNextPage">
-                    Sau
-                </button>
-
-            </div>
-        </div>
-    </div>
+    <div class="offcanvas offcanvas-bottom adj-index-filter-sheet" tabindex="-1" id="inventoryAdjustmentMobileFilterSheet" aria-labelledby="inventoryAdjustmentMobileFilterTitle"><div class="offcanvas-header"><div><h5 class="offcanvas-title" id="inventoryAdjustmentMobileFilterTitle">Bộ lọc phiếu điều chỉnh</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><div class="row g-3">
+        <div class="col-12"><label for="adjMobileWarehouse" class="form-label">Kho</label><select id="adjMobileWarehouse" class="form-select"><option value="">Tất cả kho</option></select></div>
+        <div class="col-6"><label for="adjMobileType" class="form-label">Hướng</label><select id="adjMobileType" class="form-select"><option value="">Tất cả</option><option value="30">Tăng kho</option><option value="31">Giảm kho</option></select></div>
+        <div class="col-6"><label for="adjMobileReason" class="form-label">Lý do</label><select id="adjMobileReason" class="form-select"><option value="">Tất cả</option><option value="0">Khác</option><option value="1">Chênh lệch kiểm kê</option><option value="2">Hàng hư hỏng</option><option value="3">Hàng hết hạn</option><option value="4">Thất thoát</option><option value="5">Tìm thấy hàng</option><option value="6">Điều chỉnh tồn đầu kỳ</option><option value="7">Điều chỉnh giá vốn</option></select></div>
+        <div class="col-12"><label for="adjMobileStatus" class="form-label">Trạng thái</label><select id="adjMobileStatus" class="form-select"><option value="open">Nháp + Chờ duyệt</option><option value="all">Tất cả trạng thái</option><option value="working">Cần hoàn thiện</option><option value="draft">Nháp</option><option value="pending">Chờ duyệt</option><option value="rejected">Từ chối</option><option value="approved">Đã duyệt</option><option value="cancelled">Đã hủy</option></select></div>
+        <div class="col-6"><label for="adjMobileFromDate" class="form-label">Từ ngày</label><input type="date" id="adjMobileFromDate" class="form-control" /></div><div class="col-6"><label for="adjMobileToDate" class="form-label">Đến ngày</label><input type="date" id="adjMobileToDate" class="form-control" /></div>
+        <div class="col-12"><label for="adjMobilePageSize" class="form-label">Số dòng / trang</label><select id="adjMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option><option value="100">100</option></select></div>
+    </div></div><div class="offcanvas-footer adj-index-filter-sheet__footer"><button type="button" class="btn btn-label-secondary" id="adjMobileClearFilters">Xóa lọc</button><button type="button" class="btn btn-primary flex-grow-1" id="adjMobileApplyFilters">Áp dụng</button></div></div>
 </div>
 
 @section PageScripts {
-    <script src="~/Admin/js/inventory-adjustment-documents-index.js"></script>
+    <script src="~/Admin/js/inventory-adjustment-documents-index.js" asp-append-version="true"></script>
 }

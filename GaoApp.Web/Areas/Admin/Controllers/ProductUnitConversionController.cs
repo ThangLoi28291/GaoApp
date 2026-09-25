@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Products;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Products;
 using GaoApp.Application.Interfaces.Services.Products;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,6 +12,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Area("Admin")]
 [Authorize]
 [AutoValidateAntiforgeryToken]
+[Authorize(Policy = PermissionCodes.Catalog.Product.View)]
 public class ProductUnitConversionController : Controller
 {
     private readonly IProductUnitConversionService _productUnitConversionService;
@@ -46,6 +49,7 @@ public class ProductUnitConversionController : Controller
     }
 
     [HttpPost]
+    [Authorize(Policy = PermissionCodes.Catalog.Product.Update)]
     public async Task<IActionResult> SaveConversion([FromBody] ProductUnitConversionUpsertDto dto, CancellationToken ct)
     {
         if (!ModelState.IsValid)
@@ -86,6 +90,8 @@ public class ProductUnitConversionController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Create)]
+    [Authorize(Policy = PermissionCodes.Catalog.Barcode.Update)]
     public async Task<IActionResult> SaveBarcode([FromBody] UpsertProductVariantUnitBarcodeRequest request, CancellationToken ct)
     {
         try

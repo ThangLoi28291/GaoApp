@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Brands;
 
@@ -6,7 +6,7 @@ namespace GaoApp.Application.Interfaces.Services.Brands;
 
 /// <summary>
 /// Service Brand chuẩn hóa theo Result Pattern.
-/// Giữ request/response DTO cũ để không phá controller/view nhiều.
+/// Giữ request/response DTO cũ để không phá các caller hiện hữu như ProductController.
 /// </summary>
 public interface IBrandService
 {
@@ -15,6 +15,18 @@ public interface IBrandService
         string? search,
         int page,
         int pageSize,
+        CancellationToken ct = default);
+
+    Task<PagedResult<BrandListItemDto>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default);
+
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
         CancellationToken ct = default);
 
     /// <summary>

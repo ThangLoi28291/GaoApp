@@ -1,4 +1,4 @@
-﻿window.GaoVariantUnitConversion = (() => {
+window.GaoVariantUnitConversion = (() => {
     const state = {
         currentVariantId: 0,
         currentVariantSku: '',
@@ -54,18 +54,6 @@
         const n = Number(v);
         if (!Number.isFinite(n)) return '—';
         return n.toLocaleString('vi-VN');
-    }
-
-    function parseMoneyInput(value) {
-        const raw = String(value ?? '')
-            .replaceAll('.', '')
-            .replaceAll(',', '')
-            .trim();
-
-        if (!raw) return null;
-
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : null;
     }
 
     function formatDateTime(value) {
@@ -134,14 +122,105 @@
         const base = state.conversions.find(x => x.isBaseUnit);
         const def = state.conversions.find(x => x.isDefaultForSale);
 
-        const barcodeCount = state.conversions.reduce((sum, x) => {
+        const totalBarcodeCount = state.conversions.reduce((sum, x) => {
             return sum + (Array.isArray(x.barcodes) ? x.barcodes.length : 0);
+        }, 0);
+        const activeBarcodeCount = state.conversions.reduce((sum, x) => {
+            const barcodes = Array.isArray(x.barcodes) ? x.barcodes : [];
+            return sum + barcodes.filter(b => !!b.isActive).length;
         }, 0);
 
         setText('ucxBaseUnitText', base?.unitName || '—');
         setText('ucxDefaultUnitText', def?.unitName || '—');
         setText('ucxConversionCount', String(state.conversions.length || 0));
-        setText('ucxBarcodeCount', String(barcodeCount || 0));
+        setText('ucxBarcodeCount', `${activeBarcodeCount}/${totalBarcodeCount}`);
+    }
+
+    function buildBarcodeDto(item, conversion, overrides = {}) {
+        if (!conversion) return null;
+
+        const source = item || {};
+        const rawType = overrides.barcodeType !== undefined
+            ? overrides.barcodeType
+            : source.barcodeType;
+
+        return {
+            id: source.id || null,
+            productUnitConversionId: conversion.id,
+            barcode: (source.barcode || '').trim(),
+            barcodeType: normalizeBarcodeType(rawType ?? source.barcodeType),
+            isPrimary: overrides.isPrimary !== undefined ? !!overrides.isPrimary : !!source.isPrimary,
+            isActive: overrides.isActive !== undefined ? !!overrides.isActive : !!source.isActive,
+            note: (overrides.note ?? source.note ?? '').trim()
+        };
+    }
+
+    async function upsertBarcode(dto, successMessage = 'Lưu barcode thành công.') {
+        if (!dto?.productUnitConversionId) {
+            toastr?.warning('Hãy chọn một dòng đơn vị trước.');
+            return false;
+        }
+
+        try {
+            const json = await postJson('/Admin/ProductUnitConversion/SaveBarcode', dto);
+
+            if (!json.ok) {
+                toastr?.error(json.message || 'Lưu barcode thất bại.');
+                return false;
+            }
+
+            toastr?.success(json.message || successMessage);
+            state.currentBarcodeId = Number(json.id || dto.id || state.currentBarcodeId || 0);
+            await loadConversions();
+            return true;
+        } catch (error) {
+            console.error(error);
+            toastr?.error('Lưu barcode thất bại.');
+            return false;
+        }
+    }
+
+    async function setBarcodePrimary(barcodeId) {
+        const conversion = getCurrentConversion();
+
+        if (!conversion) {
+            toastr?.warning('Hãy chọn một dòng đơn vị trước.');
+            return;
+        }
+
+        const barcodes = Array.isArray(conversion.barcodes) ? conversion.barcodes : [];
+        const found = barcodes.find(x => Number(x.id) === Number(barcodeId));
+
+        if (!found) return;
+
+        if (found.isPrimary) {
+            toastr?.info('Dòng này đã là barcode chính.');
+            return;
+        }
+
+        const dto = buildBarcodeDto(found, conversion, { isPrimary: true, isActive: true });
+        if (!dto) return;
+
+        await upsertBarcode(dto, 'Đã cập nhật barcode chính.');
+    }
+
+    async function toggleBarcodeActive(barcodeId) {
+        const conversion = getCurrentConversion();
+
+        if (!conversion) {
+            toastr?.warning('Hãy chọn một dòng đơn vị trước.');
+            return;
+        }
+
+        const barcodes = Array.isArray(conversion.barcodes) ? conversion.barcodes : [];
+        const found = barcodes.find(x => Number(x.id) === Number(barcodeId));
+
+        if (!found) return;
+
+        const dto = buildBarcodeDto(found, conversion, { isActive: !found.isActive });
+        if (!dto) return;
+
+        await upsertBarcode(dto, `Đã ${dto.isActive ? 'mở' : 'tắt'} trạng thái barcode.`);
     }
 
     function closePanels() {
@@ -388,11 +467,27 @@
                                 <td>${b.isActive ? '<span class="badge bg-success">Hoạt động</span>' : '<span class="badge bg-secondary">Ngưng</span>'}</td>
                                 <td>${escapeHtml(b.note || '')}</td>
                                 <td class="text-end">
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-primary js-edit-barcode"
-                                            data-barcode-id="${b.id}">
-                                        Sửa
-                                    </button>
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button"
+                                                class="btn btn-outline-primary js-edit-barcode"
+                                                data-barcode-id="${b.id}">
+                                            Sửa
+                                        </button>
+
+                                        ${!b.isPrimary ? `
+                                        <button type="button"
+                                                class="btn btn-outline-warning js-make-primary"
+                                                data-barcode-id="${b.id}">
+                                            Đặt chính
+                                        </button>
+                                        ` : ''}
+
+                                        <button type="button"
+                                                class="btn ${b.isActive ? 'btn-outline-secondary' : 'btn-outline-success'} js-toggle-barcode-active"
+                                                data-barcode-id="${b.id}">
+                                            ${b.isActive ? 'Tắt' : 'Bật'}
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         `).join('')}
@@ -429,6 +524,26 @@
                 state.currentBarcodeId = barcodeId;
                 fillBarcodeForm(found, conversion);
                 openBarcodePanel();
+            });
+        });
+
+        wrap.querySelectorAll('.js-make-primary').forEach(btn => {
+            btn.addEventListener('click', async function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const barcodeId = Number(btn.dataset.barcodeId || 0);
+                await setBarcodePrimary(barcodeId);
+            });
+        });
+
+        wrap.querySelectorAll('.js-toggle-barcode-active').forEach(btn => {
+            btn.addEventListener('click', async function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const barcodeId = Number(btn.dataset.barcodeId || 0);
+                await toggleBarcodeActive(barcodeId);
             });
         });
 
@@ -478,41 +593,26 @@
                                 <td class="fw-bold">${escapeHtml(x.unitName)}</td>
                                 <td>x${escapeHtml(String(x.factor))}</td>
 
-                                <td>
-                                    <button type="button"
-                                            class="btn btn-link p-0 uc-money js-quick-price"
-                                            data-id="${x.id}"
-                                            data-field="price">
-                                        ${money(x.price)}
-                                    </button>
-                                </td>
-
-                                <td>
-                                    <button type="button"
-                                            class="btn btn-link p-0 uc-money js-quick-price"
-                                            data-id="${x.id}"
-                                            data-field="wholesalePrice">
-                                        ${money(x.wholesalePrice)}
-                                    </button>
-                                </td>
+                                <td>${money(x.price)}</td>
+                                <td>${money(x.wholesalePrice)}</td>
 
                                 <td>${x.isBaseUnit ? '<span class="badge bg-info text-dark">Gốc</span>' : '—'}</td>
                                 <td>${x.isDefaultForSale ? '<span class="badge bg-primary">Mặc định</span>' : '—'}</td>
                                 <td>${x.isActive ? '<span class="badge bg-success">Hoạt động</span>' : '<span class="badge bg-secondary">Ngưng</span>'}</td>
-                                <td>${x.barcodes?.length || 0}</td>
+                                <td>${(Array.isArray(x.barcodes) ? x.barcodes.length : 0)} (${(Array.isArray(x.barcodes) ? x.barcodes.filter(b => !!b.isActive).length : 0)} hoạt động)</td>
 
                                 <td class="text-end">
-                                  <button type="button"
-        class="btn btn-sm btn-outline-success js-quick-edit-price"
-        data-id="${x.id}">
-    Sửa giá
-</button>
+                                    <button type="button"
+                                        class="btn btn-sm btn-outline-success js-quick-edit-price"
+                                        data-id="${x.id}">
+                                        Sửa giá
+                                    </button>
 
-<button type="button"
-        class="btn btn-sm btn-outline-primary js-edit-conversion"
-        data-id="${x.id}">
-    Sửa đầy đủ
-</button>
+                                    <button type="button"
+                                        class="btn btn-sm btn-outline-primary js-edit-conversion"
+                                        data-id="${x.id}">
+                                        Sửa đầy đủ
+                                    </button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -579,61 +679,6 @@
                 }, 120);
             });
         });
-        wrap.querySelectorAll('.js-quick-price').forEach(btn => {
-            btn.addEventListener('click', async function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const id = Number(btn.dataset.id || 0);
-                const field = btn.dataset.field;
-                const found = state.conversions.find(x => Number(x.id) === id);
-
-                if (!found) return;
-
-                const label = field === 'price' ? 'giá lẻ' : 'giá sỉ';
-                const oldValue = found[field] ?? '';
-
-                const input = prompt(`Nhập ${label} mới cho đơn vị ${found.unitName}:`, oldValue ?? '');
-                if (input === null) return;
-
-                const newValue = parseMoneyInput(input);
-
-                if (newValue === null || newValue < 0) {
-                    toastr?.error('Giá không hợp lệ.');
-                    return;
-                }
-
-                const dto = {
-                    id: found.id,
-                    productVariantId: state.currentVariantId,
-                    unitId: found.unitId,
-                    factor: found.factor,
-                    price: field === 'price' ? newValue : found.price,
-                    wholesalePrice: field === 'wholesalePrice' ? newValue : found.wholesalePrice,
-                    sortOrder: found.sortOrder ?? 0,
-                    isBaseUnit: !!found.isBaseUnit,
-                    isDefaultForSale: !!found.isDefaultForSale,
-                    isActive: !!found.isActive
-                };
-
-                try {
-                    const json = await postJson('/Admin/ProductUnitConversion/SaveConversion', dto);
-
-                    if (!json.ok) {
-                        toastr?.error(json.message || 'Cập nhật giá thất bại.');
-                        return;
-                    }
-
-                    toastr?.success('Đã cập nhật giá.');
-                    state.currentConversionId = found.id;
-                    await loadConversions();
-                } catch (error) {
-                    console.error(error);
-                    toastr?.error('Cập nhật giá thất bại.');
-                }
-            });
-        });
-
         renderBarcodes();
     }
 
@@ -738,22 +783,10 @@
             note: byId('bc_Note')?.value?.trim() || ''
         };
 
-        try {
-            const json = await postJson('/Admin/ProductUnitConversion/SaveBarcode', dto);
+        const ok = await upsertBarcode(dto);
 
-            if (!json.ok) {
-                toastr?.error(json.message || 'Lưu barcode thất bại.');
-                return;
-            }
-
-            toastr?.success(json.message || 'Lưu barcode thành công.');
-            state.currentBarcodeId = Number(json.id || dto.id || state.currentBarcodeId || 0);
-
+        if (ok) {
             closePanels();
-            await loadConversions();
-        } catch (error) {
-            console.error(error);
-            toastr?.error('Lưu barcode thất bại.');
         }
     }
 

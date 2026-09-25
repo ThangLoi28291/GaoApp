@@ -22,6 +22,23 @@ public class Supplier : BaseLookupStoreEntity
     [StringLength(50)]
     public string? TaxCode { get; set; }
 
+    /// <summary>
+    /// Persisted SQL-computed identity used for indexed Supplier resolution.
+    /// The raw TaxCode remains the display/audit value.
+    /// </summary>
+    [DatabaseGenerated(DatabaseGeneratedOption.Computed)]
+    [StringLength(50)]
+    public string? NormalizedTaxCode { get; private set; }
+
+    [StringLength(50)]
+    public string? BankAccountNumber { get; set; }
+
+    [StringLength(250)]
+    public string? BankAccountName { get; set; }
+
+    [StringLength(250)]
+    public string? BankName { get; set; }
+
     [StringLength(500)]
     public string? Note { get; set; }
 }

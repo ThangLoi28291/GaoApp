@@ -738,6 +738,9 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
+        if (invoiceHead.LegacyReadOnly)
+            return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu, không được mở khóa."));
+
         if (!invoiceHead.IsLocked)
         {
             return Result<InvoiceHeadDto>.Success(

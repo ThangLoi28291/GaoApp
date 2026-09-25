@@ -47,6 +47,7 @@ public class AttributeValueController : BaseAdminController
         var storeId = CurrentStoreId;
         var attrs = await _attrService.GetAllAsync(storeId, ct);
         var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return View(new AttributeValueIndexVM
         {
@@ -55,6 +56,9 @@ public class AttributeValueController : BaseAdminController
             SearchString = search,
             Page = page,
             PageSize = pageSize,
+            TotalValueCount = summary.TotalItems,
+            ActiveValueCount = summary.ActiveItems,
+            InactiveValueCount = summary.InactiveItems,
             Attributes = attrs,
             Paged = paged
         });
@@ -74,6 +78,7 @@ public class AttributeValueController : BaseAdminController
         var storeId = CurrentStoreId;
         var attrs = await _attrService.GetAllAsync(storeId, ct);
         var paged = await _service.GetPagedAsync(storeId, attributeId, status, search, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return PartialView("_AttributeValueTable", new AttributeValueIndexVM
         {
@@ -82,6 +87,9 @@ public class AttributeValueController : BaseAdminController
             SearchString = search,
             Page = page,
             PageSize = pageSize,
+            TotalValueCount = summary.TotalItems,
+            ActiveValueCount = summary.ActiveItems,
+            InactiveValueCount = summary.InactiveItems,
             Attributes = attrs,
             Paged = paged
         });

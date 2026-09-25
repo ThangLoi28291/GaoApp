@@ -17,8 +17,13 @@
 let createStockCountModalInstance = null;
 let editStockCountLineModalInstance = null;
 let stockCountQuickViewModalInstance = null;
+let stockCountImagePreviewModalInstance = null;
 let stockCountHeaderSaveTimer = null;
 let stockCountLineModalInstance = null;
+let stockCountIndexAbortController = null;
+let stockCountIndexRequestSequence = 0;
+let stockCountIndexSearchTimer = null;
+let stockCountIndexImageHoverPreview = null;
 
 const stockCountUiState = {
     allItems: [],
@@ -29,14 +34,22 @@ const stockCountUiState = {
     keyboardBound: false
 };
 
+stockCountUiState.index = {
+    items: [],
+    page: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 1,
+    state: 'open'
+};
+
 document.addEventListener('DOMContentLoaded', function () {
     if (!window.stockCountPage) return;
 
     initStockCountModalInstances();
 
     if (window.stockCountPage.mode === 'index') {
-        bindStockCountIndexEvents();
-        loadStockCountList();
+        initStockCountModernIndex();
     }
 
     if (window.stockCountPage.mode === 'detail') {
@@ -107,12 +120,14 @@ function initStockCountModalInstances() {
     const createModal = document.getElementById('createStockCountModal');
     const editModal = document.getElementById('editStockCountLineModal');
     const quickViewModal = document.getElementById('stockCountQuickViewModal');
+    const imagePreviewModal = document.getElementById('stockCountImagePreviewModal');
     const lineModal = document.getElementById('stockCountLineModal');
     if (lineModal) stockCountLineModalInstance = new bootstrap.Modal(lineModal);
 
     if (createModal) createStockCountModalInstance = new bootstrap.Modal(createModal);
     if (editModal) editStockCountLineModalInstance = new bootstrap.Modal(editModal);
     if (quickViewModal) stockCountQuickViewModalInstance = new bootstrap.Modal(quickViewModal);
+    if (imagePreviewModal) stockCountImagePreviewModalInstance = new bootstrap.Modal(imagePreviewModal);
 }
 
 function stockCountStatusText(status) {
@@ -1935,4 +1950,392 @@ async function refreshStockCountSystemQty() {
 
     scToast('success', 'Đã làm mới tồn', api.data?.message || 'Tồn hệ thống đã được cập nhật.');
     await loadStockCountDetail();
+}
+
+/* =========================================================
+   MODERN INDEX — isolated read-only surface
+========================================================= */
+
+function initStockCountModernIndex() {
+    bindStockCountModernIndexEvents();
+    loadStockCountIndexWarehouseOptions();
+    updateStockCountIndexFilterUi();
+    loadStockCountModernIndex();
+}
+
+function getStockCountIndexRoot() {
+    return document.querySelector('[data-stock-count-index]');
+}
+
+function bindStockCountModernIndexEvents() {
+    document.getElementById('btnReloadStockCountList')?.addEventListener('click', function () {
+        stockCountUiState.index.page = 1;
+        loadStockCountModernIndex();
+    });
+
+    document.getElementById('btnOpenCreateStockCountModal')?.addEventListener('click', async function () {
+        await loadStockCountWarehouseOptionsForCreate();
+        resetCreateStockCountForm();
+        createStockCountModalInstance?.show();
+    });
+    document.getElementById('btnCreateStockCount')?.addEventListener('click', createStockCountDocument);
+
+    const keyword = document.getElementById('scIndexKeyword');
+    keyword?.addEventListener('input', function () {
+        updateStockCountIndexFilterUi();
+        clearTimeout(stockCountIndexSearchTimer);
+        stockCountIndexSearchTimer = setTimeout(function () {
+            stockCountUiState.index.page = 1;
+            loadStockCountModernIndex();
+        }, 350);
+    });
+    document.getElementById('scIndexClearSearch')?.addEventListener('click', function () {
+        if (keyword) keyword.value = '';
+        stockCountUiState.index.page = 1;
+        updateStockCountIndexFilterUi();
+        loadStockCountModernIndex();
+        keyword?.focus();
+    });
+
+    ['scIndexWarehouse', 'scIndexStatus', 'scIndexFromDate', 'scIndexToDate', 'scIndexPageSize']
+        .forEach(id => document.getElementById(id)?.addEventListener('change', function () {
+            if (id === 'scIndexStatus') stockCountUiState.index.state = this.value || 'open';
+            stockCountUiState.index.page = 1;
+            updateStockCountIndexFilterUi();
+            if (stockCountIndexDatesAreValid()) loadStockCountModernIndex();
+        }));
+
+    document.getElementById('scIndexResetFilters')?.addEventListener('click', resetStockCountIndexFilters);
+    document.querySelectorAll('.sc-index-kpi[data-sc-state]').forEach(button => {
+        button.addEventListener('click', function () {
+            const requestedState = this.dataset.scState || 'all';
+            stockCountUiState.index.state = stockCountUiState.index.state === requestedState ? 'all' : requestedState;
+            const status = document.getElementById('scIndexStatus');
+            if (status) status.value = stockCountUiState.index.state;
+            stockCountUiState.index.page = 1;
+            syncStockCountDesktopToMobileFilters();
+            updateStockCountIndexFilterUi();
+            loadStockCountModernIndex();
+        });
+    });
+
+    document.getElementById('stockCountPagination')?.addEventListener('click', function (event) {
+        const button = event.target.closest('[data-page]');
+        if (!button || button.disabled) return;
+        const page = Number(button.dataset.page || 0);
+        if (page < 1 || page > stockCountUiState.index.totalPages) return;
+        stockCountUiState.index.page = page;
+        loadStockCountModernIndex();
+    });
+
+    document.getElementById('stockCountMobileFilterSheet')?.addEventListener('show.bs.offcanvas', syncStockCountDesktopToMobileFilters);
+    document.getElementById('scMobileApplyFilters')?.addEventListener('click', function () {
+        syncStockCountMobileToDesktopFilters();
+        if (!stockCountIndexDatesAreValid()) return;
+        bootstrap.Offcanvas.getInstance(document.getElementById('stockCountMobileFilterSheet'))?.hide();
+        stockCountUiState.index.page = 1;
+        updateStockCountIndexFilterUi();
+        loadStockCountModernIndex();
+    });
+    document.getElementById('scMobileClearFilters')?.addEventListener('click', function () {
+        resetStockCountIndexFilters();
+        syncStockCountDesktopToMobileFilters();
+    });
+}
+
+function buildStockCountModernIndexQuery() {
+    const params = new URLSearchParams();
+    const keyword = document.getElementById('scIndexKeyword')?.value?.trim() || '';
+    const warehouseId = document.getElementById('scIndexWarehouse')?.value || '';
+    const fromDate = document.getElementById('scIndexFromDate')?.value || '';
+    const toDate = document.getElementById('scIndexToDate')?.value || '';
+    const pageSize = Number(document.getElementById('scIndexPageSize')?.value || 20);
+    stockCountUiState.index.pageSize = pageSize;
+    stockCountUiState.index.state = document.getElementById('scIndexStatus')?.value || 'open';
+    params.set('page', String(stockCountUiState.index.page));
+    params.set('pageSize', String(pageSize));
+    params.set('state', stockCountUiState.index.state);
+    if (keyword) params.set('keyword', keyword);
+    if (warehouseId) params.set('warehouseId', warehouseId);
+    if (fromDate) params.set('fromDate', fromDate);
+    if (toDate) params.set('toDate', toDate);
+    return params.toString();
+}
+
+async function loadStockCountModernIndex() {
+    if (!stockCountIndexDatesAreValid()) return;
+    const root = getStockCountIndexRoot();
+    if (!root) return;
+    const panel = document.getElementById('stockCountResultsPanel');
+    panel?.setAttribute('aria-busy', 'true');
+    setStockCountModernIndexLoading();
+    stockCountIndexAbortController?.abort();
+    stockCountIndexAbortController = new AbortController();
+    const requestSequence = ++stockCountIndexRequestSequence;
+    try {
+        const response = await fetch(`${root.dataset.dataUrl}?${buildStockCountModernIndexQuery()}`, { signal: stockCountIndexAbortController.signal });
+        const api = await readStockCountApiResponse(response);
+        if (requestSequence !== stockCountIndexRequestSequence) return;
+        if (!api.ok) throw new Error(api.data?.message || 'Không tải được danh sách phiếu kiểm kê.');
+        const payload = api.data || {};
+        stockCountUiState.index.items = payload.items || [];
+        stockCountUiState.index.page = Number(payload.page || 1);
+        stockCountUiState.index.pageSize = Number(payload.pageSize || 20);
+        stockCountUiState.index.totalItems = Number(payload.totalItems || 0);
+        stockCountUiState.index.totalPages = Math.max(1, Number(payload.totalPages || 1));
+        renderStockCountExactSummary(payload.summary || {});
+        renderStockCountDesktopRows(stockCountUiState.index.items);
+        renderStockCountMobileCards(stockCountUiState.index.items);
+        renderStockCountCircularPagination();
+        bindStockCountModernRows();
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        setStockCountModernIndexError(error?.message || 'Không tải được danh sách phiếu kiểm kê.');
+    } finally {
+        if (requestSequence === stockCountIndexRequestSequence) panel?.setAttribute('aria-busy', 'false');
+    }
+}
+
+function renderStockCountExactSummary(summary) {
+    document.getElementById('sumTotalDocuments').textContent = stockCountFormatNumber(summary.totalItems || 0);
+    document.getElementById('sumWorkingDocuments').textContent = stockCountFormatNumber(summary.workingItems || 0);
+    document.getElementById('sumPendingDocuments').textContent = stockCountFormatNumber(summary.pendingItems || 0);
+    document.getElementById('sumConfirmedDocuments').textContent = stockCountFormatNumber(summary.confirmedItems || 0);
+}
+
+function renderStockCountDesktopRows(items) {
+    const body = document.getElementById('stockCountIndexBody');
+    if (!body) return;
+    if (!items.length) {
+        body.innerHTML = '<tr><td colspan="6" class="gds-empty">Không có phiếu kiểm kê phù hợp.</td></tr>';
+        return;
+    }
+    body.innerHTML = items.map(item => `
+        <tr class="sc-index-modern-row" data-document-id="${Number(item.documentId)}" tabindex="0">
+            <td><div class="sc-index-document-name">${stockCountEscapeHtml(item.documentName || 'Phiếu kiểm kê')}</div><div class="sc-index-document-meta"><span class="gds-code">${stockCountEscapeHtml(item.documentNo || '')}</span><span>${stockCountFormatDateOnly(item.documentDate)}</span></div></td>
+            <td><strong class="text-dark">${stockCountEscapeHtml(item.warehouseName || '')}</strong></td>
+            <td><div class="fw-semibold text-dark">${stockCountFormatNumber(item.totalLines)} dòng</div><div class="sc-index-muted ${Number(item.differenceLines) ? 'text-warning' : 'text-success'}">${stockCountFormatNumber(item.differenceLines)} dòng chênh lệch</div></td>
+            <td>${stockCountStatusBadge(item.status)}</td>
+            <td><div class="sc-index-note">${stockCountEscapeHtml(item.note || '—')}</div></td>
+            <td class="text-end"><div class="d-inline-flex gap-2"><button type="button" class="gds-icon-button sc-index-quick-button" aria-label="Xem nhanh"><i class="bx bx-show"></i></button><a href="/admin/stock-counts/${Number(item.documentId)}" class="btn btn-sm btn-primary">Mở phiếu</a></div></td>
+        </tr>`).join('');
+}
+
+function renderStockCountMobileCards(items) {
+    const list = document.getElementById('stockCountMobileList');
+    if (!list) return;
+    if (!items.length) {
+        list.innerHTML = '<div class="gds-empty">Không có phiếu kiểm kê phù hợp.</div>';
+        return;
+    }
+    list.innerHTML = items.map(item => `
+        <article class="sc-index-mobile-card" data-document-id="${Number(item.documentId)}">
+            <div class="d-flex justify-content-between align-items-start gap-2"><div class="min-w-0"><div class="sc-index-document-name">${stockCountEscapeHtml(item.documentName || 'Phiếu kiểm kê')}</div><div class="sc-index-document-meta"><span>${stockCountEscapeHtml(item.documentNo || '')}</span><span>${stockCountFormatDateOnly(item.documentDate)}</span></div></div>${stockCountStatusBadge(item.status)}</div>
+            <div class="sc-index-mobile-warehouse"><small>Kho kiểm kê</small><strong>${stockCountEscapeHtml(item.warehouseName || '')}</strong></div>
+            <div class="sc-index-mobile-metrics"><span><strong>${stockCountFormatNumber(item.totalLines)}</strong> dòng</span><span><strong>${stockCountFormatNumber(item.differenceLines)}</strong> chênh lệch</span></div>
+            ${item.note ? `<div class="sc-index-mobile-note">${stockCountEscapeHtml(item.note)}</div>` : ''}
+            <div class="d-flex gap-2 mt-3"><button type="button" class="btn btn-label-primary flex-grow-1 sc-index-quick-button"><i class="bx bx-show me-1"></i>Xem nhanh</button><a href="/admin/stock-counts/${Number(item.documentId)}" class="btn btn-primary">Mở phiếu</a></div>
+        </article>`).join('');
+}
+
+function bindStockCountModernRows() {
+    document.querySelectorAll('.sc-index-modern-row, .sc-index-mobile-card').forEach(item => {
+        item.querySelector('.sc-index-quick-button')?.addEventListener('click', () => openStockCountIndexQuickView(Number(item.dataset.documentId || 0)));
+        item.addEventListener('dblclick', event => {
+            if (!event.target.closest('a,button')) openStockCountIndexQuickView(Number(item.dataset.documentId || 0));
+        });
+        item.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && !event.target.closest('a,button')) {
+                event.preventDefault();
+                openStockCountIndexQuickView(Number(item.dataset.documentId || 0));
+            }
+        });
+    });
+}
+
+function renderStockCountCircularPagination() {
+    const pagination = document.getElementById('stockCountPagination');
+    const info = document.getElementById('stockCountPaginationInfo');
+    if (!pagination || !info) return;
+    const page = stockCountUiState.index.page;
+    const totalPages = stockCountUiState.index.totalPages;
+    const total = stockCountUiState.index.totalItems;
+    const first = total ? ((page - 1) * stockCountUiState.index.pageSize) + 1 : 0;
+    const last = Math.min(total, page * stockCountUiState.index.pageSize);
+    info.textContent = total ? `${first}–${last} / ${stockCountFormatNumber(total)} phiếu` : '0 kết quả';
+    const pages = getStockCountVisiblePages(page, totalPages);
+    pagination.innerHTML = `${stockCountIndexPageButton(page - 1, '<i class="bx bx-chevron-left"></i>', page <= 1, 'Trang trước')}${pages.map(value => value === '…' ? '<li class="page-item disabled"><span class="page-link">…</span></li>' : stockCountIndexPageButton(value, String(value), false, `Trang ${value}`, value === page)).join('')}${stockCountIndexPageButton(page + 1, '<i class="bx bx-chevron-right"></i>', page >= totalPages, 'Trang sau')}`;
+}
+
+function getStockCountVisiblePages(page, totalPages) {
+    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, index) => index + 1);
+    if (page <= 3) return [1, 2, 3, 4, '…', totalPages];
+    if (page >= totalPages - 2) return [1, '…', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    return [1, '…', page - 1, page, page + 1, '…', totalPages];
+}
+
+function stockCountIndexPageButton(page, content, disabled, label, active = false) {
+    return `<li class="page-item${disabled ? ' disabled' : ''}${active ? ' active' : ''}"><button type="button" class="page-link" data-page="${page}" aria-label="${label}"${disabled ? ' disabled' : ''}>${content}</button></li>`;
+}
+
+function setStockCountModernIndexLoading() {
+    const body = document.getElementById('stockCountIndexBody');
+    const mobile = document.getElementById('stockCountMobileList');
+    if (body) body.innerHTML = '<tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr>';
+    if (mobile) mobile.innerHTML = '<div class="gds-empty">Đang tải dữ liệu...</div>';
+}
+
+function setStockCountModernIndexError(message) {
+    const safe = stockCountEscapeHtml(message);
+    const body = document.getElementById('stockCountIndexBody');
+    const mobile = document.getElementById('stockCountMobileList');
+    if (body) body.innerHTML = `<tr><td colspan="6" class="gds-empty text-danger">${safe}</td></tr>`;
+    if (mobile) mobile.innerHTML = `<div class="gds-empty text-danger">${safe}</div>`;
+}
+
+async function loadStockCountIndexWarehouseOptions() {
+    const root = getStockCountIndexRoot();
+    if (!root) return;
+    try {
+        const response = await fetch(root.dataset.optionsUrl);
+        const api = await readStockCountApiResponse(response);
+        if (!api.ok) return;
+        const items = Array.isArray(api.data) ? api.data : [];
+        ['scIndexWarehouse', 'scMobileWarehouse'].forEach(id => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const selected = select.value;
+            select.innerHTML = '<option value="">Tất cả kho</option>' + items.map(item => `<option value="${Number(item.id)}">${stockCountEscapeHtml(item.name || '')}</option>`).join('');
+            select.value = selected;
+        });
+    } catch { }
+}
+
+function stockCountIndexDatesAreValid() {
+    const fromDate = document.getElementById('scIndexFromDate')?.value || '';
+    const toDate = document.getElementById('scIndexToDate')?.value || '';
+    const valid = !fromDate || !toDate || fromDate <= toDate;
+    document.getElementById('scIndexDateError')?.classList.toggle('d-none', valid);
+    return valid;
+}
+
+function updateStockCountIndexFilterUi() {
+    const keyword = document.getElementById('scIndexKeyword')?.value?.trim() || '';
+    document.getElementById('scIndexClearSearch')?.classList.toggle('d-none', !keyword);
+    const activeCount = [keyword, document.getElementById('scIndexWarehouse')?.value, document.getElementById('scIndexFromDate')?.value, document.getElementById('scIndexToDate')?.value, (document.getElementById('scIndexStatus')?.value || 'open') !== 'open' ? 'state' : ''].filter(Boolean).length;
+    document.getElementById('scIndexResetFilters')?.classList.toggle('d-none', activeCount === 0);
+    const badge = document.getElementById('scIndexActiveFilterCount');
+    if (badge) { badge.textContent = String(activeCount); badge.classList.toggle('d-none', activeCount === 0); }
+    document.querySelectorAll('.sc-index-kpi[data-sc-state]').forEach(button => {
+        const active = button.dataset.scState === stockCountUiState.index.state;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+}
+
+function resetStockCountIndexFilters() {
+    const defaults = { scIndexKeyword: '', scIndexWarehouse: '', scIndexStatus: 'open', scIndexFromDate: '', scIndexToDate: '', scIndexPageSize: '20' };
+    Object.entries(defaults).forEach(([id, value]) => { const element = document.getElementById(id); if (element) element.value = value; });
+    stockCountUiState.index.page = 1;
+    stockCountUiState.index.state = 'open';
+    syncStockCountDesktopToMobileFilters();
+    updateStockCountIndexFilterUi();
+    stockCountIndexDatesAreValid();
+    loadStockCountModernIndex();
+}
+
+function syncStockCountDesktopToMobileFilters() {
+    [['scIndexWarehouse','scMobileWarehouse'],['scIndexStatus','scMobileStatus'],['scIndexFromDate','scMobileFromDate'],['scIndexToDate','scMobileToDate'],['scIndexPageSize','scMobilePageSize']].forEach(([desktopId,mobileId]) => { const desktop=document.getElementById(desktopId); const mobile=document.getElementById(mobileId); if(desktop&&mobile) mobile.value=desktop.value; });
+}
+
+function syncStockCountMobileToDesktopFilters() {
+    [['scMobileWarehouse','scIndexWarehouse'],['scMobileStatus','scIndexStatus'],['scMobileFromDate','scIndexFromDate'],['scMobileToDate','scIndexToDate'],['scMobilePageSize','scIndexPageSize']].forEach(([mobileId,desktopId]) => { const mobile=document.getElementById(mobileId); const desktop=document.getElementById(desktopId); if(mobile&&desktop) desktop.value=mobile.value; });
+    stockCountUiState.index.state = document.getElementById('scIndexStatus')?.value || 'open';
+}
+
+async function openStockCountIndexQuickView(id) {
+    if (!id) return;
+    const root = getStockCountIndexRoot();
+    const body = document.getElementById('quickViewBody');
+    const title = document.getElementById('quickViewTitle');
+    const subtitle = document.getElementById('quickViewSubtitle');
+    const state = document.getElementById('stockCountQuickState');
+    const openBtn = document.getElementById('btnOpenQuickViewDetail');
+    if (!root || !body) return;
+    if (openBtn) openBtn.href = `/admin/stock-counts/${id}`;
+    if (title) title.textContent = 'Thông tin phiếu';
+    if (subtitle) subtitle.textContent = '—';
+    if (state) state.textContent = 'Đang tải';
+    body.innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải thông tin...</div>';
+    stockCountQuickViewModalInstance?.show();
+    try {
+        const response = await fetch(`${root.dataset.quickViewUrl}?documentId=${encodeURIComponent(id)}`);
+        const api = await readStockCountApiResponse(response);
+        if (!api.ok) throw new Error(api.data?.message || 'Không tải được chi tiết phiếu kiểm kê.');
+        const detail = api.data || {};
+        const lines = detail.lines || [];
+        if (title) title.textContent = detail.documentName || detail.documentNo || 'Phiếu kiểm kê';
+        if (subtitle) subtitle.textContent = `${detail.documentNo || ''} · ${stockCountFormatDateOnly(detail.documentDate)}`;
+        if (state) { state.className = `gds-status gds-status--dot ${stockCountIndexStatusClass(detail.status)}`; state.textContent = detail.statusLabel || stockCountStatusText(detail.status); }
+        body.innerHTML = `<div class="sc-index-quick-overview"><div><small>Kho kiểm kê</small><strong>${stockCountEscapeHtml(detail.warehouseName || '')}</strong></div><div class="sc-index-quick-metrics"><span><small>Tổng dòng</small><strong>${stockCountFormatNumber(detail.totalLines)}</strong></span><span><small>Chênh lệch</small><strong>${stockCountFormatNumber(detail.differenceLines)}</strong></span><span><small>Tăng</small><strong>${stockCountFormatNumber(detail.gainLines)}</strong></span><span><small>Giảm</small><strong>${stockCountFormatNumber(detail.lossLines)}</strong></span></div></div><div class="sc-index-quick-note"><small>Ghi chú</small><div>${stockCountEscapeHtml(detail.note || 'Không có ghi chú.')}</div></div><div class="sc-index-quick-lines"><div class="d-flex justify-content-between mb-3"><h5 class="mb-0 text-dark">Dòng kiểm kê</h5><span class="text-muted small">${stockCountFormatNumber(lines.length)} dòng</span></div>${lines.length ? lines.map(renderStockCountIndexQuickLine).join('') : '<div class="gds-empty">Phiếu chưa có dòng sản phẩm.</div>'}</div>`;
+        bindStockCountIndexQuickImages();
+    } catch (error) {
+        body.innerHTML = `<div class="gds-empty text-danger">${stockCountEscapeHtml(error?.message || 'Không tải được chi tiết phiếu.')}</div>`;
+    }
+}
+
+function renderStockCountIndexQuickLine(line) {
+    const image = line.imageUrl ? `<button type="button" class="sc-index-line-image-button" data-preview-image="${stockCountEscapeHtml(line.imageUrl)}" data-preview-title="${stockCountEscapeHtml(line.productName || 'Sản phẩm')}"><img class="sc-index-line-image" src="${stockCountEscapeHtml(line.imageUrl)}" alt="${stockCountEscapeHtml(line.productName || 'Sản phẩm')}" /></button>` : '<span class="sc-index-line-image-placeholder"><i class="bx bx-image"></i></span>';
+    const diff = Number(line.differenceQtyBase || 0);
+    return `<article class="sc-index-quick-line">${image}<div class="sc-index-quick-line-main"><strong>${stockCountEscapeHtml(line.productName || '')}</strong><span>${stockCountEscapeHtml(line.unitName || 'Đơn vị gốc')}</span></div><div class="sc-index-quick-line-values"><span>Hệ thống <strong>${stockCountFormatNumber(line.systemQtyBase)}</strong></span><span>Đã đếm <strong>${stockCountFormatNumber(line.countedQty)} ${stockCountEscapeHtml(line.unitName || '')}</strong></span><span class="${diff > 0 ? 'text-success' : diff < 0 ? 'text-danger' : 'text-muted'}">Chênh lệch <strong>${diff > 0 ? '+' : ''}${stockCountFormatNumber(diff)}</strong></span></div></article>`;
+}
+
+function bindStockCountIndexQuickImages() {
+    document.querySelectorAll('[data-preview-image]').forEach(button => {
+        button.addEventListener('pointerenter', event => showStockCountIndexImageHoverPreview(button, event));
+        button.addEventListener('pointermove', moveStockCountIndexImageHoverPreview);
+        button.addEventListener('pointerleave', hideStockCountIndexImageHoverPreview);
+        button.addEventListener('click', () => {
+            const image = document.getElementById('stockCountImagePreviewImage');
+            const title = document.getElementById('stockCountImagePreviewTitle');
+            if (image) image.src = button.dataset.previewImage || '';
+            if (title) title.textContent = button.dataset.previewTitle || 'Ảnh sản phẩm';
+            stockCountImagePreviewModalInstance?.show();
+        });
+    });
+}
+
+function showStockCountIndexImageHoverPreview(button, event) {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    if (!stockCountIndexImageHoverPreview) {
+        stockCountIndexImageHoverPreview = document.createElement('div');
+        stockCountIndexImageHoverPreview.className = 'sc-index-image-hover-preview';
+        stockCountIndexImageHoverPreview.innerHTML = '<img alt="Ảnh sản phẩm phóng to" />';
+        document.body.appendChild(stockCountIndexImageHoverPreview);
+    }
+    stockCountIndexImageHoverPreview.querySelector('img').src = button.dataset.previewImage || '';
+    stockCountIndexImageHoverPreview.classList.add('is-visible');
+    moveStockCountIndexImageHoverPreview(event);
+}
+
+function moveStockCountIndexImageHoverPreview(event) {
+    if (!stockCountIndexImageHoverPreview) return;
+    const left = Math.min(window.innerWidth - 276, event.clientX + 18);
+    const top = Math.min(window.innerHeight - 276, event.clientY + 18);
+    stockCountIndexImageHoverPreview.style.left = `${Math.max(12, left)}px`;
+    stockCountIndexImageHoverPreview.style.top = `${Math.max(12, top)}px`;
+}
+
+function hideStockCountIndexImageHoverPreview() {
+    stockCountIndexImageHoverPreview?.classList.remove('is-visible');
+}
+
+function stockCountFormatDateOnly(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+}
+
+function stockCountIndexStatusClass(status) {
+    return Number(status) === 3 ? 'is-success' : Number(status) === 2 ? 'is-warning' : Number(status) === 4 ? 'is-danger' : 'is-neutral';
 }

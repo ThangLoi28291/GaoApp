@@ -8,4 +8,5 @@ public class CategoryListItemDto
     public string? ParentName { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
 }

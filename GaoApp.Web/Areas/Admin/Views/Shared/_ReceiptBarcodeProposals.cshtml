@@ -1,0 +1,53 @@
+@model int
+<link rel="stylesheet" href="~/Admin/css/receipt-barcode-proposals.css" asp-append-version="true" />
+<section id="receiptBarcodeProposals" class="card mb-3" data-document-id="@Model" aria-label="Mã hãng mới trong phiếu">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div><h5 class="mb-1">Mã hãng mới <span id="rbpCount" class="badge bg-label-warning"></span></h5>
+                <p class="text-muted small mb-0">Gắn mã vào sản phẩm và đơn vị có sẵn. Quản lý duyệt thêm mã, giữ nguyên mã nội bộ.</p></div>
+            <div class="d-flex gap-2"><button id="rbpOpen" type="button" class="btn btn-sm btn-outline-primary d-none">Bổ sung mã hãng</button>
+                <button id="rbpReload" type="button" class="btn btn-sm btn-outline-secondary">Tải lại</button></div>
+        </div>
+        <div id="rbpMessage" class="small mt-2" role="status"></div>
+        <div id="rbpItems" class="mt-2"></div>
+    </div>
+    <div class="d-none">@Html.AntiForgeryToken()</div>
+</section>
+<div class="modal fade" id="rbpModal" tabindex="-1" aria-labelledby="rbpModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="rbpModalTitle">Mã mới của sản phẩm có sẵn</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <p class="text-muted mb-3">Tìm sản phẩm, rồi chọn đúng đơn vị trên bao bì để gắn mã hãng mới.</p>
+            <label for="rbpCode" class="form-label">Mã hãng vừa quét</label>
+            <input id="rbpCode" class="form-control mb-3" maxlength="64" autocomplete="off" spellcheck="false" />
+            <label for="rbpCandidate" class="form-label">Tìm sản phẩm</label>
+            <select id="rbpCandidate" class="form-select" style="width:100%"><option></option></select>
+            <div id="rbpProduct" class="rbp-product d-none">
+                <div class="rbp-image-box">
+                    <img id="rbpImage" alt="" class="d-none" />
+                    <span id="rbpNoImage"><i class="bx bx-image" aria-hidden="true"></i><span>Chưa có ảnh</span></span>
+                </div>
+                <div class="rbp-product-details">
+                    <h5 id="rbpProductName" class="rbp-product-name"></h5>
+                    <div class="rbp-facts">
+                        <div><span>Mã hiện có</span><strong id="rbpExistingCode">—</strong></div>
+                        <div><span>Đơn vị</span><strong id="rbpSelectedUnit">—</strong></div>
+                        <div><span>Quy đổi</span><strong id="rbpSelectedFactor">—</strong></div>
+                        <div><span>Tương đương</span><strong id="rbpEquivalent">—</strong></div>
+                    </div>
+                    <p id="rbpUnitLabel" class="form-label mt-3 mb-2">Chọn đơn vị của mã mới</p>
+                    <div id="rbpUnits" class="rbp-units" role="group" aria-labelledby="rbpUnitLabel"></div>
+                </div>
+            </div>
+            <div id="rbpConversion" class="small text-muted mt-2" aria-live="polite">Chưa chọn sản phẩm.</div>
+            <label for="rbpNote" class="form-label mt-3">Ghi chú cho quản lý</label>
+            <textarea id="rbpNote" class="form-control" rows="2" maxlength="1000" placeholder="Ví dụ: mã in trên bao bì lốc 4 hộp"></textarea>
+            <div id="rbpModalError" class="text-danger mt-2" role="alert"></div>
+        </div>
+        <div class="modal-footer justify-content-between">
+            <button id="rbpUnknownProduct" type="button" class="btn btn-outline-secondary d-none">Hàng chưa có trong danh mục</button>
+            <div class="rbp-actions"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button>
+                <button id="rbpSave" type="button" class="btn btn-primary" disabled>Lưu đề xuất và nhập số lượng</button></div>
+        </div>
+    </div></div>
+</div>

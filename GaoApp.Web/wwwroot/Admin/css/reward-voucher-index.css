@@ -1,0 +1,747 @@
+.reward-voucher-index-page.gds-page {
+    --rv-primary: #696cff;
+    --rv-text: #2b2c40;
+    --rv-muted: #697a8d;
+    --rv-border: #e7e7ef;
+    --rv-surface: #fff;
+    --rv-page: #f5f5f9;
+    display: grid;
+    gap: 1rem;
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
+.reward-voucher-index-page .gds-kpi-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    min-height: 112px;
+    padding: 1.15rem;
+    border-radius: 1rem;
+    text-align: left;
+}
+
+.reward-voucher-index-page .gds-kpi-card__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    font-size: 1.45rem;
+}
+
+.reward-voucher-index-page .gds-kpi-card__icon.is-primary {
+    color: var(--rv-primary);
+    background: rgba(105, 108, 255, .12);
+}
+
+.reward-voucher-index-page .gds-kpi-card__icon.is-success {
+    color: #39b54a;
+    background: rgba(113, 221, 55, .16);
+}
+
+.reward-voucher-index-page .gds-kpi-card__body {
+    display: grid;
+    min-width: 0;
+}
+
+.reward-voucher-index-page .gds-kpi-card__label {
+    color: var(--rv-text);
+    font-weight: 700;
+}
+
+.reward-voucher-index-page .gds-kpi-card__value {
+    margin-top: .15rem;
+    font-size: 1.8rem;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.reward-voucher-index-page .gds-kpi-card small {
+    margin-top: .25rem;
+    color: var(--rv-muted);
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-error {
+    align-items: center;
+    gap: .65rem;
+    border-radius: .85rem;
+}
+
+.reward-voucher-error:not(.d-none) {
+    display: flex;
+}
+
+.reward-voucher-error .btn-close {
+    margin-left: auto;
+}
+
+.reward-voucher-filter-panel,
+.reward-voucher-results-panel {
+    min-width: 0;
+    border-radius: 1rem;
+}
+
+.reward-voucher-filter-bar {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.25fr) minmax(620px, 2fr);
+    align-items: end;
+    gap: .85rem;
+}
+
+.reward-voucher-search-wrap,
+.reward-voucher-desktop-filters > div {
+    min-width: 0;
+}
+
+.reward-voucher-index-page .gds-search-field {
+    position: relative;
+}
+
+.reward-voucher-index-page .gds-search-field > .bx-search {
+    position: absolute;
+    top: 50%;
+    left: .85rem;
+    z-index: 2;
+    color: #8592a3;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.reward-voucher-index-page .gds-search-field .form-control {
+    min-height: 40px;
+    padding-left: 2.35rem;
+    padding-right: 2.6rem;
+}
+
+.reward-voucher-index-page .gds-search-field__clear {
+    position: absolute;
+    top: 50%;
+    right: .45rem;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--rv-muted);
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    transform: translateY(-50%);
+}
+
+.reward-voucher-index-page .gds-search-field__clear:hover {
+    color: var(--rv-primary);
+    background: rgba(105, 108, 255, .1);
+}
+
+.reward-voucher-desktop-filters {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(132px, .8fr) minmax(132px, .8fr) minmax(125px, .72fr) 40px;
+    align-items: end;
+    gap: .65rem;
+}
+
+.reward-voucher-desktop-filters .form-label,
+.reward-voucher-search-wrap .form-label {
+    margin-bottom: .4rem;
+    color: var(--rv-text);
+    font-size: .82rem;
+    font-weight: 600;
+}
+
+.reward-voucher-reset-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    color: var(--rv-primary);
+    background: rgba(105, 108, 255, .1);
+    border: 0;
+    border-radius: .65rem;
+}
+
+.reward-voucher-mobile-filter-button {
+    display: none;
+}
+
+.reward-voucher-results-panel {
+    padding: 0;
+    overflow: hidden;
+    background: var(--rv-surface);
+    box-shadow: 0 .125rem .375rem rgba(67, 89, 113, .08);
+}
+
+.reward-voucher-results-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid var(--rv-border);
+}
+
+.reward-voucher-default-scope {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    flex: 0 0 auto;
+    padding: .45rem .75rem;
+    color: var(--rv-primary);
+    background: rgba(105, 108, 255, .1);
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.reward-voucher-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.reward-voucher-table thead th {
+    padding: .8rem 1rem;
+    color: #566a7f;
+    background: #f7f7fa;
+    border-bottom: 1px solid var(--rv-border);
+    font-size: .75rem;
+    font-weight: 800;
+    letter-spacing: .025em;
+    text-transform: uppercase;
+}
+
+.reward-voucher-table thead th:nth-child(1) { width: 18%; }
+.reward-voucher-table thead th:nth-child(2) { width: 25%; }
+.reward-voucher-table thead th:nth-child(3) { width: 16%; }
+.reward-voucher-table thead th:nth-child(4) { width: 18%; }
+.reward-voucher-table thead th:nth-child(5) { width: 14%; }
+.reward-voucher-table thead th:nth-child(6) { width: 9%; }
+
+.reward-voucher-table tbody tr {
+    cursor: default;
+    transition: background-color .15s ease;
+}
+
+.reward-voucher-table tbody tr[data-voucher-row]:hover {
+    background: rgba(105, 108, 255, .035);
+}
+
+.reward-voucher-table tbody td {
+    padding: .8rem 1rem;
+    color: var(--rv-muted);
+    border-color: var(--rv-border);
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-code,
+.reward-voucher-customer,
+.reward-voucher-value {
+    color: var(--rv-text);
+    font-weight: 800;
+}
+
+.reward-voucher-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .01em;
+}
+
+.reward-voucher-secondary {
+    display: block;
+    margin-top: .2rem;
+    color: #8592a3;
+    font-size: .76rem;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-status {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    max-width: 100%;
+    padding: .36rem .65rem;
+    border-radius: 999px;
+    font-size: .76rem;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.reward-voucher-status::before {
+    width: 7px;
+    height: 7px;
+    content: "";
+    background: currentColor;
+    border-radius: 50%;
+}
+
+.reward-voucher-status.is-available { color: #2d8a3e; background: #e9f8e3; }
+.reward-voucher-status.is-used { color: #087ea4; background: #e0f6fb; }
+.reward-voucher-status.is-cancelled { color: #c73838; background: #fde8e8; }
+.reward-voucher-status.is-expired { color: #697a8d; background: #eef0f2; }
+.reward-voucher-status.is-locked { color: #a45b00; background: #fff0d5; }
+
+.reward-voucher-action {
+    min-height: 38px;
+    font-weight: 700;
+}
+
+.reward-voucher-row-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    color: #566a7f;
+    background: #fff;
+    border: 1px solid #d9dee3;
+    border-radius: .65rem;
+    box-shadow: 0 2px 5px rgba(67, 89, 113, .08);
+    font-size: 1.05rem;
+}
+
+.reward-voucher-row-action:hover {
+    color: var(--rv-primary);
+    border-color: rgba(105, 108, 255, .45);
+    background: rgba(105, 108, 255, .05);
+}
+
+.reward-voucher-mobile-list {
+    display: none;
+}
+
+.reward-voucher-index-page .gds-empty {
+    padding: 2.5rem 1rem;
+    color: #8592a3;
+    text-align: center;
+}
+
+.reward-voucher-list-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: 0;
+    padding: .15rem .25rem 0;
+}
+
+.reward-voucher-pagination {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.reward-voucher-pagination .page-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 .55rem;
+    color: #566a7f;
+    background: #eceef1;
+    border: 0;
+    border-radius: 50% !important;
+    font-weight: 700;
+}
+
+.reward-voucher-pagination .page-item.active .page-link {
+    color: #fff;
+    background: var(--rv-primary);
+    box-shadow: 0 4px 10px rgba(105, 108, 255, .35);
+}
+
+.reward-voucher-pagination .page-item.disabled .page-link {
+    opacity: .45;
+}
+
+.reward-voucher-filter-sheet,
+.reward-voucher-quick-sheet,
+.reward-voucher-history-sheet,
+.reward-voucher-confirmation-sheet {
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-filter-sheet {
+    height: auto !important;
+    max-height: min(82dvh, 680px);
+    border-radius: 1.25rem 1.25rem 0 0;
+}
+
+.reward-voucher-filter-sheet__footer {
+    display: flex;
+    gap: .75rem;
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--rv-border);
+}
+
+.reward-voucher-quick-sheet .modal-content,
+.reward-voucher-history-sheet .modal-content,
+.reward-voucher-confirmation-sheet .modal-content {
+    border: 0;
+    border-radius: 1.15rem;
+    box-shadow: 0 1rem 3rem rgba(43, 44, 64, .18);
+}
+
+.reward-voucher-profile-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, rgba(105, 108, 255, .1), rgba(3, 195, 236, .06));
+    border-radius: 1rem;
+}
+
+.reward-voucher-profile-head h4 {
+    margin: 0 0 .4rem;
+    color: var(--rv-text);
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 58px;
+    width: 58px;
+    height: 58px;
+    color: var(--rv-primary);
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 4px 14px rgba(105, 108, 255, .14);
+    font-size: 1.6rem;
+}
+
+.reward-voucher-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+}
+
+.reward-voucher-quick-item {
+    min-width: 0;
+    padding: .85rem;
+    background: #fafafa;
+    border: 1px solid var(--rv-border);
+    border-radius: .8rem;
+}
+
+.reward-voucher-quick-item.is-wide {
+    grid-column: 1 / -1;
+}
+
+.reward-voucher-quick-item span {
+    display: block;
+    margin-bottom: .3rem;
+    color: #8592a3;
+    font-size: .76rem;
+    font-weight: 600;
+}
+
+.reward-voucher-quick-item strong {
+    display: block;
+    min-width: 0;
+    color: var(--rv-text);
+    font-size: .9rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-quick-actions {
+    gap: .5rem;
+}
+
+.reward-voucher-history-list {
+    display: grid;
+    gap: .75rem;
+    max-height: min(60dvh, 520px);
+    overflow-y: auto;
+}
+
+.reward-voucher-history-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: .75rem;
+    padding: .9rem;
+    background: #fafafa;
+    border: 1px solid var(--rv-border);
+    border-radius: .85rem;
+}
+
+.reward-voucher-history-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    color: var(--rv-primary);
+    background: rgba(105, 108, 255, .1);
+    border-radius: 12px;
+}
+
+.reward-voucher-history-copy strong,
+.reward-voucher-history-copy span {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.reward-voucher-history-copy span {
+    margin-top: .2rem;
+    color: var(--rv-muted);
+    font-size: .8rem;
+}
+
+.reward-voucher-confirmation-sheet textarea {
+    resize: vertical;
+}
+
+@media (max-width: 1199.98px) {
+    .reward-voucher-filter-bar {
+        grid-template-columns: 1fr;
+    }
+
+    .reward-voucher-desktop-filters {
+        grid-template-columns: 1.25fr 1fr 1fr .8fr 40px;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .reward-voucher-desktop-filters {
+        display: none;
+    }
+
+    .reward-voucher-filter-bar {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .reward-voucher-mobile-filter-button {
+        display: inline-flex;
+        align-items: center;
+        gap: .4rem;
+        min-height: 40px;
+    }
+
+    .reward-voucher-table thead th:nth-child(1) { width: 20%; }
+    .reward-voucher-table thead th:nth-child(2) { width: 28%; }
+    .reward-voucher-table thead th:nth-child(3) { width: 17%; }
+    .reward-voucher-table thead th:nth-child(4) { width: 19%; }
+    .reward-voucher-table thead th:nth-child(5) { width: 16%; }
+    .reward-voucher-table thead th:nth-child(6) { width: 72px; }
+}
+
+@media (max-width: 767.98px) {
+    .reward-voucher-index-page.gds-page {
+        gap: .85rem;
+    }
+
+    .reward-voucher-index-page .row-cols-2 > .col {
+        min-width: 0;
+    }
+
+    .reward-voucher-index-page .gds-kpi-card {
+        display: grid;
+        align-content: start;
+        gap: .55rem;
+        min-height: 132px;
+        padding: .85rem;
+    }
+
+    .reward-voucher-index-page .gds-kpi-card__icon {
+        width: 42px;
+        height: 42px;
+        flex-basis: 42px;
+        font-size: 1.2rem;
+    }
+
+    .reward-voucher-index-page .gds-kpi-card__value {
+        font-size: 1.5rem;
+    }
+
+    .reward-voucher-filter-panel .card-header,
+    .reward-voucher-filter-panel .card-body {
+        padding-left: .9rem;
+        padding-right: .9rem;
+    }
+
+    .reward-voucher-filter-bar {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .reward-voucher-mobile-filter-button {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .reward-voucher-results-heading {
+        align-items: flex-start;
+        padding: .9rem;
+    }
+
+    .reward-voucher-default-scope {
+        display: none;
+    }
+
+    .reward-voucher-desktop-list {
+        display: none;
+    }
+
+    .reward-voucher-mobile-list {
+        display: grid;
+        gap: .75rem;
+        padding: .75rem;
+        background: var(--rv-page);
+    }
+
+    .reward-voucher-mobile-card {
+        display: grid;
+        gap: .75rem;
+        min-width: 0;
+        padding: .9rem;
+        background: #fff;
+        border: 1px solid var(--rv-border);
+        border-left: 4px solid var(--rv-primary);
+        border-radius: .9rem;
+        box-shadow: 0 3px 10px rgba(67, 89, 113, .07);
+        overflow-wrap: anywhere;
+    }
+
+    .reward-voucher-mobile-card__head,
+    .reward-voucher-mobile-card__customer,
+    .reward-voucher-mobile-card__meta,
+    .reward-voucher-mobile-card__actions {
+        display: flex;
+        min-width: 0;
+        gap: .65rem;
+    }
+
+    .reward-voucher-mobile-card__head,
+    .reward-voucher-mobile-card__customer,
+    .reward-voucher-mobile-card__actions {
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .reward-voucher-mobile-card__meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: .7rem;
+        background: #fafafa;
+        border-radius: .7rem;
+    }
+
+    .reward-voucher-mobile-card__meta span,
+    .reward-voucher-mobile-card__meta strong {
+        display: block;
+        overflow-wrap: anywhere;
+    }
+
+    .reward-voucher-mobile-card__meta span {
+        color: #8592a3;
+        font-size: .72rem;
+    }
+
+    .reward-voucher-mobile-card__meta strong {
+        margin-top: .2rem;
+        color: var(--rv-text);
+        font-size: .84rem;
+    }
+
+    .reward-voucher-mobile-card__actions .btn {
+        min-height: 42px;
+        flex: 1 1 auto;
+        font-weight: 700;
+    }
+
+    .reward-voucher-list-footer {
+        align-items: flex-start;
+        flex-direction: column;
+        padding-bottom: calc(4.6rem + env(safe-area-inset-bottom));
+    }
+
+    .reward-voucher-list-footer nav {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .reward-voucher-pagination {
+        justify-content: center;
+        min-width: max-content;
+    }
+
+    .reward-voucher-quick-sheet .modal-dialog,
+    .reward-voucher-history-sheet .modal-dialog,
+    .reward-voucher-confirmation-sheet .modal-dialog {
+        align-items: end;
+        min-height: 100%;
+        margin: 0;
+    }
+
+    .reward-voucher-quick-sheet .modal-content,
+    .reward-voucher-history-sheet .modal-content,
+    .reward-voucher-confirmation-sheet .modal-content {
+        width: 100%;
+        max-height: calc(92dvh - env(safe-area-inset-bottom));
+        border-radius: 1.2rem 1.2rem 0 0;
+        overflow: hidden;
+    }
+
+    .reward-voucher-quick-sheet .modal-body,
+    .reward-voucher-history-sheet .modal-body,
+    .reward-voucher-confirmation-sheet .modal-body {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .reward-voucher-quick-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .reward-voucher-quick-item.is-wide {
+        grid-column: auto;
+    }
+
+    .reward-voucher-quick-actions,
+    .reward-voucher-history-sheet .modal-footer,
+    .reward-voucher-confirmation-sheet .modal-footer {
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    }
+
+    .reward-voucher-quick-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .reward-voucher-quick-actions .btn {
+        margin: 0;
+        white-space: normal;
+    }
+}
+
+@media (max-width: 399.98px) {
+    .reward-voucher-index-page .row-cols-2 {
+        --bs-gutter-x: .6rem;
+        --bs-gutter-y: .6rem;
+    }
+
+    .reward-voucher-index-page .gds-kpi-card {
+        min-height: 142px;
+    }
+
+    .reward-voucher-mobile-card__meta,
+    .reward-voucher-quick-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

@@ -19,7 +19,8 @@ public sealed class PurchaseReceiptPriceVarianceSqlServerConcurrencyTests
         await using var database = new InventoryPostingLocalDb();
         await database.MigrateAsync();
         var seed = await database.SeedInventoryCatalogAsync();
-        var competitorId = await SeedReceiptsAsync(database, seed);
+        var (competitorId, confirmedLegalEntityId) =
+            await SeedReceiptsAsync(database, seed);
 
         await using (var earlyDb = CreateContext(database, seed.StoreId))
         {
@@ -40,6 +41,7 @@ public sealed class PurchaseReceiptPriceVarianceSqlServerConcurrencyTests
             await competitorDb.Database.ExecuteSqlInterpolatedAsync(
                 $@"UPDATE [StockDocument]
                    SET [Status] = {(int)StockDocumentStatus.Confirmed},
+                       [ConfirmedLegalEntityId] = {confirmedLegalEntityId},
                        [ApprovedAtUtc] = {new DateTime(2026, 8, 17, 12, 0, 0, DateTimeKind.Utc)}
                    WHERE [Id] = {competitorId}");
 
@@ -81,29 +83,47 @@ public sealed class PurchaseReceiptPriceVarianceSqlServerConcurrencyTests
         }
     }
 
-    private static async Task<int> SeedReceiptsAsync(
+    private static async Task<(int CompetitorId, int ConfirmedLegalEntityId)>
+        SeedReceiptsAsync(
         InventoryPostingLocalDb database,
         InventoryPostingSeed seed)
     {
         await using var db = CreateContext(database, seed.StoreId);
+        var confirmedLegalEntityId = await db.Warehouses
+            .Where(warehouse => warehouse.Id == seed.WarehouseId)
+            .Select(warehouse => warehouse.LegalEntityId)
+            .SingleAsync();
         var historical = NewReceipt(
-            seed, "NK-PV-HISTORY", 100m, StockDocumentStatus.Confirmed);
+            seed,
+            "NK-PV-HISTORY",
+            100m,
+            StockDocumentStatus.Confirmed,
+            confirmedLegalEntityId);
         historical.ApprovedAtUtc = new DateTime(
             2026, 8, 16, 12, 0, 0, DateTimeKind.Utc);
         var competitor = NewReceipt(
-            seed, "NK-PV-COMPETE", 110m, StockDocumentStatus.PendingApproval);
+            seed,
+            "NK-PV-COMPETE",
+            110m,
+            StockDocumentStatus.PendingApproval,
+            confirmedLegalEntityId);
         var current = NewReceipt(
-            seed, "NK-PV-CURRENT", 120m, StockDocumentStatus.PendingApproval);
+            seed,
+            "NK-PV-CURRENT",
+            120m,
+            StockDocumentStatus.PendingApproval,
+            confirmedLegalEntityId);
         db.StockDocuments.AddRange(historical, competitor, current);
         await db.SaveChangesAsync();
-        return competitor.Id;
+        return (competitor.Id, confirmedLegalEntityId);
     }
 
     private static StockDocument NewReceipt(
         InventoryPostingSeed seed,
         string documentNo,
         decimal unitPrice,
-        StockDocumentStatus status)
+        StockDocumentStatus status,
+        int confirmedLegalEntityId)
     {
         var receipt = new StockDocument
         {
@@ -114,6 +134,9 @@ public sealed class PurchaseReceiptPriceVarianceSqlServerConcurrencyTests
             ReceiptSource = PurchaseReceiptSource.Direct,
             DirectReceiptReason = "Price variance concurrency",
             WarehouseId = seed.WarehouseId,
+            ConfirmedLegalEntityId = status == StockDocumentStatus.Confirmed
+                ? confirmedLegalEntityId
+                : null,
             DocumentDate = new DateTime(2026, 8, 17)
         };
         receipt.Lines.Add(new StockDocumentLine

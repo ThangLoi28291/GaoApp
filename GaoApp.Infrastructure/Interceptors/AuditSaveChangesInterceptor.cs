@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using GaoApp.Application.DTOs.Audit;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Entities;
@@ -449,6 +450,9 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 
     private bool ShouldIgnoreProperty(PropertyEntry prop)
     {
+        if (AuditSensitiveData.IsSensitive(prop.Metadata.Name))
+            return true;
+
         if (_ignoreProperties.Contains(prop.Metadata.Name))
             return true;
 

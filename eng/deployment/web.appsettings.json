@@ -1,0 +1,42 @@
+{
+  "ConnectionStrings": { "DefaultConnection": "" },
+  "AppUrl": {
+    "BaseUrl": "https://configure-host.invalid",
+    "AdminUrl": "https://admin.configure-host.invalid"
+  },
+  "Tenant": { "RootDomain": "configure-host.invalid", "AdminSubdomain": "admin" },
+  "AllowedHosts": "configure-host.invalid;admin.configure-host.invalid",
+  "Storage": { "UploadRoot": "", "CreateIfMissing": false },
+  "DataProtection": {
+    "KeysPath": "", "RequirePortableKeys": true,
+    "CertificatePath": "", "CertificatePassword": ""
+  },
+  "SeedData": { "EnableDemoSeed": false, "EnableDefaultAdminSeed": false },
+  "ProductionBootstrap": { "Enabled": false },
+  "InputInvoiceLibrary": { "Enabled": false },
+  "TaxCodeLookup": { "Enabled": false },
+  "AcbCallbackRouting": { "Hosts": [] },
+  "ReceivingWorkbench": { "Enabled": false, "ProvisionalItemsEnabled": false },
+  "Reports": {
+    "Profit": {
+      "MaxConcurrent": 2, "MaxQueued": 48,
+      "QueueTimeoutMilliseconds": 5000, "ExecutionTimeoutSeconds": 30,
+      "MaxSourceRows": 100000
+    }
+  },
+  "Security": {
+    "LoginRateLimit": { "IpAttemptsPerMinute": 120, "AccountAttemptsPerMinute": 10 }
+  },
+  "Proxy": {
+    "EnableForwardedHeaders": true,
+    "KnownProxies": [ "127.0.0.1", "::1" ], "KnownNetworks": []
+  },
+  "Serilog": {
+    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": { "Microsoft": "Warning", "Microsoft.EntityFrameworkCore": "Warning", "System": "Warning" }
+    },
+    "WriteTo": [ { "Name": "Console" } ]
+  }
+}

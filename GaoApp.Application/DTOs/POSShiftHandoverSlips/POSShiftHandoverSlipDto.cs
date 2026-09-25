@@ -5,6 +5,8 @@ namespace GaoApp.Application.DTOs.POSShiftHandoverSlips;
 public class POSShiftHandoverSlipDto
 {
     public int Id { get; set; }
+    public byte[] RowVersion { get; set; } = [];
+    public bool RequiresReprint { get; set; }
 
     public string SlipCode { get; set; } = default!;
 

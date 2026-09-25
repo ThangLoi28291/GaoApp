@@ -33,6 +33,7 @@ using GaoApp.Application.Interfaces.Repositories.Units;
 using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Infrastructure.Caching;
 using GaoApp.Infrastructure.Data;
@@ -78,6 +79,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using GaoApp.Application.Interfaces.Repositories.Reports;
+using GaoApp.Infrastructure.Repositories.Reports;
 
 
 namespace GaoApp.Infrastructure;
@@ -98,7 +101,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        Microsoft.Extensions.Hosting.IHostEnvironment? hostEnvironment = null)
     {
         // =========================================================
         // HTTP CONTEXT ACCESSOR
@@ -131,6 +135,8 @@ public static class DependencyInjection
             dataProtection.ProtectKeysWithDpapi(protectToLocalMachine: true);
         }
 
+        dataProtection.AddHostKeyEncryption(configuration, hostEnvironment);
+
         services.AddSingleton<IInvoiceProviderCredentialProtector,
             InvoiceProviderCredentialProtector>();
 
@@ -140,6 +146,8 @@ public static class DependencyInjection
         // nên phần này bắt buộc phải được đăng ký ở Infrastructure.
         // =========================================================
         services.AddScoped<TenantContext>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess,
+            GaoApp.Infrastructure.Security.StoreAdminAccess>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<ITenantContextWriter>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<ICurrentStore, CurrentStore>();
@@ -185,15 +193,26 @@ public static class DependencyInjection
         // =========================================================
         // MEDIA / STORAGE
         // =========================================================
+        services.AddSingleton<UploadPathResolver>();
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<IMediaAssetRepository, MediaAssetRepository>();
+        services.AddOptions<GaoApp.Application.Common.Options.MediaCleanupOptions>()
+            .Bind(configuration.GetSection(GaoApp.Application.Common.Options.MediaCleanupOptions.SectionName))
+            .ValidateDataAnnotations().ValidateOnStart();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GaoApp.Application.Common.Options.MediaCleanupOptions>>().Value);
+        services.AddScoped<GaoApp.Infrastructure.Services.Media.MediaLibraryService>();
         services.AddScoped<IProductImageRepository, ProductImageRepository>();
         services.AddScoped<IProductBarcodeVerificationRepository, ProductBarcodeVerificationRepository>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Products.IReceiptBarcodeProposalService, GaoApp.Infrastructure.Services.Products.ReceiptBarcodeProposalService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Purchases.IReceiptIntakeCatalog, GaoApp.Infrastructure.Services.Products.ReceiptIntakeCatalog>();
 
         // =========================================================
         // ORDER / POS
         // =========================================================
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<ICustomerDepositService, GaoApp.Infrastructure.Services.Orders.CustomerDepositService>();
+        services.AddScoped<ICustomerReceivableService, GaoApp.Infrastructure.Services.Orders.CustomerReceivableService>();
         services.AddScoped<IOrderPaymentRepository, OrderPaymentRepository>();
         services.AddScoped<IOrderLegalEntityAllocationRepository, OrderLegalEntityAllocationRepository>();
         services.AddScoped<IOrderLegalEntityAllocationReversalRepository, OrderLegalEntityAllocationReversalRepository>();
@@ -202,9 +221,18 @@ public static class DependencyInjection
         services.AddScoped<IOrderNumberGenerator, OrderNumberGenerator>();
         services.AddScoped<IPOSShiftRepository, POSShiftRepository>();
         services.AddScoped<ICustomerRepository, CustomerRepository>();
+        services.AddScoped<ICustomerManagementRepository, CustomerManagementRepository>();
         services.AddScoped<IPOSAuditLogRepository, POSAuditLogRepository>();
         services.AddScoped<IStoreBankAccountRepository, StoreBankAccountRepository>();
- 
+        services.AddScoped<IStoreBankAccountIndexReadRepository, StoreBankAccountIndexReadRepository>();
+        services.AddScoped<ISalesReportReadRepository, SalesReportReadRepository>();
+        services.AddOptions<GaoApp.Application.Common.Options.ProfitReportLimits>()
+            .Bind(configuration.GetSection(GaoApp.Application.Common.Options.ProfitReportLimits.SectionName))
+            .Validate(x => x.IsValid(), "Invalid Reports:Profit resource limits.").ValidateOnStart();
+        services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GaoApp.Application.Common.Options.ProfitReportLimits>>().Value);
+        services.AddSingleton<GaoApp.Application.Services.Reports.ProfitReportExecutionGate>();
+        services.AddScoped<IProfitReportReadRepository, ProfitReportReadRepository>();
+
         services.AddScoped<IPOSPaymentQrRequestRepository, POSPaymentQrRequestRepository>();
         services.AddScoped<IDisplayPromotionRepository, DisplayPromotionRepository>();
         services.AddScoped<IPromotionRepository, PromotionRepository>();
@@ -217,20 +245,23 @@ public static class DependencyInjection
                 $"External HTTP timeouts must be between 1 and {ExternalHttpResilienceOptions.MaximumTimeoutSeconds} seconds.")
             .ValidateOnStart();
 
+        services.AddTransient<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>();
         services.AddHttpClient<IViettelInvoiceAuthClient, ViettelInvoiceAuthClient>((sp, client) =>
         {
             client.Timeout = sp
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .AuthenticationTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IViettelInvoicePreviewClient, ViettelInvoicePreviewClient>((sp, client) =>
         {
             client.Timeout = sp
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .NonIdempotentWriteTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<IInvoiceIntegrationLogRepository, InvoiceIntegrationLogRepository>();
         services.AddHttpClient<IViettelInvoiceIssueClient, ViettelInvoiceIssueClient>((sp, client) =>
         {
@@ -238,8 +269,10 @@ public static class DependencyInjection
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .NonIdempotentWriteTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<IInvoiceFileStorage, InvoiceFileStorage>();
+        services.AddScoped<IInputInvoiceDocumentLibrary, FileSystemInputInvoiceDocumentLibrary>();
 
         services.AddHttpClient<IViettelOfficialFileClient, ViettelOfficialFileClient>((sp, client) =>
         {
@@ -247,28 +280,32 @@ public static class DependencyInjection
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .FileDownloadTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IViettelInvoiceLookupClient, ViettelInvoiceLookupClient>((sp, client) =>
         {
             client.Timeout = sp
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .SafeReadTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IViettelInvoiceEmailClient, ViettelInvoiceEmailClient>((sp, client) =>
         {
             client.Timeout = sp
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .NonIdempotentWriteTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddHttpClient<IViettelInvoiceListClient, ViettelInvoiceListClient>((sp, client) =>
         {
             client.Timeout = sp
                 .GetRequiredService<Microsoft.Extensions.Options.IOptions<ExternalHttpResilienceOptions>>()
                 .Value
                 .SafeReadTimeout;
-        });
+        }).AddHttpMessageHandler<GaoApp.Infrastructure.Security.ViettelEndpointGuardHandler>()
+          .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<IInvoiceCorrectionRepository, InvoiceCorrectionRepository>();
         services.Configure<TaxCodeLookupOptions>(
     configuration.GetSection("TaxCodeLookup"));
@@ -296,6 +333,7 @@ public static class DependencyInjection
         services.AddScoped<IRewardSettingsRepository, RewardSettingsRepository>();
         services.AddScoped<ICustomerRewardLedgerRepository, CustomerRewardLedgerRepository>();
         services.AddScoped<ICustomerRewardVoucherRepository, CustomerRewardVoucherRepository>();
+        services.AddScoped<IRewardVoucherIndexReadRepository, RewardVoucherIndexReadRepository>();
         services.AddScoped<IRewardOrderRepository, RewardOrderRepository>();
         services.AddScoped<IPOSShiftHandoverSlipRepository, POSShiftHandoverSlipRepository>();
         services.AddScoped<IPOSShiftClosingSlipRepository, POSShiftClosingSlipRepository>();
@@ -306,11 +344,20 @@ public static class DependencyInjection
         services.AddScoped<IWarehouseRepository, WarehouseRepository>();
         services.AddScoped<ILegalEntityRepository, LegalEntityRepository>();
         services.AddScoped<IInventoryBalanceRepository, InventoryBalanceRepository>();
+        services.AddScoped<IInventoryInquiryReadRepository, InventoryInquiryReadRepository>();
+        services.AddScoped<IInventoryLedgerIndexReadRepository, InventoryLedgerIndexReadRepository>();
+        services.AddScoped<IStockTransferIndexReadRepository, StockTransferIndexReadRepository>();
+        services.AddScoped<IStockCountIndexReadRepository, StockCountIndexReadRepository>();
+        services.AddScoped<IInventoryAdjustmentIndexReadRepository, InventoryAdjustmentIndexReadRepository>();
         services.AddScoped<IInventoryTransactionRepository, InventoryTransactionRepository>();
         services.AddScoped<IInventoryPostingTransactionCoordinator, InventoryPostingTransactionCoordinator>();
         services.AddScoped<IStockDocumentRepository, StockDocumentRepository>();
+        services.AddScoped<IPurchaseReceivingWorkbenchRepository, PurchaseReceivingWorkbenchRepository>();
+        services.AddScoped<IStockDocumentProvisionalItemRepository, StockDocumentProvisionalItemRepository>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
+        services.AddScoped<IPurchaseOrderIndexReadRepository, PurchaseOrderIndexReadRepository>();
         services.AddScoped<IPurchaseRequestRepository, PurchaseRequestRepository>();
+        services.AddScoped<IPurchaseRequestIndexReadRepository, PurchaseRequestIndexReadRepository>();
         services.AddScoped<IStockDocumentLookupRepository, StockDocumentLookupRepository>();
         services.AddScoped<IInventoryAdjustmentDocumentRepository, InventoryAdjustmentDocumentRepository>();
         services.AddScoped<IInventoryAdjustmentDocumentNumberRepository,
@@ -332,7 +379,9 @@ public static class DependencyInjection
         services.AddScoped<IInventoryCostLayerAllocationRepository, InventoryCostLayerAllocationRepository>();
         services.AddScoped<IInputInvoiceRepository, InputInvoiceRepository>();
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+        services.AddScoped<IAutoInvoiceRepository, AutoInvoiceRepository>();
         services.AddScoped<IInvoiceInputStockRepository, InvoiceInputStockRepository>();
+        services.AddScoped<IInvoiceInputStockReadRepository, InvoiceInputStockReadRepository>();
         services.AddScoped<IAdminMenuRepository, AdminMenuRepository>();
         services.AddScoped<IAdminMenuPermissionRepository, AdminMenuPermissionRepository>();
 
@@ -346,15 +395,17 @@ public static class DependencyInjection
         // SECURITY / USERS / AUTH
         // =========================================================
         services.AddScoped<IRoleRepository, RoleRepository>();
+        services.AddScoped<IRoleIndexReadRepository, RoleIndexReadRepository>();
         services.AddScoped<IPermissionRepository, PermissionRepository>();
         services.AddScoped<IUserInStoreRepository, UserInStoreRepository>();
+        services.AddScoped<IEmployeeIndexReadRepository, EmployeeIndexReadRepository>();
         services.AddScoped<IAuthUserRepository, AuthUserRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPOSTerminalRepository, POSTerminalRepository>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IProductVariantBarcodeHistoryRepository, ProductVariantBarcodeHistoryRepository>();
         services.AddScoped<IRolePermissionRepository, RolePermissionRepository>();
- 
+
 
         // =========================================================
         // AUTH CONTEXT / NETWORK

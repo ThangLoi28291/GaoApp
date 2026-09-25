@@ -3,6 +3,7 @@ using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -22,9 +23,19 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
         _logRepository = logRepository;
     }
 
-    public async Task<Result<ViettelInvoicePayloadResultDto>> BuildAsync(
+    public Task<Result<ViettelInvoicePayloadResultDto>> BuildAsync(
         int invoiceHeadId,
         CancellationToken ct = default)
+        => BuildCoreAsync(invoiceHeadId, null, null, ct);
+
+    public Task<Result<ViettelInvoicePayloadResultDto>> BuildForIssueAsync(
+        int invoiceHeadId, InvoiceProviderSetting setting, string transactionUuid,
+        CancellationToken ct = default)
+        => BuildCoreAsync(invoiceHeadId, setting, transactionUuid, ct);
+
+    private async Task<Result<ViettelInvoicePayloadResultDto>> BuildCoreAsync(
+        int invoiceHeadId, InvoiceProviderSetting? selectedSetting, string? issueUuid,
+        CancellationToken ct)
     {
         if (invoiceHeadId <= 0)
         {
@@ -45,19 +56,34 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
         }
 
         var invoice = invoiceResult.Value;
+        var useCurrentSetting = LegacyInvoiceIssueConfiguration.UseCurrent(invoice);
+        if (invoice.LegacyReadOnly || (invoice.LegacySourceId.HasValue && !invoice.InvoiceProviderSettingId.HasValue && !useCurrentSetting))
+            return Result<ViettelInvoicePayloadResultDto>.Failure(Error.Validation("Invoice.LegacyNeedsReview",
+                invoice.LegacyReadOnly ? "Hóa đơn GaoStore này chỉ lưu để tra cứu."
+                : "Chưa ánh xạ cấu hình phát hành của hóa đơn GaoStore."));
 
-        var setting = await _settingRepository.GetForInvoiceAsync(
+        var setting = selectedSetting ?? await _settingRepository.GetForInvoiceAsync(
             invoice.StoreId,
-            invoice.InvoiceProviderSettingId,
+            useCurrentSetting ? null : invoice.InvoiceProviderSettingId,
             ct);
 
-        if (setting == null)
+        if (setting == null || setting.StoreId != invoice.StoreId || !setting.IsActive || setting.IsDeleted
+            || !string.Equals(setting.ProviderCode, "VIETTEL", StringComparison.OrdinalIgnoreCase))
         {
             return Result<ViettelInvoicePayloadResultDto>.Failure(
                 Error.Validation(
                     "InvoiceProvider.NotConfigured",
                     "Chưa có cấu hình Viettel đang dùng cho cửa hàng này."));
         }
+
+        if (useCurrentSetting)
+            LegacyInvoiceIssueConfiguration.Apply(invoice, setting);
+
+        var temporaryUuid = issueUuid == null && useCurrentSetting && string.IsNullOrWhiteSpace(invoice.TransactionUuid);
+        if (issueUuid != null)
+            invoice.TransactionUuid = issueUuid;
+        else if (temporaryUuid)
+            invoice.TransactionUuid = Guid.NewGuid().ToString("D"); // Preview DTO only; never persisted here.
 
         var snapshotResult = ViettelSettingSnapshotBuilder.Build(
             invoice,
@@ -83,6 +109,10 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
         var preBuild = preBuildValidationResult.Value;
 
         var warnings = new List<string>();
+        if (useCurrentSetting)
+            warnings.Add("Hóa đơn nháp GaoStore sử dụng cấu hình Viettel đang hoạt động của cửa hàng.");
+        if (temporaryUuid)
+            warnings.Add("Mã giao dịch trong JSON này chỉ dùng xem trước; mã phát hành sẽ được lưu khi gửi hóa đơn.");
 
         var itemInfo = ViettelItemInfoBuilder.Build(
             preBuild.ActiveDetails,
@@ -128,6 +158,8 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             ct);
 
         var uiState = ViettelInvoiceUiStateBuilder.Build(invoice);
+        if (temporaryUuid)
+            uiState.CanSyncByUuid = false;
 
         var result = ViettelInvoicePayloadResultAssembler.Build(
             invoice: invoice,

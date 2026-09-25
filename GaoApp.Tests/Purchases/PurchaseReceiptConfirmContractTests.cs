@@ -4,8 +4,24 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace GaoApp.Tests.Purchases;
 
+// R2.4-C2 coverage: confirm includes fresh owner resolution and receipt-only snapshot semantics.
 public sealed class PurchaseReceiptConfirmContractTests
 {
+    [Fact]
+    public void Confirm_separates_audit_time_from_locked_invoice_warehouse_date()
+    {
+        var source = Method(
+            Parse("GaoApp.Application/Services/Inventory/StockDocumentService.cs"),
+            "ApproveTrackedAsync").ToFullString();
+
+        source.Should().Contain("auditNowUtc");
+        source.Should().Contain("warehouseOccurredAtUtc");
+        source.Should().Contain("LockReceiptForInputInvoiceMutationAsync");
+        source.Should().Contain("PurchaseReceiptWarehouseDatePolicy.Resolve");
+        source.Should().Contain("occurredAtUtc: warehouseOccurredAtUtc");
+        source.Should().Contain("CreatePayablesIfNeededAsync(document, auditNowUtc, ct)");
+    }
+
     [Fact]
     public void Commercial_and_final_confirm_paths_invoke_the_central_supplier_prerequisite()
     {
@@ -159,7 +175,7 @@ public sealed class PurchaseReceiptConfirmContractTests
         var begin = source.IndexOf("_stockDocumentRepository.BeginTransactionAsync(ct)", StringComparison.Ordinal);
         var preLock = source.IndexOf("_inventoryMovementService.PreLockBalancesAsync(", StringComparison.Ordinal);
         var movement = source.IndexOf("_inventoryMovementService.CreateAsync(movementRequest, ct)", StringComparison.Ordinal);
-        var payable = source.IndexOf("CreatePayablesIfNeededAsync(document, occurredAtUtc, ct)", StringComparison.Ordinal);
+        var payable = source.IndexOf("CreatePayablesIfNeededAsync(document, auditNowUtc, ct)", StringComparison.Ordinal);
         var save = source.IndexOf("_stockDocumentRepository.SaveChangesAsync(ct)", StringComparison.Ordinal);
         var commit = source.IndexOf("_stockDocumentRepository.CommitTransactionAsync(ct)", StringComparison.Ordinal);
         var rollback = source.IndexOf("_stockDocumentRepository.RollbackTransactionAsync(ct)", StringComparison.Ordinal);

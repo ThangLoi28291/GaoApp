@@ -3,7 +3,9 @@ using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Security.Cryptography;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -51,10 +53,32 @@ public class ViettelInvoiceSyncService : IViettelInvoiceSyncService
                     "Hóa đơn chưa có TransactionUuid, không thể tra cứu Viettel."));
         }
 
-        var setting = await _settingRepository.GetForInvoiceAsync(
-            invoice.StoreId,
-            invoice.InvoiceProviderSettingId,
-            ct);
+        InvoiceProviderSetting? setting;
+        try
+        {
+            setting = await _settingRepository.GetForInvoiceAsync(
+                invoice.StoreId,
+                invoice.InvoiceProviderSettingId,
+                ct);
+        }
+        catch (CryptographicException ex)
+        {
+            try
+            {
+                var current = await _settingRepository.GetForInvoiceAsync(
+                    invoice.StoreId,
+                    null,
+                    ct);
+                if (current == null || !MatchesInvoiceIdentity(invoice, current))
+                    return await FailCredentialReadAsync(invoice, ex, current?.Id, ct);
+
+                setting = current;
+            }
+            catch (CryptographicException currentException)
+            {
+                return await FailCredentialReadAsync(invoice, currentException, null, ct, ex);
+            }
+        }
 
         if (setting == null)
         {
@@ -192,4 +216,43 @@ public class ViettelInvoiceSyncService : IViettelInvoiceSyncService
 
         return null;
     }
+
+    private async Task<Result<ViettelInvoiceLookupResultDto>> FailCredentialReadAsync(
+        InvoiceHead invoice,
+        CryptographicException exception,
+        int? currentSettingId,
+        CancellationToken ct,
+        CryptographicException? historicalException = null)
+    {
+        const string code = "InvoiceProvider.CredentialKeyUnavailable";
+        var message =
+            "Không đọc được mật khẩu Viettel của cấu hình hóa đơn. " +
+            $"InvoiceProviderSettingId={invoice.InvoiceProviderSettingId?.ToString() ?? "null"}; " +
+            $"cấu hình hiện hành={currentSettingId?.ToString() ?? "không có"}. " +
+            $"Chi tiết: {exception.Message}" +
+            (historicalException == null
+                ? string.Empty
+                : $" Cấu hình cũ: {historicalException.Message}") +
+            " Hãy bảo đảm Web và Worker dùng chung DataProtection:KeysPath và lưu lại cấu hình Viettel.";
+        invoice.LastErrorCode = code;
+        invoice.LastErrorMessage = message;
+        invoice.LastSyncedAtUtc = DateTime.UtcNow;
+        await _invoiceRepository.SaveChangesAsync(ct);
+        return Result<ViettelInvoiceLookupResultDto>.Failure(Error.Validation(code, message));
+    }
+
+    private static bool MatchesInvoiceIdentity(
+        InvoiceHead invoice,
+        InvoiceProviderSetting setting)
+    {
+        return Matches(invoice.ProviderCode, setting.ProviderCode) &&
+               Matches(invoice.SupplierTaxCode, setting.SupplierTaxCode) &&
+               Matches(invoice.InvoiceType, setting.InvoiceType) &&
+               Matches(invoice.TemplateCode, setting.TemplateCode) &&
+               Matches(invoice.InvoiceSeries, setting.InvoiceSeries);
+    }
+
+    private static bool Matches(string? snapshot, string current)
+        => string.IsNullOrWhiteSpace(snapshot) ||
+           string.Equals(snapshot.Trim(), current.Trim(), StringComparison.OrdinalIgnoreCase);
 }

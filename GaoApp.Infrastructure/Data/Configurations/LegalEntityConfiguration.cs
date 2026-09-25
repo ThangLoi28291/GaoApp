@@ -1,5 +1,6 @@
 using GaoApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace GaoApp.Infrastructure.Data.Configurations;
@@ -38,6 +39,15 @@ public sealed class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEnt
         builder.Property(x => x.TaxCode)
             .HasMaxLength(50);
 
+        var normalizedTaxCode = builder.Property(x => x.NormalizedTaxCode)
+            .HasMaxLength(50)
+            .HasComputedColumnSql(
+                "CONVERT(nvarchar(50), NULLIF(UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM([TaxCode])), N' ', N''), N'.', N''), N'-', N''), NCHAR(9), N''), NCHAR(13), N''), NCHAR(10), N'')), N''))",
+                stored: true);
+        normalizedTaxCode.ValueGeneratedNever();
+        normalizedTaxCode.Metadata.SetBeforeSaveBehavior(PropertySaveBehavior.Ignore);
+        normalizedTaxCode.Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
+
         builder.Property(x => x.Address)
             .HasMaxLength(1200);
 
@@ -66,8 +76,11 @@ public sealed class LegalEntityConfiguration : IEntityTypeConfiguration<LegalEnt
             .HasFilter("[IsDeleted] = 0");
 
         builder.HasIndex(x => new { x.StoreId, x.TaxCode })
-            .IsUnique()
             .HasFilter("[TaxCode] IS NOT NULL AND [TaxCode] <> '' AND [IsDeleted] = 0");
+
+        builder.HasIndex(x => new
+            { x.StoreId, x.NormalizedTaxCode, x.IsDeleted, x.IsActive })
+            .HasDatabaseName("IX_LegalEntities_StoreId_NormalizedTaxCode_State");
 
         builder.HasIndex(x => new { x.StoreId, x.SalePriority })
             .IsUnique()

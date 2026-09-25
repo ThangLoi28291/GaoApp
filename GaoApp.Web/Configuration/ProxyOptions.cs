@@ -1,4 +1,4 @@
-﻿namespace GaoApp.Web.Configuration;
+namespace GaoApp.Web.Configuration;
 
 /// <summary>
 /// Cấu hình reverse proxy / forwarded headers cho web app.
@@ -11,7 +11,7 @@ public class ProxyOptions
     /// Có bật xử lý forwarded headers hay không.
     /// Nếu app chạy sau IIS/Nginx/Proxy thì nên bật.
     /// </summary>
-    public bool EnableForwardedHeaders { get; set; } = true;
+    public bool EnableForwardedHeaders { get; set; } = false;
 
     /// <summary>
     /// Danh sách IP proxy tin cậy.

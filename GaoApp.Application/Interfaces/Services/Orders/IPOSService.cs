@@ -41,6 +41,7 @@ public interface IPOSService
     Task<OrderDraftDto> RemovePaymentAsync(int paymentId, CancellationToken ct = default);
 
     Task<OrderDraftDto> FinalizeAsync(int orderId, CancellationToken ct = default);
+    Task<OrderDraftDto> FinalizeCreditAsync(int orderId, FinalizeCreditRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 
     Task CancelAsync(int orderId, string? reason = null, CancellationToken ct = default);
 

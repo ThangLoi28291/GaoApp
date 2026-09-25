@@ -22,16 +22,19 @@ public sealed class PurchaseReceiptAllocationSqlServerConcurrencyTests
         var seed = await database.SeedInventoryCatalogAsync();
         var (orderId, lineIds) = await SeedOrderAsync(database, seed, 1);
         await using var db = CreateContext(database, seed.StoreId);
+        var confirmedLegalEntityId = await db.Warehouses
+            .Where(warehouse => warehouse.Id == seed.WarehouseId)
+            .Select(warehouse => warehouse.LegalEntityId)
+            .SingleAsync();
         var receipts = new List<(StockDocument Receipt, bool DeleteDocument, bool DeleteLine)>();
         foreach (var item in new[]
         {
             (StockDocumentStatus.Draft, false, false),
             (StockDocumentStatus.PendingApproval, false, false),
-            (StockDocumentStatus.Rejected, false, false),
             (StockDocumentStatus.Confirmed, false, false),
             (StockDocumentStatus.Cancelled, false, false),
-            (StockDocumentStatus.Draft, true, false),
-            (StockDocumentStatus.Draft, false, true)
+            (StockDocumentStatus.PendingApproval, true, false),
+            (StockDocumentStatus.PendingApproval, false, true)
         })
         {
             var receipt = new StockDocument
@@ -40,6 +43,9 @@ public sealed class PurchaseReceiptAllocationSqlServerConcurrencyTests
                 Type = StockDocumentType.Receipt, Status = item.Item1,
                 ReceiptSource = PurchaseReceiptSource.PurchaseOrder, PurchaseOrderId = orderId,
                 WarehouseId = seed.WarehouseId, DocumentDate = DateTime.UtcNow,
+                ConfirmedLegalEntityId = item.Item1 == StockDocumentStatus.Confirmed
+                    ? confirmedLegalEntityId
+                    : null,
                 IsDeleted = item.Item2
             };
             receipt.Lines.Add(new StockDocumentLine
@@ -54,13 +60,25 @@ public sealed class PurchaseReceiptAllocationSqlServerConcurrencyTests
         await db.SaveChangesAsync();
         foreach (var item in receipts)
         {
-            if (item.DeleteDocument) item.Receipt.IsDeleted = true;
+            if (item.DeleteDocument)
+            {
+                item.Receipt.Status = StockDocumentStatus.Draft;
+                item.Receipt.IsDeleted = true;
+            }
             if (item.DeleteLine) item.Receipt.Lines.Single().IsDeleted = true;
         }
         await db.SaveChangesAsync();
         var quantities = await new StockDocumentRepository(db)
             .GetInFlightPurchaseReceiptQuantitiesAsync(seed.StoreId, orderId, lineIds);
-        quantities[lineIds[0]].Should().Be(3m);
+        quantities[lineIds[0]].Should().Be(2m);
+
+        var editable = receipts.Single(x =>
+            x.Receipt.Status == StockDocumentStatus.Draft && !x.DeleteDocument && !x.DeleteLine).Receipt;
+        editable.Status = StockDocumentStatus.Rejected;
+        await db.SaveChangesAsync();
+        quantities = await new StockDocumentRepository(db)
+            .GetInFlightPurchaseReceiptQuantitiesAsync(seed.StoreId, orderId, lineIds);
+        quantities[lineIds[0]].Should().Be(2m);
     }
 
     [Fact]
@@ -169,7 +187,8 @@ public sealed class PurchaseReceiptAllocationSqlServerConcurrencyTests
         };
         for (var i = 1; i <= lineCount; i++) order.Lines.Add(new PurchaseOrderLine
         {
-            StoreId = seed.StoreId, LineNo = i, ProductVariantId = seed.ProductVariantId,
+            StoreId = seed.StoreId, LineNo = i,
+            ProductVariantId = i == 1 ? seed.ProductVariantId : null,
             ProductNameSnapshot = $"Product {i}", UnitNameSnapshot = "Unit",
             ConversionFactor = 1m, OrderedQuantity = 10m
         });

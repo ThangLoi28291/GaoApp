@@ -67,10 +67,15 @@ public class PosHub : Hub
         public string EventType { get; set; } = "";
         public object? Payload { get; set; }
     }
+    // PosSessionHubFilter checks current pos.payment.create for this invocation before entering the method.
     public async Task BroadcastTerminalEvent(PosTerminalClientEvent request)
     {
         if (request == null || string.IsNullOrWhiteSpace(request.EventType))
             throw new HubException("Event không hợp lệ.");
+        if (request.EventType is not ("customer_payment_preview" or "customer_payment_hide" or
+            "customer_payment_success" or "customer_display_reset" or "customer_payment_qr_created" or
+            "customer_payment_changed"))
+            throw new HubException("Event này chỉ được phát từ máy chủ.");
 
         var storeId = Context.Items.ContainsKey("storeId")
             ? Context.Items["storeId"] as int?

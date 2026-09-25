@@ -16,6 +16,69 @@ namespace GaoApp.Tests.Purchases;
 
 public sealed class PurchaseReceiptRevisionWorkflowTests
 {
+    [Theory]
+    [MemberData(nameof(CommercialPricePrecedenceCases))]
+    public async Task Pending_approval_commercial_price_uses_approved_precedence(
+        decimal currentPrice,
+        decimal? latestBasePrice,
+        decimal costPrice,
+        decimal factor,
+        decimal? expected)
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        var line = CreateLine(document);
+        line.UnitPriceBeforeVat = currentPrice;
+        line.Factor = factor;
+        line.ProductVariant = new ProductVariant
+        {
+            Id = line.ProductVariantId,
+            StoreId = document.StoreId,
+            CostPrice = costPrice,
+            Price = 999_999m,
+            WholesalePrice = 888_888m,
+            Product = new Product { Id = 41, StoreId = document.StoreId }
+        };
+        var fixture = CreateFixture(document, line);
+        if (latestBasePrice.HasValue)
+            fixture.Repository.LastPurchaseBasePrices[line.ProductVariantId] = latestBasePrice.Value;
+
+        var dto = await fixture.Service.GetDetailAsync(document.Id);
+
+        dto!.Lines.Single().EditableUnitPriceBeforeVat.Should().Be(expected);
+        dto.Lines.Single().LastPurchaseUnitPriceBeforeVat.Should().Be(
+            latestBasePrice.HasValue ? latestBasePrice.Value * factor : null);
+    }
+
+    public static IEnumerable<object?[]> CommercialPricePrecedenceCases =>
+    [
+        [125m, 10m, 7m, 4m, 125m],
+        [0m, 10m, 7m, 4m, 40m],
+        [0m, null, 7m, 4m, 28m],
+        [0m, null, 0m, 4m, null]
+    ];
+
+    [Fact]
+    public async Task Sales_prices_never_fill_missing_purchase_price()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        var line = CreateLine(document);
+        line.Factor = 4m;
+        line.ProductVariant = new ProductVariant
+        {
+            Id = line.ProductVariantId,
+            StoreId = document.StoreId,
+            CostPrice = 0m,
+            Price = 100_000m,
+            WholesalePrice = 90_000m,
+            Product = new Product { Id = 41, StoreId = document.StoreId }
+        };
+        var fixture = CreateFixture(document, line);
+
+        var dto = await fixture.Service.GetDetailAsync(document.Id);
+
+        dto!.Lines.Single().EditableUnitPriceBeforeVat.Should().BeNull();
+    }
+
     private static readonly byte[] CurrentVersion = [1, 2, 3, 4];
 
     [Fact]
@@ -72,18 +135,123 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     }
 
     [Fact]
-    public async Task PendingApproval_header_update_fails_before_field_change_or_save()
+    public async Task PendingApproval_approver_can_change_Warehouse_without_posting()
     {
         var document = CreateDocument(StockDocumentStatus.PendingApproval);
-        var fixture = CreateFixture(document);
-        var originalWarehouseId = document.WarehouseId;
+        document.SupplierId = 51;
+        var warehouse = CreateWarehouse(id: 22, legalEntityId: 33);
+        var fixture = CreateFixture(document, warehouse: warehouse);
 
-        Func<Task> action = () => fixture.Service.UpdateHeaderAsync(
-            ValidHeaderRequest(document.Id));
+        await fixture.Service.UpdateHeaderAsync(new UpdateStockDocumentHeaderRequest
+        {
+            StockDocumentId = document.Id,
+            LegalEntityId = 33,
+            WarehouseId = 22,
+            SupplierId = 51,
+            DocumentDate = new DateTime(2030, 1, 2),
+            Note = "must stay locked",
+            ApprovalNote = "must stay locked"
+        });
 
-        await action.Should().ThrowAsync<BusinessRuleException>();
-        document.WarehouseId.Should().Be(originalWarehouseId);
+        document.WarehouseId.Should().Be(22);
+        document.SupplierId.Should().Be(51);
+        document.Note.Should().BeNull();
+        document.ApprovalNote.Should().BeNull();
+        fixture.Repository.SaveCalls.Should().Be(1);
+        fixture.InvoiceState.BeginCalls.Should().Be(1);
+        fixture.InvoiceState.LockCalls.Should().Be(1);
+        fixture.InvoiceState.CommitCalls.Should().Be(1);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task PendingApproval_same_owner_Warehouse_change_blocks_when_linked_invoice_owner_drifted()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.SupplierId = 51;
+        var linked = LinkedInvoice(51);
+        linked.BuyerOwnerResolutionStatus = InputInvoiceBuyerOwnerResolutionStatus.Resolved;
+        linked.ResolvedBuyerLegalEntityId = 33;
+        var selectedWarehouse = CreateWarehouse(id: 22, legalEntityId: 33);
+        var fixture = CreateFixture(
+            document,
+            warehouse: selectedWarehouse,
+            linkedInvoices: [linked],
+            ownerCandidates: []);
+
+        var action = () => fixture.Service.UpdateHeaderAsync(
+            new UpdateStockDocumentHeaderRequest
+            {
+                StockDocumentId = document.Id,
+                LegalEntityId = 33,
+                WarehouseId = 22,
+                SupplierId = 51
+            });
+
+        await action.Should().ThrowAsync<InputInvoiceOwnerGuardException>();
+        document.WarehouseId.Should().Be(10);
+        linked.BuyerOwnerResolutionStatus.Should().Be(
+            InputInvoiceBuyerOwnerResolutionStatus.NotFound);
+        linked.ResolvedBuyerLegalEntityId.Should().BeNull();
         fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.InvoiceState.RollbackCalls.Should().Be(1);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task PendingApproval_Supplier_change_succeeds_when_receipt_has_no_active_link()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.SupplierId = 51;
+        var fixture = CreateFixture(document);
+
+        await fixture.Service.UpdateHeaderAsync(PendingHeaderRequest(document, supplierId: 52));
+
+        document.SupplierId.Should().Be(52);
+        fixture.Repository.SupplierExistsCalls.Should().Be(1);
+        fixture.Repository.SaveCalls.Should().Be(1);
+        fixture.InvoiceState.LinkedQueryCalls.Should().Be(1);
+        fixture.InvoiceState.CommitCalls.Should().Be(1);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task PendingApproval_same_Supplier_is_allowed_when_receipt_is_linked()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.SupplierId = 51;
+        var fixture = CreateFixture(document, linkedInvoices: [LinkedInvoice(51)]);
+
+        await fixture.Service.UpdateHeaderAsync(PendingHeaderRequest(document, supplierId: 51));
+
+        document.SupplierId.Should().Be(51);
+        fixture.InvoiceState.LinkedQueryCalls.Should().Be(0);
+        fixture.Repository.SupplierExistsCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.InvoiceState.CommitCalls.Should().Be(1);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task PendingApproval_actual_Supplier_change_is_blocked_before_mutation_when_linked()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.SupplierId = 51;
+        var linked = LinkedInvoice(51);
+        var fixture = CreateFixture(document, linkedInvoices: [linked]);
+
+        var action = () => fixture.Service.UpdateHeaderAsync(
+            PendingHeaderRequest(document, supplierId: 52));
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("Phiếu đang liên kết hóa đơn đầu vào. Vui lòng gỡ liên kết hóa đơn trước khi thay đổi nhà cung cấp.");
+        document.SupplierId.Should().Be(51);
+        document.WarehouseId.Should().Be(10);
+        fixture.Repository.SupplierExistsCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.InvoiceState.LinkedQueryCalls.Should().Be(1);
+        fixture.InvoiceState.RollbackCalls.Should().Be(1);
+        fixture.InvoiceState.LinkedInvoices.Should().ContainSingle().Which.Should().BeSameAs(linked);
         fixture.AssertNoPostingCalls();
     }
 
@@ -115,6 +283,40 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             ValidHeaderRequest(document.Id));
 
         await action.Should().ThrowAsync<BusinessRuleException>();
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task Cancelled_receipt_remains_physically_immutable()
+    {
+        var document = CreateDocument(StockDocumentStatus.Cancelled);
+        var fixture = CreateFixture(document);
+
+        var action = () => fixture.Service.UpdateHeaderAsync(
+            PendingHeaderRequest(document, supplierId: 52));
+
+        await action.Should().ThrowAsync<BusinessRuleException>();
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.InvoiceState.BeginCalls.Should().Be(0);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task PendingApproval_purchase_order_receipt_keeps_order_ownership_invariant()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.ReceiptSource = PurchaseReceiptSource.PurchaseOrder;
+        document.PurchaseOrderId = 91;
+        document.SupplierId = 51;
+        var fixture = CreateFixture(document);
+
+        var action = () => fixture.Service.UpdateHeaderAsync(
+            PendingHeaderRequest(document, supplierId: 52));
+
+        await action.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*phiếu nhập tạo từ đơn đặt hàng*");
+        document.SupplierId.Should().Be(51);
         fixture.Repository.SaveCalls.Should().Be(0);
         fixture.AssertNoPostingCalls();
     }
@@ -379,6 +581,17 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     public async Task Direct_manager_return_records_reason_actor_and_time_without_posting()
     {
         var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        var provisional = new StockDocumentProvisionalItem
+        {
+            Id = 901,
+            StoreId = document.StoreId,
+            StockDocumentId = document.Id,
+            NameSnapshot = "Hàng chưa nhận diện",
+            UnitNameSnapshot = "Thùng",
+            Quantity = 2m,
+            Status = StockDocumentProvisionalItemStatus.Unresolved
+        };
+        document.ProvisionalItems.Add(provisional);
         var fixture = CreateFixture(document, currentUserId: 86);
 
         await fixture.Service.RejectAsync(
@@ -390,15 +603,73 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         document.ApprovalNote.Should().Be("Kiểm đếm lại hàng thực nhận");
         document.RevisionResolvedAtUtc.Should().NotBeNull();
         document.RevisionResolvedByUserId.Should().Be(86);
+        document.ProvisionalItems.Should().ContainSingle().Which.Should().BeSameAs(provisional);
+        provisional.Status.Should().Be(StockDocumentProvisionalItemStatus.Unresolved);
+        provisional.Quantity.Should().Be(2m);
         fixture.Repository.SaveCalls.Should().Be(1);
         fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task Direct_manager_return_fails_when_purchase_order_has_another_active_receiving_draft()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.PurchaseOrderId = 91;
+        document.ReceivingSessionState = ReceivingSessionState.Frozen;
+        var fixture = CreateFixture(document);
+        fixture.Repository.OtherActiveReceivingDraftExists = true;
+
+        Func<Task> action = () => fixture.Service.RejectAsync(
+            document.Id,
+            "Kiểm đếm lại",
+            RowVersion(document));
+
+        (await action.Should().ThrowAsync<BusinessRuleException>()).Which.Message
+            .Should().Contain("phiên nhận khác đang hoạt động");
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        document.ReceivingSessionState.Should().Be(ReceivingSessionState.Frozen);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
+    public async Task Purchase_order_identity_is_projected_to_receipt_list_and_detail()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.ReceiptSource = PurchaseReceiptSource.PurchaseOrder;
+        document.PurchaseOrderId = 91;
+        document.PurchaseOrder = new PurchaseOrder
+        {
+            Id = 91,
+            StoreId = document.StoreId,
+            OrderNumber = "PO-20260831-006",
+            Title = "sữa tươi"
+        };
+        var fixture = CreateFixture(document);
+
+        var listItem = (await fixture.Service.GetReceiptListAsync()).Single();
+        var detail = await fixture.Service.GetDetailAsync(document.Id);
+
+        AssertProjectedValue(listItem, "PurchaseOrderTitle", "sữa tươi");
+        AssertProjectedValue(listItem, "PurchaseOrderNumber", "PO-20260831-006");
+        AssertProjectedValue(detail!, "PurchaseOrderTitle", "sữa tươi");
+        detail!.PurchaseOrderNumber.Should().Be("PO-20260831-006");
+
+        static void AssertProjectedValue(object target, string propertyName, string expected)
+        {
+            var property = target.GetType().GetProperty(propertyName);
+            property.Should().NotBeNull($"{propertyName} is required by the manager receipt projection");
+            property!.GetValue(target).Should().Be(expected);
+        }
     }
 
     private static ServiceFixture CreateFixture(
         StockDocument document,
         StockDocumentLine? line = null,
         Warehouse? warehouse = null,
-        int currentUserId = 7)
+        int currentUserId = 7,
+        IReadOnlyList<InputInvoiceHead>? linkedInvoices = null,
+        IReadOnlyList<LegalEntity>? ownerCandidates = null)
     {
         var repository = new RecordingStockDocumentRepository
         {
@@ -406,27 +677,90 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             Line = line
         };
         var postingCalls = new CallCounter();
+        var invoiceState = new InvoiceRepositoryState(linkedInvoices ?? []);
+        var invoiceRepository = CreateProxy<IInputInvoiceRepository>((method, _) =>
+        {
+            switch (method.Name)
+            {
+                case nameof(IInputInvoiceRepository.BeginSupplierResolutionTransactionAsync):
+                    invoiceState.BeginCalls++;
+                    return Task.CompletedTask;
+                case nameof(IInputInvoiceRepository.LockReceiptForInputInvoiceMutationAsync):
+                    invoiceState.LockCalls++;
+                    return Task.FromResult<StockDocument?>(document);
+                case nameof(IInputInvoiceRepository.GetLinkedInvoicesForSupplierResolutionAsync):
+                    invoiceState.LinkedQueryCalls++;
+                    return Task.FromResult(invoiceState.LinkedInvoices);
+                case nameof(IInputInvoiceRepository.CommitSupplierResolutionTransactionAsync):
+                    invoiceState.CommitCalls++;
+                    return Task.CompletedTask;
+                case nameof(IInputInvoiceRepository.RollbackSupplierResolutionTransactionAsync):
+                    invoiceState.RollbackCalls++;
+                    return Task.CompletedTask;
+                default:
+                    throw new NotSupportedException(method.Name);
+            }
+        });
+        var currentWarehouse = CreateWarehouse(document.WarehouseId, legalEntityId: 33);
+        var warehouseRepository = CreateProxy<IWarehouseRepository>((method, args) =>
+        {
+            var requestedId = method.Name switch
+            {
+                nameof(IWarehouseRepository.GetByIdAsync) => (int)args![0]!,
+                nameof(IWarehouseRepository.LockByStoreAndIdAsync) => (int)args![1]!,
+                _ => throw new NotSupportedException(method.Name)
+            };
+            if (warehouse is not null && requestedId == warehouse.Id)
+                return Task.FromResult<Warehouse?>(warehouse);
+            if (requestedId == currentWarehouse.Id)
+                return Task.FromResult<Warehouse?>(currentWarehouse);
+            return Task.FromResult<Warehouse?>(null);
+        });
+        var legalEntityRepository = CreateProxy<ILegalEntityRepository>((method, _) =>
+        {
+            if (method.Name != nameof(ILegalEntityRepository.LockActiveByNormalizedTaxCodeAsync))
+                throw new NotSupportedException(method.Name);
+            IReadOnlyList<LegalEntity> result = ownerCandidates ??
+            [
+                new LegalEntity
+                {
+                    Id = 33, StoreId = 1, Code = "LE-01", Name = "HKD 01",
+                    LegalName = "HKD 01", TaxCode = "0101234567", IsActive = true
+                }
+            ];
+            return Task.FromResult(result);
+        });
+        var supplierResolution = CreateProxy<IInputInvoiceSupplierResolutionService>(
+            (method, _) => throw new NotSupportedException(method.Name));
 
-        var service = new StockDocumentService(
-            repository,
-            Unused<ILegalEntityRepository>(),
-            warehouse is null
-                ? Unused<IWarehouseRepository>()
-                : CreateProxy<IWarehouseRepository>((method, _) =>
-                    method.Name == nameof(IWarehouseRepository.GetByIdAsync)
-                        ? Task.FromResult<Warehouse?>(warehouse)
-                        : throw new NotSupportedException(method.Name)),
-            Unused<IBarcodeLookupService>(),
-            Unused<IInventoryUnitResolver>(),
-            Counted<IInventoryMovementService>(postingCalls),
-            Counted<IInventoryMovementFactory>(postingCalls),
-            Counted<IInventoryRevaluationService>(postingCalls),
-            Unused<IDocumentNumberSequenceRepository>(),
-            new TenantContextStub(),
-            Counted<IInventoryValuationEntryRepository>(postingCalls),
-            new CurrentUserStub(currentUserId));
+        var dependencies = new Dictionary<Type, object?>
+        {
+            [typeof(IStockDocumentRepository)] = repository,
+            [typeof(ILegalEntityRepository)] = legalEntityRepository,
+            [typeof(IWarehouseRepository)] = warehouseRepository,
+            [typeof(IBarcodeLookupService)] = Unused<IBarcodeLookupService>(),
+            [typeof(IInventoryUnitResolver)] = Unused<IInventoryUnitResolver>(),
+            [typeof(IInventoryMovementService)] = Counted<IInventoryMovementService>(postingCalls),
+            [typeof(IInventoryMovementFactory)] = Counted<IInventoryMovementFactory>(postingCalls),
+            [typeof(IInventoryRevaluationService)] = Counted<IInventoryRevaluationService>(postingCalls),
+            [typeof(IDocumentNumberSequenceRepository)] = Unused<IDocumentNumberSequenceRepository>(),
+            [typeof(ITenantContext)] = new TenantContextStub(),
+            [typeof(IInventoryValuationEntryRepository)] = Counted<IInventoryValuationEntryRepository>(postingCalls),
+            [typeof(ICurrentUser)] = new CurrentUserStub(currentUserId),
+            [typeof(IInputInvoiceSupplierResolutionService)] = supplierResolution,
+            [typeof(IInputInvoiceRepository)] = invoiceRepository,
+            [typeof(IInputInvoiceReconciliationService)] = null
+        };
+        var constructor = typeof(StockDocumentService).GetConstructors().Single();
+        var arguments = constructor.GetParameters()
+            .Select(parameter => dependencies.TryGetValue(parameter.ParameterType, out var value)
+                ? value
+                : throw new InvalidOperationException(
+                    $"Unsupported StockDocumentService dependency: {parameter.ParameterType.Name}"))
+            .ToArray();
+        var service = (StockDocumentService)constructor.Invoke(arguments);
 
-        return new ServiceFixture(service, repository, postingCalls);
+        return new ServiceFixture(service, repository, postingCalls, invoiceState);
     }
 
     private static StockDocument CreateDocument(StockDocumentStatus status)
@@ -502,6 +836,31 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             Note = "  Đã kiểm đếm lại  "
         };
 
+    private static UpdateStockDocumentHeaderRequest PendingHeaderRequest(
+        StockDocument document,
+        int? supplierId)
+        => new()
+        {
+            StockDocumentId = document.Id,
+            LegalEntityId = 33,
+            WarehouseId = document.WarehouseId,
+            SupplierId = supplierId,
+            DocumentDate = new DateTime(2030, 1, 2),
+            Note = "must stay locked",
+            ApprovalNote = "must stay locked"
+        };
+
+    private static InputInvoiceHead LinkedInvoice(int supplierId)
+        => new()
+        {
+            Id = 501,
+            StoreId = 1,
+            ResolvedSupplierId = supplierId,
+            InvoiceSeries = "C26MVP",
+            InvoiceNumber = "501",
+            BuyerTaxCode = "0101234567"
+        };
+
     private static string RowVersion(StockDocument document)
         => Convert.ToBase64String(document.RowVersion);
 
@@ -527,7 +886,8 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     private sealed record ServiceFixture(
         StockDocumentService Service,
         RecordingStockDocumentRepository Repository,
-        CallCounter PostingCalls)
+        CallCounter PostingCalls,
+        InvoiceRepositoryState InvoiceState)
     {
         public void AssertNoPostingCalls()
         {
@@ -542,6 +902,17 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     private sealed class CallCounter
     {
         public int Count { get; set; }
+    }
+
+    private sealed class InvoiceRepositoryState(
+        IReadOnlyList<InputInvoiceHead> linkedInvoices)
+    {
+        public IReadOnlyList<InputInvoiceHead> LinkedInvoices { get; } = linkedInvoices;
+        public int BeginCalls { get; set; }
+        public int LockCalls { get; set; }
+        public int LinkedQueryCalls { get; set; }
+        public int CommitCalls { get; set; }
+        public int RollbackCalls { get; set; }
     }
 
     private class DelegateProxy : DispatchProxy
@@ -578,6 +949,9 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         public int CommitTransactionCalls { get; private set; }
         public int RollbackTransactionCalls { get; private set; }
         public int AddPayableCalls { get; private set; }
+        public int SupplierExistsCalls { get; private set; }
+        public bool OtherActiveReceivingDraftExists { get; set; }
+        public Dictionary<int, decimal> LastPurchaseBasePrices { get; } = [];
 
         public Task AddAsync(StockDocument entity, CancellationToken ct = default)
             => throw new NotSupportedException();
@@ -594,7 +968,10 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         public Task<bool> WarehouseExistsAsync(int warehouseId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<bool> SupplierExistsAsync(int supplierId, CancellationToken ct = default)
-            => throw new NotSupportedException();
+        {
+            SupplierExistsCalls++;
+            return Task.FromResult(supplierId > 0);
+        }
         public Task<Supplier?> GetSupplierAsync(int supplierId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<ProductVariant?> GetVariantForStockDocumentAsync(int productVariantId, CancellationToken ct = default)
@@ -610,7 +987,9 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         public Task<Dictionary<int, decimal>> GetLastPurchaseBaseUnitPricesBeforeVatAsync(
             IEnumerable<int> productVariantIds,
             CancellationToken ct = default)
-            => throw new NotSupportedException();
+            => Task.FromResult(productVariantIds.Distinct()
+                .Where(LastPurchaseBasePrices.ContainsKey)
+                .ToDictionary(x => x, x => LastPurchaseBasePrices[x]));
         public Task<bool> LockPurchasePriceHistoryVariantsAsync(
             int storeId,
             IReadOnlyCollection<int> productVariantIds,
@@ -618,6 +997,10 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             => throw new NotSupportedException();
         public Task<PurchaseOrder?> GetPurchaseOrderForReceiptAsync(int purchaseOrderId, CancellationToken ct = default)
             => throw new NotSupportedException();
+        public Task<bool> HasOtherActiveReceivingDraftAsync(
+            int storeId, int purchaseOrderId, int excludeStockDocumentId,
+            CancellationToken ct = default)
+            => Task.FromResult(OtherActiveReceivingDraftExists);
         public Task AddPurchasePayableAsync(PurchasePayable payable, CancellationToken ct = default)
         {
             AddPayableCalls++;
@@ -632,7 +1015,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         public Task AddInventoryTransactionAsync(InventoryTransaction entity, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default)
-            => throw new NotSupportedException();
+            => Task.FromResult(new List<StockDocument> { Document });
         public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
         {
             RemoveCalls++;

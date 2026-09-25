@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.StoreBankAccounts;
+using GaoApp.Application.DTOs.StoreBankAccounts;
 using GaoApp.Application.Interfaces.Repositories.StoreBankAccounts;
 using GaoApp.Application.Interfaces.Services.StoreBankAccounts;
 using GaoApp.Domain.Entities;
@@ -30,10 +30,25 @@ public class StoreBankAccountService : IStoreBankAccountService
         return entity == null ? null : MapToDto(entity);
     }
 
-    public async Task<int> CreateAsync(
+    public Task<int> CreateAsync(StoreBankAccountUpsertDto dto, CancellationToken ct = default)
+        => _repository.ExecuteStoreWriteAsync(() => CreateCoreAsync(dto, ct), ct);
+
+    public Task UpdateAsync(StoreBankAccountUpsertDto dto, CancellationToken ct = default)
+        => _repository.ExecuteStoreWriteAsync(async () => { await UpdateCoreAsync(dto, ct); return true; }, ct);
+
+    public Task ToggleStatusAsync(int id, CancellationToken ct = default)
+        => _repository.ExecuteStoreWriteAsync(async () => { await ToggleStatusCoreAsync(id, ct); return true; }, ct);
+
+    public Task SetDefaultAsync(int id, CancellationToken ct = default)
+        => _repository.ExecuteStoreWriteAsync(async () => { await SetDefaultCoreAsync(id, ct); return true; }, ct);
+
+    private async Task<int> CreateCoreAsync(
         StoreBankAccountUpsertDto dto,
         CancellationToken ct = default)
     {
+        if (dto.IsDefault && !dto.IsActive)
+            throw new InvalidOperationException("Không thể đặt mặc định tài khoản ngân hàng đang tắt.");
+
         var accountNumber = dto.AccountNumber.Trim();
 
         if (await _repository.ExistsAccountNumberAsync(accountNumber, null, ct))
@@ -71,7 +86,7 @@ public class StoreBankAccountService : IStoreBankAccountService
         return entity.Id;
     }
 
-    public async Task UpdateAsync(
+    private async Task UpdateCoreAsync(
         StoreBankAccountUpsertDto dto,
         CancellationToken ct = default)
     {
@@ -86,6 +101,9 @@ public class StoreBankAccountService : IStoreBankAccountService
         {
             throw new InvalidOperationException("Không tìm thấy tài khoản ngân hàng.");
         }
+
+        if (dto.IsDefault && !dto.IsActive)
+            throw new InvalidOperationException("Không thể đặt mặc định tài khoản ngân hàng đang tắt.");
 
         var accountNumber = dto.AccountNumber.Trim();
 
@@ -118,7 +136,7 @@ public class StoreBankAccountService : IStoreBankAccountService
         await _repository.SaveChangesAsync(ct);
     }
 
-    public async Task ToggleStatusAsync(
+    private async Task ToggleStatusCoreAsync(
         int id,
         CancellationToken ct = default)
     {
@@ -130,11 +148,12 @@ public class StoreBankAccountService : IStoreBankAccountService
         }
 
         entity.IsActive = !entity.IsActive;
+        if (!entity.IsActive) entity.IsDefault = false;
 
         await _repository.SaveChangesAsync(ct);
     }
 
-    public async Task SetDefaultAsync(
+    private async Task SetDefaultCoreAsync(
         int id,
         CancellationToken ct = default)
     {

@@ -1,292 +1,511 @@
-﻿@model List<GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto>
+@model List<GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto>
 
 @{
     ViewData["Title"] = "Quản lý menu";
-    var no = 1;
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+
+    var roots = (Model ?? new List<GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto>())
+        .OrderBy(x => x.SortOrder)
+        .ToList();
+    var directChildren = roots.SelectMany(x => x.Children.OrderBy(child => child.SortOrder)).ToList();
+    var visibleItems = roots.Concat(directChildren).ToList();
 }
 
-<div class="container-fluid admin-menu-page">
-
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h3 class="mb-1">Quản lý menu</h3>
-            <div class="text-muted">
-                Admin tự thêm, sửa, xóa menu cha/con. Menu sẽ hiển thị theo quyền được gắn.
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Quản lý menu</h3>
+                <p class="gds-page-header__subtitle mb-0">Sắp xếp cấu trúc điều hướng và kiểm soát menu hiển thị theo quyền của cửa hàng.</p>
+            </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnAdminMenuReload">
+                    <i class="bx bx-refresh"></i><span>Tải lại</span>
+                </button>
+                <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Create" class="btn btn-primary gds-action-button">
+                    <i class="bx bx-plus"></i><span>Thêm menu cha</span>
+                </a>
             </div>
         </div>
+    </div>
+}
 
-        <a asp-area="Admin"
-               asp-controller="AdminMenus"
-               asp-action="Create"
-               class="btn btn-primary">
-            <i class="bi bi-plus-circle me-1"></i>
-            Thêm menu cha
-        </a>
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/admin-menu-index.css" asp-append-version="true" />
+}
+
+<div class="admin-menu-index-page gds-page" data-gao-ui="modern" data-admin-menu-index>
+    <div class="alert admin-menu-index-notice mb-0" role="note">
+        <i class="bx bx-shield-quarter"></i>
+        <div>
+            <strong>Quyền hiển thị vẫn là lớp bảo vệ chính.</strong>
+            <span>Menu chỉ xuất hiện khi đang hoạt động và người dùng có đúng quyền được gắn.</span>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm">
-        <div class="table-responsive">
-            <table class="table align-middle mb-0 admin-menu-table">
-                <thead class="table-light">
+    <section class="row row-cols-2 row-cols-xl-4 g-3 admin-menu-index-kpis" aria-label="Thống kê menu">
+        <div class="col">
+            <button type="button" class="admin-menu-index-kpi is-total" data-admin-menu-kpi="total" aria-pressed="true">
+                <span class="admin-menu-index-kpi__icon"><i class="bx bx-menu-alt-left"></i></span>
+                <span class="admin-menu-index-kpi__content">
+                    <span class="admin-menu-index-kpi__label">Tổng mục menu</span>
+                    <strong id="adminMenuStatTotal">@visibleItems.Count</strong>
+                    <small>Trong cấu trúc hiện tại</small>
+                </span>
+            </button>
+        </div>
+        <div class="col">
+            <button type="button" class="admin-menu-index-kpi is-active" data-admin-menu-kpi="active" aria-pressed="false">
+                <span class="admin-menu-index-kpi__icon"><i class="bx bx-check-circle"></i></span>
+                <span class="admin-menu-index-kpi__content">
+                    <span class="admin-menu-index-kpi__label">Đang hoạt động</span>
+                    <strong id="adminMenuStatActive">@visibleItems.Count(x => x.IsActive)</strong>
+                    <small>Sẵn sàng theo quyền</small>
+                </span>
+            </button>
+        </div>
+        <div class="col">
+            <button type="button" class="admin-menu-index-kpi is-inactive" data-admin-menu-kpi="inactive" aria-pressed="false">
+                <span class="admin-menu-index-kpi__icon"><i class="bx bx-pause-circle"></i></span>
+                <span class="admin-menu-index-kpi__content">
+                    <span class="admin-menu-index-kpi__label">Đã tắt</span>
+                    <strong id="adminMenuStatInactive">@visibleItems.Count(x => !x.IsActive)</strong>
+                    <small>Không hiện trên menu</small>
+                </span>
+            </button>
+        </div>
+        <div class="col">
+            <button type="button" class="admin-menu-index-kpi is-custom" data-admin-menu-kpi="custom" aria-pressed="false">
+                <span class="admin-menu-index-kpi__icon"><i class="bx bx-customize"></i></span>
+                <span class="admin-menu-index-kpi__content">
+                    <span class="admin-menu-index-kpi__label">Menu tùy chỉnh</span>
+                    <strong id="adminMenuStatCustom">@visibleItems.Count(x => !x.IsSystem)</strong>
+                    <small>Do cửa hàng quản lý</small>
+                </span>
+            </button>
+        </div>
+    </section>
+
+    <section class="card admin-menu-index-filter-card">
+        <div class="card-body">
+            <div class="admin-menu-index-filter-heading">
+                <span class="admin-menu-index-filter-heading__icon"><i class="bx bx-filter-alt"></i></span>
+                <div>
+                    <h5>Tra cứu cấu trúc menu</h5>
+                    <p>Tìm nhanh theo tên, đích đến hoặc mã quyền và thu hẹp theo cấp menu.</p>
+                </div>
+                <button type="button" class="btn btn-label-primary admin-menu-index-mobile-filter-button"
+                        data-bs-toggle="offcanvas" data-bs-target="#adminMenuMobileFilterSheet"
+                        aria-controls="adminMenuMobileFilterSheet">
+                    <i class="bx bx-slider-alt"></i><span>Bộ lọc</span>
+                    <span class="badge bg-primary d-none" id="adminMenuActiveFilterCount">0</span>
+                </button>
+            </div>
+
+            <div class="admin-menu-index-search-row">
+                <div class="admin-menu-index-search">
+                    <label for="adminMenuKeyword" class="form-label">Tìm kiếm</label>
+                    <div class="input-group input-group-merge">
+                        <span class="input-group-text"><i class="bx bx-search"></i></span>
+                        <input type="search" class="form-control" id="adminMenuKeyword" autocomplete="off"
+                               placeholder="Tên menu, controller, action, URL hoặc quyền..." />
+                        <button type="button" class="btn btn-label-secondary d-none" id="btnAdminMenuClearSearch" aria-label="Xóa từ khóa">
+                            <i class="bx bx-x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="admin-menu-index-desktop-filters">
+                    <div>
+                        <label for="adminMenuLevel" class="form-label">Cấp menu</label>
+                        <select class="form-select" id="adminMenuLevel">
+                            <option value="all">Tất cả cấp</option><option value="parent">Menu cha</option><option value="child">Menu con</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="adminMenuType" class="form-label">Phân loại</label>
+                        <select class="form-select" id="adminMenuType">
+                            <option value="all">Tất cả loại</option><option value="system">Hệ thống</option><option value="custom">Tùy chỉnh</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="adminMenuLifecycle" class="form-label">Trạng thái</label>
+                        <select class="form-select" id="adminMenuLifecycle">
+                            <option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Đã tắt</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="adminMenuPageSize" class="form-label">Số dòng / trang</label>
+                        <select class="form-select" id="adminMenuPageSize">
+                            <option value="10">10</option><option value="20">20</option><option value="50">50</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-label-secondary d-none" id="btnAdminMenuReset">
+                <i class="bx bx-reset"></i><span>Đặt lại bộ lọc</span>
+            </button>
+        </div>
+    </section>
+
+    <section class="card admin-menu-index-results" id="adminMenuResults" aria-live="polite">
+        <div class="admin-menu-index-results__header">
+            <div>
+                <h5>Danh sách menu</h5>
+                <p>Nhấp đúp một dòng hoặc dùng biểu tượng mắt để xem nhanh cấu hình.</p>
+            </div>
+            <span class="admin-menu-index-scope-badge"><i class="bx bx-store-alt"></i>Phạm vi cửa hàng hiện tại</span>
+        </div>
+
+        <div class="admin-menu-index-desktop-list table-responsive" id="adminMenuDesktopList">
+            <table class="table align-middle mb-0 admin-menu-index-table">
+                <thead>
                     <tr>
-                        <th style="width:70px;">#</th>
-                        <th>Tên menu</th>
-                        <th>Controller</th>
-                        <th>Action</th>
-                        <th>Permission</th>
-                        <th class="text-center">Thứ tự</th>
-                        <th class="text-center">Loại</th>
-                        <th class="text-center">Trạng thái</th>
-                        <th style="width:300px;">Thao tác</th>
+                        <th>Menu</th><th>Đích đến</th><th>Quyền hiển thị</th>
+                        <th class="text-center">Thứ tự</th><th>Phân loại / trạng thái</th><th class="text-end">Thao tác</th>
                     </tr>
                 </thead>
-
                 <tbody>
-                    @if (Model == null || !Model.Any())
+                    @foreach (var parent in roots)
                     {
-                        <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
-                                Chưa có menu. Bấm “Thêm menu cha” để tạo menu đầu tiên.
+                        var parentDestination = GetDestination(parent);
+                        var parentPermission = string.IsNullOrWhiteSpace(parent.PermissionCode) ? "Không yêu cầu quyền" : parent.PermissionCode;
+                        var parentType = parent.IsSystem ? "Hệ thống" : "Tùy chỉnh";
+                        var parentLifecycle = parent.IsActive ? "Đang hoạt động" : "Đã tắt";
+                        var parentHasChildren = parent.Children.Any();
+
+                        <tr class="admin-menu-index-row is-parent" data-admin-menu-item
+                            data-menu-key="@parent.Id" data-menu-parent-key="" data-menu-level="parent"
+                            data-menu-type="@(parent.IsSystem ? "system" : "custom")"
+                            data-menu-lifecycle="@(parent.IsActive ? "active" : "inactive")"
+                            data-menu-title="@parent.Title" data-menu-parent="Menu gốc"
+                            data-menu-destination="@parentDestination" data-menu-permission="@parentPermission"
+                            data-menu-sort-order="@parent.SortOrder" data-menu-type-label="@parentType"
+                            data-menu-lifecycle-label="@parentLifecycle" data-menu-child-count="@parent.Children.Count"
+                            data-menu-search="@($"{parent.Title} {parent.Controller} {parent.Action} {parent.Url} {parent.PermissionCode}")">
+                            <td>
+                                <div class="admin-menu-index-identity">
+                                    <button type="button" class="admin-menu-index-collapse" data-admin-menu-collapse="@parent.Id"
+                                            aria-expanded="true" aria-label="Thu gọn hoặc mở rộng @parent.Title"
+                                            @(parentHasChildren ? null : "disabled")>
+                                        <i class="bx @(parentHasChildren ? "bx-chevron-down" : "bx-minus")"></i>
+                                    </button>
+                                    <span class="admin-menu-index-icon"><i class="icon-base @(parent.Icon ?? "bx bx-folder")"></i></span>
+                                    <div><strong>@parent.Title</strong><span>Menu cha · @parent.Children.Count menu con</span></div>
+                                </div>
                             </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        foreach (var parent in Model.OrderBy(x => x.SortOrder))
-                        {
-                            <tr class="menu-parent-row">
-                                <td>@no</td>
-
-                                <td>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <i class="icon-base @(parent.Icon ?? "bx bx-folder") text-primary"></i>
-                                        <div>
-                                            <div class="fw-bold">@parent.Title</div>
-                                            <div class="small text-muted">Menu cha</div>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                <td>@(parent.Controller ?? "-")</td>
-                                <td>@(parent.Action ?? "-")</td>
-
-                                <td>
-                                    @if (!string.IsNullOrWhiteSpace(parent.PermissionCode))
-                                    {
-                                        <code>@parent.PermissionCode</code>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted small">Không gắn</span>
-                                    }
-                                </td>
-
-                                <td class="text-center">@parent.SortOrder</td>
-
-                                <td class="text-center">
+                            <td><span class="admin-menu-index-route" title="@parentDestination">@parentDestination</span></td>
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(parent.PermissionCode))
+                                {
+                                    <span class="admin-menu-index-permission is-open"><i class="bx bx-info-circle"></i>Không yêu cầu quyền</span>
+                                }
+                                else
+                                {
+                                    <code class="admin-menu-index-permission">@parent.PermissionCode</code>
+                                }
+                            </td>
+                            <td class="text-center"><span class="admin-menu-index-order">@parent.SortOrder</span></td>
+                            <td>
+                                <div class="admin-menu-index-badges">
+                                    <span class="admin-menu-index-type @(parent.IsSystem ? "is-system" : "is-custom")">
+                                        <i class="bx @(parent.IsSystem ? "bx-lock-alt" : "bx-customize")"></i>@parentType
+                                    </span>
+                                    <span class="admin-menu-index-status @(parent.IsActive ? "is-active" : "is-inactive")">
+                                        <i class="bx @(parent.IsActive ? "bx-check-circle" : "bx-pause-circle")"></i>@parentLifecycle
+                                    </span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="admin-menu-index-actions justify-content-end">
+                                    <button type="button" class="btn admin-menu-index-action btn-label-secondary" data-admin-menu-quick-view title="Xem nhanh">
+                                        <i class="bx bx-show"></i><span class="visually-hidden">Xem nhanh</span>
+                                    </button>
+                                    <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Create" asp-route-parentId="@parent.Id"
+                                       class="btn admin-menu-index-action btn-label-success" title="Thêm menu con">
+                                        <i class="bx bx-subdirectory-right"></i><span class="visually-hidden">Thêm con</span>
+                                    </a>
+                                    <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Edit" asp-route-id="@parent.Id"
+                                       class="btn admin-menu-index-action btn-label-primary" title="Sửa menu">
+                                        <i class="bx bx-edit-alt"></i><span class="visually-hidden">Sửa</span>
+                                    </a>
                                     @if (parent.IsSystem)
                                     {
-                                        <span class="badge bg-warning-subtle text-warning">Hệ thống</span>
+                                        <span class="admin-menu-index-lock" data-delete-locked title="Menu hệ thống được bảo vệ"><i class="bx bx-lock-alt"></i><span>Hệ thống</span></span>
+                                    }
+                                    else if (parentHasChildren)
+                                    {
+                                        <span class="admin-menu-index-lock" data-delete-locked title="Xóa menu con trước"><i class="bx bx-git-branch"></i><span>Có menu con</span></span>
                                     }
                                     else
                                     {
-                                        <span class="badge bg-info-subtle text-info">Tùy chỉnh</span>
-                                    }
-                                </td>
-
-                                <td class="text-center">
-                                    @if (parent.IsActive)
-                                    {
-                                        <span class="badge bg-success-subtle text-success">Hoạt động</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary-subtle text-secondary">Đã tắt</span>
-                                    }
-                                </td>
-
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        <a asp-area="Admin"
-                                               asp-controller="AdminMenus"
-                                               asp-action="Create"
-                                               asp-route-parentId="@parent.Id"
-                                               class="btn btn-sm btn-outline-success">
-                                            Thêm con
-                                        </a>
-
-                                        <a asp-area="Admin"
-                                               asp-controller="AdminMenus"
-                                               asp-action="Edit"
-                                               asp-route-id="@parent.Id"
-                                               class="btn btn-sm btn-outline-primary">
-                                            Sửa
-                                        </a>
-
-                                        <form asp-area="Admin"
-                                              asp-controller="AdminMenus"
-                                              asp-action="Delete"
-                                              asp-route-id="@parent.Id"
-                                              method="post"
-                                              class="d-inline js-delete-menu">
+                                        <form asp-area="Admin" asp-controller="AdminMenus" asp-action="Delete" asp-route-id="@parent.Id"
+                                              method="post" data-admin-menu-delete-form data-menu-delete-title="@parent.Title">
                                             @Html.AntiForgeryToken()
-
-                                            <button type="submit"
-                                                    class="btn btn-sm btn-outline-danger">
-                                                Xóa
+                                            <button type="button" class="btn admin-menu-index-action btn-label-danger" data-admin-menu-delete-trigger title="Xóa menu">
+                                                <i class="bx bx-trash"></i><span class="visually-hidden">Xóa</span>
                                             </button>
                                         </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+
+                        @foreach (var child in parent.Children.OrderBy(x => x.SortOrder))
+                        {
+                            var childDestination = GetDestination(child);
+                            var childPermission = string.IsNullOrWhiteSpace(child.PermissionCode) ? "Không yêu cầu quyền" : child.PermissionCode;
+                            var childType = child.IsSystem ? "Hệ thống" : "Tùy chỉnh";
+                            var childLifecycle = child.IsActive ? "Đang hoạt động" : "Đã tắt";
+                            var childHasChildren = child.Children.Any();
+
+                            <tr class="admin-menu-index-row is-child" data-admin-menu-item
+                                data-menu-key="@child.Id" data-menu-parent-key="@parent.Id" data-menu-level="child"
+                                data-menu-type="@(child.IsSystem ? "system" : "custom")"
+                                data-menu-lifecycle="@(child.IsActive ? "active" : "inactive")"
+                                data-menu-title="@child.Title" data-menu-parent="@parent.Title"
+                                data-menu-destination="@childDestination" data-menu-permission="@childPermission"
+                                data-menu-sort-order="@child.SortOrder" data-menu-type-label="@childType"
+                                data-menu-lifecycle-label="@childLifecycle" data-menu-child-count="@child.Children.Count"
+                                data-menu-search="@($"{child.Title} {child.Controller} {child.Action} {child.Url} {child.PermissionCode}")">
+                                <td>
+                                    <div class="admin-menu-index-identity is-child">
+                                        <span class="admin-menu-index-tree-line"><i class="bx bx-subdirectory-right"></i></span>
+                                        <span class="admin-menu-index-icon"><i class="icon-base @(child.Icon ?? "bx bx-radio-circle")"></i></span>
+                                        <div><strong>@child.Title</strong><span>Menu con của @parent.Title</span></div>
+                                    </div>
+                                </td>
+                                <td><span class="admin-menu-index-route" title="@childDestination">@childDestination</span></td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(child.PermissionCode))
+                                    {
+                                        <span class="admin-menu-index-permission is-open"><i class="bx bx-info-circle"></i>Không yêu cầu quyền</span>
+                                    }
+                                    else
+                                    {
+                                        <code class="admin-menu-index-permission">@child.PermissionCode</code>
+                                    }
+                                </td>
+                                <td class="text-center"><span class="admin-menu-index-order">@child.SortOrder</span></td>
+                                <td>
+                                    <div class="admin-menu-index-badges">
+                                        <span class="admin-menu-index-type @(child.IsSystem ? "is-system" : "is-custom")">
+                                            <i class="bx @(child.IsSystem ? "bx-lock-alt" : "bx-customize")"></i>@childType
+                                        </span>
+                                        <span class="admin-menu-index-status @(child.IsActive ? "is-active" : "is-inactive")">
+                                            <i class="bx @(child.IsActive ? "bx-check-circle" : "bx-pause-circle")"></i>@childLifecycle
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="admin-menu-index-actions justify-content-end">
+                                        <button type="button" class="btn admin-menu-index-action btn-label-secondary" data-admin-menu-quick-view title="Xem nhanh"><i class="bx bx-show"></i><span class="visually-hidden">Xem nhanh</span></button>
+                                        <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Create" asp-route-parentId="@child.Id" class="btn admin-menu-index-action btn-label-success" title="Thêm menu con"><i class="bx bx-subdirectory-right"></i><span class="visually-hidden">Thêm con</span></a>
+                                        <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Edit" asp-route-id="@child.Id" class="btn admin-menu-index-action btn-label-primary" title="Sửa menu"><i class="bx bx-edit-alt"></i><span class="visually-hidden">Sửa</span></a>
+                                        @if (child.IsSystem)
+                                        {
+                                            <span class="admin-menu-index-lock" data-delete-locked title="Menu hệ thống được bảo vệ"><i class="bx bx-lock-alt"></i><span>Hệ thống</span></span>
+                                        }
+                                        else if (childHasChildren)
+                                        {
+                                            <span class="admin-menu-index-lock" data-delete-locked title="Xóa menu con trước"><i class="bx bx-git-branch"></i><span>Có menu con</span></span>
+                                        }
+                                        else
+                                        {
+                                            <form asp-area="Admin" asp-controller="AdminMenus" asp-action="Delete" asp-route-id="@child.Id"
+                                                  method="post" data-admin-menu-delete-form data-menu-delete-title="@child.Title">
+                                                @Html.AntiForgeryToken()
+                                                <button type="button" class="btn admin-menu-index-action btn-label-danger" data-admin-menu-delete-trigger title="Xóa menu"><i class="bx bx-trash"></i><span class="visually-hidden">Xóa</span></button>
+                                            </form>
+                                        }
                                     </div>
                                 </td>
                             </tr>
-
-                            no++;
-
-                            if (parent.Children != null && parent.Children.Any())
-                            {
-                                foreach (var child in parent.Children.OrderBy(x => x.SortOrder))
-                                {
-                                    <tr class="menu-child-row">
-                                        <td>@no</td>
-
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2 ps-4">
-                                                <span class="tree-line">└──</span>
-                                                <i class="icon-base @(child.Icon ?? "bx bx-radio-circle") text-muted"></i>
-                                                <div>
-                                                    <div class="fw-semibold">@child.Title</div>
-                                                    <div class="small text-muted">Menu con của: @parent.Title</div>
-                                                </div>
-                                            </div>
-                                        </td>
-
-                                        <td>@(child.Controller ?? "-")</td>
-                                        <td>@(child.Action ?? "-")</td>
-
-                                        <td>
-                                            @if (!string.IsNullOrWhiteSpace(child.PermissionCode))
-                                            {
-                                                <code>@child.PermissionCode</code>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted small">Không gắn</span>
-                                            }
-                                        </td>
-
-                                        <td class="text-center">@child.SortOrder</td>
-
-                                        <td class="text-center">
-                                            @if (child.IsSystem)
-                                            {
-                                                <span class="badge bg-warning-subtle text-warning">Hệ thống</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-info-subtle text-info">Tùy chỉnh</span>
-                                            }
-                                        </td>
-
-                                        <td class="text-center">
-                                            @if (child.IsActive)
-                                            {
-                                                <span class="badge bg-success-subtle text-success">Hoạt động</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge bg-secondary-subtle text-secondary">Đã tắt</span>
-                                            }
-                                        </td>
-
-                                        <td>
-                                            <div class="d-flex flex-wrap gap-2">
-                                                <a asp-area="Admin"
-                                                       asp-controller="AdminMenus"
-                                                       asp-action="Create"
-                                                       asp-route-parentId="@child.Id"
-                                                       class="btn btn-sm btn-outline-success">
-                                                    Thêm con
-                                                </a>
-
-                                                <a asp-area="Admin"
-                                                       asp-controller="AdminMenus"
-                                                       asp-action="Edit"
-                                                       asp-route-id="@child.Id"
-                                                       class="btn btn-sm btn-outline-primary">
-                                                    Sửa
-                                                </a>
-
-                                                <form asp-area="Admin"
-                                                      asp-controller="AdminMenus"
-                                                      asp-action="Delete"
-                                                      asp-route-id="@child.Id"
-                                                      method="post"
-                                                      class="d-inline js-delete-menu">
-                                                    @Html.AntiForgeryToken()
-
-                                                    <button type="submit"
-                                                            class="btn btn-sm btn-outline-danger">
-                                                        Xóa
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
-
-                                    no++;
-                                }
-                            }
                         }
                     }
                 </tbody>
             </table>
         </div>
+
+        <div class="admin-menu-index-mobile-list" id="adminMenuMobileList">
+            @foreach (var parent in roots)
+            {
+                var parentDestination = GetDestination(parent);
+                var parentPermission = string.IsNullOrWhiteSpace(parent.PermissionCode) ? "Không yêu cầu quyền" : parent.PermissionCode;
+                var parentType = parent.IsSystem ? "Hệ thống" : "Tùy chỉnh";
+                var parentLifecycle = parent.IsActive ? "Đang hoạt động" : "Đã tắt";
+                var parentHasChildren = parent.Children.Any();
+
+                <article class="admin-menu-index-mobile-card is-parent" data-admin-menu-mobile-item
+                         data-menu-key="@parent.Id" data-menu-parent-key="">
+                    <div class="admin-menu-index-mobile-card__header">
+                        <span class="admin-menu-index-icon"><i class="icon-base @(parent.Icon ?? "bx bx-folder")"></i></span>
+                        <div class="admin-menu-index-mobile-card__title">
+                            <strong>@parent.Title</strong><span>Menu cha · @parent.Children.Count menu con</span>
+                        </div>
+                        <button type="button" class="admin-menu-index-collapse" data-admin-menu-collapse="@parent.Id"
+                                aria-expanded="true" @(parentHasChildren ? null : "disabled")>
+                            <i class="bx @(parentHasChildren ? "bx-chevron-down" : "bx-minus")"></i>
+                        </button>
+                    </div>
+                    <div class="admin-menu-index-mobile-card__badges">
+                        <span class="admin-menu-index-type @(parent.IsSystem ? "is-system" : "is-custom")"><i class="bx @(parent.IsSystem ? "bx-lock-alt" : "bx-customize")"></i>@parentType</span>
+                        <span class="admin-menu-index-status @(parent.IsActive ? "is-active" : "is-inactive")"><i class="bx @(parent.IsActive ? "bx-check-circle" : "bx-pause-circle")"></i>@parentLifecycle</span>
+                    </div>
+                    <dl class="admin-menu-index-mobile-card__details">
+                        <div><dt>Đích đến</dt><dd>@parentDestination</dd></div>
+                        <div><dt>Quyền</dt><dd>@parentPermission</dd></div>
+                        <div><dt>Thứ tự</dt><dd>@parent.SortOrder</dd></div>
+                    </dl>
+                    <div class="admin-menu-index-mobile-card__actions">
+                        <button type="button" class="btn admin-menu-index-action btn-label-secondary" data-admin-menu-quick-view><i class="bx bx-show"></i><span>Xem</span></button>
+                        <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Create" asp-route-parentId="@parent.Id" class="btn admin-menu-index-action btn-label-success"><i class="bx bx-subdirectory-right"></i><span>Thêm con</span></a>
+                        <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Edit" asp-route-id="@parent.Id" class="btn admin-menu-index-action btn-label-primary"><i class="bx bx-edit-alt"></i><span>Sửa</span></a>
+                        @if (parent.IsSystem)
+                        {
+                            <span class="admin-menu-index-lock" data-delete-locked><i class="bx bx-lock-alt"></i><span>Hệ thống</span></span>
+                        }
+                        else if (parentHasChildren)
+                        {
+                            <span class="admin-menu-index-lock" data-delete-locked><i class="bx bx-git-branch"></i><span>Có menu con</span></span>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn admin-menu-index-action btn-label-danger" data-admin-menu-mobile-delete="@parent.Id"><i class="bx bx-trash"></i><span>Xóa</span></button>
+                        }
+                    </div>
+                </article>
+
+                @foreach (var child in parent.Children.OrderBy(x => x.SortOrder))
+                {
+                    var childDestination = GetDestination(child);
+                    var childPermission = string.IsNullOrWhiteSpace(child.PermissionCode) ? "Không yêu cầu quyền" : child.PermissionCode;
+                    var childType = child.IsSystem ? "Hệ thống" : "Tùy chỉnh";
+                    var childLifecycle = child.IsActive ? "Đang hoạt động" : "Đã tắt";
+                    var childHasChildren = child.Children.Any();
+
+                    <article class="admin-menu-index-mobile-card is-child" data-admin-menu-mobile-item
+                             data-menu-key="@child.Id" data-menu-parent-key="@parent.Id">
+                        <div class="admin-menu-index-mobile-card__header">
+                            <span class="admin-menu-index-tree-line"><i class="bx bx-subdirectory-right"></i></span>
+                            <span class="admin-menu-index-icon"><i class="icon-base @(child.Icon ?? "bx bx-radio-circle")"></i></span>
+                            <div class="admin-menu-index-mobile-card__title"><strong>@child.Title</strong><span>Con của @parent.Title</span></div>
+                        </div>
+                        <div class="admin-menu-index-mobile-card__badges">
+                            <span class="admin-menu-index-type @(child.IsSystem ? "is-system" : "is-custom")"><i class="bx @(child.IsSystem ? "bx-lock-alt" : "bx-customize")"></i>@childType</span>
+                            <span class="admin-menu-index-status @(child.IsActive ? "is-active" : "is-inactive")"><i class="bx @(child.IsActive ? "bx-check-circle" : "bx-pause-circle")"></i>@childLifecycle</span>
+                        </div>
+                        <dl class="admin-menu-index-mobile-card__details">
+                            <div><dt>Đích đến</dt><dd>@childDestination</dd></div>
+                            <div><dt>Quyền</dt><dd>@childPermission</dd></div>
+                            <div><dt>Thứ tự</dt><dd>@child.SortOrder</dd></div>
+                        </dl>
+                        <div class="admin-menu-index-mobile-card__actions">
+                            <button type="button" class="btn admin-menu-index-action btn-label-secondary" data-admin-menu-quick-view><i class="bx bx-show"></i><span>Xem</span></button>
+                            <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Create" asp-route-parentId="@child.Id" class="btn admin-menu-index-action btn-label-success"><i class="bx bx-subdirectory-right"></i><span>Thêm con</span></a>
+                            <a asp-area="Admin" asp-controller="AdminMenus" asp-action="Edit" asp-route-id="@child.Id" class="btn admin-menu-index-action btn-label-primary"><i class="bx bx-edit-alt"></i><span>Sửa</span></a>
+                            @if (child.IsSystem)
+                            {
+                                <span class="admin-menu-index-lock" data-delete-locked><i class="bx bx-lock-alt"></i><span>Hệ thống</span></span>
+                            }
+                            else if (childHasChildren)
+                            {
+                                <span class="admin-menu-index-lock" data-delete-locked><i class="bx bx-git-branch"></i><span>Có menu con</span></span>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn admin-menu-index-action btn-label-danger" data-admin-menu-mobile-delete="@child.Id"><i class="bx bx-trash"></i><span>Xóa</span></button>
+                            }
+                        </div>
+                    </article>
+                }
+            }
+        </div>
+
+        <div class="admin-menu-index-empty d-none" id="adminMenuEmpty">
+            <i class="bx bx-menu-alt-left"></i><strong>Không có menu phù hợp</strong><span>Hãy đổi từ khóa hoặc điều kiện lọc.</span>
+        </div>
+        <div class="admin-menu-index-pagination">
+            <span id="adminMenuPagingInfo">0 kết quả</span>
+            <nav aria-label="Phân trang menu"><ul class="pagination mb-0" id="adminMenuPageNumbers"></ul></nav>
+        </div>
+    </section>
+</div>
+
+<div class="offcanvas offcanvas-bottom admin-menu-index-filter-sheet" tabindex="-1"
+     id="adminMenuMobileFilterSheet" aria-labelledby="adminMenuMobileFilterTitle">
+    <div class="offcanvas-header">
+        <div><h5 class="offcanvas-title" id="adminMenuMobileFilterTitle">Bộ lọc menu</h5><p class="mb-0">Thu hẹp danh sách mà không thay đổi dữ liệu.</p></div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div class="admin-menu-index-mobile-filter-grid">
+            <div><label for="adminMenuMobileLevel" class="form-label">Cấp menu</label><select class="form-select" id="adminMenuMobileLevel"><option value="all">Tất cả cấp</option><option value="parent">Menu cha</option><option value="child">Menu con</option></select></div>
+            <div><label for="adminMenuMobileType" class="form-label">Phân loại</label><select class="form-select" id="adminMenuMobileType"><option value="all">Tất cả loại</option><option value="system">Hệ thống</option><option value="custom">Tùy chỉnh</option></select></div>
+            <div><label for="adminMenuMobileLifecycle" class="form-label">Trạng thái</label><select class="form-select" id="adminMenuMobileLifecycle"><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Đã tắt</option></select></div>
+            <div><label for="adminMenuMobilePageSize" class="form-label">Số dòng / trang</label><select class="form-select" id="adminMenuMobilePageSize"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></div>
+        </div>
+    </div>
+    <div class="offcanvas-footer admin-menu-index-sheet-actions">
+        <button type="button" class="btn btn-label-secondary" id="btnAdminMenuMobileClear">Xóa lọc</button>
+        <button type="button" class="btn btn-primary" id="btnAdminMenuMobileApply">Áp dụng</button>
     </div>
 </div>
 
-<style>
-    .admin-menu-page .card {
-        border-radius: 18px;
-    }
+<div class="modal fade" id="adminMenuQuickView" tabindex="-1" aria-labelledby="adminMenuQuickViewTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-menu-index-quick-sheet">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div><span class="admin-menu-index-dialog-eyebrow">Xem nhanh menu</span><h5 class="modal-title" id="adminMenuQuickViewTitle">—</h5></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-menu-index-quick-grid">
+                    <div><span>Vị trí</span><strong id="adminMenuQuickParent">—</strong></div>
+                    <div><span>Trạng thái</span><strong id="adminMenuQuickLifecycle">—</strong></div>
+                    <div class="is-wide"><span>Đích đến</span><strong id="adminMenuQuickDestination">—</strong></div>
+                    <div class="is-wide"><span>Quyền hiển thị</span><strong id="adminMenuQuickPermission">—</strong></div>
+                    <div><span>Phân loại</span><strong id="adminMenuQuickType">—</strong></div>
+                    <div><span>Thứ tự</span><strong id="adminMenuQuickOrder">—</strong></div>
+                    <div class="is-wide"><span>Số menu con trực tiếp</span><strong id="adminMenuQuickChildren">0</strong></div>
+                </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Đã hiểu</button></div>
+        </div>
+    </div>
+</div>
 
-    .admin-menu-table thead th {
-        white-space: nowrap;
-        font-size: .78rem;
-        text-transform: uppercase;
-        color: #475569;
-    }
-
-    .admin-menu-table tbody td {
-        vertical-align: middle;
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
-
-    .menu-child-row {
-        background: #fbfdff;
-    }
-
-    .tree-line {
-        color: #94a3b8;
-        font-weight: 700;
-    }
-
-    .admin-menu-page code {
-        color: #db2777;
-        background: #fdf2f8;
-        padding: .2rem .45rem;
-        border-radius: .5rem;
-        font-size: .78rem;
-    }
-</style>
+<div class="modal fade" id="adminMenuDeleteConfirmation" tabindex="-1" aria-labelledby="adminMenuDeleteTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered admin-menu-index-confirm-sheet">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <span class="admin-menu-index-confirm-icon"><i class="bx bx-trash"></i></span>
+                <h5 id="adminMenuDeleteTitle">Xóa menu này?</h5>
+                <p>Menu <strong id="adminMenuDeleteName">—</strong> sẽ không còn xuất hiện trong cấu trúc. Thao tác vẫn tuân theo kiểm tra của hệ thống.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="btnAdminMenuConfirmDelete">Xóa menu</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
-    <script>
-        document.querySelectorAll('.js-delete-menu').forEach(function (form) {
-            form.addEventListener('submit', function (e) {
-                const ok = confirm('Bạn có chắc chắn muốn xóa menu này không?');
-                if (!ok) e.preventDefault();
-            });
-        });
-    </script>
+    <script src="~/Admin/js/admin-menu-index.js" asp-append-version="true"></script>
+}
+
+@functions {
+    private static string GetDestination(GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Url))
+            return item.Url;
+
+        var area = string.IsNullOrWhiteSpace(item.Area) ? "Admin" : item.Area;
+        var controller = string.IsNullOrWhiteSpace(item.Controller) ? "—" : item.Controller;
+        var action = string.IsNullOrWhiteSpace(item.Action) ? "Index" : item.Action;
+        return $"{area} / {controller} / {action}";
+    }
 }

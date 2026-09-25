@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Brands;
+using GaoApp.Application.DTOs.Brands;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Mappings.Brands;
@@ -14,7 +14,8 @@ public static class BrandMappings
             Id = source.Id,
             Code = source.Code,
             Name = source.Name,
-            Status = source.IsActive
+            Status = source.IsActive,
+            CreatedAtUtc = source.CreatedAtUtc
         };
     }
 

@@ -1,348 +1,100 @@
-﻿@{
-    ViewData["Title"] = "Màn hình khách hàng";
+@using GaoApp.Web.Services.Printing
+@{
     Layout = null;
-
-    var currentStoreId = User.FindFirst("store_id")?.Value ?? "";
-    var currentTerminalId = User.FindFirst("terminal_id")?.Value ?? "";
-    var currentTerminalName = User.FindFirst("terminal_name")?.Value ?? "";
-    var currentTerminalCode = User.FindFirst("terminal_code")?.Value ?? "";
+    var store = ViewBag.CustomerDisplayStore as ReceiptStoreInfo;
+    var display = ViewBag.CustomerDisplayInfo as GaoApp.Web.Services.CustomerDisplayInfo;
+    var storeName = store?.StoreName ?? User.FindFirst("store_name")?.Value ?? "Cửa hàng";
+    var terminalName = display?.TerminalName ?? "Quầy thanh toán";
 }
-
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="utf-8" />
-    <title>Màn hình khách hàng</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  
+    <meta name="theme-color" content="#173c32" />
+    <title>@storeName · Màn hình khách hàng</title>
     <link rel="stylesheet" href="~/Admin/css/pos/pos-customer-display.css" asp-append-version="true" />
 </head>
-
 <body>
-    <div id="customerDisplayApp"
-         class="cd-shell"
-         data-store-id="@currentStoreId"
-         data-terminal-id="@currentTerminalId"
-         data-terminal-name="@currentTerminalName"
-         data-terminal-code="@currentTerminalCode">
-
+    <svg class="cd-symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+        <symbol id="cd-icon-bag" viewBox="0 0 24 24"><path d="M5 7h14l1 14H4L5 7Z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/></symbol>
+        <symbol id="cd-icon-leaf" viewBox="0 0 24 24"><path d="M20 3C6 2 1 10 6 17c6 6 15 0 14-14Z"/><path d="m5 21 11-12M9 17v-6"/></symbol>
+        <symbol id="cd-icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+        <symbol id="cd-icon-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+        <symbol id="cd-icon-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+        <symbol id="cd-icon-wifi" viewBox="0 0 24 24"><path d="M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0"/><circle cx="12" cy="20" r=".6"/></symbol>
+    </svg>
+    <div id="customerDisplayApp" class="cd-shell" data-view="idle"
+         data-store-id="@(User.FindFirst("store_id")?.Value)"
+         data-terminal-id="@(User.FindFirst("terminal_id")?.Value)"
+         data-terminal-name="@terminalName" data-store-name="@storeName"
+         data-terminal-code="@(User.FindFirst("terminal_code")?.Value)">
         <header class="cd-header">
-          
-
-            <div class="cd-status">
-                <span class="cd-status-dot"></span>
-                Đang chờ đơn hàng
+            <div class="cd-brand"><span class="cd-brand-mark"><svg><use href="#cd-icon-bag" /></svg></span>
+                <div class="cd-brand-name">@storeName</div>
+            </div>
+            <div class="cd-staff" aria-label="Nhân viên phục vụ tại quầy">
+                <span class="cd-staff-icon"><svg><use href="#cd-icon-person" /></svg></span>
+                <div class="cd-staff-copy"><span class="cd-staff-label">Nhân viên phục vụ</span>
+                    <strong id="cdCashierName">@display?.CashierName</strong>
+                    <span id="cdTerminalName" class="cd-staff-terminal">@terminalName</span>
+                </div>
+            </div>
+            <div class="cd-header-right">
+                <div class="cd-clock"><time id="cdIdleTime">--:--</time><span id="cdIdleDate"></span></div>
+                <button id="cdFullscreen" class="cd-fullscreen" type="button" aria-label="Bật toàn màn hình" title="Toàn màn hình"><svg><use href="#cd-icon-expand" /></svg></button>
             </div>
         </header>
-        <section id="cdIdleScreen"
-                 class="cd-idle-screen d-none">
-
-            <div class="cd-idle-bg"></div>
-
-            <div class="cd-idle-content">
-
-                <div class="cd-idle-brand">
-                    GaoMart
+        <div class="cd-workspace">
+            <section id="cdIdleScreen" class="cd-idle-screen" aria-label="Chào mừng quý khách">
+                <div class="cd-welcome">
+                    <h1>Kính chào<br />quý khách.</h1>
                 </div>
-
-                <div class="cd-idle-sub">
-                    Hàng tốt mỗi ngày • Thanh toán nhanh chóng
-                </div>
-
-                <div class="cd-idle-clock">
-
-                    <div id="cdIdleTime"
-                         class="cd-idle-time">
-                        00:00
-                    </div>
-
-                    <div id="cdIdleDate"
-                         class="cd-idle-date">
-                        ---
-                    </div>
-
-                </div>
-
-                <div id="cdIdleMediaStage" class="cd-idle-media-stage">
-                    <div class="cd-idle-media-fallback">
-                        <div class="cd-idle-promo-title">GaoMart</div>
-                        <div class="cd-idle-promo-desc">
-                            Hàng tốt mỗi ngày • Thanh toán nhanh chóng
-                        </div>
-                    </div>
-                </div>
-
-                <div class="cd-idle-bottom">
-
-                    <div class="cd-idle-qr-box">
-
-                        <div class="cd-idle-qr-placeholder">
-                            QR
-                        </div>
-
-                        <div class="cd-idle-qr-text">
-                            Quét để tích điểm thành viên
-                        </div>
-
-                    </div>
-
-                    <div class="cd-idle-message">
-
-                        <div class="cd-idle-message-title">
-                            Xin chào quý khách 👋
-                        </div>
-
-                        <div class="cd-idle-message-text">
-                            Vui lòng đưa sản phẩm cho thu ngân để bắt đầu thanh toán
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-        </section>
-        <main class="cd-modern-layout">
-
-            <!-- LEFT -->
-
-            <section class="cd-modern-left">
-
-                <!-- TOP BAR -->
-
-                <div class="cd-modern-topbar">
-
-                    <div class="cd-brand-box">
-                        <div class="cd-brand-title">
-                            GaoMart
-                        </div>
-
-                        <div class="cd-brand-sub">
-                            Quầy: Máy thu ngân • Thu ngân
-                        </div>
-                    </div>
-
-                    <div class="cd-modern-customer">
-                        <div class="cd-modern-label">KHÁCH HÀNG</div>
-
-                        <div class="cd-modern-customer-row">
-                            <div id="cdCustomerName" class="cd-modern-customer-name">
-                                Khách lẻ
-                            </div>
-
-                            <div id="cdCustomerPhone" class="cd-modern-customer-phone">
-                                -
-                            </div>
-                        </div>
-
-                     
-                    </div>
-
-
-                </div>
-
-                <!-- HERO PRODUCT -->
-
-                <section id="cdHeroProduct"
-                         class="cd-hero-product">
-
-                    <div class="cd-hero-badge">
-                        Sản phẩm vừa quét
-                    </div>
-
-                    <div id="cdHeroName"
-                         class="cd-hero-name">
-                        Chưa có sản phẩm
-                    </div>
-
-                    <div class="cd-hero-meta">
-                        <div id="cdHeroQty" class="cd-hero-meta-item">
-                            <span class="cd-hero-meta-label">Số lượng</span>
-                            0
-                        </div>
-
-                        <div id="cdHeroPrice" class="cd-hero-meta-item">
-                            <span class="cd-hero-meta-label">Đơn giá</span>
-                            0
-                        </div>
-
-                        <div id="cdHeroTotal" class="cd-hero-meta-item cd-hero-meta-total">
-                            <span class="cd-hero-meta-label">Thành tiền</span>
-                            0
-                        </div>
-                    </div>
-
-                </section>
-
-                <!-- LIST -->
-
-                <section class="cd-modern-list-panel">
-
-                    <div class="cd-modern-list-head">
-
-                        <div>
-                            <div class="cd-modern-list-title">
-                                Giỏ hàng
-                            </div>
-
-                            <div class="cd-modern-list-sub">
-                                Kiểm tra sản phẩm trước khi thanh toán
-                            </div>
-                        </div>
-
-                        <div class="cd-modern-stats">
-
-                            <div class="cd-modern-stat-box">
-                                <span id="cdItemCount">0</span>
-                                <small>Mặt hàng</small>
-                            </div>
-
-                            <div class="cd-modern-stat-box">
-                                <span id="cdQtyCount">0</span>
-                                <small>Số lượng</small>
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                    <div id="cdCartLines"
-                         class="cd-modern-lines">
-
-                        <div class="cd-empty">
-                            Chưa có sản phẩm
-                        </div>
-
-                    </div>
-
-                </section>
-
+                <div id="cdIdleMediaStage" class="cd-idle-media-stage"></div>
             </section>
-
-            <!-- RIGHT -->
-
-            <aside class="cd-modern-right">
-
-                <div class="cd-total-box">
-
-                    <div class="cd-total-caption">
-                        TỔNG THANH TOÁN
+            <main class="cd-modern-layout" aria-label="Thông tin đơn hàng">
+                <section class="cd-feature-panel">
+                    <div class="cd-feature-top"><span class="cd-eyebrow">SẢN PHẨM VỪA CHỌN</span></div>
+                    <section id="cdHeroProduct" class="cd-hero-product" aria-label="Sản phẩm vừa cập nhật">
+                        <div class="cd-hero-picture"><svg class="cd-product-placeholder"><use href="#cd-icon-bag" /></svg><img id="cdHeroImage" hidden alt="" /></div>
+                        <h2 id="cdHeroName" class="cd-hero-name">Sản phẩm của bạn</h2>
+                        <div class="cd-hero-meta"><div id="cdHeroQty"></div><div id="cdHeroPrice"></div><div id="cdHeroTotal"></div></div>
+                    </section>
+                </section>
+                <section class="cd-order-panel">
+                    <div class="cd-order-heading"><h1>Đơn hàng</h1><span class="cd-order-count"><b id="cdQtyCount">0</b> sản phẩm</span></div>
+                    <div class="cd-customer"><svg><use href="#cd-icon-bag" /></svg><span id="cdCustomerName">Quý khách</span><span id="cdCustomerPhone"></span><span class="cd-item-count"><b id="cdItemCount">0</b> mặt hàng</span></div>
+                    <div class="cd-list-labels"><span>SẢN PHẨM / SỐ LƯỢNG</span><span>THÀNH TIỀN</span></div>
+                    <div id="cdCartLines" class="cd-modern-lines" tabindex="0" aria-label="Danh sách sản phẩm"></div>
+                    <div class="cd-order-summary">
+                        <div class="cd-summary-details"><div><span>Tạm tính</span><strong><span id="cdSubtotal">0</span> ₫</strong></div><div id="cdDiscountRow"><span>Tiết kiệm</span><strong class="cd-saving">−<span id="cdDiscount">0</span> ₫</strong></div></div>
+                        <div class="cd-total-box"><span class="cd-total-caption">TỔNG THANH TOÁN</span><div class="cd-total-big"><span id="cdGrandTotal">0</span><small>₫</small></div></div>
+                        <div id="cdSettlement" class="cd-settlement" hidden><div><span>Đã thanh toán</span><strong><span id="cdPaid">0</span> ₫</strong></div><div><span>Còn cần thanh toán</span><strong><span id="cdBalance">0</span> ₫</strong></div><div id="cdChangeRow" hidden><span>Tiền thừa trả bạn</span><strong><span id="cdChange">0</span> ₫</strong></div></div>
                     </div>
-
-                    <div id="cdGrandTotal"
-                         class="cd-total-big">
-                        0
-                    </div>
-
+                </section>
+            </main>
+            <section id="cdPaymentOverlay" class="cd-payment-overlay d-none" aria-label="Thông tin thanh toán" aria-live="polite">
+                <div class="cd-payment-copy"><h1 id="cdPaymentTitle">Thanh toán</h1><div id="cdPaymentMessage" class="cd-payment-message"></div></div>
+                <div class="cd-payment-visual">
+                    <div id="cdQrBox" class="cd-qr-box d-none"><div class="cd-qr-label">MỞ ỨNG DỤNG NGÂN HÀNG ĐỂ QUÉT</div><div class="cd-qr-frame"><img id="cdQrImage" alt="Mã QR chuyển khoản của đơn hàng" /></div><div class="cd-qr-amount"><span id="cdQrAmount">0</span><small>₫</small></div><div class="cd-transfer-content"><span>Nội dung chuyển khoản</span><strong id="cdQrContent"></strong></div><p>Giữ nguyên số tiền và nội dung chuyển khoản.</p></div>
+                    <div id="cdCashVisual" class="cd-cash-visual"><h2>Chờ thu ngân xác nhận</h2></div>
                 </div>
-
-                <div class="cd-summary-card">
-
-                    <div class="cd-summary-row">
-                        <span>Tạm tính</span>
-                        <strong id="cdSubtotal">0</strong>
-                    </div>
-
-                    <div class="cd-summary-row">
-                        <span>Giảm giá</span>
-                        <strong id="cdDiscount">0</strong>
-                    </div>
-
-                    <div class="cd-summary-row">
-                        <span>Đã thanh toán</span>
-                        <strong id="cdPaid">0</strong>
-                    </div>
-
-                </div>
-
-                <div class="cd-balance-modern">
-
-                    <div class="cd-balance-title">
-                        Còn thiếu
-                    </div>
-
-                    <div id="cdBalance"
-                         class="cd-balance-value">
-                        0
-                    </div>
-
-                </div>
-
-                <div class="cd-change-modern">
-
-                    <div class="cd-change-title">
-                        Tiền thừa
-                    </div>
-
-                    <div id="cdChange"
-                         class="cd-change-value">
-                        0
-                    </div>
-
-                </div>
-
-                <div class="cd-footer-card">
-
-                    <div class="cd-footer-title">
-                        🎁 Ưu đãi thành viên
-                    </div>
-
-                    <div class="cd-footer-text">
-                        Quét QR tích điểm nhận thêm ưu đãi
-                    </div>
-
-                </div>
-
-            </aside>
-
-        </main>
-
-        <section id="cdPaymentOverlay" class="cd-payment-overlay d-none">
-            <div class="cd-payment-card">
-                <div id="cdPaymentTitle" class="cd-payment-title">Thanh toán</div>
-                <div id="cdPaymentMessage" class="cd-payment-message">
-                    Vui lòng theo dõi thông tin thanh toán
-                </div>
-
-                <div id="cdQrBox" class="cd-qr-box d-none">
-                    <img id="cdQrImage" src="" alt="QR chuyển khoản" />
-                    <div id="cdQrAmount" class="cd-qr-amount">0</div>
-                    <div id="cdQrContent" class="cd-qr-content"></div>
-                </div>
+            </section>
+            <section id="cdSuccessOverlay" class="cd-success-overlay is-success d-none" aria-live="polite">
+                <div class="cd-success-box"><div id="cdSuccessIcon" class="cd-success-icon">✓</div><h1 id="cdSuccessTitle">Thanh toán thành công</h1><p id="cdSuccessMessage">Cảm ơn bạn. Hẹn gặp lại!</p><div id="cdSuccessAmount" class="cd-success-amount"></div></div>
+            </section>
+        </div>
+        <footer class="cd-footer">
+            <div class="cd-footer-meta"><div class="cd-status" role="status"><span class="cd-status-dot"></span>Đang kết nối</div><div class="cd-footer-center">@store?.StoreAddress</div></div>
+            <div id="cdWifi" class="cd-wifi" hidden="@(string.IsNullOrEmpty(display?.WifiName))" aria-label="Wi-Fi dành cho khách">
+                <svg class="cd-wifi-icon"><use href="#cd-icon-wifi" /></svg>
+                <div class="cd-wifi-field"><span>Wi-Fi miễn phí</span><strong id="cdWifiName">@display?.WifiName</strong></div>
+                <div class="cd-wifi-field"><span>Mật khẩu</span><strong id="cdWifiPassword">@(string.IsNullOrEmpty(display?.WifiPassword) ? "Không cần mật khẩu" : display.WifiPassword)</strong></div>
             </div>
-        </section>
-
-        <section id="cdSuccessOverlay"
-                 class="cd-success-overlay is-success d-none">
-
-            <div class="cd-success-box">
-
-                <div id="cdSuccessIcon"
-                     class="cd-success-icon">
-                    ✓
-                </div>
-
-                <div id="cdSuccessTitle"
-                     class="cd-success-title">
-                    Thanh toán thành công
-                </div>
-
-                <div id="cdSuccessMessage"
-                     class="cd-success-message">
-                    Cảm ơn quý khách!
-                </div>
-
-                <div id="cdSuccessAmount"
-                     class="cd-success-amount">
-                </div>
-
-            </div>
-        </section>
+        </footer>
     </div>
+    <template id="cdIdleFallbackTemplate"><div class="cd-idle-media-fallback"><img src="/Admin/img/customer-display/grocery-bag.svg" alt="Túi hàng với rau củ, sữa và bánh mì" /></div></template>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
     <script src="~/Admin/js/pos/pos.customer-display.js" asp-append-version="true"></script>
-   
 </body>
 </html>

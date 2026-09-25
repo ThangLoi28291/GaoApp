@@ -46,7 +46,8 @@ public static class PurchaseReceiptAuditEvidence
         nameof(StockDocument.ApprovedAtUtc),
         nameof(StockDocument.ApprovedByUserId),
         nameof(StockDocument.ConfirmedAtUtc),
-        nameof(StockDocument.ConfirmedByUserId)
+        nameof(StockDocument.ConfirmedByUserId),
+        nameof(StockDocument.ConfirmedLegalEntityId)
     ];
 
     public static readonly IReadOnlyList<string> LineFields =
@@ -144,7 +145,9 @@ public static class PurchaseReceiptAuditEvidence
             NormalizeValue(fieldName, right));
 
     private static object? NormalizeValue(string fieldName, object? value)
-        => value is Enum enumValue
+        => value is string text
+            ? text[..Math.Min(text.Length, 1000)]
+            : value is Enum enumValue
             ? enumValue.ToString()
             : value is DateTime dateTime
                 ? NormalizeDateTime(fieldName, dateTime)

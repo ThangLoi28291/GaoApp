@@ -12,30 +12,50 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class UserInStoresController : BaseAdminController
 {
     private readonly IUserInStoreAdminService _userInStoreAdminService;
+    private readonly IEmployeeIndexReadService _employeeIndexReadService;
     private readonly ICurrentStorePermissionService _currentStorePermissionService;
 
     public UserInStoresController(
         IUserInStoreAdminService userInStoreAdminService,
+        IEmployeeIndexReadService employeeIndexReadService,
         ICurrentStorePermissionService currentStorePermissionService)
     {
         _userInStoreAdminService = userInStoreAdminService;
+        _employeeIndexReadService = employeeIndexReadService;
         _currentStorePermissionService = currentStorePermissionService;
     }
 
     [HttpGet]
-    public async Task<IActionResult> Index([FromQuery] UserInStoreIndexQueryDto query, CancellationToken ct)
+    public async Task<IActionResult> Index(CancellationToken ct)
     {
         var storeId = CurrentStoreId;
         var userId = CurrentUserId;
 
-        var vm = await _userInStoreAdminService.GetPagedAsync(storeId, query, ct);
-
         await LoadPagePermissionsAsync(storeId, userId, ct);
-        ViewBag.RoleFilterOptions = vm.Roles
-            .Select(x => new SelectListItem(x.DisplayText, x.RoleId.ToString(), x.RoleId == query.RoleId))
-            .ToList();
 
-        return View(vm);
+        return View();
+    }
+
+    [HttpGet("/admin/employees/data")]
+    public async Task<IActionResult> GetEmployeeIndexData(
+        [FromQuery] EmployeeIndexQueryRequest request,
+        CancellationToken ct)
+    {
+        var storeId = CurrentStoreId;
+        var userId = CurrentUserId;
+        var result = await _employeeIndexReadService.GetPageAsync(
+            storeId,
+            userId,
+            request,
+            ct);
+
+        result.CanUpdate = await _currentStorePermissionService.HasPermissionAsync(
+            storeId,
+            userId,
+            PermissionCodes.Security.UserInStore.Update,
+            ct);
+
+        return Json(result);
     }
 
     [HttpGet]
@@ -204,6 +224,7 @@ public class UserInStoresController : BaseAdminController
 
     private async Task LoadPagePermissionsAsync(int storeId, int userId, CancellationToken ct)
     {
+        ViewBag.CanAssignExistingUsers = await _userInStoreAdminService.CanAssignExistingUsersAsync(userId, ct);
         ViewBag.CanCreate = await _currentStorePermissionService.HasPermissionAsync(
             storeId, userId, PermissionCodes.Security.UserInStore.Create, ct);
 

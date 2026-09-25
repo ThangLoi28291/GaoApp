@@ -1,4 +1,7 @@
-﻿using GaoApp.Application.Common;
+using Microsoft.AspNetCore.Authorization;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Taxes;
 using GaoApp.Application.Interfaces.Services.Taxes;
 using GaoApp.Web.Areas.Admin.ViewModels.Taxes;
@@ -28,47 +31,71 @@ public class TaxController : BaseAdminController
 
     // LIST
     [HttpGet]
-    public async Task<IActionResult> Index(string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.View)]
+    public async Task<IActionResult> Index(
+        string? search = "",
+        bool? status = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return View(new TaxIndexVM
         {
             SearchString = search,
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalTaxCount = summary.TotalItems,
+            ActiveTaxCount = summary.ActiveItems,
+            InactiveTaxCount = summary.InactiveItems,
             Paged = paged
         });
     }
 
     // AJAX TABLE
     [HttpGet]
-    public async Task<IActionResult> Search(string? search = "", int page = 1, int pageSize = 20, CancellationToken ct = default)
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.View)]
+    public async Task<IActionResult> Search(
+        string? search = "",
+        bool? status = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default)
     {
         NormalizePagination(ref page, ref pageSize);
 
         var storeId = CurrentStoreId;
-        var paged = await _service.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _service.GetPagedAsync(storeId, search, status, page, pageSize, ct);
+        var summary = await _service.GetSummaryAsync(storeId, ct);
 
         return PartialView("_TaxTable", new TaxIndexVM
         {
             SearchString = search,
+            Status = status,
             Page = page,
             PageSize = pageSize,
+            TotalTaxCount = summary.TotalItems,
+            ActiveTaxCount = summary.ActiveItems,
+            InactiveTaxCount = summary.InactiveItems,
             Paged = paged
         });
     }
 
     // CREATE
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Create)]
     public IActionResult Create()
         => View("Edit", new TaxEditViewModel { Status = true });
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Create)]
     public async Task<IActionResult> Create(TaxEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid) return View("Edit", vm);
@@ -97,6 +124,7 @@ public class TaxController : BaseAdminController
 
     // EDIT
     [HttpGet]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Update)]
     public async Task<IActionResult> Edit(int id, CancellationToken ct = default)
     {
         var storeId = CurrentStoreId;
@@ -118,6 +146,7 @@ public class TaxController : BaseAdminController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Update)]
     public async Task<IActionResult> Edit(TaxEditViewModel vm, CancellationToken ct = default)
     {
         if (!ModelState.IsValid) return View(vm);
@@ -151,6 +180,7 @@ public class TaxController : BaseAdminController
     // TOGGLE ACTIVE (AJAX)
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Update)]
     public async Task<IActionResult> ToggleStatus(int id, CancellationToken ct = default)
     {
         try
@@ -170,6 +200,7 @@ public class TaxController : BaseAdminController
     // SOFT DELETE (AJAX)
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Catalog.Tax.Delete)]
     public async Task<IActionResult> DeleteAjax(int id, CancellationToken ct = default)
     {
         try

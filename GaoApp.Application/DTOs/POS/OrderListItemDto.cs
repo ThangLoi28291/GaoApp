@@ -3,6 +3,7 @@
 public sealed class OrderListItemDto
 {
     public int OrderId { get; set; }
+    public bool HasBankTransfer { get; set; }
     public string? OrderNumber { get; set; }
 
     public string Status { get; set; } = default!;

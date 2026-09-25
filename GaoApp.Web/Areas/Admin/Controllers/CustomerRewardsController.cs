@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common.Security;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Rewards;
 using GaoApp.Application.DTOs.Rewards.Vouchers;
 using GaoApp.Application.Interfaces.Services.Rewards;
@@ -44,6 +45,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpPost("manual-ledger")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.ManageRewards)]
    
     public async Task<IActionResult> CreateManualLedger(
     [FromBody] CreateManualRewardLedgerRequest request,
@@ -53,6 +55,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpGet("{customerId:int}/reward-vouchers/available")]
+    [RequireAnyPermission(PermissionCodes.Catalog.Customer.View, PermissionCodes.Pos.Order.Create)]
 
     public async Task<IActionResult> GetAvailableVouchers(
     int customerId,
@@ -62,6 +65,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpPost("redeem-voucher")]
+    [RequireAnyPermission(PermissionCodes.Catalog.Customer.ManageRewards, PermissionCodes.Pos.Order.Create)]
 
     public async Task<IActionResult> RedeemVoucher(
     [FromBody] RedeemRewardVoucherRequest request,
@@ -71,6 +75,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpGet("/admin/api/orders/{orderId:int}/reward-calculation")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.View)]
 
     public async Task<IActionResult> CalculateOrderReward(
     int orderId,
@@ -99,6 +104,7 @@ public sealed class CustomerRewardsController : ControllerBase
     }
 
     [HttpGet("reward-vouchers/status-counts")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.View)]
    
     public async Task<IActionResult> GetVoucherStatusCounts(CancellationToken ct)
     {
@@ -117,6 +123,7 @@ public sealed class CustomerRewardsController : ControllerBase
     }
 
     [HttpPost("reward-vouchers/{id:int}/cancel")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.ManageRewards)]
    
     public async Task<IActionResult> CancelVoucher(
         int id,
@@ -127,6 +134,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpPost("reward-vouchers/{id:int}/lock")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.ManageRewards)]
     public async Task<IActionResult> LockVoucher(
     int id,
     [FromBody] LockCustomerRewardVoucherRequest request,
@@ -137,6 +145,7 @@ public sealed class CustomerRewardsController : ControllerBase
     }
 
     [HttpPost("reward-vouchers/{id:int}/unlock")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.ManageRewards)]
     public async Task<IActionResult> UnlockVoucher(
         int id,
         [FromBody] UnlockCustomerRewardVoucherRequest request,
@@ -147,6 +156,7 @@ public sealed class CustomerRewardsController : ControllerBase
     }
 
     [HttpGet("reward-vouchers/{id:int}/logs")]
+    [Authorize(Policy = PermissionCodes.Catalog.Customer.View)]
     public async Task<IActionResult> GetVoucherLogs(
         int id,
         CancellationToken ct)
@@ -156,6 +166,7 @@ public sealed class CustomerRewardsController : ControllerBase
     }
 
     [HttpGet("reward-vouchers/{id:int}/print")]
+    [RequireAnyPermission(PermissionCodes.Catalog.Customer.View, PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> GetVoucherPrint(
         int id,
         CancellationToken ct)
@@ -164,6 +175,7 @@ public sealed class CustomerRewardsController : ControllerBase
         return Ok(result);
     }
     [HttpGet("reward-vouchers/lookup")]
+    [RequireAnyPermission(PermissionCodes.Catalog.Customer.View, PermissionCodes.Pos.Order.Create)]
     public async Task<IActionResult> LookupVoucher(
     [FromQuery] string code,
     CancellationToken ct)

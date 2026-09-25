@@ -1,17 +1,23 @@
-﻿@model GaoApp.Web.Areas.Admin.Models.Inventory.StockDocumentLinesTableViewModel
+@model GaoApp.Web.Areas.Admin.Models.Inventory.StockDocumentLinesTableViewModel
 
 @{
-    var canEdit = Model.CanEdit;
+    var canEditPhysical = Model.CanEdit;
+    var canManageInputInvoiceMapping =
+        ViewData["CanManageInputInvoiceMapping"] as bool? == true;
     var canViewCost = Model.CanViewCost;
     var lines = Model.Lines ?? new List<GaoApp.Application.DTOs.Inventory.StockDocumentLineDto>();
 
-    var totalLines = lines.Count;
-    var totalQuantity = lines.Sum(x => x.Quantity);
-    var totalBaseQuantity = lines.Sum(x => x.BaseQuantity);
+    var intake = Model.ProvisionalItems.Where(x => x.Status == GaoApp.Domain.Enums.StockDocumentProvisionalItemStatus.Unresolved && x.ProposedFactor.HasValue).ToList();
+    var totalLines = lines.Count + intake.Count;
+    var totalQuantity = lines.Sum(x => x.Quantity) + intake.Sum(x => x.Quantity);
+    var totalBaseQuantity = lines.Sum(x => x.BaseQuantity) + intake.Sum(x => x.Quantity * x.ProposedFactor.GetValueOrDefault());
     var totalAmount = canViewCost ? lines.Sum(x => x.LineTotal) : 0m;
-    var colspan = 7 + (canViewCost ? 2 : 0) + (canEdit ? 1 : 0);
+    var colspan = 6 + (canViewCost ? 2 : 0) +
+        (canManageInputInvoiceMapping ? 1 : 0) +
+        (canEditPhysical ? 1 : 0);
 }
 
+<input type="hidden" data-stock-document-id="@Model.DocumentId" data-stock-row-version="@Model.RowVersion" />
 <div class="sd-line-summary-grid">
     <div class="sd-line-summary-item">
         <div class="sd-line-summary-label">Số dòng</div>
@@ -51,8 +57,11 @@
                 <col style="width:160px;" />
                 <col style="width:140px;" />
             }
-            <col style="width:170px;" />
-            @if (canEdit)
+            @if (canManageInputInvoiceMapping)
+            {
+                <col style="width:170px;" />
+            }
+            @if (canEditPhysical)
             {
                 <col style="width:150px;" />
             }
@@ -70,9 +79,12 @@
                     <th class="text-end">Giá nhập</th>
                     <th class="text-end">Thành tiền</th>
                 }
-                <th>HĐ XML</th>
+                @if (canManageInputInvoiceMapping)
+                {
+                    <th>HĐ XML</th>
+                }
 
-                @if (canEdit)
+                @if (canEditPhysical)
                 {
                     <th class="text-center text-nowrap">Thao tác</th>
                 }
@@ -80,7 +92,7 @@
         </thead>
 
         <tbody id="stockLineTableBody">
-            @if (!lines.Any())
+            @if (!lines.Any() && !intake.Any())
             {
                 <tr>
                     <td colspan="@colspan" class="text-center text-muted py-5">
@@ -150,13 +162,13 @@
                         <td class="text-end">@line.Factor.ToString("0.###")</td>
 
                         <td class="text-end">
-                            @if (canEdit)
+                            @if (canEditPhysical)
                             {
                                 <input type="number"
                                        class="form-control form-control-sm text-end sd-inline-qty js-inline-line-qty"
                                        value="@line.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)"
-                                       min="0.001"
-                                       step="0.001"
+                                       min="1"
+                                       step="1"
                                        inputmode="decimal"
                                        data-line-id="@line.Id"
                                        data-unit-id="@line.UnitId"
@@ -179,11 +191,15 @@
                             <td class="text-end sd-money">@line.LineTotal.ToString("N0")</td>
                         }
 
+                        @if (canManageInputInvoiceMapping)
+                        {
                         <td>
                             <div class="sd-xml-box small">
                                 @if (line.UseInputInvoice)
                                 {
                                     <span class="badge bg-label-primary mb-1">Có HĐ XML</span>
+                                    <span class="badge bg-label-secondary mb-1 js-item-map-status"
+                                          data-item-map-line-id="@line.Id">Chưa đối chiếu</span>
 
                                     if (!string.IsNullOrWhiteSpace(line.XmlItemName))
                                     {
@@ -204,20 +220,28 @@
                                 else
                                 {
                                     <span class="badge bg-label-secondary">Không thuộc XML</span>
+                                    @if (!string.IsNullOrWhiteSpace(line.InputInvoiceExclusionReason))
+                                    {
+                                        <div class="text-muted mt-1 js-input-invoice-exclusion-reason">
+                                            Lý do: @line.InputInvoiceExclusionReason
+                                        </div>
+                                    }
                                 }
                             </div>
 
-                            @if (canEdit)
-                            {
-                                <button type="button"
-                                        class="btn btn-sm btn-outline-primary mt-2 btn-map-input-invoice-line"
-                                        data-line-id="@line.Id">
-                                    Gắn XML
-                                </button>
-                            }
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-primary mt-2 btn-map-input-invoice-line"
+                                    data-line-id="@line.Id"
+                                    data-product-name="@line.ProductNameSnapshot"
+                                    data-quantity="@line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                    data-unit-name="@line.UnitName"
+                                    data-factor="@line.Factor.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+                                Ghép với XML
+                            </button>
                         </td>
+                        }
 
-                        @if (canEdit)
+                        @if (canEditPhysical)
                         {
                             <td class="text-center text-nowrap">
                                 <div class="sd-line-actions">
@@ -246,6 +270,8 @@
                     </tr>
                 }
             }
+            @await Html.PartialAsync("_ReceiptIntakeRows", new GaoApp.Web.Areas.Admin.Models.Inventory.ReceiptIntakeRowsViewModel
+            { Items = intake, CanEdit = canEditPhysical, CanViewCost = canViewCost, HasInvoiceColumn = canManageInputInvoiceMapping, LineOffset = lines.Count })
         </tbody>
     </table>
 </div>

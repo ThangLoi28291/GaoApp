@@ -1,12 +1,11 @@
 ﻿using GaoApp.Application.DTOs.Inventory.InputInvoices;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
-using System.Globalization;
 using System.Security.Cryptography;
-using System.Text;
-using System.Xml.Linq;
 
 using GaoApp.Application.Common.Exceptions;
 
@@ -15,10 +14,32 @@ namespace GaoApp.Application.Services.Inventory;
 public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 {
     private readonly IInputInvoiceRepository _repository;
+    private readonly IInputInvoiceSupplierResolutionService? _supplierResolutionService;
+    private readonly IInputInvoiceReceiptLinkService? _receiptLinkService;
+    private readonly IInputInvoiceOwnerGuardAuditService? _ownerGuardAudit;
+    private readonly IInputInvoiceBuyerOwnerResolutionService? _buyerOwnerResolver;
+    private readonly IInputInvoiceItemCatalogMappingService? _itemCatalogMappingService;
+    private readonly IInputInvoiceReconciliationService? _reconciliationService;
+    private readonly IInputInvoiceXmlDocumentParser _parser;
 
-    public InputInvoiceXmlService(IInputInvoiceRepository repository)
+    public InputInvoiceXmlService(
+        IInputInvoiceRepository repository,
+        IInputInvoiceSupplierResolutionService? supplierResolutionService = null,
+        IInputInvoiceXmlDocumentParser? parser = null,
+        IInputInvoiceReceiptLinkService? receiptLinkService = null,
+        IInputInvoiceOwnerGuardAuditService? ownerGuardAudit = null,
+        IInputInvoiceBuyerOwnerResolutionService? buyerOwnerResolver = null,
+        IInputInvoiceItemCatalogMappingService? itemCatalogMappingService = null,
+        IInputInvoiceReconciliationService? reconciliationService = null)
     {
         _repository = repository;
+        _supplierResolutionService = supplierResolutionService;
+        _parser = parser ?? new InputInvoiceXmlDocumentParser();
+        _receiptLinkService = receiptLinkService;
+        _ownerGuardAudit = ownerGuardAudit;
+        _buyerOwnerResolver = buyerOwnerResolver;
+        _itemCatalogMappingService = itemCatalogMappingService;
+        _reconciliationService = reconciliationService;
     }
 
     public async Task<InputInvoiceXmlUploadResultDto> UploadXmlAsync(
@@ -35,65 +56,257 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         if (request.FileBytes == null || request.FileBytes.Length == 0)
             throw new BusinessRuleException("File XML rỗng.");
 
-        var document = await _repository.GetStockDocumentWithLinesAsync(
-            storeId,
-            request.StockDocumentId,
-            ct);
-
-        if (document == null)
-            throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
-
-        var candidate = ParseXmlToEntity(request.FileBytes);
-        candidate.StoreId = storeId;
-        candidate.OriginalFileName = request.OriginalFileName;
-
-        var xmlHash = ComputeSha256(request.FileBytes);
-        candidate.XmlHash = xmlHash;
-
-        var resolution = await ResolveCandidateAsync(
-            storeId,
-            candidate,
-            xmlHash,
-            ct);
-
-        var head = resolution.Invoice;
-
-        await _repository.EnsureStockDocumentInvoiceMapAsync(
-            new StockDocumentInputInvoiceMap
-            {
-                StoreId = storeId,
-                StockDocumentId = request.StockDocumentId,
-                InputInvoiceHeadId = head.Id,
-                Note = $"Upload XML: {request.OriginalFileName}"
-            },
-            ct);
-
-        // Seed map dòng nhập.
-        // Mặc định UseInputInvoice=false để user tự chọn hoặc chọn all ở UI bước sau.
-        await _repository.AddMissingLineMapsAsync(
-            storeId,
-            request.StockDocumentId,
-            ct);
-
-        await _repository.SaveChangesAsync(ct);
-
-        return new InputInvoiceXmlUploadResultDto
+        await _repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
         {
-            InputInvoiceHeadId = head.Id,
-            StockDocumentId = request.StockDocumentId,
-            InvoiceTemplateCode = head.InvoiceTemplateCode,
-            InvoiceSeries = head.InvoiceSeries,
-            InvoiceNumber = head.InvoiceNumber,
-            InvoiceDate = head.InvoiceDate,
-            SellerTaxCode = head.SellerTaxCode,
-            SellerName = head.SellerName,
-            TotalBeforeTax = head.TotalBeforeTax,
-            TotalTaxAmount = head.TotalTaxAmount,
-            TotalPaymentAmount = head.TotalPaymentAmount,
-            DetailCount = head.Details?.Count ?? 0,
-            IsExistingInvoice = resolution.IsExisting
-        };
+            var document = await _repository.LockReceiptForInputInvoiceMutationAsync(
+                storeId, request.StockDocumentId, ct)
+                ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+            if (document.Type != StockDocumentType.Receipt)
+                throw new BusinessRuleException("Chứng từ hiện tại không phải phiếu nhập.");
+            var receiptSupplierTaxCode = document.Supplier?.TaxCode;
+            InputInvoiceResolution? resolution = null;
+            if (TaxCodeIdentityNormalizer.Normalize(receiptSupplierTaxCode) is null)
+            {
+                // Legacy upload remains compatible for receipts created before Supplier
+                // became a confirm prerequisite. The XML seller remains the fixed context;
+                // normal picker/split flows always supply the selected Supplier context.
+                try
+                {
+                    receiptSupplierTaxCode = _parser.Parse(request.FileBytes).SellerTaxCode;
+                }
+                catch (BusinessRuleException)
+                {
+                    var xmlHash = ComputeSha256(request.FileBytes);
+                    var legacy = await _repository.FindActiveByXmlHashAsync(
+                        storeId, xmlHash, ct);
+                    if (legacy is null ||
+                        (!string.IsNullOrWhiteSpace(legacy.NormalizedSellerTaxCode) &&
+                         !string.IsNullOrWhiteSpace(legacy.NormalizedInvoiceSeries) &&
+                         !string.IsNullOrWhiteSpace(legacy.NormalizedInvoiceNumber)))
+                        throw;
+                    resolution = new InputInvoiceResolution(legacy, IsExisting: true);
+                }
+            }
+
+            resolution ??= await ResolveInvoiceWithinTransactionAsync(
+                    storeId,
+                    receiptSupplierTaxCode ?? string.Empty,
+                    request.OriginalFileName,
+                    request.FileBytes,
+                    ct);
+            var head = resolution.Invoice;
+            var linkCreated = _receiptLinkService is not null
+                ? await _receiptLinkService.LinkWithinTransactionAsync(
+                    storeId, document, head,
+                    $"Upload XML: {Path.GetFileName(request.OriginalFileName)}",
+                    refreshReconciliation: false,
+                    writeLinkAudit: true,
+                    ct)
+                : await LinkLegacyTestHarnessAsync(storeId, document.Id, head.Id,
+                    $"Upload XML: {Path.GetFileName(request.OriginalFileName)}", ct);
+            if (_itemCatalogMappingService is not null)
+                await _itemCatalogMappingService.AutoApplyKnownMappingsWithinTransactionAsync(
+                    storeId, document.Id, head.Id, ct);
+            if (_reconciliationService is not null)
+                await _reconciliationService.RefreshWithinTransactionAsync(
+                    storeId, document.Id, ct);
+            await _repository.SaveChangesAsync(ct);
+            await _repository.CommitSupplierResolutionTransactionAsync(ct);
+
+            return new InputInvoiceXmlUploadResultDto
+            {
+                InputInvoiceHeadId = head.Id,
+                StockDocumentId = request.StockDocumentId,
+                InvoiceTemplateCode = head.InvoiceTemplateCode,
+                InvoiceSeries = head.InvoiceSeries,
+                InvoiceNumber = head.InvoiceNumber,
+                InvoiceDate = head.InvoiceDate,
+                SellerTaxCode = head.SellerTaxCode,
+                SellerName = head.SellerName,
+                TotalBeforeTax = head.TotalBeforeTax,
+                TotalTaxAmount = head.TotalTaxAmount,
+                TotalPaymentAmount = head.TotalPaymentAmount,
+                DetailCount = head.Details?.Count ?? 0,
+                IsExistingInvoice = resolution.IsExisting
+            };
+        }
+        catch (InputInvoiceOwnerGuardException exception)
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            if (_ownerGuardAudit is not null)
+                await _ownerGuardAudit.RecordBlockedLinkAsync(
+                    storeId, request.StockDocumentId, exception, ct);
+            throw;
+        }
+        catch
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
     }
+
+    public async Task<InputInvoiceResolution> ResolveInvoiceWithinTransactionAsync(
+        int storeId,
+        string receiptSupplierTaxCode,
+        string originalFileName,
+        byte[] fileBytes,
+        CancellationToken ct = default)
+    {
+        if (storeId <= 0 || fileBytes is null || fileBytes.Length == 0)
+            throw new BusinessRuleException("Dữ liệu hóa đơn không hợp lệ.");
+        var expectedTaxCode = TaxCodeIdentityNormalizer.Normalize(receiptSupplierTaxCode)
+            ?? throw new BusinessRuleException("Nhà cung cấp chưa có mã số thuế.");
+        var xmlHash = ComputeSha256(fileBytes);
+        InputInvoiceHead candidate;
+        try
+        {
+            candidate = _parser.Parse(fileBytes);
+        }
+        catch (BusinessRuleException)
+        {
+            var legacy = await _repository.FindActiveByXmlHashAsync(storeId, xmlHash, ct);
+            if (legacy is null ||
+                (!string.IsNullOrWhiteSpace(legacy.NormalizedSellerTaxCode) &&
+                 !string.IsNullOrWhiteSpace(legacy.NormalizedInvoiceSeries) &&
+                 !string.IsNullOrWhiteSpace(legacy.NormalizedInvoiceNumber)))
+                throw;
+            return new InputInvoiceResolution(legacy, IsExisting: true);
+        }
+
+        if (!string.Equals(
+                TaxCodeIdentityNormalizer.Normalize(candidate.SellerTaxCode),
+                expectedTaxCode,
+                StringComparison.Ordinal))
+            throw new BusinessRuleException(
+                "MST người bán trên XML không khớp nhà cung cấp của phiếu nhập.");
+        candidate.StoreId = storeId;
+        candidate.OriginalFileName = Path.GetFileName(originalFileName);
+        candidate.XmlHash = xmlHash;
+        return await ResolveCandidateAsync(storeId, candidate, xmlHash, ct);
+    }
+
+    public async Task<InputInvoicePickerSelectionResultDto> ImportAndLinkAsync(
+        int storeId,
+        int stockDocumentId,
+        int receiptSupplierId,
+        string receiptSupplierTaxCode,
+        string originalFileName,
+        byte[] fileBytes,
+        CancellationToken ct = default)
+    {
+        if (storeId <= 0 || stockDocumentId <= 0 || receiptSupplierId <= 0)
+            throw new BusinessRuleException("Ngữ cảnh phiếu nhập không hợp lệ.");
+        var expectedTaxCode = TaxCodeIdentityNormalizer.Normalize(receiptSupplierTaxCode)
+            ?? throw new BusinessRuleException("Nhà cung cấp chưa có mã số thuế.");
+        if (_supplierResolutionService is null)
+            throw new InvalidOperationException("Canonical Supplier binding is not configured.");
+
+        await _repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
+        {
+            var receipt = await _repository.LockReceiptForInputInvoiceMutationAsync(
+                storeId, stockDocumentId, ct)
+                ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+            if (receipt.Type != StockDocumentType.Receipt)
+                throw new BusinessRuleException("Chứng từ hiện tại không phải phiếu nhập.");
+            if (receipt.SupplierId != receiptSupplierId)
+                throw new BusinessRuleException("Nhà cung cấp phiếu nhập đã thay đổi. Vui lòng tải lại.");
+
+            var resolution = await ResolveInvoiceWithinTransactionAsync(
+                storeId, expectedTaxCode, originalFileName, fileBytes, ct);
+
+            var linkCreated = _receiptLinkService is not null
+                ? await _receiptLinkService.LinkWithinTransactionAsync(
+                    storeId, receipt, resolution.Invoice,
+                    "Liên kết từ thư viện hóa đơn.",
+                    refreshReconciliation: false,
+                    writeLinkAudit: true,
+                    ct)
+                : await LinkLegacyTestHarnessAsync(storeId, stockDocumentId,
+                    resolution.Invoice.Id, "Liên kết từ thư viện hóa đơn.", ct);
+            if (_itemCatalogMappingService is not null)
+                await _itemCatalogMappingService.AutoApplyKnownMappingsWithinTransactionAsync(
+                    storeId, stockDocumentId, resolution.Invoice.Id, ct);
+            if (_reconciliationService is not null)
+                await _reconciliationService.RefreshWithinTransactionAsync(
+                    storeId, stockDocumentId, ct);
+            await _repository.SaveChangesAsync(ct);
+            await _repository.CommitSupplierResolutionTransactionAsync(ct);
+
+            return new InputInvoicePickerSelectionResultDto
+            {
+                InputInvoiceHeadId = resolution.Invoice.Id,
+                StockDocumentId = stockDocumentId,
+                InvoiceSeries = resolution.Invoice.InvoiceSeries,
+                InvoiceNumber = resolution.Invoice.InvoiceNumber,
+                InvoiceDate = resolution.Invoice.InvoiceDate,
+                TotalPaymentAmount = resolution.Invoice.TotalPaymentAmount,
+                IsExistingInvoice = resolution.IsExisting,
+                WasAlreadyLinked = !linkCreated
+            };
+        }
+        catch (InputInvoiceOwnerGuardException exception)
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            if (_ownerGuardAudit is not null)
+                await _ownerGuardAudit.RecordBlockedLinkAsync(
+                    storeId, stockDocumentId, exception, ct);
+            throw;
+        }
+        catch
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
+    }
+
+    // Compatibility only for direct legacy unit construction. Runtime DI always
+    // supplies the central link service and therefore cannot enter this branch.
+    private async Task<bool> LinkLegacyTestHarnessAsync(
+        int storeId, int stockDocumentId, int invoiceId, string note,
+        CancellationToken ct)
+    {
+        if (_supplierResolutionService is not null)
+            await _supplierResolutionService.BindCanonicalSupplierWithinTransactionAsync(
+                storeId, stockDocumentId, invoiceId, ct);
+        var created = await _repository.EnsureSingleReceiptInvoiceMapAsync(new()
+        {
+            StoreId = storeId,
+            StockDocumentId = stockDocumentId,
+            InputInvoiceHeadId = invoiceId,
+            Note = note
+        }, ct);
+        await _repository.AddMissingLineMapsAsync(storeId, stockDocumentId, ct);
+        if (created)
+            await _repository.AddPurchaseReceiptAuditEventAsync(
+                CreateLinkAuditEvent(storeId, stockDocumentId, invoiceId), ct);
+        return created;
+    }
+
+    private static PurchaseReceiptAuditEvent CreateLinkAuditEvent(
+        int storeId,
+        int stockDocumentId,
+        int inputInvoiceHeadId)
+        => new()
+        {
+            StoreId = storeId,
+            StockDocumentId = stockDocumentId,
+            EventType = PurchaseReceiptAuditEventType.InputInvoiceLinked,
+            Note = "Liên kết hóa đơn đầu vào với phiếu nhập.",
+            ChangedFieldsJson = PurchaseReceiptAuditEvidence.SerializeChangedFields(
+                [nameof(StockDocumentInputInvoiceMap.InputInvoiceHeadId)]),
+            OldValuesJson = PurchaseReceiptAuditEvidence.SerializeValues(
+                new Dictionary<string, object?>
+                {
+                    [nameof(StockDocumentInputInvoiceMap.InputInvoiceHeadId)] = null
+                }),
+            NewValuesJson = PurchaseReceiptAuditEvidence.SerializeValues(
+                new Dictionary<string, object?>
+                {
+                    [nameof(StockDocumentInputInvoiceMap.InputInvoiceHeadId)] = inputInvoiceHeadId
+                })
+        };
     public async Task<List<InputInvoiceHeadDto>> GetInvoicesByStockDocumentAsync(
     int storeId,
     int stockDocumentId,
@@ -105,70 +318,163 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         if (stockDocumentId <= 0)
             throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
 
+        var receipt = await _repository.GetReceiptForSupplierResolutionAsync(
+            storeId,
+            stockDocumentId,
+            ct)
+            ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+        if (receipt.Type != StockDocumentType.Receipt)
+            throw new BusinessRuleException("Chứng từ hiện tại không phải phiếu nhập kho.");
+
+        var receiptOwnerId = receipt.Status == StockDocumentStatus.Confirmed
+            ? receipt.ConfirmedLegalEntityId
+            : receipt.Warehouse?.LegalEntityId;
+        var receiptOwnerName = receipt.Status == StockDocumentStatus.Confirmed
+            ? receipt.ConfirmedLegalEntity?.Name
+            : receipt.Warehouse?.LegalEntity?.Name;
+
         var invoices = await _repository.GetByStockDocumentAsync(
             storeId,
             stockDocumentId,
             ct);
+        var itemMappings = _itemCatalogMappingService is null
+            ? new Dictionary<int, InputInvoiceItemCatalogResolutionDto>()
+            : await _itemCatalogMappingService.ResolveForReceiptAsync(
+                storeId, stockDocumentId, ct);
 
-        return invoices.Select(x => new InputInvoiceHeadDto
+        var result = new List<InputInvoiceHeadDto>(invoices.Count);
+        foreach (var invoice in invoices)
         {
-            Id = x.Id,
-            InvoiceTemplateCode = x.InvoiceTemplateCode,
-            InvoiceSeries = x.InvoiceSeries,
-            InvoiceNumber = x.InvoiceNumber,
-            InvoiceDate = x.InvoiceDate,
-            SellerTaxCode = x.SellerTaxCode,
-            SellerName = x.SellerName,
-            TotalBeforeTax = x.TotalBeforeTax,
-            TotalTaxAmount = x.TotalTaxAmount,
-            TotalPaymentAmount = x.TotalPaymentAmount,
-            DetailCount = x.Details?.Count ?? 0,
+            var resolution = _buyerOwnerResolver is null
+                ? null
+                : await _buyerOwnerResolver.ResolveWithinTransactionAsync(
+                    storeId, invoice, ct);
+            var status = resolution?.Status ?? invoice.BuyerOwnerResolutionStatus;
+            var resolvedOwnerId = resolution?.LegalEntityId ?? invoice.ResolvedBuyerLegalEntityId;
+            var resolvedOwnerName = resolution?.LegalEntityName ?? invoice.ResolvedBuyerLegalEntity?.Name;
+            var matches = receiptOwnerId is > 0 &&
+                status == InputInvoiceBuyerOwnerResolutionStatus.Resolved &&
+                resolvedOwnerId == receiptOwnerId;
+            var warning = BuildOwnerWarning(status, matches, receiptOwnerId);
 
-            Details = (x.Details ?? new List<GaoApp.Domain.Entities.InputInvoiceDetail>())
-                .OrderBy(d => d.LineNo)
-                .Select(d => new InputInvoiceDetailDto
-                {
-                    Id = d.Id,
-                    LineNo = d.LineNo,
-                    ItemName = d.ItemName,
-                    UnitName = d.UnitName,
-                    Quantity = d.Quantity,
-                    UnitPrice = d.UnitPrice,
-                    LineAmount = d.LineAmount,
-                    VatRate = d.VatRate,
-                    VatAmount = d.VatAmount
-                })
-                .ToList()
-        }).ToList();
+            result.Add(new InputInvoiceHeadDto
+            {
+                Id = invoice.Id,
+                InvoiceTemplateCode = invoice.InvoiceTemplateCode,
+                InvoiceSeries = invoice.InvoiceSeries,
+                InvoiceNumber = invoice.InvoiceNumber,
+                InvoiceDate = invoice.InvoiceDate,
+                SellerTaxCode = invoice.SellerTaxCode,
+                SellerName = invoice.SellerName,
+                BuyerTaxCode = invoice.BuyerTaxCode,
+                BuyerOwnerResolutionStatus = status.ToString(),
+                ResolvedBuyerLegalEntityId = resolvedOwnerId,
+                ResolvedBuyerLegalEntityName = resolvedOwnerName,
+                ReceiptOwnerLegalEntityId = receiptOwnerId,
+                ReceiptOwnerLegalEntityName = receiptOwnerName,
+                BuyerOwnerMatchesReceipt = matches,
+                OwnerWarningReasonCode = warning.ReasonCode,
+                OwnerWarningMessage = warning.Message,
+                TotalBeforeTax = invoice.TotalBeforeTax,
+                TotalTaxAmount = invoice.TotalTaxAmount,
+                TotalPaymentAmount = invoice.TotalPaymentAmount,
+                DetailCount = invoice.Details?.Count ?? 0,
+                Details = (invoice.Details ?? new List<InputInvoiceDetail>())
+                    .OrderBy(d => d.LineNo)
+                    .Select(d => new InputInvoiceDetailDto
+                    {
+                        Id = d.Id,
+                        LineNo = d.LineNo,
+                        SupplierItemCode = d.SupplierItemCode,
+                        ItemName = d.ItemName,
+                        UnitName = d.UnitName,
+                        Quantity = d.Quantity,
+                        UnitPrice = d.UnitPrice,
+                        LineAmount = d.LineAmount,
+                        VatRate = d.VatRate,
+                        VatAmount = d.VatAmount,
+                        ItemCatalogMapping = itemMappings.GetValueOrDefault(d.Id)
+                    })
+                    .ToList()
+            });
+        }
+
+        return result;
     }
+
+    private static (string? ReasonCode, string? Message) BuildOwnerWarning(
+        InputInvoiceBuyerOwnerResolutionStatus status,
+        bool matches,
+        int? receiptOwnerId)
+    {
+        if (matches) return (null, null);
+        if (receiptOwnerId is null or <= 0)
+            return ("ReceiptOwnerMissing", "Không xác định được chủ thể sở hữu phiếu nhập.");
+        return status switch
+        {
+            InputInvoiceBuyerOwnerResolutionStatus.Resolved =>
+                ("BuyerOwnerMismatch", "MST người mua không còn khớp chủ thể sở hữu phiếu nhập."),
+            InputInvoiceBuyerOwnerResolutionStatus.MissingBuyerTaxCode =>
+                ("BuyerOwnerMissingBuyerTaxCode", "Hóa đơn thiếu MST người mua."),
+            InputInvoiceBuyerOwnerResolutionStatus.NotFound =>
+                ("BuyerOwnerNotFound", "Không còn tìm thấy chủ thể pháp lý khớp MST người mua."),
+            InputInvoiceBuyerOwnerResolutionStatus.Ambiguous =>
+                ("BuyerOwnerAmbiguous", "MST người mua hiện khớp nhiều chủ thể pháp lý."),
+            _ => ("BuyerOwnerNotEvaluated", "Chưa xác định được chủ thể người mua của hóa đơn.")
+        };
+    }
+
     public async Task<List<StockDocumentLineInputInvoiceMapDto>> GetLineMapsAsync(
     int storeId,
     int stockDocumentId,
     CancellationToken ct = default)
     {
-        await _repository.AddMissingLineMapsAsync(storeId, stockDocumentId, ct);
-        await _repository.SaveChangesAsync(ct);
-
-        var maps = await _repository.GetLineMapsByStockDocumentAsync(
-            storeId,
-            stockDocumentId,
-            ct);
-
-        return maps.Select(x => new StockDocumentLineInputInvoiceMapDto
+        await _repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
         {
-            StockDocumentId = x.StockDocumentId,
-            StockDocumentLineId = x.StockDocumentLineId,
-            UseInputInvoice = x.UseInputInvoice,
-            InputInvoiceDetailId = x.InputInvoiceDetailId,
-            MatchStatus = x.MatchStatus,
-            QuantityDifference = x.QuantityDifference,
-            AmountDifference = x.AmountDifference,
+            _ = await _repository.LockReceiptForInputInvoiceMutationAsync(
+                    storeId, stockDocumentId, ct)
+                ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+            await _repository.AddMissingLineMapsAsync(storeId, stockDocumentId, ct);
+            await _repository.SaveChangesAsync(ct);
+            if (_reconciliationService is not null)
+                await _reconciliationService.RefreshWithinTransactionAsync(
+                    storeId, stockDocumentId, ct);
 
-            XmlItemName = x.InputInvoiceDetail?.ItemName,
-            XmlUnitName = x.InputInvoiceDetail?.UnitName,
-            XmlQuantity = x.InputInvoiceDetail?.Quantity,
-            XmlLineAmount = x.InputInvoiceDetail?.LineAmount
-        }).ToList();
+            var maps = await _repository.GetLineMapsByStockDocumentAsync(
+                storeId,
+                stockDocumentId,
+                ct);
+            var itemMappings = _itemCatalogMappingService is null
+                ? new Dictionary<int, InputInvoiceItemCatalogResolutionDto>()
+                : await _itemCatalogMappingService.ResolveForReceiptAsync(
+                    storeId, stockDocumentId, ct);
+            var result = maps.Select(x => new StockDocumentLineInputInvoiceMapDto
+            {
+                StockDocumentId = x.StockDocumentId,
+                StockDocumentLineId = x.StockDocumentLineId,
+                UseInputInvoice = x.UseInputInvoice,
+                InputInvoiceDetailId = x.InputInvoiceDetailId,
+                MatchStatus = x.MatchStatus,
+                QuantityDifference = x.QuantityDifference,
+                AmountDifference = x.AmountDifference,
+                ExclusionReason = x.ExclusionReason,
+                XmlItemName = x.InputInvoiceDetail?.ItemName,
+                XmlUnitName = x.InputInvoiceDetail?.UnitName,
+                XmlQuantity = x.InputInvoiceDetail?.Quantity,
+                XmlLineAmount = x.InputInvoiceDetail?.LineAmount,
+                ItemCatalogMapping = x.InputInvoiceDetailId.HasValue
+                    ? itemMappings.GetValueOrDefault(x.InputInvoiceDetailId.Value)
+                    : null
+            }).ToList();
+            await _repository.CommitSupplierResolutionTransactionAsync(ct);
+            return result;
+        }
+        catch
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
     }
 
     public async Task UpdateLineMapAsync(
@@ -185,6 +491,14 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         if (request.StockDocumentLineId <= 0)
             throw new BusinessRuleException("Dòng nhập không hợp lệ.");
+
+        await _repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
+        {
+        var receipt = await _repository.LockReceiptForInputInvoiceMutationAsync(
+                storeId, stockDocumentId, ct)
+            ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+        PurchaseReceiptWorkflowPolicy.EnsureInputInvoiceMappingEditable(receipt.Status);
 
         var line = await _repository.GetStockDocumentLineAsync(
             storeId,
@@ -208,12 +522,16 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         if (!request.UseInputInvoice)
         {
+            if (string.IsNullOrWhiteSpace(request.ExclusionReason))
+                throw new BusinessRuleException(
+                    "Vui lòng nhập lý do loại dòng nhập khỏi hóa đơn XML.");
             map.UseInputInvoice = false;
             map.InputInvoiceDetailId = null;
             map.MatchStatus = InputInvoiceMatchStatus.Excluded;
             map.QuantityDifference = 0;
             map.AmountDifference = 0;
             map.Note = "User chọn dòng này không thuộc hóa đơn XML.";
+            map.ExclusionReason = request.ExclusionReason.Trim();
         }
         else
         {
@@ -228,6 +546,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 map.QuantityDifference = 0;
                 map.AmountDifference = 0;
                 map.Note = "User chọn dòng này thuộc hóa đơn XML nhưng chưa map chi tiết dòng XML.";
+                map.ExclusionReason = null;
             }
             else
             {
@@ -241,6 +560,50 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 if (xmlLine == null)
                     throw new BusinessRuleException("Không thể map dòng XML cho phiếu hiện tại.");
 
+                if (request.RememberItemCatalogMapping)
+                {
+                    var itemCatalogMapping = _itemCatalogMappingService
+                        ?? throw new BusinessRuleException(
+                            "Chức năng ghi nhớ mặt hàng XML chưa sẵn sàng.");
+                    var normalizedXmlUnit = xmlLine.NormalizedUnitName ??
+                        InputInvoiceItemIdentityNormalizer.NormalizeText(xmlLine.UnitName);
+                    if (normalizedXmlUnit is null)
+                        throw new BusinessRuleException(
+                            "Không thể ghi nhớ vì dòng XML thiếu đơn vị. " +
+                            "Bạn vẫn có thể ghép dòng XML khi bỏ chọn ghi nhớ.");
+                    var xmlTargets = await _repository
+                        .GetInputInvoiceItemCatalogTargetsByUnitAsync(
+                            storeId, line.ProductVariantId, normalizedXmlUnit, ct);
+                    if (xmlTargets.Count != 1)
+                        throw new BusinessRuleException(xmlTargets.Count > 1
+                            ? "Không thể ghi nhớ vì đơn vị XML khớp nhiều quy đổi sản phẩm. " +
+                              "Bạn vẫn có thể ghép dòng XML khi bỏ chọn ghi nhớ."
+                            : "Không thể ghi nhớ vì đơn vị XML chưa có quy đổi sản phẩm hợp lệ. " +
+                              "Bạn vẫn có thể ghép dòng XML khi bỏ chọn ghi nhớ.");
+                    var conversionId = xmlTargets[0].Conversion.Id;
+
+                    var itemResolution = await itemCatalogMapping
+                        .ConfirmWithinTransactionAsync(
+                            storeId,
+                            stockDocumentId,
+                            request.StockDocumentLineId,
+                            xmlLine.Id,
+                            line.ProductVariantId,
+                            conversionId,
+                            request.MappingRowVersion,
+                            ct);
+
+                    if (itemResolution.State !=
+                        InputInvoiceItemCatalogResolutionState.Confirmed)
+                        throw new BusinessRuleException(
+                            itemResolution.Message ??
+                            "Mapping danh mục cần được xác nhận.");
+                    if (itemResolution.ProductVariantId != line.ProductVariantId ||
+                        itemResolution.ProductUnitConversionId != conversionId)
+                        throw new BusinessRuleException(
+                            "Sản phẩm/đơn vị mapping không khớp mục tiêu XML đã xác định.");
+                }
+
                 map.UseInputInvoice = true;
                 map.InputInvoiceDetailId = xmlLine.Id;
 
@@ -251,15 +614,27 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 map.AmountDifference = amountDiff;
                 map.MatchStatus = ResolveMatchStatus(quantityDiff, amountDiff);
                 map.Note = null;
+                map.ExclusionReason = null;
             }
         }
 
+        if (_reconciliationService is not null)
+            await _reconciliationService.RefreshWithinTransactionAsync(
+                storeId, stockDocumentId, ct);
         await _repository.SaveChangesAsync(ct);
+        await _repository.CommitSupplierResolutionTransactionAsync(ct);
+        }
+        catch
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
     }
     public async Task BulkUpdateLineMapsAsync(
     int storeId,
     int stockDocumentId,
     bool useInputInvoice,
+    string? exclusionReason,
     CancellationToken ct = default)
     {
         if (storeId <= 0)
@@ -267,6 +642,17 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
 
         if (stockDocumentId <= 0)
             throw new BusinessRuleException("Phiếu nhập không hợp lệ.");
+        if (!useInputInvoice && string.IsNullOrWhiteSpace(exclusionReason))
+            throw new BusinessRuleException(
+                "Vui lòng nhập lý do loại các dòng nhập khỏi hóa đơn XML.");
+
+        await _repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
+        {
+        var receipt = await _repository.LockReceiptForInputInvoiceMutationAsync(
+                storeId, stockDocumentId, ct)
+            ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+        PurchaseReceiptWorkflowPolicy.EnsureInputInvoiceMappingEditable(receipt.Status);
 
         // Đảm bảo mỗi dòng nhập đều có map
         await _repository.AddMissingLineMapsAsync(storeId, stockDocumentId, ct);
@@ -288,6 +674,7 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 map.QuantityDifference = 0;
                 map.AmountDifference = 0;
                 map.Note = "User chọn bỏ tất cả dòng khỏi hóa đơn XML.";
+                map.ExclusionReason = exclusionReason!.Trim();
             }
             else
             {
@@ -308,10 +695,21 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 map.Note = map.InputInvoiceDetailId.HasValue
                     ? map.Note
                     : "User chọn tất cả dòng thuộc hóa đơn XML nhưng chưa map chi tiết dòng XML.";
+                map.ExclusionReason = null;
             }
         }
 
+        if (_reconciliationService is not null)
+            await _reconciliationService.RefreshWithinTransactionAsync(
+                storeId, stockDocumentId, ct);
         await _repository.SaveChangesAsync(ct);
+        await _repository.CommitSupplierResolutionTransactionAsync(ct);
+        }
+        catch
+        {
+            await _repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
     }
     private async Task<InputInvoiceResolution> ResolveCandidateAsync(
     int storeId,
@@ -361,99 +759,6 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         return InputInvoiceMatchStatus.Matched;
     }
 
-    private static InputInvoiceHead ParseXmlToEntity(byte[] fileBytes)
-    {
-        var xmlText = Encoding.UTF8.GetString(fileBytes);
-        var xdoc = XDocument.Parse(xmlText, LoadOptions.PreserveWhitespace);
-
-        var root = xdoc.Root
-            ?? throw new BusinessRuleException("XML không hợp lệ.");
-
-        var ttChung = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "TTChung");
-        var nBan = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "NBan");
-        var nMua = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "NMua");
-        var tToan = root.Descendants().FirstOrDefault(x => x.Name.LocalName == "TToan");
-
-        string? ChildValue(XElement? parent, string localName)
-        {
-            return parent?
-                .Elements()
-                .FirstOrDefault(x => x.Name.LocalName == localName)?
-                .Value
-                ?.Trim();
-        }
-
-        var head = new InputInvoiceHead
-        {
-            InvoiceTemplateCode = ChildValue(ttChung, "KHMSHDon"),
-            InvoiceSeries = ChildValue(ttChung, "KHHDon"),
-            InvoiceNumber = ChildValue(ttChung, "SHDon"),
-            InvoiceDate = ParseDate(ChildValue(ttChung, "NLap")),
-            TaxAuthorityCode = ChildValue(ttChung, "MSTTCGP"),
-
-            SellerName = ChildValue(nBan, "Ten"),
-            SellerTaxCode = ChildValue(nBan, "MST"),
-            SellerAddress = ChildValue(nBan, "DChi"),
-
-            BuyerName = ChildValue(nMua, "Ten"),
-            BuyerTaxCode = ChildValue(nMua, "MST"),
-            BuyerAddress = ChildValue(nMua, "DChi"),
-
-            TotalBeforeTax = ParseMoney(ChildValue(tToan, "TgTCThue")),
-            TotalTaxAmount = ParseMoney(ChildValue(tToan, "TgTThue")),
-            TotalPaymentAmount = ParseMoney(ChildValue(tToan, "TgTTTBSo"))
-        };
-
-        var lineElements = root
-            .Descendants()
-            .Where(x => x.Name.LocalName == "HHDVu")
-            .ToList();
-
-        foreach (var item in lineElements)
-        {
-            var lineNo = ParseInt(ChildValue(item, "STT"));
-            var itemName = ChildValue(item, "THHDVu");
-
-            if (string.IsNullOrWhiteSpace(itemName))
-                continue;
-
-            head.Details.Add(new InputInvoiceDetail
-            {
-                LineNo = lineNo,
-                ItemName = itemName,
-                UnitName = ChildValue(item, "DVTinh"),
-                Quantity = ParseQuantity(ChildValue(item, "SLuong")),
-                UnitPrice = ParseMoney(ChildValue(item, "DGia")),
-                LineAmount = ParseMoney(ChildValue(item, "ThTien")),
-                VatRate = ChildValue(item, "TSuat"),
-                VatAmount = ExtractVatAmount(item)
-            });
-        }
-
-        if (head.Details.Count == 0)
-            throw new BusinessRuleException("XML không có dòng hàng hóa dịch vụ.");
-
-        return head;
-    }
-
-    private static decimal ExtractVatAmount(XElement item)
-    {
-        // Một số XML để VATAmount trong TTKhac/TTin.
-        var vatNode = item
-            .Descendants()
-            .Where(x => x.Name.LocalName == "TTin")
-            .FirstOrDefault(x =>
-                x.Elements().Any(e => e.Name.LocalName == "TTruong" &&
-                                      e.Value.Trim() == "VATAmount"));
-
-        var value = vatNode?
-            .Elements()
-            .FirstOrDefault(x => x.Name.LocalName == "DLieu")
-            ?.Value;
-
-        return ParseMoney(value);
-    }
-
     private static string ComputeSha256(byte[] bytes)
     {
         using var sha = SHA256.Create();
@@ -461,50 +766,4 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
         return Convert.ToHexString(hash);
     }
 
-    private static DateTime? ParseDate(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
-            return d;
-
-        if (DateTime.TryParse(value, new CultureInfo("vi-VN"), DateTimeStyles.None, out d))
-            return d;
-
-        return null;
-    }
-
-    private static int ParseInt(string? value)
-    {
-        if (int.TryParse(value, out var n))
-            return n;
-
-        return 0;
-    }
-
-    private static decimal ParseQuantity(string? value)
-    {
-        return ParseMoney(value);
-    }
-
-    private static decimal ParseMoney(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return 0;
-
-        value = value.Trim()
-            .Replace(",", ".");
-
-        if (decimal.TryParse(
-                value,
-                NumberStyles.Any,
-                CultureInfo.InvariantCulture,
-                out var d))
-        {
-            return d;
-        }
-
-        return 0;
-    }
 }

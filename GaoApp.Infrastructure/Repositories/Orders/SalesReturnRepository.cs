@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Returns;
+using GaoApp.Application.DTOs.Returns;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -88,13 +88,15 @@ public sealed class SalesReturnRepository : ISalesReturnRepository
     /// </summary>
     public async Task<decimal> GetRefundedTotalByOrderAsync(int orderId, CancellationToken ct = default)
     {
-        return await _db.SalesReturnPayments
+        var money = await _db.SalesReturnPayments
             .Where(x =>
                 !x.IsDeleted &&
                 !x.SalesReturn.IsDeleted &&
                 x.SalesReturn.OrderId == orderId &&
                 x.SalesReturn.Status == SalesReturnStatus.Completed)
             .SumAsync(x => (decimal?)x.Amount, ct) ?? 0m;
+        return money + (await _db.SalesReturns.Where(x => x.OrderId == orderId && x.Status == SalesReturnStatus.Completed)
+            .SumAsync(x => (decimal?)x.DepositRestoredTotal, ct) ?? 0m);
     }
 
     /// <summary>

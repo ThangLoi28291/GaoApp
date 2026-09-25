@@ -1,0 +1,12 @@
+{
+  "PackageId": "GSTORE-02-customers-V2",
+  "SourceTables": [
+    "User",
+    "UserPoint"
+  ],
+  "TargetTables": [
+    "Customers",
+    "CustomerRewardLedgers",
+    "CustomerRewardVouchers"
+  ]
+}

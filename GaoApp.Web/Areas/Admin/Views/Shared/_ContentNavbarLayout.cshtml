@@ -31,13 +31,6 @@
         <!-- Layout page -->
         <div class="layout-page">
 
-            <!-- Navbar -->
-            @*
-            @if (ViewData["isNavbar"] != null && Convert.ToBoolean(ViewData["isNavbar"]))
-            {
-                @await Html.PartialAsync("Sections/Navbar/_Navbar")
-            }*@
-            <!-- / Navbar -->
             <!-- Content wrapper -->
             <div class="content-wrapper">
 
@@ -46,8 +39,17 @@
 
                     @if (IsSectionDefined("header"))
                     {
-                        <div class="d-flex align-items-center justify-content-between mb-3">
-                            @RenderSection("header", required: false)
+                        <div class="gao-admin-page-heading-row">
+                            <div class="gao-admin-page-heading-content">
+                                @RenderSection("header", required: false)
+                            </div>
+                            @await Html.PartialAsync("Sections/Navbar/_AdminToolbar")
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="gao-admin-toolbar-fallback">
+                            @await Html.PartialAsync("Sections/Navbar/_AdminToolbar")
                         </div>
                     }
 
@@ -72,6 +74,14 @@
     @if (isMenu)
     {
         <div class="layout-overlay layout-menu-toggle"></div>
+
+        <button type="button"
+                class="gds-responsive-nav-trigger layout-menu-toggle"
+                aria-controls="layout-menu"
+                aria-label="Mở menu điều hướng">
+            <i class="icon-base bx bx-menu" aria-hidden="true"></i>
+            <span class="gds-responsive-nav-trigger__label">Menu</span>
+        </button>
     }
     <div class="drag-target"></div>
 </div>
@@ -103,4 +113,3 @@
 @section Scripts {
     @RenderSection("Scripts", required: false)
 }
-

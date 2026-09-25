@@ -33,5 +33,7 @@ public sealed class OrderRewardCalculationLineDto
 
     public bool IsRewardable { get; set; }
 
+    public decimal RewardableAmount { get; set; }
+
     public string Reason { get; set; } = string.Empty;
 }

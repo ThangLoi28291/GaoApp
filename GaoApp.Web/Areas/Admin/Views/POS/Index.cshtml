@@ -1,317 +1,685 @@
-﻿@using System.Security.Claims
+@using System.Security.Claims
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService CreditAuthorization
+@using GaoApp.Web.Areas.Admin.ViewModels.POS
+
 @{
     ViewData["Title"] = "POS Bán hàng";
-    Layout = "_ContentNavbarLayout";
+    ViewData["container"] = "container-fluid";
+    ViewData["isFooter"] = false;
+
+    var isPrime =
+        ViewData["IsPOSPrime"] is bool primePresentation
+        && primePresentation;
+
+    Layout = isPrime
+        ? "_POSPrimeLayout"
+        : "_ContentNavbarLayout";
+
     var currentStoreId = User.FindFirst("store_id")?.Value ?? "";
+    var canSellOnCredit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.Sell)).Succeeded;
+    var canUseDeposit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Use)).Succeeded;
     var currentTerminalId = User.FindFirst("terminal_id")?.Value ?? "";
     var currentTerminalName = User.FindFirst("terminal_name")?.Value ?? "";
     var currentTerminalCode = User.FindFirst("terminal_code")?.Value ?? "";
+
+    var posHeaderContext =
+        ViewBag.POSHeaderContext as POSHeaderContextViewModel
+        ?? new POSHeaderContextViewModel();
 }
 
 @section VendorStyles {
-    <link rel="stylesheet" href="~/Admin/css/pos/pos.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos.scan-feedback.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos.qr-history.css" asp-append-version="true" />
+    <link rel="stylesheet"
+          href="~/Admin/css/pos/pos.css"
+          asp-append-version="true" />
+
+    @if (isPrime)
+    {
+        <link rel="stylesheet"
+              href="~/Admin/css/pos/pos-prime.css"
+              asp-append-version="true" />
+    }
+    else
+    {
+        <link rel="stylesheet"
+              href="~/Admin/css/pos/pos-cockpit-v2.css"
+              asp-append-version="true" />
+    }
 }
-@section header {
-    <div class="pos-header-center">
 
-        <h1 class="pos-page-title">
-            TÍNH TIỀN
-        </h1>
-    </div>
-}
-
-<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
-
-<div class="pos-shell"
+<div class="pos-shell pos-cockpit-v2 @(isPrime ? "pos-prime" : string.Empty)"
      id="posShell"
+     data-pos-presentation="@(isPrime ? "prime" : "legacy")"
      data-store-id="@currentStoreId"
      data-terminal-id="@currentTerminalId"
      data-terminal-name="@currentTerminalName"
-     data-terminal-code="@currentTerminalCode">
-    @Html.AntiForgeryToken()
-    <div id="posErrorBanner"
-         class="alert alert-warning d-none mb-3"
-         role="alert">
-        <div id="posErrorBannerMessage" class="fw-semibold"></div>
-        <div id="posErrorBannerHint" class="small mt-1"></div>
-    </div>
+     data-terminal-code="@currentTerminalCode"
+     data-user-id="@posHeaderContext.UserId">
 
-    <div id="posScreenRetryState" class="mb-3" style="display:none;"></div>
+    @Html.AntiForgeryToken()
+
+    @if (isPrime)
+    {
+        <partial name="_POSPrimeHeader"
+                 model="posHeaderContext" />
+    }
+    else
+    {
+        <partial name="_CockpitHeader"
+                 model="posHeaderContext" />
+    }
+
+    <div id="posErrorBanner"
+         class="alert alert-warning d-none mb-0"
+         role="alert">
+        <div id="posErrorBannerMessage"
+             class="fw-semibold"></div>
+
+        <div id="posErrorBannerHint"
+             class="small mt-1"></div>
+    </div>
 
     <div id="posBootstrapError"
          data-error='@Html.Raw(ViewBag.PosBootstrapError ?? "null")'>
     </div>
-    <div class="row g-3">
-        <!-- =========================================================
-             CỘT TRÁI: QUÉT HÀNG + GIỎ HIỆN TẠI + DANH SÁCH PAYMENT ĐÃ GHI NHẬN
-        ========================================================= -->
-        <div class="col-xl-8 col-lg-7">
-            <partial name="_Toolbar" />
 
-            <div id="posCartRetryState" class="mb-2" style="display:none;"></div>
+    @if (isPrime)
+    {
+        <partial name="_POSPrimeShell"
+                 model="posHeaderContext" />
+    }
+    else
+    {
+        <partial name="_Toolbar" />
 
-            <partial name="_CartTable" />
-        </div>
+        <div class="pos-cockpit-workspace">
 
-        <!-- =========================================================
-             CỘT PHẢI: TỔNG KẾT + ACTION + META PHỤ + ĐƠN GIỮ
-        ========================================================= -->
-        <div class="col-xl-4 col-lg-5">
-            <div class="sticky-right">
-                <div class="pos-right-stack">
-                    <div class="pos-summary-sticky-wrap">
-                        <partial name="_SummaryPanel" />
+            <section class="pos-cockpit-cart-pane">
+
+                <div class="pos-cockpit-cart-heading">
+                    <div>
+                        <div class="pos-cockpit-cart-heading__title">
+                            GIỎ HÀNG
+                        </div>
+
+                        <div id="posCockpitCartCount"
+                             class="pos-cockpit-cart-heading__count"
+                             aria-live="polite">
+                            0 sản phẩm
+                        </div>
                     </div>
 
-                
-                    <partial name="_DraftMetaPanel" />
-
-                    <partial name="_HeldOrdersPanel" />
+                    <div class="pos-cockpit-cart-heading__hint">
+                        Quét tiếp để thêm sản phẩm
+                    </div>
                 </div>
-            </div>
+
+                <div id="posCartRetryState"
+                     class="px-3 pt-2"
+                     style="display:none;"></div>
+
+                <div class="pos-cockpit-cart-body">
+                    <partial name="_CartTable" />
+                </div>
+            </section>
+
+            <aside class="pos-cockpit-checkout"
+                   aria-label="Khu vực thanh toán">
+
+                <div class="pos-cockpit-checkout__scroll">
+                    <partial name="_CustomerBox" />
+                    <partial name="_DraftMetaPanel" />
+                </div>
+
+                <div class="pos-cockpit-checkout__summary">
+                    <partial name="_SummaryPanel" />
+                </div>
+
+                <div class="pos-cockpit-checkout__actions">
+                    <partial name="_SummaryActionsPanel" />
+                </div>
+            </aside>
         </div>
-    </div>
-</div>
-<div class="pos-bottom-action-bar">
-    <partial name="_SummaryActionsPanel" />
+    }
 </div>
 <!-- =========================================================
-     PAYMENT MODAL - COMPACT VIEW
-     - Giữ nguyên nghiệp vụ cũ:
-       + Ghi nhận nhiều payment
-       + Nhập thiếu vẫn lưu payment
-       + Đủ tiền mới chốt đơn
-       + Hỗ trợ tiền mặt / chuyển khoản / thẻ
-========================================================= -->
-<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered pos-payment-compact-dialog">
-        <div class="modal-content pos-card pos-payment-compact-modal">
+     POS v0.2 — P3 CHECKOUT / PAYMENT WORKSPACE
 
-            <div class="modal-header border-0 pb-0">
+     IMPORTANT
+     - Giữ nguyên tất cả canonical DOM ids.
+     - Bootstrap modal vẫn là modal authority.
+     - Payment/finalize behavior vẫn do pos.payment.js sở hữu.
+========================================================= -->
+<div class="modal fade pos-payment-workspace-modal"
+     id="paymentModal"
+     tabindex="-1"
+     aria-hidden="true"
+     data-payment-method="0">
+
+    <div class="modal-dialog pos-payment-workspace-dialog">
+
+        <div class="modal-content pos-payment-workspace">
+
+            <div class="modal-header pos-payment-workspace__header">
                 <div>
-                    <h5 class="modal-title pos-modal-title">Thanh toán</h5>
-                    <div class="pos-modal-subtitle">
-                        Nhập số tiền khách thanh toán. Có thể ghi nhận nhiều lần đến khi đủ tiền.
+                    <div class="pos-payment-workspace__eyebrow">
+                        CHECKOUT
+                    </div>
+
+                    <h5 class="modal-title pos-payment-workspace__title">
+                        Thanh toán
+                    </h5>
+
+                    <div class="pos-payment-workspace__subtitle">
+                        Ghi nhận một hoặc nhiều khoản thanh toán cho đến khi đủ tiền.
                     </div>
                 </div>
 
                 <button type="button"
                         class="btn-close"
                         data-bs-dismiss="modal"
-                        aria-label="Close"></button>
+                        aria-label="Đóng">
+                </button>
             </div>
 
-            <div class="modal-body">
-                <div id="posPaymentRetryState" class="mb-3" style="display:none;"></div>
+            <div class="modal-body pos-payment-workspace__body">
 
-                <!-- TỔNG QUAN -->
-                <div class="pos-payment-compact-summary mb-3">
-                    <div>
-                        <div class="text-muted small">Thành tiền</div>
-                        <div id="paySumGrandTotal" class="pos-payment-compact-total">0</div>
+                <section id="paymentQrHistory" class="pos-qr-history" hidden aria-label="QR đã tạo của đơn này">
+                    <div class="pos-qr-history__heading">
+                        <strong>QR đã tạo của đơn này</strong>
+                        <button id="btnRefreshPaymentQrHistory" type="button" class="pos-qr-history__reload">Tải lại</button>
+                    </div>
+                    <button id="btnReopenLatestPaymentQr" type="button" class="btn btn-primary pos-qr-history__primary" hidden>Mở lại QR gần nhất</button>
+                    <p id="paymentQrHistoryStatus" class="pos-qr-history__status" role="status" aria-live="polite"></p>
+                    <details>
+                        <summary id="paymentQrHistorySummary">Lịch sử QR</summary>
+                        <div id="paymentQrHistoryList" class="pos-qr-history__list"></div>
+                    </details>
+                </section>
+
+                <div id="posPaymentRetryState"
+                     class="mb-3"
+                     style="display:none;">
+                </div>
+
+                <!-- =============================================
+                     PAYMENT SUMMARY
+                ============================================== -->
+                <section class="pos-payment-workspace-summary">
+
+                    <div class="pos-payment-workspace-total">
+                        <div class="pos-payment-workspace-total__label">
+                            Thành tiền
+                        </div>
+
+                        <div id="paySumGrandTotal"
+                             class="pos-payment-workspace-total__value">
+                            0
+                        </div>
                     </div>
 
-                    <div class="pos-payment-compact-summary-grid">
-                        <div>
+                    <div class="pos-payment-workspace-summary-grid">
+
+                        <div class="pos-payment-summary-item">
                             <span>Tạm tính</span>
                             <strong id="paySumSubtotal">0</strong>
                         </div>
 
-                        <div>
+                        <div class="pos-payment-summary-item">
                             <span>Giảm giá</span>
                             <strong id="paySumDiscount">0</strong>
                         </div>
 
-                        <div>
-                            <span>Đã thanh toán</span>
+                        <div class="pos-payment-summary-item is-paid">
+                            <span>Đã thu</span>
                             <strong id="paySumPaid">0</strong>
                         </div>
 
-                        <div>
+                        <div class="pos-payment-summary-item is-due">
                             <span>Còn thiếu</span>
-                            <strong id="paySumBalance" class="text-danger">0</strong>
+                            <strong id="paySumBalance">0</strong>
                         </div>
 
-                        <div>
+                        <div class="pos-payment-summary-item is-change">
                             <span>Tiền thừa</span>
-                            <strong id="paySumChange" class="text-success">0</strong>
+                            <strong id="paySumChange">0</strong>
                         </div>
+
                     </div>
-                </div>
+                </section>
 
-                <form id="paymentForm" class="pos-payment-form" onsubmit="return false;">
+                <form id="paymentForm"
+                      class="pos-payment-form pos-payment-workspace-form"
+                      onsubmit="return false;">
 
-                    <!-- NHẬP THANH TOÁN -->
-                    <div class="pos-payment-compact-input-box mb-3">
-                        <div class="row g-2">
-                            <div class="col-5">
-                                <label class="form-label fw-semibold">Phương thức</label>
-                                <select id="payMethod" class="form-select pos-payment-compact-method">
-                                    <option value="0">Tiền mặt</option>
-                                    <option value="1">Chuyển khoản</option>
-                                    <option value="2">Thẻ</option>
-                                </select>
-                            </div>
+                    <!-- canonical payment method -->
+                    <select id="payMethod"
+                            class="visually-hidden"
+                            tabindex="-1"
+                            aria-hidden="true">
+                        <option value="0">Tiền mặt</option>
+                        <option value="1">Chuyển khoản</option>
+                        <option value="2">Thẻ</option>
+                    </select>
 
-                            <div class="col-7">
-                                <label class="form-label fw-semibold">Số tiền</label>
-                                <input id="payAmount"
-                                       type="number"
-                                       step="0.01"
-                                       class="form-control pos-payment-compact-amount"
-                                       placeholder="Nhập số tiền" />
-                            </div>
+                    <!-- =========================================
+                         METHOD SELECTOR
+                    ========================================== -->
+                    <section class="pos-payment-workspace-section">
+
+                        <div class="pos-payment-workspace-section__label">
+                            Phương thức
                         </div>
 
-                        <!-- Giữ nút thu đủ nhưng làm nhỏ lại -->
-                        <div class="mt-2">
-                            <button id="btnPayExact"
-                                    type="button"
-                                    class="btn btn-sm btn-outline-success w-100 pos-payment-fill-balance-btn">
-                                Điền số tiền còn thiếu:
-                                <strong id="payExactAmount">0</strong>
+                        <div class="pos-payment-method-grid"
+                             role="group"
+                             aria-label="Phương thức thanh toán">
+
+                            <button type="button"
+                                    class="pos-payment-method-button"
+                                    data-pay-method-value="0"
+                                    aria-pressed="true">
+                                <i class="bx bx-money"></i>
+                                <span>Tiền mặt <kbd>Alt+1</kbd></span>
                             </button>
-                        </div>
-                    </div>
 
-                    <!-- PREVIEW SAU KHI NHẬP -->
-                    <div id="payPreviewBox" class="pay-preview-box pay-preview-box--empty mb-3">
-                        <div id="payPreviewStateText" class="pay-preview-state">
+                            <button type="button"
+                                    class="pos-payment-method-button"
+                                    data-pay-method-value="1"
+                                    aria-pressed="false">
+                                <i class="bx bx-transfer"></i>
+                                <span>Chuyển khoản <kbd>Alt+2</kbd></span>
+                            </button>
+
+                            <button type="button"
+                                    class="pos-payment-method-button"
+                                    data-pay-method-value="2"
+                                    aria-pressed="false">
+                                <i class="bx bx-credit-card"></i>
+                                <span>Thẻ <kbd>Alt+3</kbd></span>
+                            </button>
+
+                            @if (canSellOnCredit)
+                            {
+                                <button type="button" id="btnCreditPayment" class="pos-payment-method-button pos-payment-method-button--credit" aria-pressed="false" aria-expanded="false" aria-controls="posCreditPanel" hidden>
+                                    <i class="bx bx-wallet"></i><span>Công nợ <kbd>Alt+4</kbd></span>
+                                </button>
+                            }
+
+                        </div>
+
+                        @if (canUseDeposit)
+                        {
+                            <section id="posDepositPanel" class="pos-deposit-auto" hidden>
+                                <div class="pos-deposit-auto__icon"><i class="bx bx-check-shield"></i></div>
+                                <div class="pos-deposit-auto__copy">
+                                    <span>TIỀN CỌC CỦA <b id="depositCustomerLabel"></b></span>
+                                    <strong id="depositAvailableLabel"></strong>
+                                    <small id="depositAppliedLabel">Hệ thống tự áp dụng tối đa khi mở thanh toán.</small>
+                                </div>
+                                <label class="pos-deposit-auto__choice"><span>Phiếu áp dụng</span><select id="posDepositChoice"><option value="">Không sử dụng cọc</option></select></label>
+                                <div id="posDepositStatus" class="pos-deposit-auto__status" role="status"></div>
+                            </section>
+                        }
+                        @if (canSellOnCredit)
+                        {
+                            <section id="posCreditPanel" class="border rounded p-3 mt-2" hidden>
+                                <div>Khách trên đơn: <strong id="creditCustomerName"></strong></div>
+                                <div class="text-success small">Được phép công nợ</div>
+                                <div class="mt-2">Dư nợ hiện tại: <strong id="creditExistingBalance"></strong></div>
+                                <div class="my-2">Ghi nợ phần còn thiếu: <strong id="creditBalance"></strong></div>
+                                <div class="mb-2">Tổng nợ sau chốt: <strong id="creditBalanceAfter"></strong></div>
+                                <label for="creditNote" class="form-label mt-2">Ghi chú</label>
+                                <input id="creditNote" maxlength="500" class="form-control" />
+                                <p class="small text-muted mt-2">Nếu khách trả một phần, ghi nhận tiền mặt hoặc chuyển khoản bên dưới trước khi chốt nợ.</p>
+                                <p class="pos-credit-action-hint"><i class="bx bx-down-arrow-alt"></i> Bấm <strong>Chốt đơn và ghi công nợ</strong> bên dưới để hoàn tất.</p>
+                            </section>
+                        }
+
+                        <div class="pos-payment-method-notes">
+
+                            <div data-payment-method-note="0">
+                                Tiền mặt đủ hoặc dư sẽ tiếp tục flow tự chốt đơn hiện tại.
+                            </div>
+
+                            <div data-payment-method-note="1">
+                                Có thể tạo QR và xác nhận sau khi đã kiểm tra tiền vào tài khoản.
+                            </div>
+
+                            <div data-payment-method-note="2">
+                                Thẻ yêu cầu mã tham chiếu theo validation hiện tại.
+                            </div>
+
+                        </div>
+                    </section>
+
+                    <!-- =========================================
+                         AMOUNT
+                    ========================================== -->
+                    <section class="pos-payment-workspace-section">
+
+                        <label for="payAmount"
+                               class="pos-payment-workspace-section__label">
+                            Số tiền khách thanh toán
+                        </label>
+
+                        <div class="pos-payment-amount-wrap">
+                            <input id="payAmount"
+                                   type="number"
+                                   step="0.01"
+                                   class="form-control pos-payment-workspace-amount"
+                                   placeholder="Nhập số tiền" />
+
+                            <span class="pos-payment-amount-unit">
+                                đ
+                            </span>
+                        </div>
+
+                        <div class="pos-payment-quick-cash">
+
+                            <div class="pos-payment-quick-cash__label">
+                                Tiền nhanh
+                            </div>
+
+                            <div class="pos-payment-quick-cash__buttons">
+
+                                <button id="btnPayExact"
+                                        type="button"
+                                        class="pos-payment-quick-button pos-payment-quick-button--exact">
+
+                                    <span>Đủ</span>
+
+                                    <strong id="payExactAmount">
+                                        0
+                                    </strong>
+                                </button>
+
+                                <div id="paymentQuickAmounts"
+                                     class="pos-payment-quick-cash__dynamic">
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </section>
+
+                    <!-- =========================================
+                         PREVIEW
+                    ========================================== -->
+                    <div id="payPreviewBox"
+                         class="pay-preview-box pay-preview-box--empty pos-payment-preview">
+
+                        <div id="payPreviewStateText"
+                             class="pay-preview-state">
                             Chưa nhập số tiền
                         </div>
 
-                        <div class="d-flex justify-content-between">
-                            <span class="pay-preview-label">Còn thiếu sau lần này</span>
-                            <span id="payPreviewBalance" class="pay-preview-value">0</span>
+                        <div class="pos-payment-preview__row">
+                            <span>Còn thiếu sau lần này</span>
+                            <strong id="payPreviewBalance">
+                                0
+                            </strong>
                         </div>
 
-                        <div class="d-flex justify-content-between mt-1">
-                            <span class="pay-preview-label">Tiền thừa dự kiến</span>
-                            <span id="payPreviewChange" class="pay-preview-value">0</span>
+                        <div class="pos-payment-preview__row is-change">
+                            <span>Tiền thừa dự kiến</span>
+                            <strong id="payPreviewChange">
+                                0
+                            </strong>
                         </div>
+
                     </div>
 
-                    <!-- QR CHUYỂN KHOẢN - GIỮ CHỨC NĂNG CŨ -->
-                    <div id="paymentQrBox" class="pos-payment-qr-box mb-3" style="display:none;">
-                        <div class="d-flex justify-content-between align-items-center">
+                    <!-- =========================================
+                         QR
+                    ========================================== -->
+                    <div id="paymentQrBox"
+                         class="pos-payment-qr-box pos-payment-workspace-qr"
+                         style="display:none;">
+
+                        <div class="pos-payment-workspace-qr__content">
+
                             <div>
-                                <div class="fw-bold">QR chuyển khoản</div>
-                                <div id="paymentQrStatusText" class="text-muted small">
-                                    Nhập số tiền rồi bấm Enter để tạo QR.
+                                <div class="pos-payment-workspace-section__label">
+                                    QR chuyển khoản
+                                </div>
+
+                                <div id="paymentQrStatusText"
+                                     class="pos-payment-workspace-qr__status">
+                                    Mặc định là số còn thiếu. Có thể nhập số tiền từng lần chuyển khoản.
                                 </div>
                             </div>
 
+                            <button id="btnCreatePaymentQr" type="button" class="btn btn-primary">Tạo QR mới</button>
                             <button id="btnOpenPaymentQrPopup"
                                     type="button"
-                                    class="btn btn-sm btn-outline-primary"
+                                    class="btn btn-outline-primary"
                                     style="display:none;">
                                 Xem QR
                             </button>
+
                         </div>
+
                     </div>
 
-                    <!-- THÔNG TIN BỔ SUNG - CHỈ DÙNG KHI CHUYỂN KHOẢN / THẺ -->
-                    <div class="pos-payment-extra-compact mb-3">
+                    <!-- =========================================
+                         REFERENCE / PROVIDER
+                    ========================================== -->
+                    <div class="pos-payment-extra-compact pos-payment-workspace-extra">
+
                         <div class="row g-2">
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label fw-semibold">Mã tham chiếu</label>
+
+                            <div class="col-12 col-sm-6">
+                                <label for="payReference"
+                                       class="form-label fw-semibold">
+                                    Mã tham chiếu
+                                </label>
+
                                 <input id="payReference"
                                        class="form-control"
                                        placeholder="Mã giao dịch" />
                             </div>
 
-                            <div class="col-md-6 mb-2">
-                                <label class="form-label fw-semibold">Nhà cung cấp</label>
+                            <div class="col-12 col-sm-6">
+                                <label for="payProvider"
+                                       class="form-label fw-semibold">
+                                    Nhà cung cấp
+                                </label>
+
                                 <input id="payProvider"
                                        class="form-control"
                                        placeholder="ACB, VietQR..." />
                             </div>
+
                         </div>
                     </div>
 
-                    <!-- GHI NHẬN PAYMENT -->
-                    <div class="d-grid mb-3">
+                    <div class="d-grid mt-3">
+
                         <button id="btnAddPayment"
                                 type="button"
-                                class="btn btn-primary pos-payment-add-compact-btn">
+                                class="btn btn-primary pos-payment-workspace-submit">
                             Ghi nhận thanh toán
                         </button>
+
                     </div>
+
                 </form>
 
-                <!-- DANH SÁCH PAYMENT -->
-                <div class="pos-payment-list-compact">
-                    <div class="fw-bold mb-2">Đã ghi nhận</div>
+                <!-- =============================================
+                     PAYMENT LEDGER
+                ============================================== -->
+                <section class="pos-payment-ledger-workspace">
 
-                    <div id="paymentModalListBox" class="border rounded-3 p-2 bg-light-subtle">
-                        <div class="text-muted">Chưa có thanh toán.</div>
+                    <div class="pos-payment-workspace-section__label mb-2">
+                        Đã ghi nhận
                     </div>
-                </div>
+
+                    <div id="paymentModalListBox"
+                         class="pos-payment-ledger-workspace__list">
+
+                        <div class="text-muted">
+                            Chưa có thanh toán.
+                        </div>
+
+                    </div>
+
+                </section>
+
             </div>
 
-            <div class="modal-footer pos-payment-footer pos-payment-compact-footer">
+            <div class="modal-footer pos-payment-footer pos-payment-workspace__footer">
+
                 <div class="pos-payment-footer__status">
+
                     <div id="paymentInlineErrorBox"
                          class="pos-payment-footer__error"
                          data-error-visible="false"
-                         style="display: none"></div>
-                    <div id="payFooterStateText" class="pos-payment-footer__state-text">
+                         style="display:none;">
+                    </div>
+
+                    <div id="payFooterStateText"
+                         class="pos-payment-footer__state-text">
                         Kiểm tra số tiền và hoàn tất thanh toán.
                     </div>
+
                 </div>
 
                 <div class="pos-payment-footer__actions">
+
                     <button type="button"
-                            class="btn btn-light pos-payment-footer__close-btn"
+                            class="btn btn-light"
                             data-bs-dismiss="modal">
                         Đóng
                     </button>
 
                     <button id="btnFinalizeFromPaymentModal"
                             type="button"
-                            class="btn btn-success pos-payment-footer__finalize-btn">
+                            class="btn btn-success">
                         Chốt đơn
                     </button>
+
                 </div>
+
             </div>
+
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="paymentQrModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content pos-card">
-            <div class="modal-header">
+
+<!-- =========================================================
+     P3 QR WORKSPACE
+========================================================= -->
+<div class="modal fade"
+     id="paymentQrModal"
+     tabindex="-1"
+     aria-hidden="true">
+
+    <div class="modal-dialog modal-dialog-centered pos-payment-qr-dialog">
+
+        <div class="modal-content pos-payment-qr-workspace">
+
+            <div class="modal-header border-0">
+
                 <div>
-                    <h5 class="modal-title pos-modal-title">QR chuyển khoản</h5>
-                    <div id="paymentQrPopupStatusText" class="pos-modal-subtitle">
+                    <div class="pos-payment-workspace__eyebrow">
+                        CHUYỂN KHOẢN
+                    </div>
+
+                    <h5 class="modal-title" id="paymentQrPopupTitle">
+                        Quét mã thanh toán
+                    </h5>
+
+                    <div id="paymentQrPopupStatusText"
+                         class="pos-modal-subtitle">
                         Khách quét mã để thanh toán
                     </div>
-                    <div class="small text-muted mt-1">
-                        F9 = Đã nhận tiền · ESC = Đóng QR · F10 = Hủy QR
-                    </div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Đóng">
+                </button>
+
             </div>
 
-            <div class="modal-body text-center">
-                <img id="paymentQrImage"
-                     src=""
-                     alt="QR chuyển khoản"
-                     style="width:260px;height:260px;object-fit:contain;" />
+            <div class="modal-body">
 
-                <div class="text-start small mt-3">
-                    <div>Ngân hàng: <strong id="paymentQrBankName">-</strong></div>
-                    <div>Số TK: <strong id="paymentQrAccountNumber">-</strong></div>
-                    <div>Chủ TK: <strong id="paymentQrAccountName">-</strong></div>
-                    <div>Số tiền: <strong id="paymentQrAmount">0</strong></div>
-                    <div>Nội dung: <strong id="paymentQrTransferContent">-</strong></div>
+                <div id="paymentQrContent"
+                     class="pos-payment-qr-content"
+                     style="display:none;">
+                    <div id="paymentQrRequestCode" class="text-muted small text-center mb-2"></div>
+
+                    <div class="pos-payment-qr-amount">
+                        <div>Số tiền</div>
+
+                        <strong id="paymentQrAmount">
+                            0
+                        </strong>
+                    </div>
+
+                    <div class="pos-payment-qr-image-wrap">
+
+                        <img id="paymentQrImage"
+                             src=""
+                             alt="QR chuyển khoản"
+                             class="pos-payment-qr-image" />
+
+                    </div>
+
+                    <div class="pos-payment-qr-bank">
+
+                        <div>
+                            <span>Ngân hàng</span>
+                            <strong id="paymentQrBankName">-</strong>
+                        </div>
+
+                        <div>
+                            <span>Số tài khoản</span>
+                            <strong id="paymentQrAccountNumber">-</strong>
+                        </div>
+
+                        <div>
+                            <span>Chủ tài khoản</span>
+                            <strong id="paymentQrAccountName">-</strong>
+                        </div>
+
+                    </div>
+
+                    <div class="pos-payment-qr-transfer-content">
+
+                        <span>Nội dung chuyển khoản</span>
+
+                        <strong id="paymentQrTransferContent">
+                            -
+                        </strong>
+
+                    </div>
+
+                </div>
+
+                <div id="acbPaymentCountdown" class="pos-acb-countdown" hidden>
+                    <div class="pos-acb-countdown__copy">
+                        <span id="acbPaymentCountdownLabel" role="status" aria-live="polite">Kiểm tra ACB tiếp theo sau</span>
+                        <small>Bạn vẫn có thể bấm Kiểm tra ngay.</small>
+                    </div>
+                    <strong id="acbPaymentCountdownValue" role="timer" aria-live="off">00:30</strong>
+                </div>
+                <div id="acbPaymentCheckStatus" class="alert alert-info mt-3 mb-2" role="status" aria-live="polite" hidden></div>
+                <div class="pos-payment-qr-shortcuts" id="paymentQrShortcuts">
+                    F9 = Đã nhận tiền · ESC = Đóng QR · F10 = Hủy QR
                 </div>
 
                 <div class="d-grid gap-2 mt-3">
+
                     <button id="btnConfirmPaymentQrPaid"
                             type="button"
-                            class="btn btn-success">
+                            class="btn btn-success btn-lg">
                         <i class="bx bx-check-circle me-1"></i>
                         Đã nhận chuyển khoản
                     </button>
@@ -321,8 +689,11 @@
                             class="btn btn-outline-danger">
                         Không nhận được tiền / Hủy QR
                     </button>
+
                 </div>
+
             </div>
+
         </div>
     </div>
 </div>
@@ -598,6 +969,10 @@
 <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content pos-image-preview-modal">
+            <div class="modal-header border-0 py-2">
+                <span class="fw-semibold">Ảnh sản phẩm</span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng ảnh sản phẩm"></button>
+            </div>
             <div class="modal-body text-center p-2">
                 <img id="imagePreviewEl"
                      src=""
@@ -717,20 +1092,60 @@
     </div>
 </div>
 @section PageScripts {
+    <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/pos.printing.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/qrcodegen.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.offline.core.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.offline.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.state.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.dom.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.common.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.render.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.scan-feedback.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.customer.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.acb.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.qr-history.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.payment.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.barcode.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.order.js" asp-append-version="true"></script>
-    <script src="~/Admin/js/pos/pos.keyboard.js" asp-append-version="true"></script>
-    <script src="~/Admin/js/pos/pos.app.js" asp-append-version="true"></script>
+  <script src="~/Admin/js/pos/pos.keyboard.js"
+        asp-append-version="true"></script>
 
+<script src="~/Admin/js/pos/pos.cockpit.js"
+        asp-append-version="true"></script>
+
+<script src="~/Admin/js/pos/pos.app.js"
+        asp-append-version="true"></script>
+
+    @* PRIME_ADAPTER_SCRIPT_BEGIN *@
+    @if (isPrime)
+    {
+        <script src="~/Admin/js/pos/pos.prime.js" asp-append-version="true"></script>
+    }
+    @* PRIME_ADAPTER_SCRIPT_END *@
     <script>
         document.addEventListener('DOMContentLoaded', async function () {
+            @* PRIME_ADAPTER_BOOTSTRAP_BEGIN *@
+            @if (isPrime)
+            {
+                <text>
+            // Install overlay guards before the existing keyboard owner binds.
+            // Adapter failure keeps the P2 accessible fallback; startup continues.
+            try {
+                if (window.PosPrime) {
+                    window.PosPrime.mount();
+                } else {
+                    console.warn('POS Prime mobile adapter unavailable; using fallback layout.');
+                }
+            } catch (error) {
+                console.error('POS Prime mobile adapter failed; using fallback layout.', error);
+            }
+                </text>
+            }
+            @* PRIME_ADAPTER_BOOTSTRAP_END *@
             const app = window.PosApp.create();
             await app.init();
             window.posApp = app;

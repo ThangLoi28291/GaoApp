@@ -23,8 +23,12 @@ public sealed class PurchaseOrder : BaseStoreEntity, IAuditTrackedEntity
     [StringLength(250)]
     public string? Title { get; set; }
 
-    public int SupplierId { get; set; }
-    public Supplier Supplier { get; set; } = null!;
+    /// <summary>
+    /// Có thể để trống khi nhân viên lập đơn nháp. Quản lý bắt buộc xác nhận
+    /// nhà cung cấp trước khi duyệt đơn.
+    /// </summary>
+    public int? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
 
     public int ExpectedWarehouseId { get; set; }
     public Warehouse ExpectedWarehouse { get; set; } = null!;

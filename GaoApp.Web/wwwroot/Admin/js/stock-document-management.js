@@ -1,4 +1,4 @@
-﻿let createReceiptModalInstance = null;
+let createReceiptModalInstance = null;
 let editLineModalInstance = null;
 let submitApprovalModalInstance = null;
 let approveModalInstance = null;
@@ -7,13 +7,78 @@ let quickAddProductModalInstance = null;
 
 let supplierLookupTimer = null;
 let editHeaderSaveTimer = null;
+let suppressEditHeaderSave = false;
 let mapInputInvoiceLineModalInstance = null;
 let cachedInputInvoices = [];
 let selectedInputInvoiceDetailId = null;
+let selectedInputInvoiceDetail = null;
+let itemCatalogDetailOptions = [];
 let quickEditLineModalInstance = null;
 let deleteLineModalInstance = null;
 let returnToEditModalInstance = null;
 let cachedReceiptFormOptions = null;
+let linkedInputInvoicePreviewModalInstance = null;
+let unlinkInputInvoiceModalInstance = null;
+let linkedInputInvoicePreviewObjectUrl = null;
+let pendingUnlinkInputInvoice = null;
+let cachedInputInvoiceAssociation = null;
+let inputInvoiceAssociationReturnFocus = null;
+let inputInvoiceReconciliationReasonModalInstance = null;
+let pendingReconciliationReasonResolve = null;
+let inputInvoiceReconciliationReasonReturnFocus = null;
+let cachedInputInvoiceReconciliation = null;
+let completeCatalogProductModalInstance = null;
+
+function normalizeStockDocumentRowVersion(value) {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim();
+    if (!normalized) return null;
+
+    try {
+        if (window.atob(normalized).length !== 8) return null;
+    } catch {
+        return null;
+    }
+
+    return normalized;
+}
+
+window.stockDocumentRowVersion = {
+    current: function () {
+        return normalizeStockDocumentRowVersion(window.stockDocumentPage?.rowVersion) ||
+            normalizeStockDocumentRowVersion(
+                document.getElementById('provisionalReceivingPanel')?.dataset.documentRowVersion);
+    },
+    update: function (value) {
+        const normalized = normalizeStockDocumentRowVersion(value);
+        if (!normalized) return false;
+
+        if (window.stockDocumentPage) window.stockDocumentPage.rowVersion = normalized;
+        const provisionalPanel = document.getElementById('provisionalReceivingPanel');
+        if (provisionalPanel) provisionalPanel.dataset.documentRowVersion = normalized;
+        return true;
+    }
+};
+let inputInvoiceReconciliationRenderGeneration = 0;
+
+function beginInputInvoiceReconciliationRenderRequest() {
+    inputInvoiceReconciliationRenderGeneration += 1;
+    return inputInvoiceReconciliationRenderGeneration;
+}
+
+function renderInputInvoiceReconciliationIfCurrent(model, requestGeneration, commercialPreview) {
+    if (!model || requestGeneration !== inputInvoiceReconciliationRenderGeneration) return false;
+    if (!commercialPreview) cachedInputInvoiceReconciliation = model;
+    renderInputInvoiceReconciliation(commercialPreview
+        ? { ...model, isCommercialPreview: true }
+        : model);
+    return true;
+}
+
+window.beginInputInvoiceReconciliationRenderRequest =
+    beginInputInvoiceReconciliationRenderRequest;
+window.renderInputInvoiceReconciliationIfCurrent =
+    renderInputInvoiceReconciliationIfCurrent;
 
 /* =========================================================
  * BOOTSTRAP
@@ -33,23 +98,28 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     if (window.stockDocumentPage.mode === 'edit') {
-        loadPurchaseReceiptAuditTimeline();
+
         bindOpenApprovalModals();
         bindSubmitApproval();
         bindApprove();
         bindReject();
         bindRevisionRequestActions();
+        bindManagerOutsidePoActions();
+        initLegacyCatalogReview();
+        initStockDocumentWorkbenchTabs();
 
         bindDeleteLine();
         bindOpenEditLineModal();
         bindSaveEditLine();
         bindEditUnitChange();
 
-        bindUploadInputInvoiceXml();
         loadInputInvoicesForStockDocument();
+        bindLinkedInputInvoiceActions();
+        bindInputInvoiceReconciliationActions();
 
         bindOpenMapInputInvoiceLineModal();
         bindSaveInputInvoiceLineMap();
+        initItemCatalogMappingControls();
         bindToggleAllInputInvoiceLines();
         syncToggleAllInputInvoiceLinesState();
 
@@ -65,6 +135,213 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
+function activateStockDocumentWorkbenchTab(tabName, remember = true) {
+    const workbench = document.getElementById('commercialApprovalWorkbench');
+    if (!workbench || typeof workbench.querySelectorAll !== 'function') return false;
+    const buttons = Array.from(workbench.querySelectorAll('[data-workbench-tab]'));
+    if (!buttons.some(button => button.dataset.workbenchTab === tabName)) tabName = 'goods';
+
+    buttons.forEach(button => {
+        const active = button.dataset.workbenchTab === tabName;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+        button.tabIndex = active ? 0 : -1;
+    });
+    workbench.querySelectorAll('[data-workbench-panel]').forEach(panel => {
+        panel.hidden = panel.dataset.workbenchPanel !== tabName;
+    });
+    if (remember) {
+        sessionStorage.setItem(
+            `stockDocumentWorkbenchTab:${window.stockDocumentPage?.documentId || 0}`,
+            tabName);
+    }
+    return true;
+}
+
+window.activateStockDocumentWorkbenchTab = activateStockDocumentWorkbenchTab;
+
+function initStockDocumentWorkbenchTabs() {
+    const workbench = document.getElementById('commercialApprovalWorkbench');
+    if (!workbench) return;
+    const storageKey = `stockDocumentWorkbenchTab:${window.stockDocumentPage?.documentId || 0}`;
+    activateStockDocumentWorkbenchTab(sessionStorage.getItem(storageKey) || 'goods', false);
+
+    workbench.addEventListener('click', event => {
+        const button = event.target.closest?.('[data-workbench-tab]');
+        if (!button) return;
+        activateStockDocumentWorkbenchTab(button.dataset.workbenchTab);
+    });
+    workbench.addEventListener('keydown', event => {
+        const button = event.target.closest?.('[data-workbench-tab]');
+        if (!button || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        const buttons = Array.from(workbench.querySelectorAll('[data-workbench-tab]'));
+        const current = buttons.indexOf(button);
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const next = buttons[(current + direction + buttons.length) % buttons.length];
+        event.preventDefault();
+        activateStockDocumentWorkbenchTab(next.dataset.workbenchTab);
+        next.focus();
+    });
+}
+
+window.initStockDocumentWorkbenchTabs = initStockDocumentWorkbenchTabs;
+
+function bindManagerOutsidePoActions() {
+    const buttons = document.querySelectorAll('.js-manager-outside-decision');
+    if (!buttons.length) return;
+
+    const token = document.querySelector(
+        '#managerOutsidePoAntiforgery input[name="__RequestVerificationToken"]');
+
+    buttons.forEach(function (button) {
+        button.addEventListener('click', async function () {
+            const documentId = Number(window.stockDocumentPage?.documentId || 0);
+            const lineId = Number(button.dataset.lineId || 0);
+            const accept = button.dataset.accept === 'true';
+            const card = button.closest('[data-outside-line-id]');
+            const message = card?.querySelector('.js-manager-outside-message');
+            const cardButtons = card?.querySelectorAll('.js-manager-outside-decision') || [];
+
+            if (!documentId || !lineId) return;
+            if (message) {
+                message.textContent = '';
+                message.classList.add('d-none');
+            }
+            cardButtons.forEach(function (item) { item.disabled = true; });
+
+            try {
+                const rowVersion = window.stockDocumentRowVersion.current();
+                if (!rowVersion) {
+                    throw new Error('Phiên bản phiếu trên trang không hợp lệ. Vui lòng tải lại.');
+                }
+                const response = await fetch(
+                    `/admin/purchase-receiving/${documentId}/outside/${lineId}`,
+                    {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': token?.value || ''
+                        },
+                        body: JSON.stringify({
+                            rowVersion: rowVersion,
+                            accept: accept
+                        })
+                    });
+                const api = await readApiResponse(response);
+                if (!api.ok) {
+                    throw new Error(api.data?.message || 'Không thể xử lý hàng ngoài PO.');
+                }
+                if (!window.stockDocumentRowVersion.update(api.data?.rowVersion)) {
+                    throw new Error('Máy chủ không trả về phiên bản phiếu hợp lệ. Vui lòng tải lại.');
+                }
+                window.location.reload();
+            } catch (error) {
+                if (message) {
+                    message.textContent = error.message || 'Không thể xử lý hàng ngoài PO.';
+                    message.classList.remove('d-none');
+                    message.focus?.();
+                }
+                cardButtons.forEach(function (item) { item.disabled = false; });
+            }
+        });
+    });
+}
+
+function initLegacyCatalogReview() {
+    const modal = document.getElementById('completeCatalogProductModal');
+    if (modal && window.bootstrap) {
+        completeCatalogProductModalInstance =
+            bootstrap.Modal.getOrCreateInstance(modal);
+    }
+
+    document.addEventListener('click', async function (event) {
+        const filter = event.target.closest?.('[data-commercial-filter]');
+        if (filter) {
+            const value = filter.dataset.commercialFilter || 'all';
+            document.querySelectorAll('[data-commercial-filter]').forEach(button =>
+                button.classList.toggle('active', button === filter));
+            document.querySelectorAll('.commercial-line').forEach(row => {
+                const visible = value === 'all' ||
+                    (value === 'catalog' && row.dataset.catalogReview === 'true') ||
+                    (value === 'price' && row.dataset.priceMissing === 'true') ||
+                    (value === 'exception' && row.dataset.exception === 'true');
+                row.classList.toggle('d-none', !visible);
+            });
+            return;
+        }
+
+        const trigger = event.target.closest?.('.js-complete-catalog-product');
+        if (trigger) {
+            document.getElementById('catalogReviewLineId').value = trigger.dataset.lineId || '';
+            document.getElementById('catalogReviewLegacyName').textContent =
+                trigger.dataset.legacyName || '—';
+            document.getElementById('catalogReviewIdentity').textContent =
+                `Variant #${trigger.dataset.variantId || '—'} · SKU ${trigger.dataset.sku || '—'} · ` +
+                `Mã vạch ${trigger.dataset.barcode || '—'}`;
+            document.getElementById('catalogReviewProductName').value = '';
+            document.getElementById('catalogReviewMessage').textContent = '';
+            completeCatalogProductModalInstance?.show();
+            window.setTimeout(() =>
+                document.getElementById('catalogReviewProductName')?.focus(), 180);
+            return;
+        }
+
+        if (event.target.closest?.('#btnSaveCatalogProduct')) {
+            await saveLegacyCatalogProduct();
+        }
+    });
+
+    document.getElementById('catalogReviewProductName')?.addEventListener('keydown', event => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        document.getElementById('btnSaveCatalogProduct')?.click();
+    });
+}
+
+async function saveLegacyCatalogProduct() {
+    const documentId = Number(window.stockDocumentPage?.documentId || 0);
+    const lineId = Number(document.getElementById('catalogReviewLineId')?.value || 0);
+    const productName = document.getElementById('catalogReviewProductName')?.value.trim() || '';
+    const message = document.getElementById('catalogReviewMessage');
+    const button = document.getElementById('btnSaveCatalogProduct');
+    const token = document.querySelector(
+        '#catalogReviewAntiforgery input[name="__RequestVerificationToken"]')?.value;
+
+    if (productName.length < 2) {
+        if (message) message.textContent = 'Vui lòng nhập tên sản phẩm từ 2 ký tự.';
+        document.getElementById('catalogReviewProductName')?.focus();
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu';
+    if (message) message.textContent = '';
+    try {
+        const response = await fetch(
+            `/admin/stock-documents/${documentId}/catalog-lines/${lineId}/complete`, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': token || ''
+                },
+                body: JSON.stringify({
+                    productName,
+                    rowVersion: window.stockDocumentRowVersion?.current?.() ||
+                        window.stockDocumentPage?.rowVersion || ''
+                })
+            });
+        const api = await readApiResponse(response);
+        if (!api.ok) throw new Error(api.data?.message || 'Không thể hoàn thiện sản phẩm.');
+        window.location.reload();
+    } catch (error) {
+        if (message) message.textContent = error.message || 'Không thể hoàn thiện sản phẩm.';
+        button.disabled = false;
+        button.innerHTML = '<i class="bx bx-check me-1"></i>Lưu và nhận diện';
+    }
+}
+
 /* =========================================================
  * INIT
  * ========================================================= */
@@ -75,16 +352,35 @@ function initModalInstances() {
     const submitApprovalModal = document.getElementById('submitApprovalModal');
     const approveModal = document.getElementById('approveModal');
     const rejectModal = document.getElementById('rejectModal');
+    const reconciliationReasonModal = document.getElementById('inputInvoiceReconciliationReasonModal');
     const mapInputInvoiceLineModal = document.getElementById('mapInputInvoiceLineModal');
     const quickAddProductModal = document.getElementById('quickAddProductModal');
     const quickEditLineModal = document.getElementById('quickEditLineModal');
     const deleteLineModal = document.getElementById('deleteLineModal');
     const returnToEditModal =
         document.getElementById('returnToEditModal');
+    const linkedInputInvoicePreviewModal =
+        document.getElementById('linkedInputInvoicePreviewModal');
+    const unlinkInputInvoiceModal =
+        document.getElementById('unlinkInputInvoiceModal');
 
     if (returnToEditModal) {
         returnToEditModalInstance =
             new bootstrap.Modal(returnToEditModal);
+    }
+    if (linkedInputInvoicePreviewModal) {
+        linkedInputInvoicePreviewModalInstance = new bootstrap.Modal(linkedInputInvoicePreviewModal);
+        linkedInputInvoicePreviewModal.addEventListener('hidden.bs.modal', releaseLinkedInputInvoicePreview);
+    }
+    if (unlinkInputInvoiceModal) {
+        unlinkInputInvoiceModalInstance = new bootstrap.Modal(unlinkInputInvoiceModal);
+        unlinkInputInvoiceModal.addEventListener('shown.bs.modal', function () {
+            document.getElementById('inputInvoiceAssociationReason')?.focus();
+        });
+        unlinkInputInvoiceModal.addEventListener('hidden.bs.modal', function () {
+            inputInvoiceAssociationReturnFocus?.focus();
+            inputInvoiceAssociationReturnFocus = null;
+        });
     }
 
     if (quickEditLineModal) quickEditLineModalInstance = new bootstrap.Modal(quickEditLineModal);
@@ -95,6 +391,17 @@ function initModalInstances() {
     if (submitApprovalModal) submitApprovalModalInstance = new bootstrap.Modal(submitApprovalModal);
     if (approveModal) approveModalInstance = new bootstrap.Modal(approveModal);
     if (rejectModal) rejectModalInstance = new bootstrap.Modal(rejectModal);
+    if (reconciliationReasonModal) {
+        inputInvoiceReconciliationReasonModalInstance = new bootstrap.Modal(reconciliationReasonModal);
+        reconciliationReasonModal.addEventListener('hidden.bs.modal', function () {
+            if (pendingReconciliationReasonResolve) {
+                pendingReconciliationReasonResolve(null);
+                pendingReconciliationReasonResolve = null;
+            }
+            inputInvoiceReconciliationReasonReturnFocus?.focus();
+            inputInvoiceReconciliationReasonReturnFocus = null;
+        });
+    }
     if (mapInputInvoiceLineModal) mapInputInvoiceLineModalInstance = new bootstrap.Modal(mapInputInvoiceLineModal);
     if (quickAddProductModal) quickAddProductModalInstance = new bootstrap.Modal(quickAddProductModal);
 }
@@ -141,8 +448,38 @@ function formatDate(value) {
     return d.toLocaleString('vi-VN');
 }
 
+function formatDateTime(value) {
+    if (!value) return '-';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN');
+}
+
+function formatLinkedInputInvoiceDate(value) {
+    if (!value) return '';
+
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+
+    return d.toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
 function formatNumber(value) {
     return new Intl.NumberFormat('vi-VN').format(value ?? 0);
+}
+
+const wholeVndFormatter = new Intl.NumberFormat('vi-VN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+});
+
+function formatWholeVnd(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const number = Number(value);
+    return Number.isFinite(number) ? wholeVndFormatter.format(number) : '—';
 }
 
 function setText(id, value) {
@@ -164,6 +501,32 @@ function focusQuickLookup() {
     setTimeout(function () {
         el.select2('open');
     }, 80);
+}
+
+function showUnknownProvisionalCapture(term, searchField) {
+    const panel = document.getElementById('provisionalReceivingPanel');
+    const message = document.getElementById('provisionalReceivingMessage');
+    if (!panel || !message || panel.dataset.mode !== 'warehouse') return false;
+
+    message.className = 'alert alert-warning mt-2';
+    message.innerHTML = `<div class="fw-semibold">Không tìm thấy sản phẩm</div>
+        <div class="small mb-2">Có thể tìm lại hoặc ghi nhận nguyên trạng để Manager xử lý danh mục sau.</div>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="sdRetryUnknown">Tìm lại</button>
+            <button type="button" class="btn btn-sm btn-primary" id="sdCaptureUnknown">Ghi nhận hàng mới</button>
+        </div>`;
+    document.getElementById('sdRetryUnknown')?.addEventListener('click', function () {
+        message.textContent = '';
+        searchField.focus();
+        searchField.select();
+    });
+    document.getElementById('sdCaptureUnknown')?.addEventListener('click', function () {
+        message.textContent = '';
+        document.dispatchEvent(new CustomEvent('provisional:capture-request', {
+            detail: { rawInput: term }
+        }));
+    });
+    return true;
 }
 
 function renderStatusBadge(status) {
@@ -227,6 +590,7 @@ async function loadReceiptList() {
         }
 
         stockDocumentIndexState.allItems = api.data || [];
+        await window.GaoLabels?.loadProgress();
         stockDocumentIndexState.page = 1;
 
         bindStockDocumentIndexFilters();
@@ -245,6 +609,8 @@ function bindStockDocumentIndexFilters() {
     const prevBtn = document.getElementById('sdBtnPrevPage');
     const nextBtn = document.getElementById('sdBtnNextPage');
 
+    bindStockDocumentIndexKpiFilters();
+
     if (keywordInput && !keywordInput.dataset.bound) {
         keywordInput.dataset.bound = '1';
 
@@ -261,6 +627,7 @@ function bindStockDocumentIndexFilters() {
         statusSelect.addEventListener('change', function () {
             stockDocumentIndexState.status = statusSelect.value || 'all';
             stockDocumentIndexState.page = 1;
+            syncStockDocumentIndexKpiFilters();
             applyStockDocumentIndexFilter();
         });
     }
@@ -286,6 +653,7 @@ function bindStockDocumentIndexFilters() {
             if (keywordInput) keywordInput.value = '';
             if (statusSelect) statusSelect.value = 'all';
 
+            syncStockDocumentIndexKpiFilters();
             applyStockDocumentIndexFilter();
         });
     }
@@ -314,6 +682,37 @@ function bindStockDocumentIndexFilters() {
     }
 }
 
+function bindStockDocumentIndexKpiFilters() {
+    document.querySelectorAll('[data-stock-document-index] .sd-index-kpi-filter[data-status-filter]')
+        .forEach(button => {
+            if (button.dataset.bound === '1') return;
+            button.dataset.bound = '1';
+
+            button.addEventListener('click', function () {
+                const filter = this.dataset.statusFilter || 'all';
+                const statusSelect = document.getElementById('sdStatusFilter');
+
+                stockDocumentIndexState.status = filter;
+                stockDocumentIndexState.page = 1;
+                if (statusSelect) statusSelect.value = filter;
+
+                syncStockDocumentIndexKpiFilters();
+                applyStockDocumentIndexFilter();
+            });
+        });
+
+    syncStockDocumentIndexKpiFilters();
+}
+
+function syncStockDocumentIndexKpiFilters() {
+    document.querySelectorAll('[data-stock-document-index] .sd-index-kpi-filter[data-status-filter]')
+        .forEach(button => {
+            button.setAttribute(
+                'aria-pressed',
+                String(button.dataset.statusFilter === stockDocumentIndexState.status));
+        });
+}
+
 function applyStockDocumentIndexFilter() {
     const keyword = stockDocumentIndexState.keyword;
     const status = stockDocumentIndexState.status;
@@ -322,6 +721,9 @@ function applyStockDocumentIndexFilter() {
         const matchKeyword = !keyword || [
             x.documentNo,
             x.documentTitle,
+            x.purchaseOrderTitle,
+            x.purchaseOrderNumber,
+            x.supplierName,
             x.legalEntityName,
             x.warehouseName,
             x.revisionRequestNote,
@@ -354,6 +756,10 @@ function renderStockDocumentIndex() {
     const pageItems = items.slice(startIndex, startIndex + stockDocumentIndexState.pageSize);
 
     body.innerHTML = renderStockDocumentIndexRows(pageItems);
+    const mobileList = document.getElementById('sdReceiptMobileList');
+    if (mobileList) {
+        mobileList.innerHTML = renderStockDocumentIndexMobileCards(pageItems);
+    }
     bindStockDocumentIndexRowDoubleClick(pageItems);
 
     updateStockDocumentPaginationInfo(totalItems, totalPages);
@@ -374,6 +780,17 @@ function bindStockDocumentIndexRowDoubleClick(pageItems) {
             openStockDocumentInfoModal(item);
         };
     });
+
+    document.querySelectorAll('.js-stock-document-quick-view').forEach(button => {
+        button.onclick = function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const id = Number(this.dataset.id || 0);
+            const item = stockDocumentIndexCurrentPageItems.find(x => Number(x.id) === id);
+            if (item) openStockDocumentInfoModal(item);
+        };
+    });
 }
 
 function openStockDocumentInfoModal(item) {
@@ -383,8 +800,12 @@ function openStockDocumentInfoModal(item) {
         stockDocumentInfoModalInstance = new bootstrap.Modal(modalEl);
     }
 
-    setText('sdInfoTitle', item.documentTitle || item.documentNo || 'Chi tiết phiếu');
-    setText('sdInfoSubTitle', item.documentNo ? `Mã phiếu: ${item.documentNo}` : '-');
+    setText('sdInfoTitle', item.purchaseOrderTitle || item.documentTitle || item.documentNo || 'Chi tiết phiếu');
+    setText('sdInfoSubTitle', [
+        item.purchaseOrderNumber,
+        item.supplierName,
+        item.documentNo ? `Phiếu nhận ${item.documentNo}` : null
+    ].filter(Boolean).join(' · ') || '-');
     setText('sdInfoStatus', statusToDisplayText(item.status));
     setText(
         'sdInfoWarehouse',
@@ -423,7 +844,7 @@ function renderStockDocumentIndexRows(items) {
     if (!items || items.length === 0) {
         return `
             <tr>
-                <td colspan="9" class="text-center text-muted py-4">
+                <td colspan="7" class="text-center text-muted py-4">
                     Không có dữ liệu phù hợp
                 </td>
             </tr>`;
@@ -442,54 +863,97 @@ function renderStockDocumentIndexRows(items) {
                 ? 'btn-warning'
                 : (x.status === 3 ? 'btn-outline-primary' : 'btn-primary'));
 
-        const title = x.documentTitle || 'Chưa đặt tên phiếu';
+        const title = x.purchaseOrderTitle || x.documentTitle || 'Chưa đặt tên phiếu';
+        const purchaseContext = [x.purchaseOrderNumber, x.supplierName]
+            .filter(Boolean)
+            .join(' · ');
+        const receiptContext = [x.documentNo, x.purchaseOrderNumber ? 'Theo đơn mua' : 'Phiếu nhập trực tiếp']
+            .filter(Boolean)
+            .join(' · ');
+        const submittedContext = x.submittedAtUtc
+            ? `Gửi ${formatDate(x.submittedAtUtc)}`
+            : null;
 
         return `
             <tr class="sd-index-row"
                 data-id="${x.id}"
                 title="Bấm đúp để xem nhanh">
-             <td>
-    <div class="sd-index-title ${x.documentTitle ? '' : 'sd-index-title-muted'}">
-    ${escapeHtml(x.documentTitle || 'Chưa đặt tên phiếu')}
-
-    ${x.hasRevisionRequest ? `
-        <span class="badge bg-label-danger ms-2"
-              title="${escapeHtml(x.revisionRequestNote || 'Có yêu cầu sửa')}">
-            Yêu cầu sửa
-        </span>
-    ` : ''}
-</div>
-
-    <div class="sd-index-doc-no">
-        ${escapeHtml(x.documentNo || '')}
-    </div>
-
-    <div class="sd-index-id">
-        #${x.id}
-    </div>
-</td>
-
-              <td>${renderIndexDate(x.createdAtUtc || x.documentDate)}</td>
-<td>${renderIndexDate(x.updatedAtUtc)}</td>
-<td>${renderIndexDate(x.submittedAtUtc)}</td>
-
+                <td>
+                    <div class="sd-index-title ${title === 'Chưa đặt tên phiếu' ? 'sd-index-title-muted' : ''}">${escapeHtml(title)}</div>
+                    <div class="sd-index-doc-no">${escapeHtml(receiptContext || '-')}</div>
+                    <div class="text-muted small text-truncate">${escapeHtml(purchaseContext || x.supplierName || '-')}</div>
+                </td>
                 <td>
                     <div class="fw-semibold">${escapeHtml(x.warehouseName || '-')}</div>
                     <div class="text-muted small">${escapeHtml(x.legalEntityName || '-')}</div>
                 </td>
-
-                <td>${renderStatusBadge(x.status)}</td>
-
+                <td>
+                    ${renderStatusBadge(x.status)}
+                    ${window.GaoLabels?.progressHtml(x.id) || ''}
+                    ${submittedContext ? `<div class="sd-index-progress-note">${submittedContext}</div>` : ''}
+                    ${hasRevisionRequest ? `<div class="sd-index-revision-note" title="${escapeHtml(x.revisionRequestNote || 'Có yêu cầu sửa')}">Có yêu cầu sửa</div>` : ''}
+                </td>
                 <td class="text-end fw-semibold">${formatNumber(x.totalProductTypes || 0)}</td>
-
-              <td class="text-end sd-index-amount">${formatNumber(x.totalAmount || 0)}</td>
-
-                <td class="sd-action-cell">
-                    <a class="btn btn-sm ${actionClass}" href="/admin/stock-documents/${x.id}">
-                        ${actionText}
-                    </a>
+                <td class="text-end sd-index-amount">${formatNumber(x.totalAmount || 0)} ₫</td>
+                <td>${renderIndexDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate)}</td>
+                <td class="text-end">
+                    <div class="sd-index-actions">
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-sm gds-icon-button js-stock-document-quick-view"
+                                data-id="${x.id}"
+                                aria-label="Xem nhanh ${escapeHtml(title)}">
+                            <i class="bx bx-show" aria-hidden="true"></i>
+                        </button>
+                        <a class="btn btn-sm ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}">${actionText}</a>
+                    </div>
                 </td>
             </tr>`;
+    }).join('');
+}
+
+function renderStockDocumentIndexMobileCards(items) {
+    if (!items || items.length === 0) {
+        return `<div class="text-center text-muted py-4">Không có dữ liệu phù hợp</div>`;
+    }
+
+    return items.map(x => {
+        const hasRevisionRequest = x.hasRevisionRequest === true;
+        const actionText = hasRevisionRequest
+            ? 'Xử lý sửa'
+            : (x.status === 2 ? 'Duyệt' : (x.status === 3 ? 'Xem' : 'Mở'));
+        const actionClass = hasRevisionRequest
+            ? 'btn-danger'
+            : (x.status === 2 ? 'btn-warning' : (x.status === 3 ? 'btn-outline-primary' : 'btn-primary'));
+        const title = x.purchaseOrderTitle || x.documentTitle || 'Chưa đặt tên phiếu';
+        const context = [x.documentNo, x.purchaseOrderNumber, x.supplierName]
+            .filter(Boolean)
+            .join(' · ');
+
+        return `
+            <article class="gds-row-card sd-index-mobile-card" data-id="${x.id}">
+                <div class="gds-row-card__header">
+                    <div>
+                        <div class="gds-row-card__title">${escapeHtml(title)}</div>
+                        <div class="gds-row-card__meta">${escapeHtml(context || '-')}</div>
+                    </div>
+                    ${renderStatusBadge(x.status)}
+                </div>
+                ${hasRevisionRequest ? `<div class="sd-index-revision-note">Có yêu cầu sửa</div>` : ''}
+                <div class="sd-index-mobile-facts">
+                    <div><span>Kho / HKD</span><strong>${escapeHtml([x.warehouseName, x.legalEntityName].filter(Boolean).join(' · ') || '-')}</strong></div>
+                    <div><span>Loại sản phẩm</span><strong>${formatNumber(x.totalProductTypes || 0)}</strong></div>
+                    <div><span>Tổng tiền</span><strong class="text-primary">${formatNumber(x.totalAmount || 0)} ₫</strong></div>
+                    <div><span>Cập nhật</span><strong>${formatDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate) || '-'}</strong></div>
+                </div>
+                <div class="gds-row-card__actions">
+                    <button type="button"
+                            class="btn btn-outline-secondary gds-action-button js-stock-document-quick-view"
+                            data-id="${x.id}">
+                        <i class="bx bx-show" aria-hidden="true"></i> Xem nhanh
+                    </button>
+                    <a class="btn ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}">${actionText}</a>
+                </div>
+            </article>`;
     }).join('');
 }
 function bindApproveKeyboard() {
@@ -541,7 +1005,8 @@ function getStockDocumentTotalPages() {
 
 function matchStockDocumentStatusGroup(status, group) {
     if (group === 'active') return status === 1 || status === 2;
-    if (group === 'working') return status === 1;
+    if (group === 'working') return status === 1 || status === 4;
+    if (group === 'draft') return status === 1;
     if (group === 'pending') return status === 2;
     if (group === 'confirmed') return status === 3;
     if (group === 'rejected') return status === 4;
@@ -552,7 +1017,7 @@ function matchStockDocumentStatusGroup(status, group) {
 function renderIndexLoadingRow() {
     return `
         <tr>
-            <td colspan="9" class="text-center text-muted py-4">
+                <td colspan="7" class="text-center text-muted py-4">
                 Đang tải dữ liệu...
             </td>
         </tr>`;
@@ -561,7 +1026,7 @@ function renderIndexLoadingRow() {
 function renderIndexErrorRow(message) {
     return `
         <tr>
-            <td colspan="9" class="text-center text-danger py-4">
+                <td colspan="7" class="text-center text-danger py-4">
                 ${escapeHtml(message)}
             </td>
         </tr>`;
@@ -694,106 +1159,6 @@ async function loadWarehouseOptionsForCreate() {
         legalEntitySelect.innerHTML = `<option value="">Không tải được HKD</option>`;
         select.innerHTML = `<option value="">Không tải được kho</option>`;
     }
-}
-
-async function loadPurchaseReceiptAuditTimeline() {
-    const page = window.stockDocumentPage;
-    const timeline = document.getElementById('purchaseReceiptAuditTimeline');
-    const status = document.getElementById('purchaseReceiptAuditStatus');
-    if (!page?.canViewAudit || !timeline || !status) return;
-
-    const response = await fetch(
-        `/admin/api/stock-documents/${page.documentId}/audit-events`,
-        { headers: { Accept: 'application/json' } });
-    const api = await readApiResponse(response);
-    if (!api.ok) {
-        status.textContent = api.data?.message ||
-            'Không thể tải lịch sử kiểm toán.';
-        return;
-    }
-
-    const events = Array.isArray(api.data?.events) ? api.data.events : [];
-    timeline.replaceChildren();
-    status.textContent = events.length === 0
-        ? 'Chưa có sự kiện kiểm toán cho phiếu này.'
-        : `${events.length} sự kiện, sắp xếp theo thời gian.`;
-
-    for (const item of events) {
-        timeline.appendChild(buildPurchaseReceiptAuditItem(item));
-    }
-}
-
-function buildPurchaseReceiptAuditItem(item) {
-    const eventNames = {
-        1: 'Tạo phiếu nhập',
-        2: 'Thay đổi thông tin phiếu',
-        3: 'Thêm dòng hàng',
-        4: 'Thay đổi dòng hàng',
-        5: 'Xóa dòng hàng',
-        6: 'Gửi duyệt',
-        7: 'Đề nghị sửa phiếu',
-        8: 'Trả phiếu về chỉnh sửa',
-        9: 'Bỏ qua đề nghị sửa',
-        10: 'Từ chối phiếu',
-        11: 'Chốt thương mại và xác nhận',
-        12: 'Xác nhận phiếu nhập'
-    };
-    const container = document.createElement('article');
-    container.className = 'border rounded-3 p-3';
-
-    const title = document.createElement('div');
-    title.className = 'fw-semibold';
-    title.textContent = eventNames[item.eventType] ||
-        `Sự kiện ${String(item.eventType ?? '')}`;
-    container.appendChild(title);
-
-    const metadata = document.createElement('div');
-    metadata.className = 'small text-muted mt-1';
-    const actor = item.actorUserName || `User #${item.actorUserId}`;
-    const occurred = item.occurredAtUtc
-        ? new Date(item.occurredAtUtc).toLocaleString('vi-VN')
-        : '';
-    const line = item.stockDocumentLineId
-        ? ` · Dòng #${item.stockDocumentLineId}`
-        : '';
-    metadata.textContent = `${actor} · ${occurred}${line}`;
-    container.appendChild(metadata);
-
-    if (item.reason || item.note) {
-        const explanation = document.createElement('div');
-        explanation.className = 'mt-2';
-        explanation.textContent = item.reason || item.note;
-        container.appendChild(explanation);
-    }
-
-    const evidence = document.createElement('details');
-    evidence.className = 'mt-2';
-    const summary = document.createElement('summary');
-    summary.className = 'small text-primary';
-    summary.textContent = 'Xem bằng chứng trường thay đổi';
-    evidence.appendChild(summary);
-
-    const pre = document.createElement('pre');
-    pre.className = 'small bg-light border rounded p-2 mt-2 mb-0 text-wrap';
-    pre.textContent = formatPurchaseReceiptAuditJson(item);
-    evidence.appendChild(pre);
-    container.appendChild(evidence);
-    return container;
-}
-
-function formatPurchaseReceiptAuditJson(item) {
-    const parse = (value, fallback) => {
-        try {
-            return JSON.parse(value || fallback);
-        } catch {
-            return fallback === '[]' ? [] : {};
-        }
-    };
-    return JSON.stringify({
-        changedFields: parse(item.changedFieldsJson, '[]'),
-        oldValues: parse(item.oldValuesJson, '{}'),
-        newValues: parse(item.newValuesJson, '{}')
-    }, null, 2);
 }
 
 async function loadReceiptFormOptions() {
@@ -1063,7 +1428,14 @@ async function refreshStockDocumentDetailUI() {
         const html = await response.text();
 
         const container = document.getElementById('stockDocumentLinesContainer');
-        if (container) container.innerHTML = html;
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        const snapshot = template.content.querySelector('[data-stock-row-version]');
+        const version = normalizeStockDocumentRowVersion(snapshot?.dataset.stockRowVersion);
+        if (!version || Number(snapshot?.dataset.stockDocumentId) !== documentId)
+            throw new Error('Không đọc được phiên bản của bảng hàng nhập.');
+        if (container) container.replaceChildren(template.content);
+        window.stockDocumentRowVersion.update(version);
 
         bindDeleteLine();
         bindOpenEditLineModal();
@@ -1071,9 +1443,12 @@ async function refreshStockDocumentDetailUI() {
         bindInlineLineQuantityChange();
         bindInlineLineUnitCostChange();
         syncToggleAllInputInvoiceLinesState();
+        await loadItemCatalogLineStatuses();
+        return true;
     } catch (error) {
         console.error(error);
         alert('Không tải lại được danh sách dòng nhập.');
+        return false;
     }
 }
 
@@ -1123,6 +1498,10 @@ function bindOpenApprovalModals() {
 
     if (btnOpenApprove && approveModalInstance) {
         btnOpenApprove.onclick = function () {
+            // Top, workbench and keyboard actions share the same commercial preflight.
+            if (document.getElementById('commercialApprovalWorkbench') &&
+                window.GaoAppPurchaseReceiptApproval?.prepareConfirmation?.() !== true) return;
+
             const note = document.getElementById('approveNote');
             const msg = document.getElementById('approveMessage');
             const modalEl = document.getElementById('approveModal');
@@ -1193,6 +1572,12 @@ function bindSubmitApproval() {
     btn.onclick = async function () {
         const note = document.getElementById('submitApprovalNote')?.value || '';
         const msg = document.getElementById('submitApprovalMessage');
+        if (window.ReceiptIntake?.isSaving() || window.ReceiptQuantityControls?.hasFailed()) {
+            if (msg) msg.textContent = window.ReceiptQuantityControls?.hasFailed()
+                ? 'Chưa lưu được số lượng. Vui lòng kiểm tra dòng hàng và lưu lại trước khi gửi duyệt.'
+                : 'Đang lưu hàng nhận. Vui lòng chờ lưu xong trước khi gửi duyệt.';
+            return;
+        }
         const documentId = window.stockDocumentPage.documentId;
 
         const response = await fetch(`/admin/api/stock-documents/${documentId}/submit-approval`, {
@@ -1243,11 +1628,28 @@ function bindApprove() {
         const api = await readApiResponse(response);
 
         if (!api.ok) {
-            if (msg) msg.textContent = api.data?.message || 'Duyệt phiếu thất bại.';
+            const message = api.data?.message || 'Duyệt phiếu thất bại.';
+            if (msg) msg.textContent = message;
+            if (/MST người mua|chủ thể|pháp nhân/i.test(message)) {
+                approveModalInstance?.hide();
+                document.getElementById('inputInvoicePickerSection')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.getElementById('btnOpenInputInvoicePicker')?.focus();
+                setInputInvoicePageMessage(message, true);
+            }
+            if (/đối chiếu|chênh lệch|hóa đơn XML/i.test(message)) {
+                approveModalInstance?.hide();
+                await loadInputInvoiceReconciliation();
+                document.getElementById('inputInvoiceReconciliationPanel')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.getElementById('inputInvoiceReconciliationTitle')?.focus();
+            }
             return;
         }
 
         if (approveModalInstance) approveModalInstance.hide();
+
+        if (await window.GaoLabels?.afterApproval(documentId)) return;
 
         showStockDocumentToast(
             'success',
@@ -1623,17 +2025,17 @@ function bindInlineLineQuantityChange() {
             this.select();
         });
 
-        // Chặn phím mũi tên mặc định vì Chrome đôi khi nhảy theo 1 khi locale có dấu phẩy.
+        // Mỗi lần nhấn mũi tên thay đổi đúng một đơn vị.
         input.addEventListener('keydown', function (e) {
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                changeInlineQtyByStep(this, 0.001);
+                changeInlineQtyByStep(this, 1);
                 return;
             }
 
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                changeInlineQtyByStep(this, -0.001);
+                changeInlineQtyByStep(this, -1);
                 return;
             }
 
@@ -1645,7 +2047,8 @@ function bindInlineLineQuantityChange() {
         });
 
         input.addEventListener('blur', async function () {
-            await saveInlineLineQuantity(this);
+            if (this.dataset.receiptStepSaving === '1') return;
+            if (Number(this.value) !== Number(this.defaultValue)) await saveInlineLineQuantity(this);
 
             if (focusLookupAfterSave) {
                 focusLookupAfterSave = false;
@@ -1741,7 +2144,7 @@ async function saveInlineLineUnitCost(input) {
 }
 function changeInlineQtyByStep(input, delta) {
     const current = parseDecimalInput(input.value);
-    const next = Math.max(0.001, current + delta);
+    const next = Math.max(1, current + delta);
 
     input.value = formatDecimalForInput(next);
     markEditingRow(input);
@@ -1793,13 +2196,13 @@ async function saveInlineLineQuantity(input) {
     const unitId = Number(input.dataset.unitId || 0);
     const note = input.dataset.note || '';
 
-    if (!lineId || !unitId) return;
+    if (!lineId || !unitId) return false;
 
     if (quantity <= 0) {
         alert('Số lượng phải lớn hơn 0.');
         input.focus();
         input.select();
-        return;
+        return false;
     }
 
     const row = input.closest('tr');
@@ -1820,10 +2223,10 @@ async function saveInlineLineQuantity(input) {
 
     if (!api.ok) {
         alert(api.data?.message || 'Cập nhật số lượng thất bại.');
-        return;
+        return false;
     }
 
-    await refreshStockDocumentDetailUI();
+    return await refreshStockDocumentDetailUI();
 }
 
 /* =========================================================
@@ -1922,18 +2325,27 @@ async function initEditSelect2Mode() {
 
 function applyEditReadonlyState() {
     const canEditHeader = document.getElementById('CanEditHeader')?.value === 'true';
+    const canEditPendingOwnership =
+        document.getElementById('CanEditPendingOwnership')?.value === 'true';
     const canEditLines = document.getElementById('CanEditLines')?.value === 'true';
 
-    if (!canEditHeader) {
+    if (!canEditHeader && !canEditPendingOwnership) {
         $('#LegalEntityId').prop('disabled', true);
-        $('#WarehouseId').prop('disabled', true);
-        $('#SupplierId').prop('disabled', true);
+
+    }
+
+    if (!canEditHeader) {
 
         const documentNote = document.getElementById('DocumentNote');
         const approvalNote = document.getElementById('ApprovalNote');
 
         if (documentNote) documentNote.disabled = true;
         if (approvalNote) approvalNote.disabled = true;
+    }
+
+    if (!canEditHeader && !canEditPendingOwnership) {
+        $('#WarehouseId').prop('disabled', true);
+        $('#SupplierId').prop('disabled', true);
     }
 
     if (!canEditLines) {
@@ -1949,7 +2361,9 @@ async function initReceiptOwnershipForEdit() {
     if (!legalEntitySelect || !warehouseSelect) return;
 
     const canEditHeader = document.getElementById('CanEditHeader')?.value === 'true';
-    if (!canEditHeader) {
+    const canEditPendingOwnership =
+        document.getElementById('CanEditPendingOwnership')?.value === 'true';
+    if (!canEditHeader && !canEditPendingOwnership) {
         const legalId = document.getElementById('CurrentLegalEntityId')?.value || '';
         const legalText = document.getElementById('CurrentLegalEntityText')?.value || 'HKD hiện tại';
         const warehouseId = document.getElementById('CurrentWarehouseId')?.value || '';
@@ -1982,12 +2396,14 @@ async function initReceiptOwnershipForEdit() {
             options,
             currentWarehouseId);
 
-        legalEntitySelect.addEventListener('change', function () {
-            renderReceiptWarehouseOptions(
-                warehouseSelect,
-                Number(legalEntitySelect.value || 0),
-                cachedReceiptFormOptions);
-        });
+        if (canEditHeader || canEditPendingOwnership) {
+            legalEntitySelect.addEventListener('change', function () {
+                renderReceiptWarehouseOptions(
+                    warehouseSelect,
+                    Number(legalEntitySelect.value || 0),
+                    cachedReceiptFormOptions);
+            });
+        }
     } catch (error) {
         console.error(error);
         legalEntitySelect.innerHTML = '<option value="">Không tải được HKD</option>';
@@ -2002,8 +2418,10 @@ function initSupplierSelect2ForEdit() {
     const currentId = $('#CurrentSupplierId').val();
     const currentText = $('#CurrentSupplierText').val();
     const canEditHeader = document.getElementById('CanEditHeader')?.value === 'true';
+    const canEditPendingOwnership =
+        document.getElementById('CanEditPendingOwnership')?.value === 'true';
 
-    if (!canEditHeader) {
+    if (!canEditHeader && !canEditPendingOwnership) {
         el.empty();
         if (currentId) {
             el.append(new Option(currentText || `Nhà cung cấp #${currentId}`, currentId, true, true));
@@ -2051,8 +2469,10 @@ function initQuickLookupSelect2() {
         width: '100%',
         placeholder: 'Quét barcode / nhập tên sản phẩm...',
         minimumInputLength: 1,
+        language: { inputTooShort: () => 'Nhập tên hoặc quét mã sản phẩm', searching: () => 'Đang tìm…',
+            noResults: () => window.ReceiptIntake?.noResults() || 'Không tìm thấy sản phẩm.' },
         ajax: {
-            url: '/admin/stock-documents/product-lookup-select2',
+            url: window.ReceiptBarcodeProposals?.lookupUrl || '/admin/stock-documents/product-lookup-select2',
             dataType: 'json',
             delay: 120,
             data: function (params) {
@@ -2127,16 +2547,26 @@ function formatQuickLookupSelection(item) {
 
 function bindQuickLookupEnterAutoSelect() {
     $(document).on('keydown', '.select2-container--open .select2-search__field', async function (e) {
-        if (e.key !== 'Enter') return;
+        if (e.key !== 'Enter' || this.closest('#rbpModal,#receiptIntakeModal')) return;
 
         const term = $(this).val();
         if (!term) return;
 
         try {
-            const response = await fetch(`/admin/stock-documents/product-lookup-select2?term=${encodeURIComponent(term)}`);
+            const response = await fetch(`${window.ReceiptBarcodeProposals?.lookupUrl || '/admin/stock-documents/product-lookup-select2'}?term=${encodeURIComponent(term)}`);
             const api = await readApiResponse(response);
 
-            if (!api.ok || !api.data?.results || api.data.results.length !== 1) return;
+            if (!api.ok || !api.data?.results) return;
+
+            if (api.data.results.length === 0) {
+                if (window.ReceiptBarcodeProposals?.open(term) || showUnknownProvisionalCapture(term, this)) {
+                    e.preventDefault();
+                    $('#quickLookupInput').select2('close');
+                }
+                return;
+            }
+
+            if (api.data.results.length !== 1) return;
 
             e.preventDefault();
 
@@ -2361,7 +2791,9 @@ async function popupQuickAddLine() {
 
 function bindEditHeaderAutoSave() {
     const canEditHeader = document.getElementById('CanEditHeader')?.value === 'true';
-    if (!canEditHeader) return;
+    const canEditPendingOwnership =
+        document.getElementById('CanEditPendingOwnership')?.value === 'true';
+    if (!canEditHeader && !canEditPendingOwnership) return;
 
     const legalEntityEl = $('#LegalEntityId');
     const warehouseEl = $('#WarehouseId');
@@ -2369,15 +2801,18 @@ function bindEditHeaderAutoSave() {
     const documentNote = document.getElementById('DocumentNote');
     const approvalNote = document.getElementById('ApprovalNote');
 
-    if (legalEntityEl.length) legalEntityEl.on('change', queueEditHeaderSave);
     if (warehouseEl.length) warehouseEl.on('change', queueEditHeaderSave);
     if (supplierEl.length) supplierEl.on('change', queueEditHeaderSave);
 
-    if (documentNote) documentNote.addEventListener('input', queueEditHeaderSave);
-    if (approvalNote) approvalNote.addEventListener('input', queueEditHeaderSave);
+    if (canEditHeader) {
+        if (legalEntityEl.length) legalEntityEl.on('change', queueEditHeaderSave);
+        if (documentNote) documentNote.addEventListener('input', queueEditHeaderSave);
+        if (approvalNote) approvalNote.addEventListener('input', queueEditHeaderSave);
+    }
 }
 
 function queueEditHeaderSave() {
+    if (suppressEditHeaderSave) return;
     if (editHeaderSaveTimer) clearTimeout(editHeaderSaveTimer);
 
     editHeaderSaveTimer = setTimeout(function () {
@@ -2387,132 +2822,90 @@ function queueEditHeaderSave() {
 
 async function saveEditHeader() {
     const canEditHeader = document.getElementById('CanEditHeader')?.value === 'true';
-    if (!canEditHeader) return;
+    const canEditPendingOwnership =
+        document.getElementById('CanEditPendingOwnership')?.value === 'true';
+    if (!canEditHeader && !canEditPendingOwnership) return;
 
     const stockDocumentId = Number(document.getElementById('StockDocumentId')?.value || 0);
     if (!stockDocumentId) return;
 
+    const selectedWarehouseId = $('#WarehouseId').val()
+        ? Number($('#WarehouseId').val()) : null;
+    const selectedWarehouse = (cachedReceiptFormOptions?.warehouses || [])
+        .find(item => Number(item.id) === Number(selectedWarehouseId));
     const payload = {
         stockDocumentId: stockDocumentId,
-        legalEntityId: $('#LegalEntityId').val() ? Number($('#LegalEntityId').val()) : null,
-        warehouseId: $('#WarehouseId').val() ? Number($('#WarehouseId').val()) : null,
-        supplierId: $('#SupplierId').val() ? Number($('#SupplierId').val()) : null,
-        note: document.getElementById('DocumentNote')?.value || '',
-        approvalNote: document.getElementById('ApprovalNote')?.value || ''
+        // Filter UI is never owner authority. The posted value is derived from
+        // the selected Warehouse and the server re-validates that relation.
+        legalEntityId: selectedWarehouse ? Number(selectedWarehouse.legalEntityId) : null,
+        warehouseId: selectedWarehouseId,
+        supplierId: $('#SupplierId').val() ? Number($('#SupplierId').val()) : null
     };
+    if (canEditHeader) {
+        payload.note = document.getElementById('DocumentNote')?.value || '';
+        payload.approvalNote = document.getElementById('ApprovalNote')?.value || '';
+    }
 
-    const response = await fetch('/admin/stock-documents/update-header', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    showEditHeaderMessage('');
+    try {
+        const response = await fetch('/admin/stock-documents/update-header', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
 
-    const api = await readApiResponse(response);
+        const api = await readApiResponse(response);
 
-    if (!api.ok) {
-        console.error(api.data?.message || 'Cập nhật header thất bại');
+        if (!api.ok) {
+            restoreEditHeaderOwnershipControls();
+            const message = api.data?.message || 'Cập nhật thông tin phiếu thất bại.';
+            showEditHeaderMessage(message, true);
+            if (message.toLowerCase().includes('gỡ liên kết'))
+                document.getElementById('inputInvoicePickerSection')?.focus({ preventScroll: false });
+            return;
+        }
+
+        window.location.reload();
+    } catch (error) {
+        console.error(error);
+        restoreEditHeaderOwnershipControls();
+        showEditHeaderMessage('Không thể cập nhật thông tin phiếu. Vui lòng thử lại.', true);
     }
 }
 
+function restoreEditHeaderOwnershipControls() {
+    suppressEditHeaderSave = true;
+    const warehouseId = document.getElementById('CurrentWarehouseId')?.value || '';
+    const supplierId = document.getElementById('CurrentSupplierId')?.value || '';
+    const supplierText = document.getElementById('CurrentSupplierText')?.value || '';
+
+    $('#WarehouseId').val(warehouseId).trigger('change.select2');
+    const supplier = $('#SupplierId');
+    if (supplier.length) {
+        supplier.empty();
+        if (supplierId) {
+            supplier.append(new Option(
+                supplierText || `Nhà cung cấp #${supplierId}`,
+                supplierId,
+                true,
+                true));
+        }
+        supplier.trigger('change.select2');
+    }
+    suppressEditHeaderSave = false;
+}
+
+function showEditHeaderMessage(message, isError = false) {
+    const element = document.getElementById('editHeaderMessage');
+    if (!element) return;
+    element.textContent = message || '';
+    element.classList.toggle('text-danger', Boolean(message) && isError);
+    element.classList.toggle('text-success', Boolean(message) && !isError);
+}
+
 /* =========================================================
- * EDIT - INPUT INVOICE XML UPLOAD
+ * EDIT - LINKED INPUT INVOICES
  * ========================================================= */
-
-function bindUploadInputInvoiceXml() {
-    const btn = document.getElementById('btnUploadInputInvoiceXml');
-    const fileInput = document.getElementById('inputInvoiceXmlFile');
-
-    if (!btn || !fileInput) return;
-
-    btn.onclick = async function () {
-        const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
-        const file = fileInput.files && fileInput.files.length > 0
-            ? fileInput.files[0]
-            : null;
-
-        if (!documentId) {
-            setInputInvoiceUploadMessage('Không xác định được phiếu nhập.', true);
-            return;
-        }
-
-        if (!file) {
-            setInputInvoiceUploadMessage('Vui lòng chọn file XML.', true);
-            return;
-        }
-
-        const fileName = file.name || '';
-
-        if (!fileName.toLowerCase().endsWith('.xml')) {
-            setInputInvoiceUploadMessage('Chỉ hỗ trợ file XML.', true);
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            btn.disabled = true;
-            btn.textContent = 'Đang upload...';
-
-            setInputInvoiceUploadMessage('Đang đọc file XML...', false);
-
-            const response = await fetch(`/admin/api/stock-documents/${documentId}/input-invoices/upload-xml`, {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin'
-            });
-
-            const api = await readApiResponse(response);
-
-            if (!api.ok) {
-                setInputInvoiceUploadMessage(api.data?.message || 'Upload XML thất bại.', true);
-                return;
-            }
-
-            setInputInvoiceUploadMessage(api.data?.message || 'Đã upload XML thành công.', false);
-
-            renderInputInvoiceInfo(api.data?.data);
-
-            await loadInputInvoicesForStockDocument();
-
-            fileInput.value = '';
-        } catch (error) {
-            console.error(error);
-            setInputInvoiceUploadMessage('Có lỗi khi upload XML.', true);
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Upload XML';
-        }
-    };
-}
-
-function setInputInvoiceUploadMessage(message, isError) {
-    const msg = document.getElementById('inputInvoiceUploadMessage');
-    if (!msg) return;
-
-    msg.textContent = message || '';
-    msg.classList.remove('text-danger', 'text-success', 'text-muted');
-    msg.classList.add(isError ? 'text-danger' : 'text-success');
-}
-
-function renderInputInvoiceInfo(data) {
-    if (!data) return;
-
-    const box = document.getElementById('inputInvoiceInfoBox');
-    if (box) box.classList.remove('d-none');
-
-    setText('xmlInvoiceSeries', data.invoiceSeries || '-');
-    setText('xmlInvoiceNumber', data.invoiceNumber || '-');
-    setText('xmlInvoiceDate', data.invoiceDate ? formatDate(data.invoiceDate) : '-');
-    setText('xmlDetailCount', data.detailCount ?? 0);
-
-    setText('xmlSellerTaxCode', data.sellerTaxCode || '-');
-    setText('xmlSellerName', data.sellerName || '-');
-
-    setText('xmlTotalBeforeTax', formatNumber(data.totalBeforeTax || 0));
-    setText('xmlTotalTaxAmount', formatNumber(data.totalTaxAmount || 0));
-    setText('xmlTotalPaymentAmount', formatNumber(data.totalPaymentAmount || 0));
-}
 
 async function loadInputInvoicesForStockDocument() {
     const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
@@ -2522,6 +2915,8 @@ async function loadInputInvoicesForStockDocument() {
 
     try {
         container.innerHTML = `<div class="text-muted small">Đang tải hóa đơn XML...</div>`;
+
+        await loadInputInvoiceAssociation();
 
         const response = await fetch(`/admin/api/stock-documents/${documentId}/input-invoices`, {
             method: 'GET',
@@ -2540,6 +2935,9 @@ async function loadInputInvoicesForStockDocument() {
         }
 
         renderInputInvoiceList(api.data || []);
+        await loadItemCatalogLineStatuses();
+        await loadInputInvoiceReconciliation();
+        await refreshCommercialReconciliationPreviewAfterXmlMutation();
     } catch (error) {
         console.error(error);
 
@@ -2550,58 +2948,215 @@ async function loadInputInvoicesForStockDocument() {
     }
 }
 
+async function loadInputInvoiceAssociation() {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const state = document.getElementById('inputInvoiceAssociationState');
+    if (!documentId || !state) return;
+    const response = await fetch(
+        `/admin/api/stock-documents/${documentId}/input-invoices/association`,
+        { credentials: 'same-origin', cache: 'no-store' });
+    const api = await readApiResponse(response);
+    if (!api.ok) {
+        cachedInputInvoiceAssociation = null;
+        state.textContent = api.data?.message || 'Không tải được trạng thái liên kết XML.';
+        state.className = 'small mt-2 text-danger';
+        return;
+    }
+    cachedInputInvoiceAssociation = api.data;
+    const waiting = api.data?.lifecycleState === 'WaitingXml';
+    const linked = api.data?.lifecycleState === 'Linked';
+    state.textContent = waiting
+        ? 'Chờ hóa đơn XML · Phiếu đã xác nhận và đang chờ liên kết thủ công.'
+        : linked
+            ? `Đã liên kết XML ${api.data.currentInvoiceSeries || '-'} · ${api.data.currentInvoiceNumber || '-'}.`
+            : 'Chưa liên kết hóa đơn XML.';
+    state.className = `small mt-2 ${waiting ? 'text-warning fw-semibold' : linked ? 'text-success' : 'text-muted'}`;
+}
+
 function renderInputInvoiceList(invoices) {
     const container = document.getElementById('inputInvoiceListContainer');
     if (!container) return;
 
     if (!invoices || invoices.length === 0) {
+        cachedInputInvoices = [];
         container.innerHTML = `
             <div class="text-muted small">
-                Chưa có hóa đơn XML nào được gắn với phiếu này.
+                Chưa có hóa đơn nào được gắn với phiếu này.
             </div>`;
         return;
     }
 
+    cachedInputInvoices = invoices;
     container.innerHTML = invoices.map((invoice, index) => {
-        const collapseId = `inputInvoiceDetails_${invoice.id}`;
-
+        const ownerWarning = invoice.ownerWarningReasonCode
+            ? `<div class="alert alert-warning py-2 px-3 mt-2 mb-0 small" role="alert"
+                    data-owner-warning="${escapeHtml(invoice.ownerWarningReasonCode)}">
+                    <strong>Cảnh báo chủ thể:</strong>
+                    ${escapeHtml(invoice.ownerWarningMessage || 'Chủ thể người mua của hóa đơn không còn hợp lệ với phiếu nhập.')}
+               </div>`
+            : '';
         return `
-            <div class="border rounded-3 mb-3 overflow-hidden">
-                <div class="p-3 bg-white d-flex justify-content-between align-items-start flex-wrap gap-2">
-                    <div>
-                        <div class="fw-bold">
-                            XML #${index + 1} -
-                            Ký hiệu: ${escapeHtml(invoice.invoiceSeries || '-')}
-                            | Số: ${escapeHtml(invoice.invoiceNumber || '-')}
-                        </div>
-
-                        <div class="small text-muted mt-1">
-                            Ngày: ${invoice.invoiceDate ? formatDate(invoice.invoiceDate) : '-'}
-                            | MST bán: ${escapeHtml(invoice.sellerTaxCode || '-')}
-                            | NCC: ${escapeHtml(invoice.sellerName || '-')}
-                        </div>
-
-                        <div class="small mt-1">
-                            Tổng thanh toán:
-                            <b class="text-primary">${formatNumber(invoice.totalPaymentAmount || 0)}</b>
-                            | Số dòng: <b>${invoice.detailCount || 0}</b>
-                        </div>
+            <article class="border rounded-3 p-3 mb-2 bg-white d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <div class="fw-semibold">
+                        ${escapeHtml(invoice.invoiceSeries || '-')} · ${escapeHtml(invoice.invoiceNumber || '-')}
                     </div>
-
-                    <button class="btn btn-sm btn-outline-primary"
-                            type="button"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#${collapseId}">
-                        Xem dòng XML
-                    </button>
+                    <div class="small text-muted mt-1">
+                        Ngày: ${invoice.invoiceDate ? formatLinkedInputInvoiceDate(invoice.invoiceDate) : '-'}
+                        · MST người mua: ${escapeHtml(invoice.buyerTaxCode || '-')}
+                        · Chủ thể: ${escapeHtml(invoice.resolvedBuyerLegalEntityName || invoice.buyerOwnerResolutionStatus || 'Chưa xác định')}
+                    </div>
+                    ${ownerWarning}
                 </div>
-
-                <div class="collapse show" id="${collapseId}">
-                    ${renderInputInvoiceDetailTable(invoice.details || [])}
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary js-view-linked-input-invoice"
+                            data-index="${index}">Xem hóa đơn</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger js-unlink-input-invoice"
+                            data-index="${index}">Gỡ liên kết</button>
+                    ${cachedInputInvoiceAssociation?.capabilities?.canRelink
+                        ? `<button type="button" class="btn btn-sm btn-outline-secondary js-relink-input-invoice"
+                                  data-index="${index}">Thay hóa đơn</button>`
+                        : ''}
                 </div>
-            </div>
-        `;
+            </article>`;
     }).join('');
+}
+
+function bindLinkedInputInvoiceActions() {
+    const container = document.getElementById('inputInvoiceListContainer');
+    if (container) {
+        container.addEventListener('click', async function (event) {
+            const viewButton = event.target.closest('.js-view-linked-input-invoice');
+            if (viewButton) {
+                const invoice = cachedInputInvoices[Number(viewButton.dataset.index)];
+                if (invoice) await openLinkedInputInvoicePreview(invoice);
+                return;
+            }
+            const unlinkButton = event.target.closest('.js-unlink-input-invoice');
+            if (unlinkButton) {
+                const invoice = cachedInputInvoices[Number(unlinkButton.dataset.index)];
+                if (invoice) openUnlinkInputInvoiceConfirmation(invoice);
+                return;
+            }
+            const relinkButton = event.target.closest('.js-relink-input-invoice');
+            if (relinkButton) {
+                const invoice = cachedInputInvoices[Number(relinkButton.dataset.index)];
+                if (invoice?.id && typeof window.openInputInvoicePickerForRelink === 'function') {
+                    inputInvoiceAssociationReturnFocus = relinkButton;
+                    window.openInputInvoicePickerForRelink(invoice.id);
+                }
+            }
+        });
+    }
+
+    const confirm = document.getElementById('btnConfirmUnlinkInputInvoice');
+    if (confirm) confirm.addEventListener('click', unlinkPendingInputInvoice);
+}
+
+async function openLinkedInputInvoicePreview(invoice) {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const body = document.getElementById('linkedInputInvoicePreviewBody');
+    if (!documentId || !invoice?.id || !body || !linkedInputInvoicePreviewModalInstance) return;
+    releaseLinkedInputInvoicePreview();
+    document.getElementById('linkedInputInvoicePreviewTitle').textContent =
+        `Xem hóa đơn ${invoice.invoiceSeries || '-'} · ${invoice.invoiceNumber || '-'}`;
+    body.innerHTML = '<div class="p-4 text-muted">Đang tải bản xem trước...</div>';
+    linkedInputInvoicePreviewModalInstance.show();
+
+    const baseUrl = `/admin/api/stock-documents/${documentId}/input-invoices/${invoice.id}/preview`;
+    try {
+        const pdf = await fetch(`${baseUrl}/pdf`, {
+            credentials: 'same-origin', cache: 'no-store'
+        });
+        if (pdf.ok) {
+            linkedInputInvoicePreviewObjectUrl = URL.createObjectURL(await pdf.blob());
+            body.innerHTML = `<iframe title="Bản xem trước PDF hóa đơn" src="${linkedInputInvoicePreviewObjectUrl}"
+                style="width:100%;min-height:70vh;border:0;background:#fff"></iframe>`;
+            return;
+        }
+
+        const xml = await fetch(`${baseUrl}/xml`, {
+            credentials: 'same-origin', cache: 'no-store'
+        });
+        if (!xml.ok) {
+            const api = await readApiResponse(xml);
+            throw new Error(api.data?.message || 'Không có PDF hoặc XML để xem trước.');
+        }
+        body.innerHTML = await xml.text();
+    } catch (error) {
+        body.innerHTML = `<div class="alert alert-warning m-4">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function releaseLinkedInputInvoicePreview() {
+    if (linkedInputInvoicePreviewObjectUrl)
+        URL.revokeObjectURL(linkedInputInvoicePreviewObjectUrl);
+    linkedInputInvoicePreviewObjectUrl = null;
+}
+
+function openUnlinkInputInvoiceConfirmation(invoice) {
+    inputInvoiceAssociationReturnFocus = document.activeElement;
+    pendingUnlinkInputInvoice = invoice;
+    const label = `${invoice.invoiceSeries || '-'} · ${invoice.invoiceNumber || '-'}`;
+    const description = document.getElementById('unlinkInputInvoiceDescription');
+    const message = document.getElementById('unlinkInputInvoiceMessage');
+    const reason = document.getElementById('inputInvoiceAssociationReason');
+    if (description)
+        description.textContent = `Hóa đơn ${label} sẽ được gỡ khỏi phiếu nhập này.`;
+    if (message) message.textContent = '';
+    if (reason) reason.value = '';
+    unlinkInputInvoiceModalInstance?.show();
+}
+
+async function unlinkPendingInputInvoice() {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const invoice = pendingUnlinkInputInvoice;
+    const button = document.getElementById('btnConfirmUnlinkInputInvoice');
+    const message = document.getElementById('unlinkInputInvoiceMessage');
+    const reasonInput = document.getElementById('inputInvoiceAssociationReason');
+    const reason = String(reasonInput?.value || '').trim();
+    if (!documentId || !invoice?.id || !button) return;
+    if (!reason) {
+        if (message) message.textContent = 'Vui lòng nhập lý do gỡ liên kết.';
+        reasonInput?.focus();
+        return;
+    }
+
+    button.disabled = true;
+    if (message) message.textContent = '';
+    try {
+        const response = await fetch(
+            `/admin/api/stock-documents/${documentId}/input-invoices/${invoice.id}/unlink`, {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    expectedCurrentInputInvoiceHeadId: invoice.id,
+                    reason: reason
+                })
+            });
+        const api = await readApiResponse(response);
+        if (!api.ok) {
+            if (response.status === 409 && api.data?.code === 'AssociationChanged')
+                throw new Error(api.data.message || 'Liên kết đã thay đổi. Vui lòng tải lại và thử lại.');
+            throw new Error(api.data?.message || 'Không thể gỡ liên kết hóa đơn.');
+        }
+        unlinkInputInvoiceModalInstance?.hide();
+        pendingUnlinkInputInvoice = null;
+        setInputInvoicePageMessage(api.data?.message || 'Đã gỡ liên kết hóa đơn.', false);
+        await loadInputInvoicesForStockDocument();
+    } catch (error) {
+        if (message) message.textContent = error.message;
+        setInputInvoicePageMessage(error.message, true);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function setInputInvoicePageMessage(message, isError) {
+    const node = document.getElementById('inputInvoicePickerPageMessage');
+    if (!node) return;
+    node.textContent = message || '';
+    node.className = `small px-4 pb-3 ${isError ? 'text-danger' : 'text-success'}`;
 }
 
 function renderInputInvoiceDetailTable(details) {
@@ -2618,8 +3173,10 @@ function renderInputInvoiceDetailTable(details) {
                 <thead class="table-light">
                     <tr>
                         <th style="width:70px;" class="text-center">STT</th>
+                        <th style="min-width:130px;">Mã hàng XML</th>
                         <th style="min-width:280px;">Tên hàng XML</th>
                         <th style="width:100px;">ĐVT</th>
+                        <th style="min-width:130px;">Nhận diện</th>
                         <th style="width:110px;" class="text-end">SL</th>
                         <th style="width:130px;" class="text-end">Đơn giá</th>
                         <th style="width:140px;" class="text-end">Thành tiền</th>
@@ -2632,8 +3189,10 @@ function renderInputInvoiceDetailTable(details) {
                     ${details.map(d => `
                         <tr>
                             <td class="text-center">${d.lineNo || ''}</td>
+                            <td>${escapeHtml(d.supplierItemCode || 'Không có mã')}</td>
                             <td>${escapeHtml(d.itemName || '')}</td>
                             <td>${escapeHtml(d.unitName || '')}</td>
+                            <td>${renderItemCatalogStatusBadge(d.itemCatalogMapping)}</td>
                             <td class="text-end">${formatNumber(d.quantity || 0)}</td>
                             <td class="text-end">${formatNumber(d.unitPrice || 0)}</td>
                             <td class="text-end fw-semibold">${formatNumber(d.lineAmount || 0)}</td>
@@ -2655,16 +3214,38 @@ function bindOpenMapInputInvoiceLineModal() {
     document.querySelectorAll('.btn-map-input-invoice-line').forEach(btn => {
         btn.onclick = async function () {
             const lineId = Number(this.dataset.lineId || 0);
+            const preferredDetailId = Number(this.dataset.inputInvoiceDetailId || 0);
             if (!lineId) return;
 
             selectedInputInvoiceDetailId = null;
+            selectedInputInvoiceDetail = null;
 
             document.getElementById('mapStockDocumentLineId').value = lineId;
             document.getElementById('mapUseInputInvoice').checked = true;
+            document.getElementById('mapUseInputInvoice').dispatchEvent(new Event('change'));
+            document.getElementById('mapRememberItemCatalogMapping').checked = false;
+            document.getElementById('mapInputInvoiceExclusionReason').value = '';
+            document.getElementById('mapInputInvoiceExclusionReasonBox')
+                ?.classList.add('d-none');
             document.getElementById('mapInputInvoiceMessage').textContent = '';
+            document.getElementById('mapReceiptLineProduct').textContent =
+                this.dataset.productName || `Dòng #${lineId}`;
+            const quantity = formatNumber(Number(this.dataset.quantity || 0));
+            const unit = this.dataset.unitName || '';
+            const factor = formatNumber(Number(this.dataset.factor || 1));
+            document.getElementById('mapReceiptLineQuantity').textContent =
+                `${quantity} ${unit} · hệ số ${factor}`;
 
             await ensureInputInvoicesLoaded();
             renderXmlLinePicker();
+            if (preferredDetailId) {
+                const preferred = document.querySelector(
+                    `.js-pick-xml-detail[value="${preferredDetailId}"]`);
+                if (preferred) {
+                    preferred.checked = true;
+                    preferred.dispatchEvent(new Event('change'));
+                }
+            }
 
             if (mapInputInvoiceLineModalInstance) {
                 mapInputInvoiceLineModalInstance.show();
@@ -2704,13 +3285,15 @@ function renderXmlLinePicker() {
             details.push({
                 ...d,
                 invoiceSeries: inv.invoiceSeries,
-                invoiceNumber: inv.invoiceNumber
+                invoiceNumber: inv.invoiceNumber,
+                supplierLabel: [inv.sellerName, inv.sellerTaxCode].filter(Boolean).join(' · ')
             });
         });
     });
+    itemCatalogDetailOptions = details;
 
     if (!details.length) {
-        box.innerHTML = `<div class="text-muted">Chưa có dòng XML. Hãy upload XML trước.</div>`;
+        box.innerHTML = `<div class="text-muted">Chưa có dòng XML. Hãy chọn hóa đơn trước.</div>`;
         return;
     }
 
@@ -2722,8 +3305,10 @@ function renderXmlLinePicker() {
                         <th style="width:60px;">Chọn</th>
                         <th>Hóa đơn</th>
                         <th>STT</th>
+                        <th>Mã hàng XML</th>
                         <th>Tên hàng XML</th>
                         <th>ĐVT</th>
+                        <th>Gợi ý lần sau</th>
                         <th class="text-end">SL</th>
                         <th class="text-end">Đơn giá</th>
                         <th class="text-end">Thành tiền</th>
@@ -2741,8 +3326,10 @@ function renderXmlLinePicker() {
                             </td>
                             <td>${escapeHtml(d.invoiceSeries || '')}-${escapeHtml(d.invoiceNumber || '')}</td>
                             <td>${d.lineNo || ''}</td>
+                            <td>${escapeHtml(d.supplierItemCode || 'Không có mã')}</td>
                             <td>${escapeHtml(d.itemName || '')}</td>
                             <td>${escapeHtml(d.unitName || '')}</td>
+                            <td>${renderItemCatalogStatusBadge(d.itemCatalogMapping)}</td>
                             <td class="text-end">${formatNumber(d.quantity || 0)}</td>
                             <td class="text-end">${formatNumber(d.unitPrice || 0)}</td>
                             <td class="text-end fw-semibold">${formatNumber(d.lineAmount || 0)}</td>
@@ -2756,12 +3343,278 @@ function renderXmlLinePicker() {
     box.querySelectorAll('.js-pick-xml-detail').forEach(radio => {
         radio.onchange = function () {
             selectedInputInvoiceDetailId = Number(this.value || 0);
+            selectedInputInvoiceDetail = itemCatalogDetailOptions.find(
+                x => Number(x.id) === selectedInputInvoiceDetailId) || null;
         };
     });
 }
 
+function getItemCatalogStatePresentation(mapping) {
+    const state = mapping?.stateName || mapping?.state || 'Unmapped';
+    if (state === 'Confirmed' || state === 2)
+        return { label: 'Đã nhớ', action: 'Đã nhớ', badge: 'bg-label-success' };
+    if (mapping?.reasonCode === 'CrossUnitProductInherited')
+        return { label: 'Đã nhận diện', action: 'Xác nhận đơn vị', badge: 'bg-label-info' };
+    if (mapping?.reasonCode === 'NameUnitSuggestionRequiresConfirmation')
+        return {
+            label: 'Gợi ý cần xác nhận',
+            action: 'Xác nhận gợi ý',
+            badge: 'bg-label-warning'
+        };
+    if (state === 'NeedsConfirmation' || state === 1)
+        return { label: 'Chưa nhận diện', action: 'Chọn sản phẩm', badge: 'bg-label-warning' };
+    return { label: 'Chưa nhận diện', action: 'Chọn sản phẩm', badge: 'bg-label-secondary' };
+}
+
+function renderItemCatalogStatusBadge(mapping) {
+    const state = getItemCatalogStatePresentation(mapping);
+    const reason = mapping?.message
+        ? ` title="${escapeHtml(mapping.message)}"`
+        : '';
+    return `<span class="badge ${state.badge}"${reason}>${state.label}</span>`;
+}
+
+function initItemCatalogMappingControls() {
+    const product = $('#mapCatalogProductVariant');
+    const unit = document.getElementById('mapCatalogUnitConversion');
+    if (!product.length || !unit || !$.fn.select2) return;
+
+    product.select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        dropdownParent: $('#mapInputInvoiceLineModal'),
+        placeholder: 'Tìm ProductVariant...',
+        minimumInputLength: 1,
+        ajax: {
+            url: '/admin/api/stock-documents/search-products',
+            dataType: 'json',
+            delay: 150,
+            data: params => ({
+                keyword: params.term || '',
+                stockDocumentId: Number(
+                    document.getElementById('StockDocumentId')?.value || 0)
+            }),
+            processResults: data => {
+                const variants = new Map();
+                (Array.isArray(data) ? data : []).forEach(item => {
+                    const id = Number(item.productVariantId || 0);
+                    if (!id || variants.has(id)) return;
+                    variants.set(id, {
+                        id,
+                        text: [item.productName || item.text, item.sku]
+                            .filter(Boolean).join(' · '),
+                        productName: item.productName,
+                        sku: item.sku
+                    });
+                });
+                return { results: [...variants.values()] };
+            }
+        }
+    });
+
+    product.on('select2:select', async event => {
+        await loadItemCatalogVariantConversions(
+            Number(event.params.data.id), null);
+    });
+    product.on('select2:clear', resetItemCatalogConversionSelect);
+    unit.addEventListener('change', updateItemCatalogConversionPreview);
+}
+
+function resetItemCatalogMappingPanel() {
+    const panel = document.getElementById('mapItemCatalogPanel');
+    if (panel) panel.classList.add('d-none');
+    selectedInputInvoiceDetail = null;
+    $('#mapCatalogProductVariant').val(null).trigger('change');
+    resetItemCatalogConversionSelect();
+    const rowVersion = document.getElementById('mapCatalogRowVersion');
+    if (rowVersion) rowVersion.value = '';
+}
+
+function resetItemCatalogConversionSelect() {
+    const unit = document.getElementById('mapCatalogUnitConversion');
+    if (unit)
+        unit.innerHTML = '<option value="">Chọn đơn vị quy đổi</option>';
+    updateItemCatalogConversionPreview();
+}
+
+async function showItemCatalogMappingPanel(detail) {
+    const panel = document.getElementById('mapItemCatalogPanel');
+    if (!panel || !detail) return;
+    panel.classList.remove('d-none');
+
+    const supplier = document.getElementById('mapItemCatalogSupplier');
+    if (supplier)
+        supplier.textContent = `Supplier: ${detail.supplierLabel || 'Chưa xác định'}`;
+    const identity = document.getElementById('mapItemCatalogXmlIdentity');
+    if (identity) {
+        identity.innerHTML = `
+            <div><strong>Mã hàng XML:</strong> ${escapeHtml(detail.supplierItemCode || 'Không có mã hàng trên XML')}</div>
+            <div><strong>Tên hàng:</strong> ${escapeHtml(detail.itemName || '-')}</div>
+            <div><strong>XML Unit / Quantity:</strong> ${escapeHtml(detail.unitName || '-')} · ${formatNumber(detail.quantity || 0)}</div>`;
+    }
+
+    const mapping = detail.itemCatalogMapping;
+    const state = getItemCatalogStatePresentation(mapping);
+    const status = document.getElementById('mapItemCatalogStatus');
+    if (status) {
+        status.className = `badge ${state.badge}`;
+        status.textContent = state.label;
+        status.title = mapping?.message || '';
+    }
+    const rowVersion = document.getElementById('mapCatalogRowVersion');
+    if (rowVersion) rowVersion.value = mapping?.mappingRowVersion || '';
+
+    const variantId = Number(mapping?.productVariantId || 0);
+    if (!variantId) {
+        $('#mapCatalogProductVariant').val(null).trigger('change');
+        resetItemCatalogConversionSelect();
+        return;
+    }
+
+    const product = $('#mapCatalogProductVariant');
+    const label = [mapping.productName || `Variant #${variantId}`, mapping.variantSku]
+        .filter(Boolean).join(' · ');
+    product.empty().append(new Option(label, String(variantId), true, true))
+        .trigger('change');
+    await loadItemCatalogVariantConversions(
+        variantId, Number(mapping.productUnitConversionId || 0));
+}
+
+async function loadItemCatalogVariantConversions(variantId, selectedConversionId) {
+    const unit = document.getElementById('mapCatalogUnitConversion');
+    const message = document.getElementById('mapInputInvoiceMessage');
+    if (!unit || !variantId) return;
+    unit.disabled = true;
+    unit.innerHTML = '<option value="">Đang tải đơn vị...</option>';
+    try {
+        const documentId = Number(
+            document.getElementById('StockDocumentId')?.value || 0);
+        const response = await fetch(
+            `/admin/api/stock-documents/product-variants/${variantId}/units?stockDocumentId=${documentId}`, {
+                credentials: 'same-origin', cache: 'no-store'
+            });
+        const api = await readApiResponse(response);
+        if (!api.ok)
+            throw new Error(api.data?.message || 'Không tải được đơn vị quy đổi.');
+        unit.innerHTML = '<option value="">Chọn đơn vị quy đổi</option>';
+        (api.data || []).forEach(item => {
+            if (!item.productUnitConversionId) return;
+            const option = new Option(
+                `${item.unitName} · ×${item.factor}`,
+                String(item.productUnitConversionId),
+                Number(item.productUnitConversionId) === selectedConversionId,
+                Number(item.productUnitConversionId) === selectedConversionId);
+            option.dataset.unitName = item.unitName || '';
+            option.dataset.factor = String(item.factor || '');
+            option.dataset.baseUnitId = String(item.baseUnitId || '');
+            option.dataset.baseUnitName = item.baseUnitName || '';
+            option.dataset.isDefaultForSale = item.isDefaultForSale ? 'true' : 'false';
+            unit.appendChild(option);
+        });
+        updateItemCatalogConversionPreview();
+    } catch (error) {
+        unit.innerHTML = '<option value="">Không tải được đơn vị</option>';
+        if (message) message.textContent = error.message;
+    } finally {
+        unit.disabled = false;
+    }
+}
+
+function updateItemCatalogConversionPreview() {
+    const unit = document.getElementById('mapCatalogUnitConversion');
+    const preview = document.getElementById('mapCatalogConversionPreview');
+    if (!unit || !preview) return;
+    const option = unit.selectedOptions?.[0];
+    const factor = Number(option?.dataset.factor || 0);
+    if (!option?.value || factor <= 0) {
+        preview.textContent = 'Chọn sản phẩm và đơn vị quy đổi để xem Factor/Base Unit.';
+        return;
+    }
+    const xmlUnit = selectedInputInvoiceDetail?.unitName || '-';
+    const quantity = Number(selectedInputInvoiceDetail?.quantity || 0);
+    const baseUnit = option.dataset.baseUnitName || 'Base Unit';
+    const defaultUnit = [...unit.options].find(
+        item => item.dataset.isDefaultForSale === 'true')?.dataset.unitName;
+    preview.innerHTML = `
+        <strong>${escapeHtml(xmlUnit)}</strong> →
+        <strong>${escapeHtml(option.dataset.unitName || '-')}</strong> →
+        ×${escapeHtml(option.dataset.factor)} →
+        <strong>${escapeHtml(baseUnit)}</strong><br>
+        ${formatNumber(quantity)} × ${formatNumber(factor)} =
+        <strong>${formatNumber(quantity * factor)} ${escapeHtml(baseUnit)}</strong>
+        ${defaultUnit ? `<br>Default Unit: ${escapeHtml(defaultUnit)}` : ''}`;
+}
+
+async function loadItemCatalogLineStatuses() {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const nodes = document.querySelectorAll(
+        '.js-item-map-status, .js-commercial-item-map-status');
+    if (!documentId || !nodes.length) return;
+    try {
+        const response = await fetch(
+            `/admin/api/stock-documents/${documentId}/input-invoices/line-maps`, {
+                credentials: 'same-origin', cache: 'no-store'
+            });
+        const api = await readApiResponse(response);
+        if (!api.ok) return;
+        const items = api.data || [];
+        const byLine = new Map(items.map(item =>
+            [Number(item.stockDocumentLineId), item]));
+        nodes.forEach(node => {
+            const item = byLine.get(Number(node.dataset.itemMapLineId));
+            const associated = Number(item?.inputInvoiceDetailId || 0) > 0;
+            const remembered = item?.itemCatalogMapping?.stateName === 'Confirmed' ||
+                item?.itemCatalogMapping?.state === 2;
+            const marker = node.classList.contains('js-commercial-item-map-status')
+                ? 'js-commercial-item-map-status'
+                : 'js-item-map-status';
+            node.className = `badge mb-1 ${marker} ${associated
+                ? 'bg-label-success' : 'bg-label-warning'}`;
+            node.textContent = associated
+                ? remembered ? 'Đã ghép · đã ghi nhớ' : 'Đã ghép'
+                : 'Chưa đối chiếu';
+            node.title = item?.itemCatalogMapping?.message || '';
+
+            const lineId = Number(node.dataset.itemMapLineId);
+            const action = document.querySelector(
+                `.btn-map-input-invoice-line[data-line-id="${lineId}"]`);
+            if (action) {
+                action.textContent = associated ? 'Đổi dòng XML' : 'Ghép với XML';
+                action.disabled = false;
+                action.dataset.inputInvoiceDetailId = String(
+                    item?.inputInvoiceDetailId || '');
+            }
+        });
+        const total = items.length;
+        const associated = items.filter(item =>
+            Number(item.inputInvoiceDetailId || 0) > 0).length;
+        const summary = document.getElementById('inputInvoiceMappingSummary');
+        if (summary) {
+            summary.textContent = `${associated}/${total} đã ghép · ${total - associated} chưa đối chiếu`;
+            summary.className = `badge ${associated === total && total > 0
+                ? 'bg-label-success' : 'bg-label-warning'}`;
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+
 function bindSaveInputInvoiceLineMap() {
     const btn = document.getElementById('btnSaveInputInvoiceLineMap');
+    const useToggle = document.getElementById('mapUseInputInvoice');
+    const rememberToggle = document.getElementById('mapRememberItemCatalogMapping');
+    const exclusionBox = document.getElementById('mapInputInvoiceExclusionReasonBox');
+    if (useToggle && exclusionBox) {
+        const syncExclusionReason = () => {
+            exclusionBox.classList.toggle('d-none', useToggle.checked);
+            if (rememberToggle) {
+                rememberToggle.disabled = !useToggle.checked;
+                if (!useToggle.checked) rememberToggle.checked = false;
+            }
+        };
+        useToggle.addEventListener('change', syncExclusionReason);
+        syncExclusionReason();
+    }
     if (!btn) return;
 
     btn.onclick = async function () {
@@ -2769,9 +3622,23 @@ function bindSaveInputInvoiceLineMap() {
         const lineId = Number(document.getElementById('mapStockDocumentLineId')?.value || 0);
         const useInputInvoice = document.getElementById('mapUseInputInvoice')?.checked === true;
         const msg = document.getElementById('mapInputInvoiceMessage');
+        const rememberItemCatalogMapping =
+            document.getElementById('mapRememberItemCatalogMapping')?.checked === true;
+        const exclusionReason =
+            document.getElementById('mapInputInvoiceExclusionReason')?.value.trim() || '';
 
         if (!lineId) {
             if (msg) msg.textContent = 'Không xác định được dòng nhập.';
+            return;
+        }
+        if (rememberItemCatalogMapping &&
+            (!useInputInvoice || !selectedInputInvoiceDetailId)) {
+            if (msg) msg.textContent = 'Hãy chọn một dòng XML trước khi bật ghi nhớ.';
+            return;
+        }
+        if (!useInputInvoice && !exclusionReason) {
+            if (msg) msg.textContent = 'Vui lòng nhập lý do dòng này không thuộc XML.';
+            document.getElementById('mapInputInvoiceExclusionReason')?.focus();
             return;
         }
 
@@ -2782,7 +3649,12 @@ function bindSaveInputInvoiceLineMap() {
             body: JSON.stringify({
                 stockDocumentLineId: lineId,
                 useInputInvoice: useInputInvoice,
-                inputInvoiceDetailId: useInputInvoice ? selectedInputInvoiceDetailId : null
+                inputInvoiceDetailId: useInputInvoice ? selectedInputInvoiceDetailId : null,
+                rememberItemCatalogMapping: rememberItemCatalogMapping,
+                mappingRowVersion: rememberItemCatalogMapping
+                    ? selectedInputInvoiceDetail?.itemCatalogMapping?.mappingRowVersion || null
+                    : null,
+                exclusionReason: useInputInvoice ? null : exclusionReason
             })
         });
 
@@ -2798,8 +3670,18 @@ function bindSaveInputInvoiceLineMap() {
         }
 
         await refreshStockDocumentDetailUI();
-        await loadInputInvoicesForStockDocument();
+        await refreshInputInvoiceMappingWorkspace();
     };
+}
+
+async function refreshInputInvoiceMappingWorkspace() {
+    await loadInputInvoicesForStockDocument();
+}
+
+async function refreshCommercialReconciliationPreviewAfterXmlMutation() {
+    const refresh = window.GaoAppPurchaseReceiptApproval?.refreshReconciliationPreview;
+    if (typeof refresh !== 'function') return;
+    await refresh();
 }
 
 function bindToggleAllInputInvoiceLines() {
@@ -2870,12 +3752,20 @@ async function bulkUpdateInputInvoiceLines(useInputInvoice) {
         throw new Error('Không xác định được phiếu nhập.');
     }
 
+    const exclusionReason = useInputInvoice
+        ? null
+        : await requestInputInvoiceReconciliationReason(
+            'Lý do loại tất cả dòng khỏi XML');
+    if (!useInputInvoice && !exclusionReason)
+        throw new Error('Bulk exclusion cancelled');
+
     const response = await fetch(`/admin/api/stock-documents/${documentId}/input-invoices/line-maps/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-            useInputInvoice: useInputInvoice
+            useInputInvoice: useInputInvoice,
+            exclusionReason
         })
     });
 
@@ -2888,6 +3778,480 @@ async function bulkUpdateInputInvoiceLines(useInputInvoice) {
 
     await refreshStockDocumentDetailUI();
     await loadInputInvoicesForStockDocument();
+}
+
+async function loadInputInvoiceReconciliation() {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const panel = document.getElementById('inputInvoiceReconciliationPanel');
+    if (!documentId || !panel) return;
+    const reconciliationRenderGeneration =
+        beginInputInvoiceReconciliationRenderRequest();
+    try {
+        const response = await fetch(
+            `/admin/api/stock-documents/${documentId}/input-invoices/reconciliation`,
+            { credentials: 'same-origin', cache: 'no-store' });
+        const api = await readApiResponse(response);
+        if (!api.ok) throw new Error(api.data?.message || 'Không tải được đối chiếu.');
+        renderInputInvoiceReconciliationIfCurrent(
+            api.data,
+            reconciliationRenderGeneration,
+            false);
+    } catch (error) {
+        panel.classList.remove('d-none');
+        document.getElementById('inputInvoiceReconciliationMessage').textContent = error.message;
+        document.getElementById('inputInvoiceReconciliationMessage').className = 'small mt-2 text-danger';
+    }
+}
+
+function reconciliationStatePresentation(state) {
+    const name = typeof state === 'string' ? state : cachedInputInvoiceReconciliation?.stateName;
+    const values = {
+        NotApplicable: ['Không áp dụng', 'bg-label-secondary'],
+        Incomplete: ['Chưa đầy đủ', 'bg-label-warning'],
+        Matched: ['Đã khớp', 'bg-label-success'],
+        Mismatch: ['Có chênh lệch', 'bg-label-warning'],
+        AcceptedMismatch: ['Đã chấp nhận chênh lệch', 'bg-label-primary']
+    };
+    return values[name] || ['Cần đối chiếu', 'bg-label-warning'];
+}
+
+function reconciliationStateIsWarning(state) {
+    return state === 'Incomplete' || state === 'Mismatch' || state === 1 || state === 3;
+}
+
+function inputInvoiceProductOriginalUnitsText(rows) {
+    if (!rows?.length) return 'Không có';
+    return rows.map(row => {
+        const quantity = `${formatNumber(row.quantity)} ${row.unitName || ''}`.trim();
+        if (Number(row.receiptAllocationKind) !== 2) return quantity;
+        const outsideStatus = Number(row.outsidePoDecisionStatus) === 2
+            ? 'Ngoài PO · Đã chấp nhận'
+            : 'Ngoài PO · Chờ xử lý';
+        return `${quantity} (${outsideStatus})`;
+    })
+        .join(' + ');
+}
+
+function inputInvoiceProductQuantityResultHtml(product) {
+    const unit = escapeHtml(product.baseUnitDisplayName || 'đơn vị gốc');
+    const difference = Math.abs(Number(product.quantityDifference || 0));
+    if (product.quantityStatus === 'Matched')
+        return '<span class="text-success">Khớp</span>';
+    if (product.quantityStatus === 'XmlShort')
+        return `<span class="text-warning">XML thiếu ${formatNumber(difference)} ${unit}</span>`;
+    if (product.quantityStatus === 'XmlExcess')
+        return `<span class="text-warning">XML dư ${formatNumber(difference)} ${unit}</span>`;
+    return '<span class="text-warning">Chưa đủ dữ liệu</span>';
+}
+
+function inputInvoiceProductPriceResultHtml(product) {
+    const unit = escapeHtml(product.baseUnitDisplayName || 'đơn vị gốc');
+    const difference = Math.abs(Number(product.baseUnitPriceDifference || 0));
+    if (product.priceStatus === 'Matched')
+        return '<span class="text-success">Giá khớp</span>';
+    if (product.priceStatus === 'XmlHigher')
+        return `<span class="text-warning">Giá XML cao hơn ${formatWholeVnd(difference)} đ/${unit}</span>`;
+    if (product.priceStatus === 'XmlLower')
+        return `<span class="text-warning">Giá XML thấp hơn ${formatWholeVnd(difference)} đ/${unit}</span>`;
+    return '<span class="text-warning">Chưa đủ dữ liệu</span>';
+}
+
+function inputInvoiceProductVatLabel(status) {
+    return status === 'Matched' ? 'VAT khớp' : 'VAT cần xem xét';
+}
+
+function inputInvoiceProductVatResultText(status) {
+    return status === 'Matched' ? 'Khớp' : 'Cần xem xét';
+}
+
+function inputInvoiceProductGlobalSummaryText(model) {
+    const products = model.productSummaries || [];
+    const productCount = Number(model.productCount || 0);
+    const matchedCount = Number(model.matchedProductCount || 0);
+    const differingCount = Number(model.differingProductCount || 0);
+    const unresolvedCount = Number(model.unresolvedXmlDetailCount || 0);
+    const vatOnlyReviewCount = products.filter(product =>
+        product.vatStatus !== 'Matched' &&
+        product.quantityStatus === 'Matched' &&
+        product.priceStatus === 'Matched').length;
+    const fragments = [];
+    if (productCount > 0) {
+        fragments.push(`${formatNumber(productCount)} sản phẩm`);
+        if (differingCount > 0)
+            fragments.push(`${formatNumber(differingCount)} có chênh lệch`);
+        if (vatOnlyReviewCount > 0)
+            fragments.push(`${formatNumber(vatOnlyReviewCount)} cần xem xét`);
+        if (differingCount === 0 && vatOnlyReviewCount === 0 &&
+            matchedCount >= productCount)
+            fragments.push('Tất cả khớp');
+    }
+    if (unresolvedCount > 0)
+        fragments.push(`${formatNumber(unresolvedCount)} dòng XML chưa nhận diện`);
+    return fragments.join(' · ');
+}
+
+function inputInvoiceProductSummaryHtml(model) {
+    const products = model.productSummaries || [];
+    if (!products.length && !Number(model.unresolvedXmlDetailCount || 0)) return '';
+    const cards = products.map(product => {
+        const receiptText = inputInvoiceProductOriginalUnitsText(product.receiptLines);
+        const xmlText = inputInvoiceProductOriginalUnitsText(product.xmlDetails);
+        const unit = escapeHtml(product.baseUnitDisplayName || 'đơn vị gốc');
+        return `<article class="product-reconciliation-card border rounded-3 p-3"
+                         data-product-variant-id="${Number(product.productVariantId || 0)}">
+          <div class="fw-semibold">${escapeHtml(product.productDisplayName || 'Sản phẩm')}</div>
+          <div class="small mt-2"><span class="text-muted">Phiếu:</span> ${escapeHtml(receiptText)}</div>
+          <div class="small"><span class="text-muted">XML:</span> ${escapeHtml(xmlText)}</div>
+          <div class="row g-1 small mt-2 align-items-baseline">
+            <div class="col-md-7"><span class="text-muted me-2">SL</span>` +
+              `${formatNumber(product.receiptBaseQuantity)} ↔ ` +
+              `${formatNumber(product.xmlBaseQuantity)} ${unit}</div>
+            <div class="col-md-5">${inputInvoiceProductQuantityResultHtml(product)}</div>
+            <div class="col-md-7"><span class="text-muted me-2">Giá</span>` +
+              `${formatWholeVnd(product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
+              `${formatWholeVnd(product.xmlBaseUnitPriceBeforeVat)} đ/${unit}</div>
+            <div class="col-md-5">${inputInvoiceProductPriceResultHtml(product)}</div>
+            <div class="col-md-7"><span class="text-muted me-2">VAT</span></div>
+            <div class="col-md-5">${escapeHtml(inputInvoiceProductVatLabel(product.vatStatus))}</div>
+          </div>
+        </article>`;
+    }).join('');
+    const globalSummary = inputInvoiceProductGlobalSummaryText(model);
+    return `<section class="product-reconciliation-summary mb-3">
+      ${globalSummary ? `<div class="small fw-semibold mb-2">${escapeHtml(globalSummary)}</div>` : ''}
+      ${products.length ? `<div class="d-grid gap-2">${cards}</div>` : ''}
+    </section>`;
+}
+
+function buildInputInvoiceProductSummaryByDetailId(model) {
+    const productSummaryByDetailId = new Map();
+    const ambiguousDetailIds = new Set();
+    for (const product of model.productSummaries || []) {
+        for (const xmlDetail of product.xmlDetails || []) {
+            const detailId = Number(xmlDetail.inputInvoiceDetailId || 0);
+            if (!detailId || ambiguousDetailIds.has(detailId)) continue;
+            if (productSummaryByDetailId.has(detailId)) {
+                productSummaryByDetailId.delete(detailId);
+                ambiguousDetailIds.add(detailId);
+                continue;
+            }
+            productSummaryByDetailId.set(detailId, product);
+        }
+    }
+    return productSummaryByDetailId;
+}
+
+function inputInvoiceDetailHasLineAssociation(detail) {
+    return (detail.stockDocumentLineIds || []).length > 0 ||
+        (detail.receiptLines || []).length > 0;
+}
+
+function inputInvoiceRecognizedDetailEvidenceHtml(detail, product) {
+    const unit = escapeHtml(product.baseUnitDisplayName || 'đơn vị gốc');
+    const associated = inputInvoiceDetailHasLineAssociation(detail);
+    return `<div class="small">
+      <div class="mb-2">
+        <span class="badge bg-label-info">Đã tính vào đối chiếu tổng</span>
+        ${associated ? '<span class="badge bg-label-success ms-1">Đã ghép dòng</span>' : ''}
+      </div>
+      <div><span class="text-muted">SL tổng:</span> ` +
+        `${formatNumber(product.receiptBaseQuantity)} ↔ ` +
+        `${formatNumber(product.xmlBaseQuantity)} ${unit} · ` +
+        `${inputInvoiceProductQuantityResultHtml(product)}</div>
+      <div><span class="text-muted">Giá BQ:</span> ` +
+        `${formatWholeVnd(product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
+        `${formatWholeVnd(product.xmlBaseUnitPriceBeforeVat)} đ/${unit} · ` +
+        `${inputInvoiceProductPriceResultHtml(product)}</div>
+      <div><span class="text-muted">VAT:</span> ` +
+        `${escapeHtml(inputInvoiceProductVatResultText(product.vatStatus))}</div>
+    </div>`;
+}
+
+function inputInvoiceUnresolvedDetailStatusHtml(detail) {
+    if (detail.isIgnored) {
+        return `<div class="small">
+          <span class="badge bg-label-secondary">Đã bỏ qua</span>
+          ${detail.ignoreReason
+            ? `<div class="text-muted mt-1">Lý do: ${escapeHtml(detail.ignoreReason)}</div>`
+            : ''}
+        </div>`;
+    }
+    return '<span class="badge bg-label-warning">Chưa nhận diện</span>';
+}
+
+function inputInvoiceReconciliationIsDiscrepancy(detail) {
+    return !['Matched', 'Ignored'].includes(detail.stateName);
+}
+
+function formatInputInvoiceReconciliationTolerance(value, decimals) {
+    const number = Number(value || 0);
+    return number.toFixed(decimals).replace('.', ',');
+}
+
+function buildInputInvoiceReconciliationAcceptanceSnapshot(model) {
+    const details = model?.details || [];
+    const quantityTolerance = Number(model?.quantityTolerance ?? 0.0001);
+    const moneyTolerance = Number(model?.moneyTolerance ?? 1);
+    const discrepant = details.filter(inputInvoiceReconciliationIsDiscrepancy);
+    const quantityCount = details.filter(detail =>
+        Math.abs(Number(detail.quantityDifference || 0)) > quantityTolerance).length;
+    const moneyVatCount = details.filter(detail =>
+        Math.abs(Number(detail.baseUnitPriceDifference ??
+            detail.amountDifference ?? 0)) > moneyTolerance ||
+        Math.abs(Number(detail.vatAmountDifference || 0)) > moneyTolerance ||
+        detail.stateName === 'NeedsReview').length;
+    const header = model?.header;
+    const headerCount = header && (
+        Math.abs(Number(header.subtotalDifference || 0)) > moneyTolerance ||
+        Math.abs(Number(header.vatDifference || 0)) > moneyTolerance ||
+        Math.abs(Number(header.paymentDifference || 0)) > moneyTolerance ||
+        header.needsReview) ? 1 : 0;
+    const unresolvedCount = details.filter(detail =>
+        ['Unmatched', 'Ignored', 'Incomplete'].includes(detail.stateName)).length;
+    return `<strong>Snapshot chênh lệch</strong>
+        <div class="small mt-1">${discrepant.length} dòng lệch · ${quantityCount} số lượng · ` +
+        `${moneyVatCount + headerCount} tiền/VAT/header · ${unresolvedCount} chưa ghép/bỏ qua</div>`;
+}
+
+function focusInputInvoiceReconciliationTarget(target) {
+    let element = null;
+    if (target === 'summary')
+        element = document.getElementById('inputInvoiceReconciliationTitle');
+    else {
+        const detailEvidence = document.getElementById(
+            'inputInvoiceReconciliationDetailEvidence');
+        if (detailEvidence) detailEvidence.open = true;
+        const selector = target === 'first-mismatch'
+            ? '[data-recon-focus="first-mismatch"]'
+            : target === 'action' ? '[data-recon-focus="action"]' : null;
+        if (selector && typeof document.querySelectorAll === 'function') {
+            const candidates = Array.from(document.querySelectorAll(selector));
+            element = candidates.find(candidate => candidate.offsetParent !== null) ||
+                candidates[0] || null;
+        } else if (selector) {
+            element = document.querySelector(selector);
+        }
+    }
+    element?.focus();
+    return Boolean(element);
+}
+
+function renderInputInvoiceReconciliation(model) {
+    const panel = document.getElementById('inputInvoiceReconciliationPanel');
+    if (!panel || !model) return;
+    const preview = model.isCommercialPreview === true;
+    panel.classList.remove('d-none');
+    const state = reconciliationStatePresentation(model.stateName || model.state);
+    const badge = document.getElementById('inputInvoiceReconciliationState');
+    badge.textContent = state[0];
+    badge.className = `badge ${state[1]}`;
+    const message = document.getElementById('inputInvoiceReconciliationMessage');
+    message.textContent = preview
+        ? `Xem trước từ giá và thuế chưa lưu · ${model.message || ''}`
+        : model.isLateAssociationException
+        ? `Ngoại lệ XML đến sau xác nhận · chỉ đọc. ${model.message || ''}`
+        : model.message || '';
+    message.className = `small mt-2 ${preview
+        ? 'text-info'
+        : model.isLateAssociationException
+        ? 'alert alert-warning py-2'
+        : reconciliationStateIsWarning(model.stateName || model.state)
+            ? 'text-warning' : model.stateName === 'Matched'
+                ? 'text-success' : 'text-muted'}`;
+    const tolerance = document.getElementById('inputInvoiceReconciliationTolerance');
+    if (tolerance) tolerance.textContent =
+        `Sai số cho phép: ${formatInputInvoiceReconciliationTolerance(model.quantityTolerance, 4)} đơn vị gốc · ` +
+        `giá quy đổi/VAT/header: ${formatInputInvoiceReconciliationTolerance(model.moneyTolerance, 0)} ₫.`;
+
+    const header = model.header;
+    document.getElementById('inputInvoiceReconciliationHeader').innerHTML = header ? `
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Tiêu chí</th><th class="text-end">Phiếu nhập</th><th class="text-end">XML</th><th class="text-end">Lệch</th></tr></thead>
+        <tbody>
+        <tr><td>Trước VAT</td><td class="text-end">${formatNumber(header.receiptSubtotalBeforeVat)}</td><td class="text-end">${formatNumber(header.xmlTotalBeforeTax)}</td><td class="text-end">${formatNumber(header.subtotalDifference)}</td></tr>
+        <tr><td>VAT</td><td class="text-end">${formatNumber(header.receiptVatAmount)}</td><td class="text-end">${formatNumber(header.xmlTaxAmount)}</td><td class="text-end">${formatNumber(header.vatDifference)}</td></tr>
+        <tr><td>Tổng hàng sau VAT</td><td class="text-end">${formatNumber(header.receiptGoodsTotal)}</td><td class="text-end">${formatNumber(header.xmlPaymentAmount)}</td><td class="text-end">${formatNumber(header.paymentDifference)}</td></tr>
+        </tbody></table></div>
+        ${header.needsReview ? `<div class="alert alert-warning py-2 mt-2 mb-0">${escapeHtml(header.reason || 'Header XML cần xem xét.')}</div>` : ''}` : '';
+
+    const confirmed = preview || model.isConfirmedReadOnly === true ||
+        document.getElementById('IsConfirmedReceipt')?.value === 'true';
+    const details = model.details || [];
+    const productSummary = inputInvoiceProductSummaryHtml(model);
+    const productSummaryByDetailId = buildInputInvoiceProductSummaryByDetailId(model);
+    let firstMismatchAssigned = false;
+    let firstActionAssigned = false;
+    const detailRows = details.map(detail => {
+        const mismatchFocus = inputInvoiceReconciliationIsDiscrepancy(detail) &&
+            !firstMismatchAssigned;
+        if (mismatchFocus) firstMismatchAssigned = true;
+        let action = '';
+        if (!confirmed && detail.isIgnored)
+            action = `<button class="btn btn-sm btn-outline-secondary js-recon-unignore" data-detail-id="${detail.inputInvoiceDetailId}">Bỏ trạng thái bỏ qua</button>`;
+        else if (!confirmed && detail.stateName === 'Unmatched')
+            action = `<button class="btn btn-sm btn-outline-warning js-recon-ignore" data-detail-id="${detail.inputInvoiceDetailId}">Bỏ qua có lý do</button>`;
+        if (action && !firstActionAssigned) {
+            action = action.replace('<button ', '<button data-recon-focus="action" ');
+            firstActionAssigned = true;
+        }
+        const recognizedProduct = productSummaryByDetailId.get(
+            Number(detail.inputInvoiceDetailId || 0));
+        const detailEvidence = recognizedProduct
+            ? inputInvoiceRecognizedDetailEvidenceHtml(detail, recognizedProduct)
+            : inputInvoiceUnresolvedDetailStatusHtml(detail);
+        return `
+        <tr data-recon-detail-id="${Number(detail.inputInvoiceDetailId || 0)}"
+            ${mismatchFocus ? 'tabindex="0" data-recon-focus="first-mismatch"' : ''}>
+          <td><strong>${escapeHtml(detail.itemName || `#${detail.inputInvoiceDetailId}`)}</strong>
+              <div class="small text-muted">${formatNumber(detail.xmlQuantity)} ` +
+                `${escapeHtml(detail.unitName || '')}</div></td>
+          <td>${detailEvidence}</td>
+          <td class="text-end">${action}</td>
+        </tr>`;
+    }).join('');
+    const mobileCards = details.map((detail, index) => {
+        let action = '';
+        if (!confirmed && detail.isIgnored)
+            action = `<button data-recon-focus="action" class="btn btn-sm btn-outline-secondary js-recon-unignore" data-detail-id="${detail.inputInvoiceDetailId}">Bỏ trạng thái bỏ qua</button>`;
+        else if (!confirmed && detail.stateName === 'Unmatched')
+            action = `<button data-recon-focus="action" class="btn btn-sm btn-outline-warning js-recon-ignore" data-detail-id="${detail.inputInvoiceDetailId}">Bỏ qua có lý do</button>`;
+        const recognizedProduct = productSummaryByDetailId.get(
+            Number(detail.inputInvoiceDetailId || 0));
+        const detailEvidence = recognizedProduct
+            ? inputInvoiceRecognizedDetailEvidenceHtml(detail, recognizedProduct)
+            : inputInvoiceUnresolvedDetailStatusHtml(detail);
+        return `
+        <article class="recon-stacked-card border rounded-3 p-3 mb-2 ${index === 0 ? '' : ''}"
+                 data-recon-detail-id="${Number(detail.inputInvoiceDetailId || 0)}"
+                 ${inputInvoiceReconciliationIsDiscrepancy(detail) && index === details.findIndex(inputInvoiceReconciliationIsDiscrepancy)
+                    ? 'tabindex="0" data-recon-focus="first-mismatch"' : ''}>
+          <div><strong>${escapeHtml(detail.itemName || `#${detail.inputInvoiceDetailId}`)}</strong></div>
+          <div class="small text-muted">${formatNumber(detail.xmlQuantity)} ` +
+            `${escapeHtml(detail.unitName || '')}</div>
+          <div class="mt-2">${detailEvidence}</div>
+          ${action ? `<div class="mt-2">${action}</div>` : ''}
+        </article>`;
+    }).join('');
+    const detailEvidence = details.length ? `
+        <details id="inputInvoiceReconciliationDetailEvidence" class="mt-2">
+        <summary class="small fw-semibold">Xem chi tiết</summary>
+        <div class="mt-2">
+        <div class="table-responsive d-none d-md-block"><table class="table table-sm align-middle mb-0">
+        <thead><tr><th>XML</th><th>Đối chiếu tổng</th><th></th></tr></thead>
+        <tbody>${detailRows}</tbody></table></div>
+        <div class="d-md-none">${mobileCards}</div>
+        </div>
+        </details>` : '';
+    document.getElementById('inputInvoiceReconciliationDetails').innerHTML =
+        `${productSummary}${detailEvidence}`;
+
+    const acceptance = document.getElementById('inputInvoiceReconciliationAcceptance');
+    if (preview) {
+        acceptance.innerHTML =
+            '<div class="alert alert-info mb-0">Xem trước chỉ dùng giá và thuế đang nhập. ' +
+            'Dữ liệu đối chiếu chính thức chỉ được cập nhật trong giao dịch duyệt.</div>';
+    } else acceptance.innerHTML = model.acceptedAtUtc
+        ? `<div class="alert alert-info mb-0">Đã chấp nhận bởi user #${model.acceptedByUserId || '-'} lúc ${formatDateTime(model.acceptedAtUtc)}.<br>${escapeHtml(model.acceptanceReason || '')}</div>`
+        : (!confirmed && (model.stateName === 'Mismatch' || model.state === 3))
+            ? `<button type="button" class="btn btn-warning js-recon-accept"
+                       ${firstActionAssigned ? '' : 'data-recon-focus="action"'}>Chấp nhận chênh lệch</button>`
+            : '';
+}
+
+window.renderInputInvoiceReconciliationPreview = function (model, requestGeneration) {
+    return renderInputInvoiceReconciliationIfCurrent(model, requestGeneration, true);
+};
+
+function bindInputInvoiceReconciliationActions() {
+    const panel = document.getElementById('inputInvoiceReconciliationPanel');
+    if (panel) panel.addEventListener('click', async function (event) {
+        const ignore = event.target.closest('.js-recon-ignore');
+        const unignore = event.target.closest('.js-recon-unignore');
+        const accept = event.target.closest('.js-recon-accept');
+        if (ignore) {
+            const reason = await requestInputInvoiceReconciliationReason('Lý do bỏ qua dòng XML');
+            if (reason) await mutateInputInvoiceReconciliation(
+                `details/${ignore.dataset.detailId}/ignore`, { reason });
+        } else if (unignore) {
+            await mutateInputInvoiceReconciliation(
+                `details/${unignore.dataset.detailId}/unignore`, { reason: null });
+        } else if (accept) {
+            const reason = await requestInputInvoiceReconciliationReason(
+                'Lý do chấp nhận chênh lệch',
+                buildInputInvoiceReconciliationAcceptanceSnapshot(
+                    cachedInputInvoiceReconciliation));
+            if (reason) await mutateInputInvoiceReconciliation('accept', {
+                reason,
+                expectedEvidenceFingerprint: cachedInputInvoiceReconciliation?.evidenceFingerprint
+            });
+        }
+    });
+    if (panel) panel.addEventListener('keydown', function (event) {
+        if (!event.target.closest?.('[data-recon-focus="first-mismatch"]') ||
+            (event.key !== 'ArrowDown' && event.key !== 'Enter')) return;
+        event.preventDefault();
+        focusInputInvoiceReconciliationTarget('action');
+    });
+
+    const confirm = document.getElementById('btnConfirmInputInvoiceReconciliationReason');
+    if (confirm) confirm.addEventListener('click', function () {
+        const input = document.getElementById('inputInvoiceReconciliationReason');
+        const reason = input?.value.trim() || '';
+        const error = document.getElementById('inputInvoiceReconciliationReasonMessage');
+        if (!reason) {
+            error.textContent = 'Vui lòng nhập lý do.';
+            input?.focus();
+            return;
+        }
+        const resolve = pendingReconciliationReasonResolve;
+        pendingReconciliationReasonResolve = null;
+        inputInvoiceReconciliationReasonModalInstance?.hide();
+        resolve?.(reason);
+    });
+
+    const title = document.getElementById('inputInvoiceReconciliationTitle');
+    if (title) title.addEventListener('keydown', function (event) {
+        if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
+        event.preventDefault();
+        if (!focusInputInvoiceReconciliationTarget('first-mismatch'))
+            focusInputInvoiceReconciliationTarget('action');
+    });
+}
+
+function requestInputInvoiceReconciliationReason(title, snapshotHtml = null) {
+    if (!inputInvoiceReconciliationReasonModalInstance) return Promise.resolve(null);
+    document.getElementById('inputInvoiceReconciliationReasonTitle').textContent = title;
+    document.getElementById('inputInvoiceReconciliationReason').value = '';
+    document.getElementById('inputInvoiceReconciliationReasonMessage').textContent = '';
+    const snapshot = document.getElementById('inputInvoiceReconciliationReasonSnapshot');
+    if (snapshot) {
+        snapshot.innerHTML = snapshotHtml || '';
+        snapshot.classList.toggle('d-none', !snapshotHtml);
+    }
+    inputInvoiceReconciliationReasonReturnFocus = document.activeElement;
+    inputInvoiceReconciliationReasonModalInstance.show();
+    setTimeout(() => document.getElementById('inputInvoiceReconciliationReason')?.focus(), 150);
+    return new Promise(resolve => { pendingReconciliationReasonResolve = resolve; });
+}
+
+async function mutateInputInvoiceReconciliation(path, body) {
+    const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
+    const response = await fetch(
+        `/admin/api/stock-documents/${documentId}/input-invoices/reconciliation/${path}`,
+        {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+    const api = await readApiResponse(response);
+    if (!api.ok) {
+        document.getElementById('inputInvoiceReconciliationMessage').textContent =
+            api.data?.message || 'Cập nhật đối chiếu thất bại.';
+        return;
+    }
+    cachedInputInvoiceReconciliation = api.data;
+    renderInputInvoiceReconciliation(api.data);
+    focusInputInvoiceReconciliationTarget('summary');
 }
 
 /* =========================================================

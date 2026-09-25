@@ -1,7 +1,8 @@
-﻿@model GaoApp.Application.DTOs.Security.Roles.RoleIndexVm
-
 @{
     ViewData["Title"] = "Quản lý vai trò";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
 
     var canCreate = (bool?)ViewBag.CanCreate == true;
     var canUpdate = (bool?)ViewBag.CanUpdate == true;
@@ -9,330 +10,173 @@
     var canPermissions = (bool?)ViewBag.CanPermissions == true;
 }
 
-<div class="container-fluid">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h3 class="mb-1">Quản lý vai trò</h3>
-            <div class="text-muted">Quản lý vai trò theo cửa hàng hiện tại.</div>
-        </div>
-
-        @if (canCreate)
-        {
-            <a asp-area="Admin"
-                   asp-controller="Roles"
-                   asp-action="Create"
-                   class="btn btn-primary">
-                <i class="bi bi-plus-circle me-1"></i> Tạo vai trò
-            </a>
-        }
-    </div>
-
-    @if (TempData["Success"] != null)
-    {
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            @TempData["Success"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    @if (TempData["Error"] != null)
-    {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            @TempData["Error"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    @if (TempData["Info"] != null)
-    {
-        <div class="alert alert-info alert-dismissible fade show" role="alert">
-            @TempData["Info"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    @if (TempData["Warning"] != null)
-    {
-        <div class="alert alert-warning alert-dismissible fade show" role="alert">
-            @TempData["Warning"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Vai trò đang hoạt động</div>
-                    <div class="fs-4 fw-bold mt-2">@Model.TotalActiveRoles</div>
-                </div>
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Quản lý vai trò</h3>
+                <p class="gds-page-header__subtitle mb-0">Kiểm soát phạm vi quyền và nhân viên theo từng vai trò trong cửa hàng.</p>
             </div>
-        </div>
-
-        <div class="col-md-3">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Vai trò ngưng sử dụng</div>
-                    <div class="fs-4 fw-bold mt-2">@Model.TotalInactiveRoles</div>
-                </div>
+            <div class="gds-page-header__actions">
+                <button type="button" class="btn btn-label-secondary gds-action-button" id="btnRoleReload">
+                    <i class="bx bx-refresh"></i><span>Tải lại</span>
+                </button>
+                @if (canCreate)
+                {
+                    <a asp-area="Admin" asp-controller="Roles" asp-action="Create" class="btn btn-primary gds-action-button">
+                        <i class="bx bx-plus"></i><span>Tạo vai trò</span>
+                    </a>
+                }
             </div>
         </div>
     </div>
+}
 
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body">
-            <form method="get"
-                  asp-area="Admin"
-                  asp-controller="Roles"
-                  asp-action="Index">
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
-                        <label class="form-label fw-semibold">Từ khóa</label>
-                        <input name="Keyword"
-                               value="@Model.Query.Keyword"
-                               class="form-control"
-                               placeholder="Tìm theo mã hoặc tên vai trò" />
-                    </div>
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/role-index.css" asp-append-version="true" />
+}
 
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Trạng thái</label>
-                        <select name="IsActive" class="form-select">
-                            <option value="">-- Tất cả --</option>
+<div class="role-index-page gds-page"
+     data-gao-ui="modern"
+     data-role-index
+     data-data-url="@Url.Action("GetRoleIndexData", "Roles", new { area = "Admin" })"
+     data-edit-url="@Url.Action("Edit", "Roles", new { area = "Admin" })"
+     data-permissions-url="@Url.Action("Index", "RolePermissions", new { area = "Admin" })"
+     data-delete-url="@Url.Action("Delete", "Roles", new { area = "Admin" })"
+     data-can-update="@canUpdate.ToString().ToLowerInvariant()"
+     data-can-delete="@canDelete.ToString().ToLowerInvariant()"
+     data-can-permissions="@canPermissions.ToString().ToLowerInvariant()">
 
-                            @if (Model.Query.IsActive == true)
-                            {
-                                <option value="true" selected>Đang hoạt động</option>
-                            }
-                            else
-                            {
-                                <option value="true">Đang hoạt động</option>
-                            }
+    @if (TempData["Success"] is string success)
+    {
+        <div class="alert alert-success alert-dismissible mb-0" role="alert">
+            @success
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <div class="alert alert-danger alert-dismissible mb-0" role="alert">
+            @error
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Info"] is string info)
+    {
+        <div class="alert alert-info alert-dismissible mb-0" role="alert">
+            @info
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
+    @if (TempData["Warning"] is string warning)
+    {
+        <div class="alert alert-warning alert-dismissible mb-0" role="alert">
+            @warning
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    }
 
-                            @if (Model.Query.IsActive == false)
-                            {
-                                <option value="false" selected>Ngưng sử dụng</option>
-                            }
-                            else
-                            {
-                                <option value="false">Ngưng sử dụng</option>
-                            }
-                        </select>
-                    </div>
+    <section aria-label="Tổng quan vai trò">
+        <div class="row row-cols-2 row-cols-xl-4 g-3">
+            <div class="col">
+                <button type="button" class="role-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-role-kpi="total" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-primary"><i class="bx bx-shield-quarter"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Tổng vai trò</span><span class="gds-kpi-card__value text-primary" id="roleStatTotal">0</span><small>Trong phạm vi tra cứu</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="role-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-role-kpi="active" aria-pressed="false">
+                    <span class="gds-kpi-card__icon is-success"><i class="bx bx-check-shield"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Đang hoạt động</span><span class="gds-kpi-card__value text-success" id="roleStatActive">0</span><small>Có thể tiếp tục sử dụng</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="role-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-role-kpi="inactive" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-secondary text-secondary"><i class="bx bx-pause-circle"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Ngưng sử dụng</span><span class="gds-kpi-card__value text-secondary" id="roleStatInactive">0</span><small>Vai trò đã vô hiệu hóa</small></span>
+                </button>
+            </div>
+            <div class="col">
+                <button type="button" class="role-index-kpi card shadow-sm border-0 gds-kpi-card h-100 w-100" data-role-kpi="system" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-lock-alt"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Vai trò hệ thống</span><span class="gds-kpi-card__value text-warning" id="roleStatSystem">0</span><small>Mã và xóa được bảo vệ</small></span>
+                </button>
+            </div>
+        </div>
+    </section>
 
-                    <div class="col-md-2">
-                        <label class="form-label fw-semibold">Số dòng</label>
-                        <select name="PageSize" class="form-select">
-                            @{
-                                var pageSizes = new[] { 10, 20, 50 };
-                            }
-
-                            @foreach (var size in pageSizes)
-                            {
-                                if (Model.Query.PageSize == size)
-                                {
-                                    <option value="@size" selected>@size</option>
-                                }
-                                else
-                                {
-                                    <option value="@size">@size</option>
-                                }
-                            }
-                        </select>
-                    </div>
-
-                    <div class="col-md-3 d-flex gap-2">
-                        <button type="submit" class="btn btn-primary flex-fill">
-                            <i class="bi bi-search me-1"></i> Tìm kiếm
-                        </button>
-
-                        <a asp-area="Admin"
-                               asp-controller="Roles"
-                               asp-action="Index"
-                               class="btn btn-light border">
-                            Đặt lại
-                        </a>
+    <section class="card shadow-sm border-0 role-index-filter-panel" aria-label="Bộ lọc vai trò">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <div class="d-flex align-items-center gap-2">
+                <span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-filter-alt"></i></span>
+                <div><h5 class="mb-0 text-dark">Tra cứu vai trò</h5><small class="text-muted">Tìm nhanh theo tên hoặc mã và thu hẹp theo phạm vi sử dụng.</small></div>
+            </div>
+        </div>
+        <div class="card-body pt-3">
+            <div class="role-index-filter-bar">
+                <div class="role-index-search-wrap">
+                    <label for="roleKeyword" class="form-label fw-semibold text-dark">Tìm kiếm</label>
+                    <div class="gds-search-field">
+                        <i class="bx bx-search"></i>
+                        <input type="search" id="roleKeyword" class="form-control" placeholder="Tên hoặc mã vai trò..." autocomplete="off" />
+                        <button type="button" id="roleClearSearch" class="gds-search-field__clear d-none" aria-label="Xóa tìm kiếm"><i class="bx bx-x"></i></button>
                     </div>
                 </div>
-
-                <input type="hidden" name="Page" value="1" />
-            </form>
-        </div>
-    </div>
-
-    <div class="card shadow-sm border-0">
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th style="width:70px;">#</th>
-                        <th>Mã vai trò</th>
-                        <th>Tên vai trò</th>
-                        <th>Loại</th>
-                        <th>Trạng thái</th>
-                        <th class="text-center">Số quyền</th>
-                        <th class="text-center">Số user</th>
-                        <th>Ngày tạo</th>
-                        <th style="width:260px;">Thao tác</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (Model.Roles.Items == null || !Model.Roles.Items.Any())
-                    {
-                        <tr>
-                            <td colspan="9" class="text-center py-5 text-muted">
-                                Chưa có dữ liệu vai trò.
-                            </td>
-                        </tr>
-                    }
-                    else
-                    {
-                        var startNo = ((Model.Roles.Page - 1) * Model.Roles.PageSize) + 1;
-
-                        @for (int i = 0; i < Model.Roles.Items.Count; i++)
-                        {
-                            var item = Model.Roles.Items[i];
-
-                            <tr>
-                                <td>@(startNo + i)</td>
-                                <td>
-                                    <span class="fw-semibold">@item.Code</span>
-                                </td>
-                                <td>
-                                    <div class="fw-semibold">@item.Name</div>
-                                </td>
-                                <td>
-                                    @if (item.IsSystemRole)
-                                    {
-                                        <span class="badge bg-warning-subtle text-warning">Hệ thống</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-info-subtle text-info">Tùy chỉnh</span>
-                                    }
-                                </td>
-                                <td>
-                                    @if (item.IsActive)
-                                    {
-                                        <span class="badge bg-success-subtle text-success">Đang hoạt động</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-secondary-subtle text-secondary">Ngưng sử dụng</span>
-                                    }
-                                </td>
-                                <td class="text-center">
-                                    <span class="fw-semibold">@item.PermissionCount</span>
-                                </td>
-                                <td class="text-center">
-                                    <span class="fw-semibold">@item.UserCount</span>
-                                </td>
-                                <td>
-                                    @item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
-                                </td>
-                                <td>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        @if (canUpdate)
-                                        {
-                                            <a asp-area="Admin"
-                                                   asp-controller="Roles"
-                                                   asp-action="Edit"
-                                                   asp-route-id="@item.Id"
-                                                   class="btn btn-sm btn-outline-primary">
-                                                Sửa
-                                            </a>
-                                        }
-
-                                      
-                                        @if (canPermissions)
-                                        {
-                                            <a asp-area="Admin"
-                                               asp-controller="RolePermissions"
-                                               asp-action="Index"
-                                               asp-route-roleId="@item.Id"
-                                               class="btn btn-sm btn-outline-secondary">
-                                                Phân quyền
-                                            </a>
-                                        }
-                                      
-
-                                        @if (canDelete)
-                                        {
-                                            <form asp-area="Admin"
-                                                  asp-controller="Roles"
-                                                  asp-action="Delete"
-                                                  asp-route-id="@item.Id"
-                                                  method="post"
-                                                  class="d-inline"
-                                                  onsubmit="return confirm('Bạn có chắc chắn muốn xóa vai trò này không?');">
-                                                @Html.AntiForgeryToken()
-                                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                    Xóa
-                                                </button>
-                                            </form>
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        </div>
-
-        @if (Model.Roles.TotalPages > 1)
-        {
-            <div class="card-footer bg-white">
-                <nav>
-                    <ul class="pagination mb-0 flex-wrap">
-                        @{
-                            var currentPage = Model.Roles.Page;
-                            var totalPages = Model.Roles.TotalPages;
-                        }
-
-                        <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
-                            <a class="page-link"
-                                   asp-area="Admin"
-                                   asp-controller="Roles"
-                                   asp-action="Index"
-                                   asp-route-Page="@(currentPage - 1)"
-                                   asp-route-PageSize="@Model.Query.PageSize"
-                                   asp-route-Keyword="@Model.Query.Keyword"
-                                   asp-route-IsActive="@Model.Query.IsActive">
-                                Trước
-                            </a>
-                        </li>
-
-                        @for (int p = 1; p <= totalPages; p++)
-                        {
-                            <li class="page-item @(p == currentPage ? "active" : "")">
-                                <a class="page-link"
-                                       asp-area="Admin"
-                                       asp-controller="Roles"
-                                       asp-action="Index"
-                                       asp-route-Page="@p"
-                                       asp-route-PageSize="@Model.Query.PageSize"
-                                       asp-route-Keyword="@Model.Query.Keyword"
-                                       asp-route-IsActive="@Model.Query.IsActive">
-                                    @p
-                                </a>
-                            </li>
-                        }
-
-                        <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
-                            <a class="page-link"
-                                   asp-area="Admin"
-                                   asp-controller="Roles"
-                                   asp-action="Index"
-                                   asp-route-Page="@(currentPage + 1)"
-                                   asp-route-PageSize="@Model.Query.PageSize"
-                                   asp-route-Keyword="@Model.Query.Keyword"
-                                   asp-route-IsActive="@Model.Query.IsActive">
-                                Sau
-                            </a>
-                        </li>
-                    </ul>
-                </nav>
+                <div class="role-index-desktop-filters">
+                    <div><label for="roleType" class="form-label">Loại vai trò</label><select id="roleType" class="form-select"><option value="all">Tất cả loại</option><option value="system">Hệ thống</option><option value="custom">Tùy chỉnh</option></select></div>
+                    <div><label for="roleLifecycle" class="form-label">Trạng thái</label><select id="roleLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngưng sử dụng</option></select></div>
+                    <div class="role-index-compact-filter"><label for="rolePageSize" class="form-label">Số dòng / trang</label><select id="rolePageSize" class="form-select"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option></select></div>
+                    <button type="button" class="gds-icon-button role-index-reset-button d-none" id="roleResetFilters" aria-label="Xóa bộ lọc"><i class="bx bx-reset"></i></button>
+                </div>
+                <button type="button" class="btn btn-label-primary role-index-mobile-filter-button" id="roleOpenMobileFilters" data-bs-toggle="offcanvas" data-bs-target="#roleMobileFilterSheet">
+                    <i class="bx bx-filter-alt"></i><span>Bộ lọc</span><span class="badge bg-primary rounded-pill d-none" id="roleActiveFilterCount">0</span>
+                </button>
             </div>
-        }
+        </div>
+    </section>
+
+    <section class="gds-list-panel role-index-results-panel" id="roleResultsPanel" aria-label="Danh sách vai trò" aria-live="polite" aria-busy="false">
+        <div class="role-index-results-heading">
+            <div><h5 class="mb-1 text-dark">Danh sách vai trò</h5><small class="text-muted">Vai trò hệ thống và vai trò đang được gán nhân viên được bảo vệ khỏi thao tác xóa không hợp lệ.</small></div>
+            <span class="role-index-default-scope"><i class="bx bx-list-check"></i> Mặc định: Tất cả</span>
+        </div>
+        <div class="role-index-desktop-list" id="roleDesktopList">
+            <div class="table-responsive">
+                <table class="table align-middle gds-table mb-0 role-index-table">
+                    <thead><tr><th>Vai trò</th><th>Phạm vi</th><th>Trạng thái</th><th class="text-center">Quyền</th><th class="text-center">Nhân viên</th><th>Ngày tạo</th><th class="text-end">Thao tác</th></tr></thead>
+                    <tbody id="roleTableBody"><tr><td colspan="7" class="gds-empty">Đang tải dữ liệu...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="role-index-mobile-list" id="roleMobileList"><div class="gds-empty">Đang tải dữ liệu...</div></div>
+    </section>
+
+    <div class="gds-list-footer role-index-list-footer">
+        <div class="gds-list-footer__summary" id="rolePagingInfo">0 kết quả</div>
+        <nav aria-label="Phân trang vai trò"><ul class="pagination pagination-sm mb-0 role-index-pagination" id="rolePageNumbers"></ul></nav>
     </div>
+
+    <div class="offcanvas offcanvas-bottom role-index-filter-sheet" tabindex="-1" id="roleMobileFilterSheet" aria-labelledby="roleMobileFilterTitle">
+        <div class="offcanvas-header">
+            <div><h5 class="offcanvas-title" id="roleMobileFilterTitle">Bộ lọc vai trò</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div class="row g-3">
+                <div class="col-12"><label for="roleMobileType" class="form-label">Loại vai trò</label><select id="roleMobileType" class="form-select"><option value="all">Tất cả loại</option><option value="system">Hệ thống</option><option value="custom">Tùy chỉnh</option></select></div>
+                <div class="col-12"><label for="roleMobileLifecycle" class="form-label">Trạng thái</label><select id="roleMobileLifecycle" class="form-select"><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Ngưng sử dụng</option></select></div>
+                <div class="col-12"><label for="roleMobilePageSize" class="form-label">Số dòng / trang</label><select id="roleMobilePageSize" class="form-select"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option></select></div>
+            </div>
+        </div>
+        <div class="offcanvas-footer role-index-filter-sheet__footer">
+            <button type="button" class="btn btn-label-secondary" id="roleMobileClearFilters">Xóa lọc</button>
+            <button type="button" class="btn btn-primary flex-grow-1" id="roleMobileApplyFilters">Áp dụng</button>
+        </div>
+    </div>
+
+    <div class="d-none" id="roleDeleteToken">@Html.AntiForgeryToken()</div>
 </div>
+
+@section PageScripts {
+    <script src="~/Admin/js/role-index.js" asp-append-version="true"></script>
+}

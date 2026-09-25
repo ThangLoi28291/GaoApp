@@ -123,7 +123,7 @@ public sealed class DatabaseObjectInventoryTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        var action = () => pipeline.RunAsync(cancellation.Token);
+        var action = () => pipeline.RunAsync(MigratorMode.SchemaOnly, cancellation.Token);
 
         await action.Should().ThrowAsync<OperationCanceledException>();
         migration.Count.Should().Be(0);
@@ -167,7 +167,7 @@ public sealed class DatabaseObjectInventoryTests
             bootstrap,
             transaction);
 
-        var action = () => pipeline.RunAsync();
+        var action = () => pipeline.RunAsync(MigratorMode.SchemaOnly);
 
         var exception = await action.Should()
             .ThrowAsync<DatabaseCompatibilityException>();

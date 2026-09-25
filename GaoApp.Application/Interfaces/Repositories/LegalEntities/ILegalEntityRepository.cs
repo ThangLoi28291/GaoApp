@@ -12,6 +12,20 @@ public interface ILegalEntityRepository
 
     Task<LegalEntity?> GetFirstActiveByPriorityAsync(CancellationToken ct = default);
 
+    async Task<IReadOnlyList<LegalEntity>> LockActiveByNormalizedTaxCodeAsync(
+        int storeId,
+        string normalizedTaxCode,
+        CancellationToken ct = default)
+        => (await GetAllAsync(ct))
+            .Where(x => x.StoreId == storeId && x.IsActive && !x.IsDeleted &&
+                string.Equals(
+                    GaoApp.Application.Common.Helpers.TaxCodeIdentityNormalizer.Normalize(x.TaxCode),
+                    normalizedTaxCode,
+                    StringComparison.Ordinal))
+            .OrderBy(x => x.Id)
+            .Take(2)
+            .ToList();
+
     Task<bool> ExistsCodeAsync(
         string code,
         int? excludeId = null,

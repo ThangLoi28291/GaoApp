@@ -1,0 +1,90 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
+
+@* P3: partials are rendered once. The UI adapter moves these same nodes;
+   without the adapter, the P2 responsive fallback remains accessible. *@
+<div class="pos-prime-workspace">
+    <main class="pos-prime-sale" aria-label="Giỏ hàng và tìm sản phẩm">
+        <partial name="_Toolbar" />
+
+        <button id="posPrimeContextLauncher" type="button"
+                class="pos-prime-context-strip" data-prime-open="context"
+                aria-controls="posPrimeContextSheet" aria-expanded="false">
+            <i class="bx bx-user" aria-hidden="true"></i>
+            <span class="pos-prime-context-strip__text">
+                <strong id="posPrimeCustomerName">Khách hàng</strong>
+                <span id="posPrimeCustomerBenefits">Khách hàng · Điểm · Voucher · Công cụ đơn</span>
+            </span>
+            <i class="bx bx-chevron-right" aria-hidden="true"></i>
+        </button>
+
+        <section class="pos-prime-cart">
+            <div class="pos-prime-cart__heading">
+                <div>
+                    <div class="pos-prime-zone-eyebrow">GIỎ HÀNG</div>
+                    <div id="posCockpitCartCount" class="pos-prime-cart__count" aria-live="polite">
+                        0 sản phẩm
+                    </div>
+                </div>
+                <div class="pos-prime-cart__hint">Quét tiếp để thêm sản phẩm</div>
+            </div>
+            <div id="posCartRetryState" class="px-3 pt-2" style="display:none;"></div>
+            <div class="pos-prime-cart__body">
+                <partial name="_CartTable" />
+            </div>
+        </section>
+    </main>
+
+    <aside class="pos-prime-context" aria-label="Khách hàng và công cụ đơn">
+        <div id="posPrimeContextContent" class="pos-prime-context__body">
+            <partial name="_CustomerBox" />
+            <partial name="_DraftMetaPanel" />
+        </div>
+    </aside>
+
+    <aside class="pos-prime-checkout" aria-label="Tóm tắt và thao tác thanh toán">
+        <div id="posPrimeSummaryContent" class="pos-prime-checkout__summary">
+            <partial name="_SummaryPanel" />
+        </div>
+        <div id="posPrimeActionContent" class="pos-prime-checkout__actions">
+            <partial name="_SummaryActionsPanel" />
+        </div>
+    </aside>
+
+    <section id="posPrimeCheckoutDock" class="pos-prime-mobile-dock" aria-label="Thu tiền">
+        <div class="pos-prime-mobile-dock__money">
+            <div class="pos-prime-mobile-dock__balance">
+                <span>Còn phải thu</span>
+                <strong id="posPrimeDockBalance">—</strong>
+            </div>
+            <button id="posPrimeMoneyLauncher" type="button"
+                    data-prime-open="money" aria-controls="posPrimeMoneySheet"
+                    aria-expanded="false" class="pos-prime-detail-button">
+                Chi tiết / Tác vụ <i class="bx bx-chevron-up" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div id="posPrimeDockActions"></div>
+    </section>
+</div>
+
+<div class="offcanvas offcanvas-bottom pos-prime-sheet" id="posPrimeContextSheet"
+     tabindex="-1" aria-labelledby="posPrimeContextSheetTitle"
+     data-bs-scroll="false" data-bs-backdrop="true">
+    <div class="offcanvas-header">
+        <h2 class="offcanvas-title" id="posPrimeContextSheetTitle">Khách hàng &amp; công cụ đơn</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
+    </div>
+    <div class="offcanvas-body" id="posPrimeContextSheetHost"></div>
+</div>
+
+<div class="offcanvas offcanvas-bottom pos-prime-sheet" id="posPrimeMoneySheet"
+     tabindex="-1" aria-labelledby="posPrimeMoneySheetTitle"
+     data-bs-scroll="false" data-bs-backdrop="true">
+    <div class="offcanvas-header">
+        <h2 class="offcanvas-title" id="posPrimeMoneySheetTitle">Chi tiết tiền &amp; tác vụ</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div id="posPrimeMoneySheetHost"></div>
+        <div id="posPrimeMoneyActions" aria-label="Giữ hoặc hủy giỏ"></div>
+    </div>
+</div>

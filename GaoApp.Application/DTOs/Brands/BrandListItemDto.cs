@@ -1,4 +1,4 @@
-﻿namespace GaoApp.Application.DTOs.Brands;
+namespace GaoApp.Application.DTOs.Brands;
 
 public sealed class BrandListItemDto
 {
@@ -6,4 +6,5 @@ public sealed class BrandListItemDto
     public string Code { get; set; } = default!;
     public string Name { get; set; } = default!;
     public bool Status { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
 }

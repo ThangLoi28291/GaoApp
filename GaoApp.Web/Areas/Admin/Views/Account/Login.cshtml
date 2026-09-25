@@ -67,6 +67,11 @@
 
                     <div class="login-title">Đăng nhập</div>
 
+                    @if (TempData["PasswordChanged"] is string passwordChanged)
+                    {
+                        <div class="alert alert-success" role="status">@passwordChanged</div>
+                    }
+
                     @if (Model.RequireTerminalPairing)
                     {
                         <div class="login-desc">

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 720" fill="none">
+  <defs>
+    <linearGradient id="paper" x1="236" y1="270" x2="530" y2="667" gradientUnits="userSpaceOnUse"><stop stop-color="#ebc18e"/><stop offset="1" stop-color="#c9915a"/></linearGradient>
+    <linearGradient id="bread" x1="452" y1="111" x2="531" y2="381" gradientUnits="userSpaceOnUse"><stop stop-color="#efc582"/><stop offset="1" stop-color="#ce944f"/></linearGradient>
+    <radialGradient id="orange"><stop stop-color="#ffb94d"/><stop offset="1" stop-color="#e97f37"/></radialGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="190%"><feDropShadow dx="0" dy="23" stdDeviation="21" flood-color="#172e22" flood-opacity=".12"/></filter>
+  </defs>
+  <ellipse cx="385" cy="645" rx="211" ry="23" fill="#244334" opacity=".09"/>
+  <circle cx="386" cy="335" r="251" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>
+  <circle cx="386" cy="335" r="211" stroke="#fff" stroke-opacity=".3"/>
+  <g filter="url(#shadow)" transform="rotate(-5 380 400)">
+    <path d="m239 307 259-5 54 270-326 10Z" fill="#a76f48"/>
+    <g transform="rotate(-11 270 266)"><path d="M230 190h80v171h-80Z" fill="#faf6e8"/><path d="m230 190 18-29h47l15 29" fill="#d8e7dd"/><path d="M248 150h47v14h-47z" fill="#f7f9ed"/><path d="M230 238h80v69h-80z" fill="#497b68"/><path d="M257 252h28m-28 12h19m-19 12h23" stroke="#fff" stroke-width="4" stroke-linecap="round"/><path d="M295 163v198h15V191Z" fill="#203f32" opacity=".1"/></g>
+    <g transform="rotate(21 496 285)"><rect x="450" y="102" width="77" height="304" rx="38.5" fill="url(#bread)"/><path d="m464 160 42 17m-42 30 42 17m-42 30 42 17m-42 30 42 17" stroke="#f8dfaa" stroke-width="12" stroke-linecap="round"/><path d="m462 154 35 14m-35 33 35 14m-35 33 35 14m-35 33 35 14" stroke="#b87839" stroke-opacity=".45" stroke-width="3" stroke-linecap="round"/></g>
+    <path d="M353 341c-9-60-75-104-52-162 52-2 80 61 70 113-3-79 39-147 93-148 32 52-3 131-63 165 51-51 108-43 123-9-17 59-83 70-122 51" fill="#476d3c"/>
+    <path d="M370 344c8-76 24-143 74-182m-77 183-47-136m57 139c47-37 83-52 117-46" stroke="#bdd285" stroke-width="4" stroke-linecap="round"/>
+    <path d="M367 322c-5-59 4-129 35-184 47 2 53 71 19 118 3-48 22-87 65-82 25 51-11 103-49 125" fill="#7b994c"/>
+    <path d="m385 320 17-155m-4 153 73-121" stroke="#d2dda0" stroke-width="3"/>
+    <ellipse cx="344" cy="319" rx="53" ry="57" fill="#c25e42"/>
+    <path d="m344 267 9-23" stroke="#4e4b27" stroke-width="7" stroke-linecap="round"/><path d="M347 260c-23-4-31-17-27-29 22 0 33 9 27 29" fill="#5e783f"/>
+    <circle cx="444" cy="346" r="54" fill="url(#orange)"/><path d="M444 294c12-22 32-26 44-14-10 18-25 26-44 14" fill="#416846"/><circle cx="421" cy="323" r="7" fill="#ffd48b" opacity=".45"/>
+    <path d="m212 329 324 3-25 280c-1 15-10 24-24 24H260c-15 0-25-9-26-24Z" fill="url(#paper)"/>
+    <path d="m212 329 20 23 30 261-26-5Z" fill="#b77f4c"/><path d="m536 332-21 18-23 266 19-6Z" fill="#a86f45" opacity=".4"/>
+    <path d="M284 397v-44c0-51 31-85 78-85s78 34 78 85v44" stroke="#714b32" stroke-opacity=".18" stroke-width="15" stroke-linecap="round"/>
+    <path d="M286 390v-44c0-51 31-85 78-85s78 34 78 85v44" stroke="#f4d5ad" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="362" cy="490" r="62" fill="#234d3d"/>
+    <path d="M342 518c-21-32 0-65 40-61 5 41-18 59-40 61Z" stroke="#e8eaba" stroke-width="3"/><path d="m336 527 31-53m-17 31v-15" stroke="#e8eaba" stroke-width="3" stroke-linecap="round"/>
+    <path d="M318 576h88" stroke="#745334" stroke-opacity=".32" stroke-width="2"/>
+  </g>
+  <g transform="translate(103 527) rotate(-19)"><ellipse cx="43" cy="35" rx="47" ry="40" fill="url(#orange)"/><path d="M38-4c17-24 37-24 45-12-7 20-30 26-45 12Z" fill="#497348"/></g>
+  <path d="M569 565c39-21 79-4 73 14-19 24-52 27-73-14Z" fill="#6a844c"/><path d="m561 580 62-9" stroke="#3e6241" stroke-width="3" stroke-linecap="round"/>
+  <g stroke="#39664e" stroke-width="2" stroke-linecap="round"><path d="M155 227v18m-9-9h18M584 411v14m-7-7h14"/><circle cx="586" cy="188" r="4"/><circle cx="153" cy="444" r="3"/></g>
+</svg>

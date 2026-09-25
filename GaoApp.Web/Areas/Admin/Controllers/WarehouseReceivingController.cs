@@ -139,6 +139,8 @@ public class WarehouseReceivingController : Controller
                 sku = x.Sku,
                 barcode = x.Barcode,
                 unitName = x.UnitName,
+                baseUnitName = x.BaseUnitName,
+                isBaseUnit = x.IsBaseUnit,
                 factor = x.Factor,
                 imageUrl = x.ImageUrl,
                 price = x.Price,

@@ -1,0 +1,872 @@
+{
+  "Status": "REVIEWED_TEST_RESET_PLAN_REQUIRES_FRESH_PREVIEW_BACKUP_AND_DRYRUN",
+  "Tables": [
+    {
+      "Table": "__EFMigrationsHistory",
+      "Action": "KEEP",
+      "TestRows": 40,
+      "Reason": "Lịch sử schema; không xóa hoặc reseed.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "AcbCallbackReceipts",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "AcbCallbackRouteChanges",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Lịch sử thay đổi cấu hình định tuyến; không phải giao dịch thu tiền.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "AcbCallbackRoutes",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Cấu hình định tuyến callback ngân hàng.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "AcbPaymentTransactions",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "AcbQrNotificationItems",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "AcbQrSessions",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "AdminMenuItems",
+      "Action": "KEEP",
+      "TestRows": 55,
+      "Reason": "Menu và cấu trúc menu cha/con.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Attribute",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Định nghĩa thuộc tính sản phẩm.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "AttributeValue",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Giá trị thuộc tính; liên kết với variant TEST sẽ xóa riêng.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "AuditLogs",
+      "Action": "CLEAR",
+      "TestRows": 646,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "Brands",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Danh mục tham chiếu; gói sản phẩm hiện không chép vào bảng này.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Category",
+      "Action": "CLEAR",
+      "TestRows": 6,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "CustomerDebtReceipts",
+      "Action": "CLEAR",
+      "TestRows": 2,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không chuyển công nợ cũ (đã chốt); số dư đặt cọc cũ chưa nằm trong phạm vi các gói hiện tại"
+    },
+    {
+      "Table": "CustomerDepositEntries",
+      "Action": "CLEAR",
+      "TestRows": 4,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không chuyển công nợ cũ (đã chốt); số dư đặt cọc cũ chưa nằm trong phạm vi các gói hiện tại"
+    },
+    {
+      "Table": "CustomerDeposits",
+      "Action": "CLEAR",
+      "TestRows": 3,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không chuyển công nợ cũ (đã chốt); số dư đặt cọc cũ chưa nằm trong phạm vi các gói hiện tại"
+    },
+    {
+      "Table": "CustomerReceivableEntries",
+      "Action": "CLEAR",
+      "TestRows": 6,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không chuyển công nợ cũ (đã chốt); số dư đặt cọc cũ chưa nằm trong phạm vi các gói hiện tại"
+    },
+    {
+      "Table": "CustomerRewardLedgers",
+      "Action": "CLEAR",
+      "TestRows": 11914,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "02 tích lũy"
+    },
+    {
+      "Table": "CustomerRewardVouchers",
+      "Action": "CLEAR",
+      "TestRows": 3358,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "02 voucher"
+    },
+    {
+      "Table": "Customers",
+      "Action": "CLEAR",
+      "TestRows": 12651,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "02 khách hàng"
+    },
+    {
+      "Table": "DisplayPromotions",
+      "Action": "CLEAR",
+      "TestRows": 4,
+      "Reason": "Chương trình khuyến mãi TEST gắn với danh mục cũ; không giữ liên kết Product/Variant TEST. Quy đổi và giá từ Promotion nguồn được xử lý ở bước 01.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "DocumentNumberSequences",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Bộ đếm chứng từ TEST; khởi tạo lại phù hợp sau import, kiểm tra không trùng số mới.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InputInvoiceDetail",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InputInvoiceHead",
+      "Action": "CLEAR",
+      "TestRows": 2,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InputInvoiceItemCatalogMap",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InputInvoiceSupplierResolutionEvent",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InventoryAdjustmentDocuments",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InventoryAdjustmentLines",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InventoryBalances",
+      "Action": "CLEAR",
+      "TestRows": 16496,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 tồn kho"
+    },
+    {
+      "Table": "InventoryCostLayerAllocations",
+      "Action": "CLEAR",
+      "TestRows": 1410764,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 phân bổ giá vốn"
+    },
+    {
+      "Table": "InventoryCostLayers",
+      "Action": "CLEAR",
+      "TestRows": 124359,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 lớp giá vốn"
+    },
+    {
+      "Table": "InventoryReservations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InventoryTransactions",
+      "Action": "CLEAR",
+      "TestRows": 1512413,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 lịch sử kho"
+    },
+    {
+      "Table": "InventoryValuationEntries",
+      "Action": "CLEAR",
+      "TestRows": 1535123,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 giá vốn"
+    },
+    {
+      "Table": "InvoiceBuyerProfiles",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InvoiceCorrectionCases",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InvoiceDetails",
+      "Action": "CLEAR",
+      "TestRows": 337176,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "06 chi tiết hóa đơn"
+    },
+    {
+      "Table": "InvoiceHeads",
+      "Action": "CLEAR",
+      "TestRows": 104432,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "06 toàn bộ hóa đơn"
+    },
+    {
+      "Table": "InvoiceInputStockSupplementalMovements",
+      "Action": "CLEAR",
+      "TestRows": 255962,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "05 tồn hóa đơn"
+    },
+    {
+      "Table": "InvoiceIntegrationLogs",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "InvoiceProviderSettings",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Cấu hình nhà cung cấp hóa đơn; chỉ giữ, không phát hành khi chuyển.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "LegalEntities",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Chủ thể 1 và liên kết cấu hình/kho.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "LegalEntityActivationEvents",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Lịch sử kích hoạt chế độ chủ thể; giữ cùng cấu hình để tránh lệch trạng thái.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "MediaAssets",
+      "Action": "SELECTIVE",
+      "TestRows": 16193,
+      "Reason": "Bảng dùng chung: giữ tài nguyên cấu hình/logo; chỉ dọn metadata ảnh sản phẩm TEST sau khi kiểm tra tham chiếu. Không xóa toàn bộ file uploads.",
+      "ReceiveStep": "01 ảnh sản phẩm"
+    },
+    {
+      "Table": "NegativeInventoryLog",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderInventoryIssueActions",
+      "Action": "CLEAR",
+      "TestRows": 10,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderInventoryIssueLineAllocations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderInventoryIssueLines",
+      "Action": "CLEAR",
+      "TestRows": 8,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderInventoryIssues",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderLegalEntityAllocationReversals",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderLegalEntityAllocations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderLines",
+      "Action": "CLEAR",
+      "TestRows": 1399600,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 chi tiết đơn bán"
+    },
+    {
+      "Table": "OrderNumberSequences",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Bộ đếm chứng từ TEST; khởi tạo lại phù hợp sau import, kiểm tra không trùng số mới.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "OrderPayments",
+      "Action": "CLEAR",
+      "TestRows": 385947,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 thanh toán"
+    },
+    {
+      "Table": "OrderRewardVouchers",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "Orders",
+      "Action": "CLEAR",
+      "TestRows": 389667,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 đơn bán"
+    },
+    {
+      "Table": "Permissions",
+      "Action": "KEEP",
+      "TestRows": 200,
+      "Reason": "Danh mục quyền hệ thống.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "POSAuditLogs",
+      "Action": "CLEAR",
+      "TestRows": 8,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PosOperationReceipts",
+      "Action": "CLEAR",
+      "TestRows": 121,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PosPaymentQrRequests",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PosReceiptTemplates",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Mẫu in hóa đơn bán lẻ.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "POSShiftCashDenominations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShiftCashTransactions",
+      "Action": "CLEAR",
+      "TestRows": 7080,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShiftClosingSlipDenominations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShiftClosingSlips",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShiftHandoverSlipDenominations",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShiftHandoverSlips",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "POSShifts",
+      "Action": "CLEAR",
+      "TestRows": 8098,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 ca legacy và ca thay thế có ghi nguồn"
+    },
+    {
+      "Table": "POSTerminalDevices",
+      "Action": "KEEP",
+      "TestRows": 5,
+      "Reason": "Liên kết thiết bị với quầy POS.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "POSTerminals",
+      "Action": "KEEP",
+      "TestRows": 7,
+      "Reason": "Máy/quầy POS, gồm mã LEGACY-KET và LEGACY-UNKNOWN đang có.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "ProductBarcodeVerificationRequests",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "ProductImages",
+      "Action": "CLEAR",
+      "TestRows": 16193,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 ảnh sản phẩm"
+    },
+    {
+      "Table": "ProductLabelJobs",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "ProductLabelPrinters",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Cấu hình máy in tem.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "ProductLabelTasks",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "ProductLabelTemplates",
+      "Action": "KEEP",
+      "TestRows": 0,
+      "Reason": "Mẫu tem.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Products",
+      "Action": "CLEAR",
+      "TestRows": 32134,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "ProductUnitConversion",
+      "Action": "CLEAR",
+      "TestRows": 35287,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "ProductVariant",
+      "Action": "CLEAR",
+      "TestRows": 32134,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "ProductVariantAttributeValue",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "ProductVariantBarcodeHistory",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "ProductVariantUnitBarcode",
+      "Action": "CLEAR",
+      "TestRows": 34526,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "PromotionComboRule",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Chương trình khuyến mãi TEST gắn với danh mục cũ; không giữ liên kết Product/Variant TEST. Quy đổi và giá từ Promotion nguồn được xử lý ở bước 01.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PromotionItems",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Chương trình khuyến mãi TEST gắn với danh mục cũ; không giữ liên kết Product/Variant TEST. Quy đổi và giá từ Promotion nguồn được xử lý ở bước 01.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "Promotions",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Chương trình khuyến mãi TEST gắn với danh mục cũ; không giữ liên kết Product/Variant TEST. Quy đổi và giá từ Promotion nguồn được xử lý ở bước 01.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseOrderActions",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseOrderLines",
+      "Action": "CLEAR",
+      "TestRows": 4,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseOrders",
+      "Action": "CLEAR",
+      "TestRows": 2,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchasePayables",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseReceiptAuditEvents",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseReceivingActions",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseRequestActions",
+      "Action": "CLEAR",
+      "TestRows": 14,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseRequestLines",
+      "Action": "CLEAR",
+      "TestRows": 6,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "PurchaseRequests",
+      "Action": "CLEAR",
+      "TestRows": 3,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "RewardSettings",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Cấu hình tích điểm; không bao gồm số dư khách TEST.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "RolePermissions",
+      "Action": "KEEP",
+      "TestRows": 287,
+      "Reason": "Phân quyền theo vai trò.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Roles",
+      "Action": "KEEP",
+      "TestRows": 4,
+      "Reason": "Vai trò hiện có.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "SalesReturnLines",
+      "Action": "CLEAR",
+      "TestRows": 274,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 trả hàng có liên kết"
+    },
+    {
+      "Table": "SalesReturnPayments",
+      "Action": "CLEAR",
+      "TestRows": 117,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 hoàn tiền theo cách đã chuyển TEST"
+    },
+    {
+      "Table": "SalesReturns",
+      "Action": "CLEAR",
+      "TestRows": 117,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 trả hàng có liên kết"
+    },
+    {
+      "Table": "StockCountDocument",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockCountLine",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockDocument",
+      "Action": "CLEAR",
+      "TestRows": 3385,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 phiếu nhập"
+    },
+    {
+      "Table": "StockDocumentInputInvoiceDetailReconciliation",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockDocumentInputInvoiceMap",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockDocumentInputInvoiceReconciliation",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockDocumentLine",
+      "Action": "CLEAR",
+      "TestRows": 36011,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "04 chi tiết phiếu nhập"
+    },
+    {
+      "Table": "StockDocumentLineInputInvoiceMap",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockDocumentProvisionalItems",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockTransferDocument",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StockTransferLine",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "Không tự tái tạo từ nguồn cũ trong phạm vi đã chốt"
+    },
+    {
+      "Table": "StoreAcbSettings",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Cấu hình kết nối ngân hàng.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "StoreBankAccounts",
+      "Action": "KEEP",
+      "TestRows": 2,
+      "Reason": "Tài khoản ngân hàng cấu hình.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Stores",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Cửa hàng 1 và cấu hình vận hành hiện có.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Suppliers",
+      "Action": "CLEAR",
+      "TestRows": 292,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "Taxes",
+      "Action": "KEEP",
+      "TestRows": 3,
+      "Reason": "Danh mục thuế suất tham chiếu.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Unit",
+      "Action": "CLEAR",
+      "TestRows": 106,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "01 sản phẩm"
+    },
+    {
+      "Table": "UserInStores",
+      "Action": "KEEP",
+      "TestRows": 45,
+      "Reason": "Phân công nhân viên vào cửa hàng và role.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Users",
+      "Action": "KEEP",
+      "TestRows": 46,
+      "Reason": "Tài khoản, nhân viên, mật khẩu và trạng thái; không chép đè từ GaoStore.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "Warehouses",
+      "Action": "KEEP",
+      "TestRows": 2,
+      "Reason": "Kho 1 và liên kết chủ thể.",
+      "ReceiveStep": "—"
+    },
+    {
+      "Table": "LegacyReturnArchives",
+      "Action": "CLEAR",
+      "TestRows": 0,
+      "Reason": "Dữ liệu nghiệp vụ TEST hoặc bảng phụ thuộc; làm rỗng theo thứ tự khóa ngoại.",
+      "ReceiveStep": "03 lưu nguyên bản phiếu trả thiếu liên kết để tra cứu (bảng mới)"
+    },
+    {
+      "Table": "GaoStoreMigrationRunsV2",
+      "Action": "CLEAR",
+      "TestRows": 5,
+      "Reason": "Biên nhận của đợt chép TEST; chỉ dọn cùng toàn bộ nghiệp vụ khi PREVIEW có AllowImportedTestReset.",
+      "ReceiveStep": "Các gói initial-import tạo biên nhận mới"
+    },
+    {
+      "Table": "GaoStoreProductImageRunsV1",
+      "Action": "CLEAR",
+      "TestRows": 1,
+      "Reason": "Biên nhận ảnh TEST; chỉ dọn khi reset TEST đã được chỉ định rõ.",
+      "ReceiveStep": "Gói product-images tạo biên nhận mới"
+    }
+  ],
+  "RetainedToClearedForeignKeys": [],
+  "OptionalMigrationMetadataTables": [
+    "GaoStoreMigrationRunsV2",
+    "GaoStoreProductImageRunsV1"
+  ],
+  "BlockCleanupWhenMigrationReceiptsExist": true
+}

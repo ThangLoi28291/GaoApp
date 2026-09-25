@@ -1,0 +1,554 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService ProfitNavigationAuthorization
+@{
+    ViewData["Title"] = "Tổng quan kinh doanh";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+}
+
+@section VendorStyles {
+    <link rel="stylesheet"
+          href="~/vendor/libs/apex-charts/apex-charts.css"
+          asp-append-version="true" />
+    <link rel="stylesheet"
+          href="~/Admin/css/reports/sales-report.css"
+          asp-append-version="true" />
+}
+
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact sales-report-page-header">
+            <div class="gds-page-header__main">
+                <div class="sales-report-eyebrow">MANAGEMENT INTELLIGENCE</div>
+                <h3 class="gds-page-header__title">Tổng quan kinh doanh</h3>
+                <p class="gds-page-header__subtitle mb-0">
+                    Theo dõi doanh số, giảm giá, trả hàng và xu hướng bán hàng trong một màn hình.
+                </p>
+            </div>
+
+            <div class="gds-page-header__actions sales-report-header-actions">
+                @if ((await ProfitNavigationAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.View)).Succeeded)
+                {
+                    <a class="btn btn-outline-primary" href="@Url.Action("Index", "ProfitReport", new { area = "Admin", fromDate = Context.Request.Query["fromDate"].ToString(), toDate = Context.Request.Query["toDate"].ToString(), compare = Context.Request.Query["compare"].ToString(), terminalId = Context.Request.Query["terminalId"].ToString(), customerState = Context.Request.Query["customerState"].ToString() })"
+                       onclick="const u=new URL(this.href); ['fromDate','toDate','compare','terminalId','customerState'].forEach(k=>{const v=new URL(location.href).searchParams.get(k); if(v!==null)u.searchParams.set(k,v);else u.searchParams.delete(k);});this.href=u.href;">Lợi nhuận gộp</a>
+                }
+                <div class="sales-report-refresh-meta" aria-live="polite">
+                    <span>Cập nhật</span>
+                    <strong id="salesReportLastRefresh">--:--</strong>
+                </div>
+                <button type="button"
+                        class="btn btn-outline-primary gds-action-button"
+                        id="salesReportRefreshButton">
+                    <i class="bx bx-refresh" aria-hidden="true"></i>
+                    <span>Làm mới</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="sales-report-page gds-page"
+     data-sales-executive-report
+     data-data-url="@Url.Action("GetData", "SalesExecutiveReport", new { area = "Admin" })"
+     data-detail-url="@Url.Action("Index", "SalesReport", new { area = "Admin" })"
+     aria-busy="true">
+
+    <div id="salesReportLiveRegion"
+         class="visually-hidden"
+         aria-live="polite"></div>
+
+    <div id="salesReportStaleBanner"
+         class="alert alert-warning sales-report-stale-banner"
+         role="status"
+         hidden>
+        <i class="bx bx-error-circle" aria-hidden="true"></i>
+        <span>
+            Không tải được dữ liệu mới. GaoApp đang giữ kết quả gần nhất để anh/chị tiếp tục theo dõi.
+        </span>
+    </div>
+
+    <section class="card shadow-sm border-0 sales-report-filter-card"
+             aria-label="Bộ lọc báo cáo">
+        <div class="card-body">
+            <div class="sales-report-filter-bar">
+                <div class="sales-report-date-field">
+                    <label for="salesReportFromDate" class="form-label">Từ ngày</label>
+                    <input type="date"
+                           id="salesReportFromDate"
+                           class="form-control" />
+                </div>
+
+                <div class="sales-report-date-field">
+                    <label for="salesReportToDate" class="form-label">Đến ngày</label>
+                    <input type="date"
+                           id="salesReportToDate"
+                           class="form-control" />
+                </div>
+
+                <div class="sales-report-compare-field">
+                    <label for="salesReportCompare" class="form-label">So với</label>
+                    <select id="salesReportCompare" class="form-select">
+                        <option value="previous">Kỳ trước</option>
+                        <option value="none">Không so sánh</option>
+                    </select>
+                </div>
+
+                <div class="sales-report-filter-action">
+                    <label class="form-label d-none d-md-block">Bộ lọc</label>
+                    <button type="button"
+                            class="btn btn-label-secondary w-100"
+                            id="salesReportSecondaryFilterToggle"
+                            aria-expanded="false"
+                            aria-controls="salesReportSecondaryFilters">
+                        <i class="bx bx-filter-alt" aria-hidden="true"></i>
+                        <span>Bộ lọc</span>
+                        <span id="salesReportFilterCount"
+                              class="badge bg-primary ms-1"
+                              hidden>0</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="salesReportSecondaryFilters"
+                 class="sales-report-secondary-filters"
+                 hidden>
+                <div>
+                    <label for="salesReportTerminal" class="form-label">Terminal</label>
+                    <select id="salesReportTerminal" class="form-select">
+                        <option value="">Tất cả terminal</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="salesReportCustomerState" class="form-label">Khách hàng</label>
+                    <select id="salesReportCustomerState" class="form-select">
+                        <option value="all">Tất cả</option>
+                        <option value="linked">Có khách hàng</option>
+                        <option value="guest">Khách lẻ</option>
+                    </select>
+                </div>
+
+                <div class="sales-report-secondary-actions">
+                    <button type="button"
+                            class="btn btn-link text-secondary px-0"
+                            id="salesReportClearSecondaryFilters">
+                        Xóa bộ lọc phụ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="salesReportSkeleton"
+             class="sales-report-skeleton"
+             aria-label="Đang tải báo cáo">
+        <div class="sales-report-kpi-grid" aria-hidden="true">
+            @for (var i = 0; i < 6; i++)
+            {
+                <div class="card shadow-sm border-0 sales-report-kpi-card is-skeleton">
+                    <span class="sales-report-skeleton-line w-50"></span>
+                    <span class="sales-report-skeleton-line is-value w-75"></span>
+                    <span class="sales-report-skeleton-line w-40"></span>
+                </div>
+            }
+        </div>
+
+        <div class="sales-report-main-grid" aria-hidden="true">
+            <div class="card shadow-sm border-0 sales-report-panel">
+                <span class="sales-report-skeleton-line w-30"></span>
+                <span class="sales-report-skeleton-block"></span>
+            </div>
+            <div class="card shadow-sm border-0 sales-report-panel">
+                <span class="sales-report-skeleton-line w-40"></span>
+                <span class="sales-report-skeleton-block"></span>
+            </div>
+        </div>
+    </section>
+
+    <section id="salesReportStatePanel"
+             class="card shadow-sm border-0 sales-report-state-panel"
+             aria-live="polite"
+             hidden>
+        <div class="card-body text-center py-5">
+            <span class="sales-report-state-icon" aria-hidden="true">
+                <i class="bx bx-bar-chart-alt-2"></i>
+            </span>
+            <h4 id="salesReportStateTitle" class="mt-3 mb-2">Chưa có dữ liệu</h4>
+            <p id="salesReportStateMessage" class="text-muted mb-3"></p>
+            <button type="button"
+                    id="salesReportStateRetry"
+                    class="btn btn-primary">
+                <i class="bx bx-refresh" aria-hidden="true"></i>
+                Thử lại
+            </button>
+        </div>
+    </section>
+
+    <div id="salesReportContent" hidden>
+        <section class="sales-report-kpi-grid"
+                 aria-label="Các chỉ số bán hàng chính">
+            <article class="card shadow-sm border-0 sales-report-kpi-card is-primary" data-sales-drill-segment="overview" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>Net Sales</span>
+                    <i class="bx bx-line-chart" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiNetSales">0 ₫</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="netSales">—</span>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-kpi-card" data-sales-drill-segment="orders" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>Đơn bán</span>
+                    <i class="bx bx-receipt" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiOrders">0</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="salesOrders">—</span>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-kpi-card" data-sales-drill-segment="overview" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>AOV</span>
+                    <i class="bx bx-basket" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiAov">0 ₫</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="aov">—</span>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-kpi-card" data-sales-drill-segment="discounts" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>Discounts</span>
+                    <i class="bx bx-purchase-tag" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiDiscounts">0 ₫</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="discounts">—</span>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-kpi-card" data-sales-drill-segment="returns" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>Returns</span>
+                    <i class="bx bx-undo" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiReturns">0 ₫</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="returns">—</span>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-kpi-card" data-sales-drill-segment="returns" data-sales-drill-focus="refund" role="link" tabindex="0">
+                <div class="sales-report-kpi-topline">
+                    <span>Refund Amount</span>
+                    <i class="bx bx-transfer-alt" aria-hidden="true"></i>
+                </div>
+                <strong class="sales-report-kpi-value" id="salesKpiRefundAmount">0 ₫</strong>
+                <span class="sales-report-kpi-delta" data-kpi-delta="refundAmount">—</span>
+            </article>
+        </section>
+
+        <section class="sales-report-main-grid">
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--hero sales-report-trend-panel">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">XU HƯỚNG</div>
+                        <h5 class="mb-1">Net Sales theo thời gian</h5>
+                        <p id="salesTrendPeriodText" class="text-muted mb-0"></p>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm btn-label-secondary"
+                            data-sales-drill-segment="orders">
+                        <i class="bx bx-right-arrow-alt me-1" aria-hidden="true"></i>
+                        Xem chi tiết
+                    </button>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesTrendChart"
+                         class="sales-report-chart"
+                         role="img"
+                         aria-label="Biểu đồ Net Sales của kỳ hiện tại và kỳ so sánh"></div>
+
+                    <details class="sales-report-chart-data mt-2">
+                        <summary>Xem dữ liệu biểu đồ</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Mốc</th>
+                                        <th class="text-end">Net Sales</th>
+                                        <th class="text-end">Đơn</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTrendDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--bridge sales-report-bridge-panel">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">CÁCH TÍNH</div>
+                        <h5 class="mb-1">Sales Bridge</h5>
+                        <p class="text-muted mb-0">Từ doanh số gộp đến Net Sales.</p>
+                    </div>
+                </div>
+                <div class="card-body pt-0">
+                    <div class="sales-report-bridge">
+                        <div class="sales-report-bridge-row">
+                            <span>Gross Sales</span>
+                            <strong id="salesBridgeGross">0 ₫</strong>
+                        </div>
+                        <div class="sales-report-bridge-row is-subtract">
+                            <span><i class="bx bx-minus" aria-hidden="true"></i> Discounts</span>
+                            <strong id="salesBridgeDiscounts">0 ₫</strong>
+                        </div>
+                        <div class="sales-report-bridge-row is-result">
+                            <span>Sales After Discount</span>
+                            <strong id="salesBridgeAfterDiscount">0 ₫</strong>
+                        </div>
+                        <div class="sales-report-bridge-row is-subtract">
+                            <span><i class="bx bx-minus" aria-hidden="true"></i> Returns</span>
+                            <strong id="salesBridgeReturns">0 ₫</strong>
+                        </div>
+                        <div class="sales-report-bridge-row is-final">
+                            <span>Net Sales</span>
+                            <strong id="salesBridgeNet">0 ₫</strong>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section class="card shadow-sm border-0 sales-report-attention"
+                 aria-labelledby="salesReportAttentionHeading">
+            <div class="card-body">
+                <div class="sales-report-attention-copy">
+                    <div class="sales-report-attention-icon" aria-hidden="true">
+                        <i class="bx bx-pulse"></i>
+                    </div>
+                    <div>
+                        <div class="sales-report-section-eyebrow">CẦN CHÚ Ý</div>
+                        <h5 id="salesReportAttentionHeading" class="mb-1">Hậu mãi &amp; chất lượng doanh số</h5>
+                        <p class="text-muted mb-0" id="salesReportAttentionMessage">
+                            Theo dõi return, void và mức độ gắn khách hàng trong kỳ.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="sales-report-attention-metrics">
+                    <div class="sales-report-attention-metric" data-sales-drill-segment="void" role="link" tabindex="0">
+                        <span>Đơn đã Void trong kỳ bán</span>
+                        <strong id="salesAttentionVoid">0 · 0 ₫</strong>
+                    </div>
+                    <div class="sales-report-attention-metric" data-sales-drill-segment="returns" role="link" tabindex="0">
+                        <span>Phiếu Return</span>
+                        <strong id="salesAttentionReturns">0</strong>
+                    </div>
+                    <div class="sales-report-attention-metric">
+                        <span>Đơn có khách hàng</span>
+                        <strong id="salesAttentionCustomerRate">0%</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="sales-report-insights-grid"
+                 aria-label="Phân tích bán hàng chuyên sâu">
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--hourly">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">NHỊP BÁN HÀNG</div>
+                        <h5 class="mb-1">Sales by Hour</h5>
+                        <p class="text-muted mb-0">Tổng hợp theo giờ kinh doanh của kỳ đang chọn.</p>
+                    </div>
+                    <select id="salesByHourMetric"
+                            class="form-select form-select-sm sales-report-metric-select"
+                            aria-label="Chỉ số Sales by Hour">
+                        <option value="netSales">Net Sales</option>
+                        <option value="salesOrders">Đơn bán</option>
+                    </select>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesByHourChart"
+                         class="sales-report-chart sales-report-chart--compact"
+                         role="img"
+                         aria-label="Biểu đồ bán hàng theo giờ"></div>
+                    <p id="salesByHourPeakText"
+                       class="sales-report-insight-note mb-2"></p>
+                    <details class="sales-report-chart-data">
+                        <summary>Xem dữ liệu theo giờ</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Giờ</th>
+                                        <th class="text-end">Net Sales</th>
+                                        <th class="text-end">Đơn</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesByHourDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--products">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">SẢN PHẨM</div>
+                        <h5 class="mb-1">Top Products</h5>
+                        <p class="text-muted mb-0">Gross Sales + số lượng theo đơn vị gốc.</p>
+                    </div>
+                    <span class="badge bg-label-secondary">Top 10</span>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesTopProductsChart"
+                         class="sales-report-chart sales-report-chart--ranked"
+                         role="img"
+                         aria-label="Biểu đồ Top Products theo Gross Sales"></div>
+                    <details class="sales-report-chart-data mt-2">
+                        <summary>Xem dữ liệu Top Products</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Sản phẩm / Variant</th>
+                                        <th class="text-end">SL gốc</th>
+                                        <th class="text-end">Gross Sales</th>
+                                        <th class="text-end">Tỷ trọng</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesTopProductsDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--discount">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">GIẢM GIÁ</div>
+                        <h5 class="mb-1">Discount Breakdown</h5>
+                        <p class="text-muted mb-0">Các thành phần giải thích tổng Discounts.</p>
+                    </div>
+                    <strong id="salesDiscountTotal" class="sales-report-panel-total">0 ₫</strong>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesDiscountReconcile"
+                         class="sales-report-reconcile"
+                         role="status"></div>
+                    <div id="salesDiscountChart"
+                         class="sales-report-chart sales-report-chart--compact"
+                         role="img"
+                         aria-label="Biểu đồ cơ cấu giảm giá"></div>
+                    <details class="sales-report-chart-data mt-2">
+                        <summary>Xem dữ liệu giảm giá</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Thành phần</th>
+                                        <th class="text-end">Giá trị</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesDiscountDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+        </section>
+
+        <section class="sales-report-insights-grid is-two"
+                 aria-label="Return và khách hàng">
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--returns">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">HẬU MÃI</div>
+                        <h5 class="mb-1">Returns vs Refunds</h5>
+                        <p class="text-muted mb-0">Giá trị hàng trả và tiền thực tế hoàn là hai metric riêng.</p>
+                    </div>
+                    <div class="sales-report-mini-stats">
+                        <span><strong id="salesReturnCountInline">0</strong> return</span>
+                        <span><strong id="salesRefundCountInline">0</strong> refund</span>
+                    </div>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesReturnsRefundsChart"
+                         class="sales-report-chart sales-report-chart--compact"
+                         role="img"
+                         aria-label="Biểu đồ Returns và Refund Amount"></div>
+                    <details class="sales-report-chart-data mt-2">
+                        <summary>Xem dữ liệu Returns / Refunds</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Mốc</th>
+                                        <th class="text-end">Returns</th>
+                                        <th class="text-end">Refund Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesReturnsRefundsDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+
+            <article class="card shadow-sm border-0 sales-report-panel sales-report-panel--customer">
+                <div class="card-header bg-transparent border-0 sales-report-panel-header">
+                    <div>
+                        <div class="sales-report-section-eyebrow">KHÁCH HÀNG</div>
+                        <h5 class="mb-1">Customer attachment</h5>
+                        <p class="text-muted mb-0">Tỷ lệ đơn có gắn khách hàng, không phải Repeat Rate.</p>
+                    </div>
+                    <strong id="salesCustomerLinkedRateInline"
+                            class="sales-report-panel-total">0%</strong>
+                </div>
+                <div class="card-body pt-0">
+                    <div id="salesCustomerMixChart"
+                         class="sales-report-chart sales-report-chart--customer"
+                         role="img"
+                         aria-label="Biểu đồ đơn có khách hàng và khách lẻ"></div>
+                    <div class="sales-report-customer-summary">
+                        <div>
+                            <span>Có khách hàng</span>
+                            <strong id="salesCustomerLinkedOrders">0</strong>
+                        </div>
+                        <div>
+                            <span>Khách lẻ</span>
+                            <strong id="salesCustomerGuestOrders">0</strong>
+                        </div>
+                    </div>
+                    <details class="sales-report-chart-data mt-2">
+                        <summary>Xem dữ liệu khách hàng</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Nhóm</th>
+                                        <th class="text-end">Đơn</th>
+                                        <th class="text-end">Tỷ lệ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="salesCustomerMixDataBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
+                </div>
+            </article>
+        </section>
+    </div>
+</div>
+
+@section VendorScripts {
+    <script src="~/vendor/libs/apex-charts/apexcharts.js"
+            asp-append-version="true"></script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/reports/sales-report.page.js"
+            asp-append-version="true"></script>
+}

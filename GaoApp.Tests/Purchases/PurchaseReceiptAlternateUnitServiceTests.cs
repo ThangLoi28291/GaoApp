@@ -48,9 +48,9 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         var repository = File.ReadAllText(Path.Combine(root, "GaoApp.Infrastructure", "Repositories", "Inventory", "StockDocumentRepository.cs"));
 
         Assert.DoesNotContain("canonicalQuantity > projection.AvailableToAllocateQuantity", service);
-        Assert.Contains("canonicalReceipt != line.BaseQuantity", service);
+        Assert.Contains("canonical != line.BaseQuantity", service);
         Assert.Contains("EvaluateOverdelivery", service);
-        Assert.Contains("receiptLine.BaseQuantity", service);
+        Assert.Contains("CurrentReceiptBaseQuantity", service);
         Assert.Contains("qtyBase: line.BaseQuantity", service);
         Assert.Contains("x.Sum(y => y.BaseQuantity)", repository);
     }
@@ -197,6 +197,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
                 nameof(IStockDocumentRepository.AddAsync) =>
                     CaptureAdded((StockDocument)args![0]!),
                 nameof(IStockDocumentRepository.SaveChangesAsync) => Task.CompletedTask,
+                nameof(IStockDocumentRepository.HasOtherActiveReceivingDraftAsync) => Task.FromResult(false),
                 _ => throw new NotSupportedException(method.Name)
             });
             var sequence = Proxy<IDocumentNumberSequenceRepository>((method, _) =>
@@ -243,6 +244,78 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
         Assert.Contains("vượt giới hạn", error.Message);
         Assert.Null(rejected.AddedDocument());
         Assert.Equal(1, rejected.Rollbacks());
+    }
+
+    [Fact]
+    public async Task Legacy_partial_receipt_policy_failure_is_safe_and_persists_nothing()
+    {
+        var order = CreateOrderWithAlternateCandidates(0);
+        var line = order.Lines.Single();
+        var addCalls = 0;
+        var saveCalls = 0;
+        var commitCalls = 0;
+        var rollbackCalls = 0;
+        var repository = Proxy<IStockDocumentRepository>((method, _) => method.Name switch
+        {
+            nameof(IStockDocumentRepository.LockPurchasePriceHistoryVariantsAsync) => Task.FromResult(true),
+            nameof(IStockDocumentRepository.BeginTransactionAsync) => Task.CompletedTask,
+            nameof(IStockDocumentRepository.CommitTransactionAsync) => Count(() => commitCalls++),
+            nameof(IStockDocumentRepository.RollbackTransactionAsync) => Count(() => rollbackCalls++),
+            nameof(IStockDocumentRepository.LockPurchaseOrderForReceiptAsync) =>
+                Task.FromResult<PurchaseOrderReceiptState?>(new(
+                    order.Id, order.StoreId, order.Status, order.SupplierId,
+                    order.ExpectedWarehouseId, order.LegalEntityId)),
+            nameof(IStockDocumentRepository.LockPurchaseOrderLinesAsync) =>
+                Task.FromResult<IReadOnlyDictionary<int, PurchaseOrderLineAllocationState>>(
+                    new Dictionary<int, PurchaseOrderLineAllocationState>
+                    {
+                        [line.Id] = new(
+                            line.Id, order.StoreId, line.OrderedQuantity,
+                            line.ReceivedQuantity, line.ShortClosedQuantity,
+                            line.ConversionFactor)
+                    }),
+            nameof(IStockDocumentRepository.GetPurchaseOrderForReceiptAsync) =>
+                Task.FromResult<PurchaseOrder?>(order),
+            nameof(IStockDocumentRepository.AddAsync) => Count(() => addCalls++),
+            nameof(IStockDocumentRepository.SaveChangesAsync) => Count(() => saveCalls++),
+            nameof(IStockDocumentRepository.HasOtherActiveReceivingDraftAsync) => Task.FromResult(false),
+            _ => throw new NotSupportedException(method.Name)
+        });
+        var sequence = Proxy<IDocumentNumberSequenceRepository>((method, _) =>
+            method.Name == nameof(IDocumentNumberSequenceRepository.GetNextNumberAsync)
+                ? Task.FromResult(1)
+                : throw new NotSupportedException(method.Name));
+        var movements = new RecordingMovementService();
+        var service = CreateServiceForOrder(repository, movements, sequence);
+
+        var error = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateReceiptFromPurchaseOrderAsync(order.Id, new CreatePurchaseReceiptRequest
+            {
+                Lines =
+                [
+                    new CreatePurchaseReceiptLineRequest
+                    {
+                        PurchaseOrderLineId = line.Id,
+                        ReceiptUnitId = line.UnitId,
+                        Quantity = 4m,
+                        ShortageDisposition = PurchaseShortageDisposition.None
+                    }
+                ]
+            }));
+
+        Assert.Contains("phải chọn chờ giao bù hoặc đóng phần thiếu", error.Message);
+        Assert.Equal(0, addCalls);
+        Assert.Equal(0, saveCalls);
+        Assert.Equal(0, commitCalls);
+        Assert.Equal(1, rollbackCalls);
+        Assert.Equal(0, movements.PreLockCalls);
+        Assert.Equal(0, movements.CreateCalls);
+
+        static Task Count(Action increment)
+        {
+            increment();
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -319,6 +392,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
                 Task.FromResult<PurchaseOrder?>(order),
             nameof(IStockDocumentRepository.GetInFlightPurchaseReceiptQuantitiesAsync) =>
                 Task.FromResult<IReadOnlyDictionary<int, decimal>>(new Dictionary<int, decimal>()),
+            nameof(IStockDocumentRepository.HasOtherActiveReceivingDraftAsync) => Task.FromResult(false),
             _ => throw new NotSupportedException(method.Name)
         });
         var sequence = Proxy<IDocumentNumberSequenceRepository>((method, _) =>
@@ -377,6 +451,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
             nameof(IStockDocumentRepository.PurchasePayableExistsAsync) => Task.FromResult(false),
             nameof(IStockDocumentRepository.AddPurchasePayableAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.SaveChangesAsync) => Task.CompletedTask,
+            nameof(IStockDocumentRepository.HasUnresolvedProvisionalItemsAsync) => Task.FromResult(false),
             _ => throw new NotSupportedException(method.Name)
         });
         var valuation = Proxy<IInventoryValuationEntryRepository>((method, _) =>
@@ -755,6 +830,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
                 Task.FromResult<IReadOnlyDictionary<int, decimal>>(new Dictionary<int, decimal>()),
             nameof(IStockDocumentRepository.PurchaseReceiptLineSnapshotsBelongToStoreAsync) =>
                 Task.FromResult(true),
+            nameof(IStockDocumentRepository.HasUnresolvedProvisionalItemsAsync) => Task.FromResult(false),
             _ => throw new NotSupportedException(method.Name)
         };
         return proxy;
@@ -796,6 +872,7 @@ public sealed class PurchaseReceiptAlternateUnitServiceTests
             nameof(IStockDocumentRepository.PurchasePayableExistsAsync) => Task.FromResult(false),
             nameof(IStockDocumentRepository.AddPurchasePayableAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.SaveChangesAsync) => Task.CompletedTask,
+            nameof(IStockDocumentRepository.HasUnresolvedProvisionalItemsAsync) => Task.FromResult(false),
             _ => throw new NotSupportedException(method.Name)
         });
     }

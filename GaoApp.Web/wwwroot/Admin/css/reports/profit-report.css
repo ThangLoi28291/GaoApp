@@ -1,0 +1,24 @@
+.profit-report{--profit-muted:#556277;--profit-border:#dce3ec;max-width:1800px;margin:auto;color:#233044}
+.profit-heading,.profit-chart-heading{display:flex;justify-content:space-between;align-items:center;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.4rem}
+.profit-heading h1{font-size:1.8rem;margin:.25rem 0}.profit-heading p{margin:.4rem 0;color:var(--profit-muted)}
+.profit-eyebrow{font-size:.75rem;letter-spacing:.12em;font-weight:700}.profit-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+.profit-filters,.profit-detail-filters{display:flex;gap:1rem;align-items:end;flex-wrap:wrap;margin:1rem 0;padding:1.2rem;background:#fff;border:1px solid var(--profit-border);border-radius:1rem}
+.profit-report label{display:flex;flex-direction:column;gap:.35rem;font-weight:600;min-width:140px}
+.profit-report input,.profit-report select{border:1px solid #9caabc;background:#fff;color:#233044;border-radius:.45rem;padding:.55rem;min-height:42px;max-width:100%}
+.profit-report [hidden]{display:none!important}.profit-report :focus-visible{outline:3px solid #1e5fc8;outline-offset:3px}
+.profit-context,.profit-muted{color:var(--profit-muted);font-size:.9rem}.profit-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem;margin:1rem 0}
+.profit-kpi,.profit-panel{padding:1.3rem;border:1px solid var(--profit-border);border-radius:1rem;background:white;min-width:0}
+.profit-kpi h2{font-size:.85rem;color:var(--profit-muted);margin:0 0 .65rem}.profit-value{font-size:1.45rem;font-weight:700;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.profit-kpi button{font-family:inherit;text-align:left;border:0;padding:0;background:none;cursor:pointer}.profit-kpi .profit-value{display:block;color:#233044}.profit-kpi .profit-value.profit-negative{color:#a32a30}.profit-kpi .profit-delta{font-size:.8rem;color:var(--profit-muted);margin-top:.4rem}
+.profit-badge{font-size:.8rem;padding:.15rem .45rem;border-radius:.35rem;display:inline-block;background:#edf2fa;margin-top:.5rem}
+.profit-badge.provisional{background:#fff0cf;color:#714500}.profit-negative{color:#a32a30}.profit-notice{padding:.8rem 1rem;background:#eef3fc;border-radius:.7rem}
+.profit-error{padding:1rem;background:#fff0ee;border:1px solid #b04740;border-radius:.7rem}.profit-panels{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.profit-panel{margin-bottom:1rem}.profit-panel h2{font-size:1.1rem}.profit-panel dl{display:grid;grid-template-columns:1fr auto;gap:.8rem;margin:0}.profit-panel dd{font-weight:700;font-variant-numeric:tabular-nums}
+.profit-table-wrap{overflow:auto;max-width:100%}.profit-report table{width:100%;border-collapse:collapse;font-size:.9rem}.profit-report th,.profit-report td{padding:.7rem;text-align:left;border-bottom:1px solid var(--profit-border);white-space:nowrap;font-variant-numeric:tabular-nums}
+.profit-report caption{caption-side:top;color:var(--profit-muted)}.profit-report th{background:#f5f7fb}.profit-report summary{cursor:pointer;padding:.5rem 0;font-weight:600}
+.profit-pagination{display:flex;justify-content:flex-end;align-items:center;gap:1rem;margin-top:1rem;flex-wrap:wrap}.profit-report [data-profit-chart]{overflow-x:auto;max-width:100%}.profit-report svg{width:100%;min-width:640px;height:280px;display:block}.profit-axis-label{font:14px system-ui,sans-serif;fill:#556277}
+.profit-report .profit-chart-point{cursor:pointer}.profit-report .profit-chart-point:focus{stroke:#111;stroke-width:4}.profit-help p{max-width:95ch}
+@media(max-width:1500px){.profit-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:800px){.profit-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.profit-panels{grid-template-columns:1fr}.profit-heading h1{font-size:1.4rem}.profit-filters label{flex:1}}
+@media(max-width:440px){.profit-kpis{grid-template-columns:1fr}.profit-actions,.profit-actions>*{width:100%}.profit-filters label{min-width:100%;width:100%}.profit-value{font-size:1.35rem}.profit-panel{padding:.8rem}}
+@media(prefers-reduced-motion:reduce){.profit-report *{animation:none!important;transition:none!important}}

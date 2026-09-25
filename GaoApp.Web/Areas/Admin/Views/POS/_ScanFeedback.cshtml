@@ -1,0 +1,25 @@
+<section id="posScanFeedback" class="pos-scan-feedback" aria-label="Xác nhận quét sản phẩm">
+    <div class="pos-scan-feedback__header">
+        <div class="pos-scan-feedback__status" id="posScanStatus" role="status" aria-live="polite">Sẵn sàng quét sản phẩm</div>
+        <div class="pos-scan-feedback__actions">
+            <button id="posScanHistoryOpen" type="button" aria-label="Xem lịch sử quét" aria-controls="posScanHistory" aria-expanded="false"><i class="bx bx-history" aria-hidden="true"></i> Lịch sử quét <span id="posScanCount">0</span></button>
+            <button id="posScanRetry" type="button" hidden>Thử lại</button>
+        </div>
+    </div>
+    <div id="posScanLast" class="pos-scan-card" hidden>
+        <button id="posScanPhoto" class="pos-scan-photo" type="button" aria-label="Xem ảnh sản phẩm lớn" disabled>
+            <img id="posScanImage" alt="" hidden /><i id="posScanImageFallback" class="bx bx-package" aria-hidden="true"></i>
+        </button>
+        <div class="pos-scan-facts" role="status" aria-live="polite" aria-atomic="true">
+            <div class="pos-scan-caption">Lần quét gần nhất <time id="posScanTime"></time></div>
+            <strong id="posScanName"></strong>
+            <div id="posScanMeta"></div>
+            <div class="pos-scan-quantity"><strong id="posScanAdded"></strong><span id="posScanTransition"></span></div>
+            <div id="posScanCurrent" hidden></div>
+        </div>
+    </div>
+</section>
+<div id="posScanHistory" class="offcanvas offcanvas-end pos-scan-history" tabindex="-1" aria-labelledby="posScanHistoryTitle">
+    <div class="offcanvas-header"><div><h2 id="posScanHistoryTitle" class="offcanvas-title">Lịch sử quét</h2><p>10 lượt gần nhất của giỏ này trên máy đang dùng</p></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng lịch sử"></button></div>
+    <div class="offcanvas-body"><p id="posScanHistoryEmpty">Chưa có lượt quét trong giỏ này.</p><ol id="posScanHistoryList"></ol></div>
+</div>

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -76,6 +76,14 @@ public class Order : BaseStoreEntity, IAuditTrackedEntity
     /// </summary>
     [Column(TypeName = "decimal(18,2)")]
     public decimal BalanceDue { get; set; }
+
+    public int? CustomerDepositId { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal DepositAmount { get; set; }
+    public bool IsCreditSale { get; set; }
+    [Column(TypeName = "decimal(18,2)")] public decimal CreditInitialBalance { get; set; }
+    public DateTime? CreditDueDate { get; set; }
+    public Guid? CreditRequestId { get; set; }
+    [StringLength(500)] public string? CreditNote { get; set; }
 
     /// <summary>
     /// Tiền thối lại khách nếu khách đưa dư.

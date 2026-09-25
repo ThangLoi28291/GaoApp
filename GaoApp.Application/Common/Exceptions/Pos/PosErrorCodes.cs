@@ -137,6 +137,12 @@ public static class PosErrorCodes
     public const string CartEmptyCannotHold = "POS_CART_EMPTY_CANNOT_HOLD";
 
     /// <summary>
+    /// Không thể giữ đơn vì một dòng hàng không đủ tồn khả dụng tại kho xuất bán legacy.
+    /// </summary>
+    public const string CartHoldInsufficientInventory =
+        "POS_CART_HOLD_INSUFFICIENT_INVENTORY";
+
+    /// <summary>
     /// Không thể tạo giỏ mới vì giỏ hiện tại đang có dữ liệu.
     /// </summary>
     public const string CartNewBlockedByActiveCart = "POS_CART_NEW_BLOCKED_BY_ACTIVE_CART";

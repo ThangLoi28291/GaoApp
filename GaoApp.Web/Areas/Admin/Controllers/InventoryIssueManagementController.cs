@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Orders;
+using GaoApp.Web.Security;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Orders;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Domain.Enums;
 using GaoApp.Web.Areas.Admin.ViewModels.Orders;
@@ -13,6 +15,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Area("Admin")]
 [Route("admin/inventory-issues")]
 [Authorize]
+[Authorize(Policy = PermissionCodes.Inventory.Issue.View)]
 public class InventoryIssueManagementController : Controller
 {
     private readonly IOrderInventoryIssueService _issueService;
@@ -195,6 +198,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("add-note")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Update)]
     public async Task<IActionResult> AddNote(InventoryIssueActionRequestVm model, CancellationToken ct)
     {
         if (!ModelState.IsValid)
@@ -208,6 +212,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("approve")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Approve)]
     public async Task<IActionResult> Approve(InventoryIssueActionRequestVm model, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
@@ -229,6 +234,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("reject")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Reject)]
     public async Task<IActionResult> Reject(InventoryIssueActionRequestVm model, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
@@ -250,6 +256,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("reopen")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Update)]
     public async Task<IActionResult> Reopen(ReopenIssueRequest request, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
@@ -277,6 +284,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("escalate")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Update)]
     public async Task<IActionResult> Escalate(EscalateIssueRequest request, CancellationToken ct)
     {
         var userId = GetCurrentUserId();
@@ -313,6 +321,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("{id:int}/refresh")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Reconcile)]
     public async Task<IActionResult> RefreshOne(int id, CancellationToken ct)
     {
         try
@@ -330,6 +339,7 @@ public class InventoryIssueManagementController : Controller
 
     [HttpPost("refresh-open")]
     [ValidateAntiForgeryToken]
+    [Authorize(Policy = PermissionCodes.Inventory.Issue.Reconcile)]
     public async Task<IActionResult> RefreshOpen(CancellationToken ct)
     {
         try

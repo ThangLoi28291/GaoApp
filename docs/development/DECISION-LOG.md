@@ -431,3 +431,148 @@ Current `StockDocument`/`StockDocumentConfiguration` không có `LegalEntityId`;
 - **Consequences:** Không thêm batch/expiry fields trong receipt/movement R2 tasks.
 - **Source:** Coordinator locked business rule 23.
 - **Evidence:** Current receipt/inventory entities không có R2 lot/expiry workflow.
+
+## POS-OFFLINE-001 — Nhật ký tại quầy và xác nhận thu tiền thủ công
+
+- **Date:** 2026-09-09
+- **Status:** Implemented, locally verified; pending coordinator review and deployment.
+- **Context:** Người dùng yêu cầu POS tiếp tục bán khi máy chủ LAN treo/mất kết nối, mỗi quầy quản lý đơn riêng và thu ngân tự xác nhận tiền QR đã nhận.
+- **Decision:** Ghi giỏ và hàng đợi bền vững trên IndexedDB trước khi báo thành công. Chuẩn bị màn hình offline bằng Service Worker/HTTPS và dữ liệu theo cửa hàng/quầy/nhân viên/ca. Gửi lại bằng UUID ổn định; ghi thao tác và kết quả trong một SQL transaction có khóa và unique key. Service con tham gia transaction; rollback của service con ngăn commit; sinh hóa đơn diễn ra sau commit thật. So khớp tổng tiền và danh sách hàng khi nhận khoản thu/chốt đơn. Dữ liệu lệch được giữ để đối soát. QR cũ của ACB dùng cùng khóa và liên kết khoản thu, thêm nguồn audit `OfflineManual = 8` mà không đổi các giá trị enum cũ.
+- **Consequences:** Quầy cần chuẩn bị trực tuyến trong ca đã mở, phiên offline 24 giờ; server vẫn kiểm tra quyền, ca, giá và tồn kho khi đồng bộ. Các nghiệp vụ cần dữ liệu chung vẫn trực tuyến. Không xóa hàng đợi hoặc retry ledger để rollback. Cần triển khai schema và assets cùng phiên bản; local verification không thay thế review/CI/UAT tại cửa hàng.
+- **Evidence:** Contract/handoff `POS-OFFLINE-20260909.md`; 223 test .NET, 51 test JavaScript; Edge + Web + SQL LocalDB disposable xác minh mất phản hồi sau commit, mở lại POS offline, QR thủ công qua UI, đồng bộ đúng hai đơn/hai khoản thu và lỗi lưu bộ nhớ. Không deploy hoặc sửa DB đang hoạt động.
+
+## LABEL-20260910 — Product label printing from receiving documents
+
+- **Date:** 2026-09-10
+- **Status:** Accepted
+- **Source:** User discussion and final correction: individual label size and column count are independent; quantity mode is configured in each saved template; remaining proposed scope accepted.
+- **Decision:** XP-420B via USB on Windows Server. Clients submit durable SQL print jobs; a separate Windows service serializes spool submissions per printer. Store-scoped templates/tasks/jobs and print/manage permissions. Base-unit barcode and current retail price (base conversion, variant, product fallback); received counts use the receipt's stored base quantity. Multiple-unit and fractional weighing workflows deferred.
+- **Consequences:** Physical paper gaps/margins and printer offsets are configurable, not inferred from label size. No silent EAN check-digit changes or barcode stretching. Preview/printing use the same Windows raster; CODE128/EAN13/EAN8/CODE39 have barcode validation. EAN13 is the initial format for small labels. Job snapshots preserve the submitted content; later receipt/catalog changes require review before another print. Manual output acknowledgement is required because spool acceptance is not physical output confirmation. Reprints do not increase original progress; uncertain jobs are never automatically resent.
+- **Evidence:** `PRODUCT-LABEL-PRINTING-20260910.md`, SQL/renderer/security tests, Chrome probe; Windows Server/USB hardware acceptance remains an installation step.
+
+## LABEL-20260910-B — Selectable layouts and per-product automatic barcode
+
+- **Date:** 2026-09-10
+- **Status:** Accepted; implementation ready for coordinator review.
+- **Source:** User requests several distinct label designs and EAN-13 detection per product with Code 128 fallback.
+- **Decision:** Four raster layouts (standard, price-first, price-tag, framed) with actual-renderer thumbnails. Layout is independent of label dimensions, column count, field visibility and default quantity mode. Every new preview/save/job uses AUTO: 13 ASCII digits with a valid EAN-13 check digit select EAN13, otherwise CODE128. Preserve the entire original barcode, including leading zeroes. Reject empty/unsupported/overwide codes before enqueue; never manufacture a check digit or narrow below two printer dots per module.
+- **Compatibility:** Supersedes the original manual symbology setting for new operations, including existing templates read from JSON. Old job payloads are never normalized or rewritten; explicit formats and the original standard raster remain supported. Missing layout means standard. New settings remain JSON; no migration or live database update. Deploy Web and label worker together.
+- **Evidence:** Renderer decoding, mixed-symbology TSPL, SQL legacy-template/job preservation and Chrome gallery/persistence probe in PRODUCT-LABEL-PRINTING-20260910.md.
+
+## LABEL-20260910-C — Separate staff printing and administrator configuration
+
+- **Date:** 2026-09-10
+- **Status:** Accepted; implementation ready for coordinator review.
+- **Source:** User correction: staff should enter a dedicated printing area, while administrators configure templates and printers in a separate area.
+- **Decision:** Independent menu entries and pages: /admin/label-printing (Print permission, receipt tasks/history) and /admin/label-printing-settings (Manage permission, template/printer configuration). Server-render only the relevant panels on each page. Staff choose saved templates/printers and can never edit their configuration. Shared template/printer lookups and product preview accept Print or Manage; task/job actions require Print, configuration mutations and settings page require Manage. A Manage-only account can configure without receiving Print authority.
+- **Compatibility:** Existing receipt links, tasks, templates, barcodes, printer settings, job history and queue semantics remain valid. Menu seed adds the missing settings entry without full menu recovery. No migration or configured database changes. This revision supersedes the earlier four-tab combined workspace.
+- **Evidence:** 62 focused SQL/renderer/menu tests pass; real Chrome admin and Print-only employee sessions verify separate menus/pages, staff configuration denial, queue/cancellation, layout persistence and responsive views. See PRODUCT-LABEL-PRINTING-20260910.md revision C.
+
+## RECEIPT-BC-20260910 — Review manufacturer aliases inside the receipt
+
+- **Date:** 2026-09-10
+- **Source:** User explicitly approved the proposed employee/manager workflow for existing product variants with internal pack/carton barcodes.
+- **Decision:** Employee selects the existing conversion for an unknown manufacturer code and continues normal quantity entry. Pending aliases resolve only within that receipt. Receipt approver adds an additional Supplier/non-primary barcode or rejects the proposal; rejection preserves physical lines and does not prevent normal receipt confirmation. No new variant, conversion, or replacement of an internal barcode.
+- **Integrity:** Atomic barcode/request/history transaction, store/source permission checks, active PO owner/lease, exact conversion checks, conflict detection and duplicate-submit/review handling. Multiple aliases per conversion remain supported. Existing barcode-normalization approval uses the same atomic resolver.
+- **Evidence:** 31/31 SQL and receiving regression tests pass; final UTC assertion rerun 1/1; Chrome employee quantity entry and separate manager review pass. See RECEIPT-BARCODE-PROPOSALS-20260910.md. READY FOR COORDINATOR REVIEW; no live database or deployment changes.
+## RECEIPT-BC-20260910-B — Product picker with separate unit cards
+
+- **Date:** 2026-09-10
+- **Source:** User asks to make manufacturer-code selection resemble the existing receiving quantity dialog in reference image 2.
+- **Decision:** Autocomplete lists each variant once. Selecting a product shows its image/name and loads all active units as Hộp/Lốc/Thùng cards with current barcode and factor. The chosen card is highlighted and updates the barcode, unit and equivalent base quantity. Multiple-unit products require an explicit choice.
+- **Implementation:** Shared responsive modal and a receipt-scoped, tenant-filtered unit lookup using the existing Update/Approve permissions. Full unit retrieval does not depend on autocomplete limits or an exact single-barcode match. Stale responses are ignored when changing or closing product selection.
+- **Validation:** Six SQL/HTTP barcode workflow tests pass, including full-unit retrieval and permission/tenant checks. Chrome checks grouped search, three unit cards, switching Carton to Pack, selected conversion persistence, quantity entry and manager approval. Evidence recorded in RECEIPT-BARCODE-PROPOSALS-20260910.md revision B.
+
+## RECEIPT-BC-20260910-C — Correct receiving versions and wait for autosave
+
+- **Date:** 2026-09-10
+- **Source:** User reports “RowVersion không hợp lệ.” when submitting a receipt from the warehouse receiving modal.
+- **Decision:** Serialize inline versions as JSON; return version metadata with the visible lines partial after every successful add/edit/delete. Do not fetch a fresh token only at submission, since doing so would conceal unseen concurrent edits. Wait for pending line saves and block confirmation after a save failure until retry succeeds.
+- **Evidence:** Chrome reproduced literal `&#x2B;` in a Base64 version before the fix. Updated Chrome probe passes the actual submit button, delayed/failed autosave, successful retry, add/delete and a second-client conflict, using isolated SQL data. Build and 31 receiving regression tests pass. Details in RECEIPT-BARCODE-PROPOSALS-20260910.md revision C.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, deployment, schema or configured store database changes.
+
+## LABEL-20260910-D — Show receipt label actions only during manager review
+
+- **Date:** 2026-09-10
+- **Source:** User asks to show the label toolbar only to managers in pending approval and hide it from employee receiving.
+- **Decision:** Remove the toolbar and its script from both direct and PO receiving entry screens. Render it on StockDocumentManagement/Edit only for PendingApproval plus the appropriate receipt approval permission; the existing Print permission remains required. The separate staff printing workspace remains available under its own permission.
+- **Scope:** Receipt presentation only; no new backend authorization policy, schema, queue, printer or data changes. Existing post-approval printing prompt remains available from the pending manager page.
+- **Evidence:** Isolated build succeeds and 31 existing receiving regression checks pass. Browser-probe interaction adjustment and validation are recorded in PRODUCT-LABEL-PRINTING-20260910.md revision D. READY FOR COORDINATOR REVIEW.
+
+## CUSTOMER-DISPLAY-20260910 — Redesign the customer-facing checkout
+
+- **Date:** 2026-09-10
+- **Source:** User requested a completely renewed, attractive and professional `/admin/pos/customer-display`, with online design research.
+- **Decision:** Original forest/ivory/lime visual system inspired by documented Shopify and Lightspeed customer-display patterns. Separate welcome/promotional, itemized cart, cash, QR, partial-payment acknowledgment and finalized thank-you states. Use existing configured store identity, actual catalog images, unchanged server monetary fields and terminal SignalR events. Keep all cart lines accessible through scrolling; suppress animation/automatic scrolling with reduced-motion preference.
+- **Integrity:** Presentation only; no new financial commands, payment policy, role grants, bank integration or schema changes. Failed reads retain the last displayed amounts with a status indicator. The existing promotion workflow remains, with failed-media fallback and cleanup on leaving idle.
+- **Evidence:** Release build and 27 POS regression checks pass. Real Chrome/Razor/SignalR probe uses disposable SQL and controlled cart/promotion/QR data to verify display states, reset, interrupted reads, safe text, long carts and landscape/portrait layouts. Source references, exact files, scope and limitations are recorded in POS-CUSTOMER-DISPLAY-20260910.md.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, production deployment or configured store database changes.
+
+## CUSTOMER-DISPLAY-20260910-B — Keep promotions visible during checkout
+
+- **Date:** 2026-09-10
+- **Source:** User requests advertisements shrinking to one side while customers follow the sale, as seen in supermarkets.
+- **Decision:** Active promotions use a 32% rail alongside cart lines and fixed totals. Keep one mounted image/video player across idle/cart transitions and continue duration rotation/countdown during selling. Expand fullscreen promotions only in idle. Without usable promotions, restore the latest-product panel. On wide displays, retain the rail during cash/QR/success; below 1200px payment uses the whole workspace, and below 700px the cart gets a compact ad strip above it.
+- **Integrity:** Same active-promotion feed and server-only real-time notification contract. Unchanged updates/feed failures preserve current media; obsolete responses are ignored. No sale, amount, payment, permission or schema changes.
+- **Evidence:** Release build, 27 POS regression checks and real Chrome/Razor/SignalR probe pass. Checks include seven cart sizes, eight QR sizes, live promotion updates/removal, feed failures, rotation/countdown, synthetic video playback without remounting across idle/cart/reset, and failed-media fallback. Reviewed screenshots and exact scope are in POS-CUSTOMER-DISPLAY-20260910.md Revision B.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, deployment or configured store database changes.
+
+## CUSTOMER-DISPLAY-20260910-C — Emphasize the latest updated product
+
+- **Date:** 2026-09-10
+- **Source:** User requests stronger visual emphasis for the just-selected product.
+- **Decision:** Style the existing changed cart row as a pale-lime card with an outline, dark leading edge, larger thumbnail, bolder/larger name and amount, and a contrasting update label that remains visible on phones. Preserve existing latest-row ordering and update detection. Single entry animation respects reduced-motion preferences.
+- **Scope:** CSS and handoff documentation only; no application logic, amount or data changes.
+- **Evidence:** Release build and unchanged Chrome customer-display probe pass. Desktop, compact and phone screenshots with/without advertisements were inspected; details in POS-CUSTOMER-DISPLAY-20260910.md Revision C.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit or deployment.
+
+## CUSTOMER-DISPLAY-20260910-D — Preserve the product card when ads are active
+
+- **Date:** 2026-09-10
+- **Source:** User clarifies that advertisements must not replace the separate current-product panel.
+- **Decision:** Supersede Revision B's replacement layout. Show the product card, cart/totals and ads together: three columns at 1400px+, product above ads beside the cart on smaller monitors, and compact stacked sections on phones. Keep the image, name, quantity, unit price and line total visible. Existing latest-row emphasis and continuous media playback remain.
+- **Scope:** CSS, existing browser probe assertions and documentation. No markup duplication, media reparenting, runtime JavaScript or backend changes.
+- **Evidence:** Release build and extended Chrome/Razor/SignalR probe pass. All product details fit inside their card at seven cart sizes without overlapping ads/cart; QR checks pass at eight sizes. Responsive and product-update screenshots were inspected. See POS-CUSTOMER-DISPLAY-20260910.md Revision D.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, deployment or configured store data changes.
+
+## CUSTOMER-DISPLAY-20260910-E — Remove decorative copy and increase contrast
+
+- **Date:** 2026-09-10
+- **Source:** User requests a less pale display and only essential information, explicitly removing the numbered welcome instruction and cart/payment/completed steps.
+- **Decision:** Remove steps, generic slogans, redundant labels and decorative captions. Keep store/terminal/time, connectivity, customer/product/transaction details, advertisements and useful QR instructions. Use a stronger gray-green background, white panels, darker secondary text and a clearer current-product highlight. Remove obsolete markup CSS and the unused journey helper.
+- **Scope:** CustomerDisplay Razor/CSS/JS and documentation only. Preserve Revision D's product/cart/ad layout, current product data and continuous media behavior. No financial, permission, schema or advertisement-setting changes.
+- **Evidence:** Release build and unchanged Chrome/Razor/SignalR probe pass; inspected idle, cart, phone and QR screenshots. Selected system text/background pairs have measured contrast from 4.86:1 to 10.09:1; user-configured advertising colors are outside this measurement. See POS-CUSTOMER-DISPLAY-20260910.md Revision E.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, deployment or configured store data changes.
+
+## POS-ORDERS-PAGE-20260910 — Redesign the order management workspace
+
+- **Date:** 2026-09-10
+- **Source:** User requests a complete redesign of `/admin/pos/orders-page` with clearer layout/colors and modern interactions.
+- **Decision:** Replace the eleven-column table and stacked actions with six grouped columns, clear status/amount presentation, page-scoped monetary summaries, URL-restored filters, responsive order cards, a read-only receipt drawer and a compact keyboard-accessible action popover. Preserve full-detail ownership of refund/void, existing print URL and the ACB launcher.
+- **Scope:** Orders Razor/CSS/JS, an isolated Chrome probe/runner dispatch and documentation. Existing API permissions, financial commands, controllers, shared layouts and database schema remain unchanged.
+- **Evidence:** Final Release build succeeded; Chrome passed seven viewport sizes, real fixture login/empty API, controlled list/receipt workflows, cancellation, filters/paging, error/retry, keyboard/focus and action destination checks. Screenshots visually reviewed; only disposable SQL/Web and synthetic orders were used. Physical printing, bank operations and actual refunds are outside these presentation checks. See POS-ORDERS-PAGE-20260910.md.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, deployment or configured store data changes.
+
+## POS-ORDERS-PAGE-20260910-B — Shared theme and double-click preview
+
+- **Date:** 2026-09-10
+- **Source:** User approves the orders layout and asks for double-click quick preview and colors matching other POS pages, referencing shift history.
+- **Decision:** Retain the layout, use inherited GaoApp theme colors and the shared POS navigation styling, and reserve green/amber/red for statuses. Double-clicking row content opens one receipt; nested actions keep their own behavior. Preserve single-click/keyboard code preview and prevent the second click from immediately dismissing its drawer.
+- **Evidence:** Release build and extended Chrome probe passed, including real double-click gestures, one receipt request, print/action exclusion, dialog focus restoration and the existing seven viewport/functional scenarios. Updated desktop/phone screenshots reviewed; disposable fixture only. See POS-ORDERS-PAGE-20260910.md Revision B.
+- **Status:** READY FOR COORDINATOR REVIEW; no backend, financial, shared stylesheet, database, commit or deployment changes.
+
+## POS-ORDERS-PAGE-20260910-C — Product name and code in quick preview
+
+- **Date:** 2026-09-10
+- **Source:** User requests larger prominent product names and codes on the small secondary line.
+- **Decision:** Use a scoped 16px bold product name and replace repeated variant names with the recorded scanned barcode, falling back to barcode then SKU. Preserve string identifiers, amounts, quantities and shared colors.
+- **Evidence:** Syntax/whitespace checks, Release build and unchanged Chrome scenarios passed; fixture examples and desktop/phone screenshots verify code/leading-zero presentation and wrapping. See POS-ORDERS-PAGE-20260910.md Revision C.
+- **Status:** READY FOR COORDINATOR REVIEW; no backend, real-store data, financial, commit or deployment changes.
+
+## XML-INPUT-STOCK-20260910 — Documentary XML balances and source history
+
+- **Source:** User confirms stock decreases on electronic invoice issuance and requests a view following the existing inventory ledger.
+- **Decision:** Add `/admin/invoice-input-stock` with current balances and chronological source movements, shared admin colors, filters and double-click preview. Use the same source projection for issuance preflight. Confirmed mapped receipt evidence is capped by converted XML quantity and mapped receipt quantity; an XML detail shared by receipts is allocated once globally in recognition order. Boolean-only flags provide no quantity. Issuing/uncertain failures hold quantity; successful issuance consumes; POS sales/drafts do neither. A product flag change cannot erase previous invoice consumption.
+- **Boundaries:** Read-only projection of currently valid source documents, not an immutable mapping-edit audit ledger. No physical inventory postings, schema/migration, backfill or real-store writes. Existing correction/return workflows retained. Queries are scoped to Store and warehouse legal owner; the existing issuance store lock is retained.
+- **Evidence:** See `XML-INPUT-STOCK-20260910.md` for exact files, final build/test/browser commands, limitations and rollback snapshots.
+- **Status:** READY FOR COORDINATOR REVIEW; no commit, push, deployment or independent-review claim.

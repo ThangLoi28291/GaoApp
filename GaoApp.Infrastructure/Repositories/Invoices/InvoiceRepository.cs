@@ -160,7 +160,7 @@ public class InvoiceRepository : IInvoiceRepository
 
         if (orderId.HasValue && orderId.Value > 0)
         {
-            query = query.Where(x => x.OrderId == orderId.Value);
+            query = query.Where(x => (x.OrderId == orderId.Value || x.LegacySourceId == orderId.Value));
         }
 
         keyword = keyword?.Trim();
@@ -171,8 +171,8 @@ public class InvoiceRepository : IInvoiceRepository
                 (x.InvoiceNumber != null && x.InvoiceNumber.Contains(keyword)) ||
                 (x.BuyerName != null && x.BuyerName.Contains(keyword)) ||
                 (x.Order != null &&
-                 x.Order.OrderNumber != null &&
-                 x.Order.OrderNumber.Contains(keyword)));
+                 x.Order!.OrderNumber != null &&
+                 x.Order!.OrderNumber.Contains(keyword)));
         }
 
         // =========================================================
@@ -453,8 +453,8 @@ public class InvoiceRepository : IInvoiceRepository
                 (x.BuyerLegalName != null && x.BuyerLegalName.Contains(keyword)) ||
                 (x.BuyerTaxCode != null && x.BuyerTaxCode.Contains(keyword)) ||
                 (x.Order != null &&
-                 x.Order.OrderNumber != null &&
-                 x.Order.OrderNumber.Contains(keyword)));
+                 x.Order!.OrderNumber != null &&
+                 x.Order!.OrderNumber.Contains(keyword)));
         }
 
         var summary = new ViettelInvoiceDashboardSummaryDto

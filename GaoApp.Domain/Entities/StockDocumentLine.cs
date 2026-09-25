@@ -28,6 +28,15 @@ public class StockDocumentLine : BaseEntity
     public int? PurchaseOrderLineId { get; set; }
     public PurchaseOrderLine? PurchaseOrderLine { get; set; }
 
+    public ReceiptAllocationKind ReceiptAllocationKind { get; set; }
+        = ReceiptAllocationKind.Direct;
+    public OutsidePoDecisionStatus OutsidePoDecisionStatus { get; set; }
+        = OutsidePoDecisionStatus.NotApplicable;
+    public DateTime? OutsidePoDecisionAtUtc { get; set; }
+    public int? OutsidePoDecisionByUserId { get; set; }
+    [StringLength(1000)]
+    public string? OutsidePoDecisionNote { get; set; }
+
     public int? ProductUnitConversionId { get; set; }
     public ProductUnitConversion? ProductUnitConversion { get; set; }
 

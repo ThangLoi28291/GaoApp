@@ -3,110 +3,265 @@
 
 @{
     ViewData["Title"] = "Đơn vị tính";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
 }
 
 @section header {
-    <div class="py-2">
-        <h3 class="mb-0 fw-bold">Danh sách đơn vị tính</h3>
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">
+                    Danh sách đơn vị tính
+                </h3>
+            </div>
+
+            <div class="gds-page-header__actions">
+                <a asp-area="Admin"
+                   asp-controller="Unit"
+                   asp-action="Create"
+                   class="btn btn-primary gds-action-button gds-action-button--primary">
+
+                    <i class="bx bx-plus"
+                       aria-hidden="true"></i>
+
+                    <span>
+                        Thêm đơn vị
+                    </span>
+                </a>
+            </div>
+        </div>
     </div>
 }
 
-<div class="card">
-    <div class="card-body">
+<div data-gao-ui="modern" data-layout-consistency>
+  <div class="gds-page">
 
-        <div class="row g-3 align-items-end mb-3">
-            <div class="col-md-5">
-                <label class="form-label">Tìm kiếm</label>
+    <section class="gds-kpi-grid"
+             aria-label="Tổng quan đơn vị tính">
 
-                <div class="position-relative">
+        <article class="gds-kpi-card gds-kpi-card--primary gds-kpi-card--wide-mobile">
+            <div class="gds-kpi-card__icon is-primary"
+                 aria-hidden="true">
+
+                <i class="bx bx-ruler"></i>
+            </div>
+
+            <div class="gds-kpi-card__body">
+                <div class="gds-kpi-card__label">
+                    Tổng đơn vị
+                </div>
+
+                <div id="unitTotalCount"
+                     class="gds-kpi-card__value">
+                    @Model.TotalUnitCount
+                </div>
+            </div>
+        </article>
+
+        <article class="gds-kpi-card gds-kpi-card--success">
+            <div class="gds-kpi-card__icon is-success"
+                 aria-hidden="true">
+
+                <i class="bx bx-check-circle"></i>
+            </div>
+
+            <div class="gds-kpi-card__body">
+                <div class="gds-kpi-card__label">
+                    Đang hoạt động
+                </div>
+
+                <div id="unitActiveCount"
+                     class="gds-kpi-card__value">
+                    @Model.ActiveUnitCount
+                </div>
+            </div>
+        </article>
+
+        <article class="gds-kpi-card gds-kpi-card--neutral">
+            <div class="gds-kpi-card__icon is-neutral"
+                 aria-hidden="true">
+
+                <i class="bx bx-pause-circle"></i>
+            </div>
+
+            <div class="gds-kpi-card__body">
+                <div class="gds-kpi-card__label">
+                    Ngừng hoạt động
+                </div>
+
+                <div id="unitInactiveCount"
+                     class="gds-kpi-card__value">
+                    @Model.InactiveUnitCount
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="gds-section gds-section--compact"
+             aria-label="Bộ lọc đơn vị tính">
+
+        <div class="gds-filter-bar">
+
+            <div class="gds-filter-bar__search">
+                <label for="txtSearch"
+                       class="form-label">
+                    Tìm kiếm
+                </label>
+
+                <div class="gds-search-field">
+                    <i class="bx bx-search"
+                       aria-hidden="true"></i>
+
                     <input id="txtSearch"
-                           class="form-control pe-5"
-                           placeholder="Tên / mã..."
+                           class="form-control"
+                           placeholder="Tìm theo mã hoặc tên đơn vị..."
                            autocomplete="off"
                            value="@Model.SearchString" />
 
                     <button type="button"
                             id="btnClearSearch"
-                            class="btn btn-sm position-absolute top-50 end-0 translate-middle-y me-2 d-none"
+                            class="gds-search-field__clear d-none"
                             title="Xóa tìm kiếm"
-                            aria-label="Xóa tìm kiếm"
-                            style="border:0; background:transparent;">
-                        <i class="bx bx-x fs-4"></i>
+                            aria-label="Xóa tìm kiếm">
+
+                        <i class="bx bx-x"
+                           aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
 
-            <div class="col-md-3">
-                <label class="form-label">Số dòng / trang</label>
-                <select id="ddlPageSize" class="form-select">
-                    <option value="10" selected="@(Model.PageSize == 10)">10</option>
-                    <option value="20" selected="@(Model.PageSize == 20)">20</option>
-                    <option value="50" selected="@(Model.PageSize == 50)">50</option>
-                    <option value="100" selected="@(Model.PageSize == 100)">100</option>
+            <div class="gds-filter-control">
+                <label for="ddlStatus"
+                       class="form-label">
+                    Trạng thái
+                </label>
+
+                <select id="ddlStatus"
+                        class="form-select">
+
+                    <option value=""
+                            selected="@(!Model.Status.HasValue)">
+                        Tất cả
+                    </option>
+
+                    <option value="true"
+                            selected="@(Model.Status == true)">
+                        Đang hoạt động
+                    </option>
+
+                    <option value="false"
+                            selected="@(Model.Status == false)">
+                        Ngừng hoạt động
+                    </option>
                 </select>
             </div>
 
-            <div class="col-md-4 text-md-end">
-                <a asp-area="Admin" asp-controller="Unit" asp-action="Create" class="btn btn-primary">
-                    <i class="bx bx-plus me-1"></i> Thêm đơn vị
-                </a>
+            <div class="gds-filter-control gds-filter-control--compact">
+                <label for="ddlPageSize"
+                       class="form-label">
+                    Số dòng / trang
+                </label>
+
+                <select id="ddlPageSize"
+                        class="form-select">
+
+                    <option value="10"
+                            selected="@(Model.PageSize == 10)">
+                        10
+                    </option>
+
+                    <option value="20"
+                            selected="@(Model.PageSize == 20)">
+                        20
+                    </option>
+
+                    <option value="50"
+                            selected="@(Model.PageSize == 50)">
+                        50
+                    </option>
+
+                    <option value="100"
+                            selected="@(Model.PageSize == 100)">
+                        100
+                    </option>
+                </select>
             </div>
         </div>
+    </section>
 
-        <form id="antiForgeryForm" method="post">
-            @Html.AntiForgeryToken()
-        </form>
+    <form id="antiForgeryForm"
+          method="post"
+          class="d-none">
+        @Html.AntiForgeryToken()
+    </form>
 
-        <div id="unitTableWrapper">
-            @await Html.PartialAsync("_UnitTable", Model)
-        </div>
-
+    <div id="unitTableWrapper"
+         class="gds-results-region"
+         aria-live="polite">
+        @await Html.PartialAsync(
+            "_UnitTable",
+            Model)
     </div>
-</div>
-
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Xác nhận xóa</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
-            </div>
-            <div class="modal-body">
-                Bạn có chắc muốn xóa đơn vị: <b id="deleteName"></b> ?
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
-                <button type="button" class="btn btn-danger" id="btnConfirmDelete">Xóa</button>
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
 
 @section PageScripts {
     <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const txtSearch = document.getElementById('txtSearch');
-            const btnClearSearch = document.getElementById('btnClearSearch');
-            const ddlPageSize = document.getElementById('ddlPageSize');
-            const wrapper = document.getElementById('unitTableWrapper');
-            const btnConfirmDelete = document.getElementById('btnConfirmDelete');
+        document.addEventListener('DOMContentLoaded', function() {
+            const txtSearch =
+                document.getElementById('txtSearch');
+
+            const btnClearSearch =
+                document.getElementById('btnClearSearch');
+
+            const ddlStatus =
+                document.getElementById('ddlStatus');
+
+            const ddlPageSize =
+                document.getElementById('ddlPageSize');
+
+            const wrapper =
+                document.getElementById('unitTableWrapper');
+
+            const totalCount =
+                document.getElementById('unitTotalCount');
+
+            const activeCount =
+                document.getElementById('unitActiveCount');
+
+            const inactiveCount =
+                document.getElementById('unitInactiveCount');
 
             let typingTimer = null;
-            let deleteId = 0;
             let searchAbortController = null;
             let searchRequestSequence = 0;
 
             function getToken() {
-                const el = document.querySelector('#antiForgeryForm input[name="__RequestVerificationToken"]');
-                return el ? el.value : '';
+                const el =
+                    document.querySelector(
+                        '#antiForgeryForm input[name="__RequestVerificationToken"]'
+                    );
+
+                return el
+                    ? el.value
+                    : '';
             }
 
             function notify(type, message) {
-                const safeMessage = message || 'Đã xảy ra lỗi. Vui lòng thử lại.';
+                const safeMessage =
+                    message ||
+                    'Đã xảy ra lỗi. Vui lòng thử lại.';
 
-                if (window.toastr && typeof window.toastr[type] === 'function') {
-                    window.toastr[type](safeMessage);
+                if (
+                    window.toastr &&
+                    typeof window.toastr[type] === 'function'
+                ) {
+                    window.toastr[type](
+                        safeMessage
+                    );
+
                     return;
                 }
 
@@ -114,145 +269,598 @@
             }
 
             function initializeTooltips(container) {
-                if (!container || !window.bootstrap?.Tooltip) return;
+                if (
+                    !container ||
+                    !window.bootstrap?.Tooltip
+                ) {
+                    return;
+                }
 
-                container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-                    try {
-                        bootstrap.Tooltip.getOrCreateInstance(el);
-                    } catch (_) {
-                        // Tooltip không được phép làm hỏng luồng tải bảng.
-                    }
-                });
+                container
+                    .querySelectorAll(
+                        '[data-bs-toggle="tooltip"]'
+                    )
+                    .forEach(function(el) {
+                        try {
+                            bootstrap.Tooltip
+                                .getOrCreateInstance(el);
+                        } catch (_) {
+                            // Tooltip không được làm hỏng luồng danh sách.
+                        }
+                    });
             }
 
             function disposeTooltips(container) {
-                if (!container || !window.bootstrap?.Tooltip) return;
+                if (
+                    !container ||
+                    !window.bootstrap?.Tooltip
+                ) {
+                    return;
+                }
 
-                container.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
-                    bootstrap.Tooltip.getInstance(el)?.dispose();
-                });
+                container
+                    .querySelectorAll(
+                        '[data-bs-toggle="tooltip"]'
+                    )
+                    .forEach(function(el) {
+                        bootstrap.Tooltip
+                            .getInstance(el)
+                            ?.dispose();
+                    });
             }
 
-            async function readJsonResponse(response, fallbackMessage) {
+            async function readJsonResponse(
+                response,
+                fallbackMessage
+            ) {
                 let data = null;
 
                 try {
-                    data = await response.json();
+                    data =
+                        await response.json();
                 } catch (_) {
-                    // Giữ thông báo an toàn nếu server không trả JSON.
+                    // Giữ safe message nếu server không trả JSON.
                 }
 
                 if (!response.ok) {
-                    throw new Error(data?.message || fallbackMessage);
+                    throw new Error(
+                        data?.message ||
+                        fallbackMessage
+                    );
                 }
 
                 if (!data) {
-                    throw new Error(fallbackMessage);
+                    throw new Error(
+                        fallbackMessage
+                    );
                 }
 
                 return data;
             }
 
-            function updateClearButtonVisibility() {
-                const hasText = (txtSearch.value || '').trim().length > 0;
-                btnClearSearch.classList.toggle('d-none', !hasText);
+            async function postUnitAction(
+                url,
+                id,
+                fallbackMessage
+            ) {
+                const token =
+                    getToken();
+
+                if (!token) {
+                    throw new Error(
+                        'Không tìm thấy mã xác thực của phiên làm việc. Vui lòng tải lại trang.'
+                    );
+                }
+
+                const response =
+                    await fetch(
+                        url,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/x-www-form-urlencoded; charset=UTF-8'
+                            },
+
+                            body:
+                                `id=${encodeURIComponent(id)}` +
+                                `&__RequestVerificationToken=${encodeURIComponent(token)}`
+                        }
+                    );
+
+                return await readJsonResponse(
+                    response,
+                    fallbackMessage
+                );
             }
 
-            async function loadPage(page) {
-                const search = txtSearch.value || '';
-                const pageSize = ddlPageSize.value || 20;
+            function updateClearButtonVisibility() {
+                const hasText =
+                    (txtSearch.value || '')
+                        .trim()
+                        .length > 0;
 
-                const url = '@Url.Action("Search", "Unit", new { area = "Admin" })'
-                    + '?search=' + encodeURIComponent(search)
-                    + '&page=' + (page || 1)
-                    + '&pageSize=' + encodeURIComponent(pageSize);
+                btnClearSearch
+                    .classList
+                    .toggle(
+                        'd-none',
+                        !hasText
+                    );
+            }
+
+            function syncSummaryFromResult() {
+                const result =
+                    wrapper.querySelector(
+                        '[data-unit-result]'
+                    );
+
+                if (!result)
+                    return;
+
+                if (totalCount) {
+                    totalCount.textContent =
+                        result.dataset.totalUnits ||
+                        '0';
+                }
+
+                if (activeCount) {
+                    activeCount.textContent =
+                        result.dataset.activeUnits ||
+                        '0';
+                }
+
+                if (inactiveCount) {
+                    inactiveCount.textContent =
+                        result.dataset.inactiveUnits ||
+                        '0';
+                }
+            }
+
+            function setResultsLoading(isLoading) {
+                wrapper.classList.toggle(
+                    'is-loading',
+                    isLoading
+                );
+
+                wrapper.setAttribute(
+                    'aria-busy',
+                    isLoading
+                        ? 'true'
+                        : 'false'
+                );
+            }
+
+            async function loadUnits(page) {
+                const search =
+                    txtSearch.value || '';
+
+                const status =
+                    ddlStatus.value || '';
+
+                const pageSize =
+                    ddlPageSize.value || 20;
+
+                const url =
+                    '@Url.Action("Search", "Unit", new { area = "Admin" })' +
+                    '?search=' +
+                    encodeURIComponent(search) +
+                    '&status=' +
+                    encodeURIComponent(status) +
+                    '&page=' +
+                    (page || 1) +
+                    '&pageSize=' +
+                    encodeURIComponent(pageSize);
 
                 searchAbortController?.abort();
 
-                const controller = new AbortController();
-                const requestSequence = ++searchRequestSequence;
-                searchAbortController = controller;
+                const controller =
+                    new AbortController();
+
+                const requestSequence =
+                    ++searchRequestSequence;
+
+                searchAbortController =
+                    controller;
+
+                setResultsLoading(true);
 
                 try {
-                    const response = await fetch(url, { signal: controller.signal });
+                    const response =
+                        await fetch(
+                            url,
+                            {
+                                signal:
+                                    controller.signal
+                            }
+                        );
 
                     if (!response.ok) {
-                        throw new Error('Không tải được danh sách đơn vị tính.');
+                        throw new Error(
+                            'Không tải được danh sách đơn vị tính.'
+                        );
                     }
 
-                    const html = await response.text();
+                    const html =
+                        await response.text();
 
-                    if (requestSequence !== searchRequestSequence) return;
+                    if (
+                        requestSequence !==
+                        searchRequestSequence
+                    ) {
+                        return;
+                    }
 
                     disposeTooltips(wrapper);
-                    wrapper.innerHTML = html;
+
+                    wrapper.innerHTML =
+                        html;
+
+                    syncSummaryFromResult();
                     bindAllTableEvents();
                     initializeTooltips(wrapper);
                 } catch (error) {
-                    if (error?.name === 'AbortError') return;
-                    if (requestSequence !== searchRequestSequence) return;
+                    if (
+                        error?.name ===
+                        'AbortError'
+                    ) {
+                        return;
+                    }
 
-                    notify('error', error?.message || 'Không tải được danh sách đơn vị tính.');
+                    if (
+                        requestSequence !==
+                        searchRequestSequence
+                    ) {
+                        return;
+                    }
+
+                    notify(
+                        'error',
+                        error?.message ||
+                        'Không tải được danh sách đơn vị tính.'
+                    );
                 } finally {
-                    if (requestSequence === searchRequestSequence) {
-                        searchAbortController = null;
+                    if (
+                        requestSequence ===
+                        searchRequestSequence
+                    ) {
+                        searchAbortController =
+                            null;
+
+                        setResultsLoading(false);
                     }
                 }
             }
 
             function debounceLoad() {
-                clearTimeout(typingTimer);
-                typingTimer = setTimeout(() => loadPage(1), 300);
+                clearTimeout(
+                    typingTimer
+                );
+
+                typingTimer =
+                    setTimeout(
+                        () => loadUnits(1),
+                        300
+                    );
             }
 
             function bindPaginationEvents() {
-                wrapper.querySelectorAll('.js-page-link').forEach(a => {
-                    a.onclick = function (e) {
-                        e.preventDefault();
-                        const p = this.getAttribute('data-page');
-                        if (p) loadPage(parseInt(p));
-                    };
-                });
+                wrapper
+                    .querySelectorAll(
+                        '.js-page-link'
+                    )
+                    .forEach(function(link) {
+                        link.onclick =
+                            function(event) {
+                                event.preventDefault();
+
+                                if (
+                                    this
+                                        .closest(
+                                            '.page-item'
+                                        )
+                                        ?.classList
+                                        .contains(
+                                            'disabled'
+                                        )
+                                ) {
+                                    return;
+                                }
+
+                                const page =
+                                    this.getAttribute(
+                                        'data-page'
+                                    );
+
+                                if (page) {
+                                    loadUnits(
+                                        parseInt(
+                                            page,
+                                            10
+                                        )
+                                    );
+                                }
+                            };
+                    });
+            }
+
+            async function confirmUnitAction(options) {
+                const {
+                    id,
+                    title,
+                    text,
+                    icon,
+                    confirmButtonText,
+                    confirmButtonClass,
+                    actionUrl,
+                    fallbackMessage
+                } = options;
+
+                if (!id)
+                    return false;
+
+                if (typeof Swal === 'undefined') {
+                    if (
+                        !window.confirm(
+                            `${title}\n\n${text}`
+                        )
+                    ) {
+                        return false;
+                    }
+
+                    try {
+                        const data =
+                            await postUnitAction(
+                                actionUrl,
+                                id,
+                                fallbackMessage
+                            );
+
+                        notify(
+                            data.success
+                                ? 'success'
+                                : 'error',
+                            data.message
+                        );
+
+                        if (data.success) {
+                            await loadUnits(1);
+                            return true;
+                        }
+                    } catch (error) {
+                        notify(
+                            'error',
+                            error?.message ||
+                            fallbackMessage
+                        );
+                    }
+
+                    return false;
+                }
+
+                const result =
+                    await Swal.fire({
+                        title: title,
+                        text: text,
+                        icon: icon,
+
+                        showCancelButton: true,
+                        reverseButtons: true,
+                        focusCancel: true,
+
+                        confirmButtonText:
+                            confirmButtonText,
+
+                        cancelButtonText:
+                            'Hủy',
+
+                        buttonsStyling: false,
+
+                        showLoaderOnConfirm: true,
+
+                        allowOutsideClick:
+                            () => !Swal.isLoading(),
+
+                        customClass: {
+                            popup:
+                                'gds-swal-popup',
+
+                            title:
+                                'gds-swal-title',
+
+                            htmlContainer:
+                                'gds-swal-copy',
+
+                            actions:
+                                'gds-swal-actions',
+
+                            confirmButton:
+                                `btn ${confirmButtonClass} gds-swal-confirm`,
+
+                            cancelButton:
+                                'btn btn-label-secondary gds-swal-cancel'
+                        },
+
+                        preConfirm: async () => {
+                            try {
+                                const data =
+                                    await postUnitAction(
+                                        actionUrl,
+                                        id,
+                                        fallbackMessage
+                                    );
+
+                                if (!data.success) {
+                                    Swal.showValidationMessage(
+                                        data.message ||
+                                        fallbackMessage
+                                    );
+
+                                    return false;
+                                }
+
+                                return data;
+                            } catch (error) {
+                                Swal.showValidationMessage(
+                                    error?.message ||
+                                    fallbackMessage
+                                );
+
+                                return false;
+                            }
+                        }
+                    });
+
+                if (
+                    !result.isConfirmed ||
+                    !result.value?.success
+                ) {
+                    return false;
+                }
+
+                notify(
+                    'success',
+                    result.value.message ||
+                    'Đã cập nhật đơn vị tính.'
+                );
+
+                await loadUnits(1);
+
+                return true;
             }
 
             function bindToggleStatusEvents() {
-                wrapper.querySelectorAll('.js-toggle-status').forEach(btn => {
-                    btn.onclick = async function () {
-                        const actionButton = this;
-                        const id = this.getAttribute('data-id');
-                        const token = getToken();
-                        if (!id || !token || actionButton.disabled) return;
+                wrapper
+                    .querySelectorAll(
+                        '.js-toggle-status'
+                    )
+                    .forEach(function(button) {
+                        button.onclick =
+                            async function() {
+                                if (this.disabled)
+                                    return;
 
-                        actionButton.disabled = true;
+                                const id =
+                                    this.getAttribute(
+                                        'data-id'
+                                    );
 
-                        try {
-                            const response = await fetch('@Url.Action("ToggleStatus", "Unit", new { area = "Admin" })', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                                body: `id=${encodeURIComponent(id)}&__RequestVerificationToken=${encodeURIComponent(token)}`
-                            });
+                                const name =
+                                    this.getAttribute(
+                                        'data-name'
+                                    ) || '';
 
-                            const data = await readJsonResponse(response, 'Không thể đổi trạng thái đơn vị tính.');
-                            notify(data.success ? 'success' : 'error', data.message);
+                                const isActive =
+                                    this.getAttribute(
+                                        'data-status'
+                                    ) === 'true';
 
-                            if (data.success) await loadPage(1);
-                        } catch (error) {
-                            notify('error', error?.message || 'Không thể đổi trạng thái đơn vị tính.');
-                        } finally {
-                            actionButton.disabled = false;
-                        }
-                    };
-                });
+                                if (!id)
+                                    return;
+
+                                this.disabled = true;
+
+                                try {
+                                    await confirmUnitAction({
+                                        id: id,
+
+                                        title:
+                                            isActive
+                                                ? 'Ngừng hoạt động đơn vị tính?'
+                                                : 'Kích hoạt lại đơn vị tính?',
+
+                                        text:
+                                            isActive
+                                                ? `Đơn vị “${name}” sẽ chuyển sang trạng thái Ngừng hoạt động.`
+                                                : `Đơn vị “${name}” sẽ được kích hoạt và hiển thị ở trạng thái Đang hoạt động.`,
+
+                                        icon:
+                                            isActive
+                                                ? 'warning'
+                                                : 'question',
+
+                                        confirmButtonText:
+                                            isActive
+                                                ? 'Ngừng hoạt động'
+                                                : 'Kích hoạt',
+
+                                        confirmButtonClass:
+                                            isActive
+                                                ? 'btn-warning'
+                                                : 'btn-success',
+
+                                        actionUrl:
+                                            '@Url.Action("ToggleStatus", "Unit", new { area = "Admin" })',
+
+                                        fallbackMessage:
+                                            'Không thể đổi trạng thái đơn vị tính.'
+                                    });
+                                } finally {
+                                    this.disabled =
+                                        false;
+                                }
+                            };
+                    });
             }
 
             function bindDeleteEvents() {
-                wrapper.querySelectorAll('.js-delete').forEach(btn => {
-                    btn.onclick = function () {
-                        deleteId = parseInt(this.dataset.id);
-                        document.getElementById('deleteName').textContent = this.dataset.name || '';
-                        new bootstrap.Modal(document.getElementById('deleteModal')).show();
-                    };
-                });
+                wrapper
+                    .querySelectorAll(
+                        '.js-delete'
+                    )
+                    .forEach(function(button) {
+                        button.onclick =
+                            async function() {
+                                if (this.disabled)
+                                    return;
+
+                                const id =
+                                    this.getAttribute(
+                                        'data-id'
+                                    );
+
+                                const name =
+                                    this.getAttribute(
+                                        'data-name'
+                                    ) || '';
+
+                                if (!id)
+                                    return;
+
+                                this.disabled =
+                                    true;
+
+                                try {
+                                    await confirmUnitAction({
+                                        id: id,
+
+                                        title:
+                                            'Xóa đơn vị tính?',
+
+                                        text:
+                                            `Đơn vị “${name}” sẽ được xóa khỏi danh sách. Vui lòng xác nhận trước khi tiếp tục.`,
+
+                                        icon:
+                                            'warning',
+
+                                        confirmButtonText:
+                                            'Xóa đơn vị',
+
+                                        confirmButtonClass:
+                                            'btn-danger',
+
+                                        actionUrl:
+                                            '@Url.Action("DeleteAjax", "Unit", new { area = "Admin" })',
+
+                                        fallbackMessage:
+                                            'Không thể xóa đơn vị tính.'
+                                    });
+                                } finally {
+                                    this.disabled =
+                                        false;
+                                }
+                            };
+                    });
             }
 
             function bindAllTableEvents() {
@@ -261,49 +869,39 @@
                 bindDeleteEvents();
             }
 
-            btnConfirmDelete?.addEventListener('click', async function () {
-                if (!deleteId || this.disabled) return;
-
-                const actionButton = this;
-                const currentDeleteId = deleteId;
-                actionButton.disabled = true;
-
-                try {
-                    const response = await fetch('@Url.Action("DeleteAjax", "Unit", new { area = "Admin" })', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-                        body: `id=${encodeURIComponent(currentDeleteId)}&__RequestVerificationToken=${encodeURIComponent(getToken())}`
-                    });
-
-                    const data = await readJsonResponse(response, 'Không thể xóa đơn vị tính.');
-                    notify(data.success ? 'success' : 'error', data.message);
-                    if (!data.success) return;
-
-                    bootstrap.Modal.getInstance(document.getElementById('deleteModal'))?.hide();
-                    deleteId = 0;
-                    await loadPage(1);
-                } catch (error) {
-                    notify('error', error?.message || 'Không thể xóa đơn vị tính.');
-                } finally {
-                    actionButton.disabled = false;
+            txtSearch.addEventListener(
+                'input',
+                function() {
+                    updateClearButtonVisibility();
+                    debounceLoad();
                 }
-            });
+            );
 
-            txtSearch.addEventListener('input', function () {
-                updateClearButtonVisibility();
-                debounceLoad();
-            });
+            btnClearSearch.addEventListener(
+                'click',
+                function() {
+                    txtSearch.value = '';
 
-            btnClearSearch.addEventListener('click', function () {
-                txtSearch.value = '';
-                updateClearButtonVisibility();
-                loadPage(1);
-                txtSearch.focus();
-            });
+                    updateClearButtonVisibility();
 
-            ddlPageSize.addEventListener('change', () => loadPage(1));
+                    loadUnits(1);
+
+                    txtSearch.focus();
+                }
+            );
+
+            ddlStatus.addEventListener(
+                'change',
+                () => loadUnits(1)
+            );
+
+            ddlPageSize.addEventListener(
+                'change',
+                () => loadUnits(1)
+            );
 
             updateClearButtonVisibility();
+            syncSummaryFromResult();
             bindAllTableEvents();
             initializeTooltips(wrapper);
         });

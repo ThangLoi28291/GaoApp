@@ -17,6 +17,7 @@ public class StartupValidationService : IStartupValidationService
     private readonly IOptions<AppUrlOptions> _appUrlOptions;
     private readonly IOptions<TenantOptions> _tenantOptions;
     private readonly IOptions<StorageOptions> _storageOptions;
+    private readonly IOptions<InputInvoiceLibraryOptions>? _inputInvoiceLibraryOptions;
     private readonly IOptions<SeedDataOptions> _seedOptions;
     private readonly IOptions<ProxyOptions> _proxyOptions;
     private readonly IOptions<ExternalHttpResilienceOptions>
@@ -24,6 +25,7 @@ public class StartupValidationService : IStartupValidationService
     private readonly IDataProtectionKeysPathResolver _dataProtectionKeysPathResolver;
     private readonly IDataProtectionKeysDirectoryValidator _dataProtectionKeysDirectoryValidator;
     private readonly DataProtectionKeysPathState _dataProtectionKeysPathState;
+    private readonly IOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>? _keyManagementOptions;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<StartupValidationService> _logger;
 
@@ -39,12 +41,15 @@ public class StartupValidationService : IStartupValidationService
         IDataProtectionKeysDirectoryValidator dataProtectionKeysDirectoryValidator,
         DataProtectionKeysPathState dataProtectionKeysPathState,
         IWebHostEnvironment environment,
-        ILogger<StartupValidationService> logger)
+        ILogger<StartupValidationService> logger,
+        IOptions<InputInvoiceLibraryOptions>? inputInvoiceLibraryOptions = null,
+        IOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>? keyManagementOptions = null)
     {
         _connectionStringOptions = connectionStringOptions;
         _appUrlOptions = appUrlOptions;
         _tenantOptions = tenantOptions;
         _storageOptions = storageOptions;
+        _inputInvoiceLibraryOptions = inputInvoiceLibraryOptions;
         _seedOptions = seedOptions;
         _proxyOptions = proxyOptions;
         _externalHttpResilienceOptions = externalHttpResilienceOptions;
@@ -52,6 +57,7 @@ public class StartupValidationService : IStartupValidationService
         _dataProtectionKeysDirectoryValidator = dataProtectionKeysDirectoryValidator;
         _dataProtectionKeysPathState = dataProtectionKeysPathState;
         _environment = environment;
+        _keyManagementOptions = keyManagementOptions;
         _logger = logger;
     }
 
@@ -69,6 +75,7 @@ public class StartupValidationService : IStartupValidationService
         ValidateSeedData();
         ValidateProxy();
         ValidateStorage();
+        ValidateInputInvoiceLibrary();
         ValidateDataProtection();
 
         _logger.LogInformation("Startup Validation thành công.");
@@ -225,6 +232,55 @@ public class StartupValidationService : IStartupValidationService
             logCreatedDirectory: true);
     }
 
+    private void ValidateInputInvoiceLibrary()
+    {
+        if (_inputInvoiceLibraryOptions is null)
+            return;
+
+        var options = _inputInvoiceLibraryOptions.Value;
+        if (!options.Enabled)
+            return;
+        if (string.IsNullOrWhiteSpace(options.RootPath) ||
+            !Path.IsPathFullyQualified(options.RootPath))
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: InputInvoiceLibrary:RootPath phải là đường dẫn tuyệt đối khi được bật.");
+        }
+
+        string root;
+        try
+        {
+            root = Path.GetFullPath(options.RootPath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: InputInvoiceLibrary:RootPath không hợp lệ.",
+                exception);
+        }
+
+        if (!Directory.Exists(root))
+            throw new InvalidOperationException(
+                "Startup validation failed: InputInvoiceLibrary:RootPath không tồn tại.");
+        try
+        {
+            if (File.GetAttributes(root).HasFlag(FileAttributes.ReparsePoint))
+                throw new InvalidOperationException(
+                    "Startup validation failed: InputInvoiceLibrary:RootPath không được là reparse point.");
+            _ = Directory.EnumerateFileSystemEntries(root).Take(1).ToList();
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new InvalidOperationException(
+                "Startup validation failed: Không thể đọc InputInvoiceLibrary:RootPath.",
+                exception);
+        }
+    }
+
     private void ValidateDataProtection()
     {
         var absolutePath = _dataProtectionKeysPathResolver.Resolve();
@@ -234,6 +290,7 @@ public class StartupValidationService : IStartupValidationService
         // Chỉ cho phép Data Protection cấu hình key repository sau khi
         // đường dẫn đã được resolve và kiểm tra khả năng ghi thành công.
         _dataProtectionKeysPathState.Initialize(absolutePath);
+        _ = _keyManagementOptions?.Value;
     }
 
     private void ValidateSeedData()
@@ -251,6 +308,7 @@ public class StartupValidationService : IStartupValidationService
     private void ValidateProxy()
     {
         var options = _proxyOptions.Value;
+        ProxyTrustValidation.Validate(options);
 
         if (!options.EnableForwardedHeaders)
         {

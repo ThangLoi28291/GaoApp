@@ -15,6 +15,10 @@ public interface IAttributeValueService
      int pageSize,
      CancellationToken ct = default);
 
+    Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default);
+
     Task<Result<AttributeValueEditDto>> GetForEditAsync(
         int storeId,
         int id,

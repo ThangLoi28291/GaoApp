@@ -1,10 +1,12 @@
 ﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using System.Security.Cryptography;
 
 namespace GaoApp.Application.Services.Invoices;
 
@@ -12,13 +14,16 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
 {
     private readonly IInvoiceProviderSettingRepository _repository;
     private readonly IViettelInvoiceAuthClient _viettelAuthClient;
+    private readonly ITenantContext _tenant;
 
     public InvoiceProviderSettingService(
         IInvoiceProviderSettingRepository repository,
-        IViettelInvoiceAuthClient viettelAuthClient)
+        IViettelInvoiceAuthClient viettelAuthClient,
+        ITenantContext tenant)
     {
         _repository = repository;
         _viettelAuthClient = viettelAuthClient;
+        _tenant = tenant;
     }
 
     public async Task<Result<List<InvoiceProviderSettingListItemDto>>> GetAllAsync(CancellationToken ct = default)
@@ -100,6 +105,7 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
 
         var entity = new InvoiceProviderSetting
         {
+            StoreId = RequireStoreId(),
             ProviderCode = normalized.ProviderCode,
             IsProduction = normalized.IsProduction,
             BaseUrl = normalized.BaseUrl,
@@ -122,6 +128,10 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
         await _repository.AddAsync(entity, ct);
         await _repository.SaveChangesAsync(ct);
 
+        var credentialCheck = await VerifySavedCredentialAsync(entity.Id, ct);
+        if (!credentialCheck.IsSuccess)
+            return Result<int>.Failure(credentialCheck.Error!);
+
         return Result<int>.Success(entity.Id);
     }
 
@@ -143,8 +153,33 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 Error.NotFound("Không tìm thấy cấu hình hóa đơn điện tử."));
         }
 
+        if (_tenant.StoreId.HasValue && entity.StoreId != _tenant.StoreId.Value)
+        {
+            return Result<int>.Failure(
+                Error.NotFound("Không tìm thấy cấu hình hóa đơn điện tử của cửa hàng hiện tại."));
+        }
+
         var normalized = Normalize(request);
         var hasNewPassword = !string.IsNullOrWhiteSpace(normalized.Password);
+
+        // Never allow an edit with a blank password to preserve a ciphertext
+        // that this installation can no longer decrypt. The admin must enter
+        // the provider password once so it can be protected with the current
+        // shared key ring; subsequent configuration changes remain safe.
+        if (!hasNewPassword)
+        {
+            try
+            {
+                await _repository.GetByIdWithCredentialAsync(request.Id, ct);
+            }
+            catch (CryptographicException)
+            {
+                return Result<int>.Failure(
+                    Error.Validation(
+                        "InvoiceProvider.CredentialKeyUnavailable",
+                        "Không đọc được mật khẩu đã lưu vì DataProtection key cũ không còn. Hãy nhập lại mật khẩu Viettel rồi bấm Lưu để mã hóa lại bằng key hiện tại."));
+            }
+        }
 
         var validation = await ValidateAsync(
             normalized,
@@ -180,6 +215,10 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
 
         _repository.Update(entity);
         await _repository.SaveChangesAsync(ct);
+
+        var credentialCheck = await VerifySavedCredentialAsync(entity.Id, ct);
+        if (!credentialCheck.IsSuccess)
+            return Result<int>.Failure(credentialCheck.Error!);
 
         return Result<int>.Success(entity.Id);
     }
@@ -218,7 +257,18 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 Error.Validation("InvoiceProvider.InvalidId", "Id cấu hình không hợp lệ."));
         }
 
-        var entity = await _repository.GetByIdWithCredentialAsync(id, ct);
+        InvoiceProviderSetting? entity;
+        try
+        {
+            entity = await _repository.GetByIdWithCredentialAsync(id, ct);
+        }
+        catch (CryptographicException)
+        {
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "InvoiceProvider.CredentialKeyUnavailable",
+                    "Không giải mã được mật khẩu Viettel vì key DataProtection cũ không còn. Hãy vào Sửa cấu hình, nhập lại mật khẩu Viettel và bấm Lưu; không chỉ bấm Test kết nối."));
+        }
 
         if (entity == null)
         {
@@ -234,16 +284,26 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                     "Hiện tại mới hỗ trợ test kết nối Viettel SInvoice."));
         }
 
-        return await _viettelAuthClient.TestConnectionAsync(
-    entity.BaseUrl,
-    entity.Username,
-    entity.Password,
-    entity.AuthMode,
-    entity.SupplierTaxCode,
-    entity.InvoiceType,
-    entity.TemplateCode,
-    entity.InvoiceSeries,
-    ct);
+        try
+        {
+            return await _viettelAuthClient.TestConnectionAsync(
+                entity.BaseUrl,
+                entity.Username,
+                entity.Password,
+                entity.AuthMode,
+                entity.SupplierTaxCode,
+                entity.InvoiceType,
+                entity.TemplateCode,
+                entity.InvoiceSeries,
+                ct);
+        }
+        catch (CryptographicException)
+        {
+            return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                Error.Validation(
+                    "InvoiceProvider.CredentialKeyUnavailable",
+                    "Không giải mã được mật khẩu Viettel vì key DataProtection cũ không còn. Hãy vào Sửa cấu hình, nhập lại mật khẩu Viettel và bấm Lưu; không chỉ bấm Test kết nối."));
+        }
     }
 
     private async Task<Result<bool>> ValidateAsync(
@@ -373,5 +433,33 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 ? null
                 : request.Note.Trim()
         };
+    }
+
+    private int RequireStoreId()
+        => _tenant.StoreId.GetValueOrDefault() > 0
+            ? _tenant.StoreId!.Value
+            : throw new InvalidOperationException(
+                "Không xác định được cửa hàng hiện tại khi lưu cấu hình Viettel.");
+
+    private async Task<Result<bool>> VerifySavedCredentialAsync(
+        int settingId,
+        CancellationToken ct)
+    {
+        try
+        {
+            var setting = await _repository.GetByIdWithCredentialAsync(settingId, ct);
+            return setting == null
+                ? Result<bool>.Failure(Error.NotFound(
+                    "Đã lưu cấu hình nhưng không đọc lại được cấu hình Viettel."))
+                : Result<bool>.Success(true);
+        }
+        catch (CryptographicException ex)
+        {
+            return Result<bool>.Failure(Error.Validation(
+                "InvoiceProvider.CredentialKeyUnavailable",
+                "Đã lưu nhưng không kiểm tra lại được mật khẩu Viettel bằng key hiện tại. " +
+                "Hãy kiểm tra Web và Worker cùng dùng C:\\GaoAppData\\DataProtectionKeys. " +
+                $"Chi tiết kỹ thuật: {ex.Message}"));
+        }
     }
 }

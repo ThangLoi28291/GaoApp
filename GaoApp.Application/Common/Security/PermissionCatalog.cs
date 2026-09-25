@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 
 namespace GaoApp.Application.Common.Security;
 
@@ -11,6 +11,28 @@ public static class PermissionCatalog
     public static readonly IReadOnlyList<PermissionRecord> All = new ReadOnlyCollection<PermissionRecord>(
         new List<PermissionRecord>
         {
+            P(PermissionCodes.CustomerDeposit.View, "Xem đặt cọc khách hàng", "Customers", "customer", "deposit", "view"),
+            P(PermissionCodes.CustomerDeposit.Receive, "Nhận cọc khách hàng", "Customers", "customer", "deposit", "receive"),
+            P(PermissionCodes.CustomerDeposit.Use, "Sử dụng cọc tại POS", "Customers", "customer", "deposit", "use"),
+            P(PermissionCodes.CustomerDeposit.Refund, "Hoàn cọc khách hàng", "Customers", "customer", "deposit", "refund"),
+            P(PermissionCodes.CustomerDebt.View, "Xem công nợ khách hàng", "Customers", "customer", "debt", "view"),
+            P(PermissionCodes.CustomerDebt.Sell, "Chốt đơn bán công nợ", "Customers", "customer", "debt", "sell"),
+            P(PermissionCodes.CustomerDebt.Collect, "Thu công nợ khách hàng", "Customers", "customer", "debt", "collect"),
+            P(PermissionCodes.Admin.DashboardView, "Xem trang tổng quan quản trị", "Admin", "admin", "dashboard", "view"),
+            P(PermissionCodes.System.ReceiptTemplate.Manage, "Quản lý mẫu hóa đơn POS", "System", "system", "receipttemplate", "manage"),
+            P(PermissionCodes.System.ProductLabel.Manage, "Quản lý mẫu tem và máy in tem", "System", "system", "productlabel", "manage"),
+            P(PermissionCodes.System.ProductLabel.Print, "In tem sản phẩm và quản lý phiếu in", "System", "system", "productlabel", "print"),
+            P(PermissionCodes.Catalog.Customer.ManageRewards, "Điều chỉnh tích điểm và quản lý voucher", "Catalog", "catalog", "customer", "managerewards"),
+            P(PermissionCodes.Catalog.Tax.View, "Xem thuế", "Catalog", "catalog", "tax", "view"),
+            P(PermissionCodes.Catalog.Tax.Create, "Tạo thuế", "Catalog", "catalog", "tax", "create"),
+            P(PermissionCodes.Catalog.Tax.Update, "Sửa thuế", "Catalog", "catalog", "tax", "update"),
+            P(PermissionCodes.Catalog.Tax.Delete, "Xóa thuế", "Catalog", "catalog", "tax", "delete"),
+            P(PermissionCodes.Catalog.Promotion.View, "Xem khuyến mãi", "Catalog", "catalog", "promotion", "view"),
+            P(PermissionCodes.Catalog.Promotion.Manage, "Quản lý khuyến mãi", "Catalog", "catalog", "promotion", "manage"),
+            P(PermissionCodes.Catalog.DisplayPromotion.View, "Xem quảng bá màn hình khách", "Catalog", "catalog", "displaypromotion", "view"),
+            P(PermissionCodes.Catalog.DisplayPromotion.Manage, "Quản lý quảng bá màn hình khách", "Catalog", "catalog", "displaypromotion", "manage"),
+            P(PermissionCodes.System.BankAccount.View, "Xem tài khoản ngân hàng", "System", "system", "bankaccount", "view"),
+            P(PermissionCodes.System.BankAccount.Manage, "Quản lý tài khoản ngân hàng", "System", "system", "bankaccount", "manage"),
             // =========================
             // CATALOG
             // =========================
@@ -155,6 +177,8 @@ P(PermissionCodes.Inventory.Adjustment.Cancel,  "Hủy phiếu điều chỉnh k
             P(PermissionCodes.Pos.Order.Void,     "Hủy đơn POS", "POS", "pos", "order", "void"),
             P(PermissionCodes.Pos.Order.Refund,   "Refund đơn POS", "POS", "pos", "order", "refund"),
             P(PermissionCodes.Pos.Order.Reprint,  "In lại đơn POS", "POS", "pos", "order", "reprint"),
+            P(PermissionCodes.Pos.Order.Hold,     "Giữ và lấy lại đơn POS", "POS", "pos", "order", "hold"),
+            P(PermissionCodes.Pos.Order.Discount, "Giảm giá đơn POS", "POS", "pos", "order", "discount"),
 
 
             P(PermissionCodes.Pos.Shift.View,      "Xem ca POS", "POS", "pos", "shift", "view"),

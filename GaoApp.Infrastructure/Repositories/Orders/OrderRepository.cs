@@ -177,6 +177,19 @@ public sealed class OrderRepository : IOrderRepository
 
         return (items, total);
     }
+    public async Task<HashSet<int>> GetBankTransferOrderIdsAsync(IReadOnlyCollection<int> orderIds, CancellationToken ct = default)
+    {
+        if (orderIds.Count == 0 || _db.CurrentStoreId is not > 0) return [];
+        var storeId = _db.CurrentStoreId.Value;
+        // One query per page. Cancelled QR attempts remain available for reconciliation.
+        return (await _db.Orders.AsNoTracking()
+            .Where(o => o.StoreId == storeId && !o.IsDeleted && orderIds.Contains(o.Id))
+            .Where(o => _db.OrderPayments.Any(p => p.StoreId == storeId && !p.IsDeleted &&
+                    p.OrderId == o.Id && p.Method == PaymentMethod.BankTransfer)
+                || _db.PosPaymentQrRequests.Any(q => q.StoreId == storeId && !q.IsDeleted && q.OrderId == o.Id))
+            .Select(o => o.Id).ToListAsync(ct)).ToHashSet();
+    }
+
     public async Task<bool> ExistsDraftByShiftAsync(int shiftId, CancellationToken ct = default)
     {
         return await _db.Orders

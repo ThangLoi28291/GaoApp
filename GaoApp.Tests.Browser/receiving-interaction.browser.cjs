@@ -1,0 +1,96 @@
+'use strict';
+const assert=require('node:assert/strict'),path=require('node:path');
+module.exports=async({page,info,out,errors,idle,close,state})=>{
+ const rows='#wrdLinesContainer tr[data-receiving-key]';
+ const row=key=>page.locator(`${rows}[data-receiving-key="${key}"]`);
+ const field=()=>page.locator('.select2-container--open .select2-search__field');
+ const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ const deadline=(promise,label)=>{let timer;return Promise.race([promise,new Promise((_,reject)=>timer=setTimeout(()=>reject(new Error(label)),20000))]).finally(()=>clearTimeout(timer));};
+ const openSearch=async()=>{
+  await page.evaluate(()=>window.jQuery('#quickLookupInput').select2('close'));
+  await page.locator('#quickLookupInput + .select2').click();
+  await field().fill('');await field().pressSequentially('sua',{delay:80});
+  await page.waitForFunction(()=>document.querySelectorAll('.select2-results__option--selectable').length>=4);
+ };
+ await page.setViewportSize({width:1440,height:1000});await page.waitForFunction(()=>!document.body.classList.contains('wrd-app-mode'));await settle();
+ for(const keys of [['ArrowDown','ArrowDown'],['ArrowDown','ArrowDown','ArrowUp'],['ArrowDown','ArrowDown','ArrowUp']]){
+  await openSearch();for(const key of keys)await field().press(key);
+  const expected=await page.locator('.select2-results__option--highlighted .wrd-select-title').innerText();
+  const expectedVariant=await page.evaluate(()=>window.jQuery.fn.select2.amd.require('select2/utils').GetData(document.querySelector('.select2-results__option--highlighted'),'data').productVariantId);
+  let requests=0;const count=request=>{if(request.url().includes('/lookup')&&request.url().includes('term='))requests++;};page.on('request',count);
+  await field().press('Enter');await page.locator('#quickAddProductModal.show').waitFor();
+  assert.equal(await page.locator('#popupProductName').innerText(),expected,'Enter must use the keyboard-highlighted result');
+  assert.equal(await page.evaluate(()=>window.jQuery('#quickLookupInput').data('selected-item').productVariantId),expectedVariant);
+  assert.equal(requests,0,'Selecting a loaded result does not request it again');page.off('request',count);await close('#quickAddProductModal');
+ }
+ await openSearch();const clicked=page.locator('.select2-results__option--selectable').nth(2),clickedName=await clicked.locator('.wrd-select-title').innerText();
+ await clicked.click();await page.locator('#quickAddProductModal.show').waitFor();assert.equal(await page.locator('#popupProductName').innerText(),clickedName);await close('#quickAddProductModal');
+ await openSearch();await field().fill('2099900000001');await field().press('Enter');await page.locator('#quickAddProductModal.show').waitFor();
+ assert.equal(await page.locator('#popupBarcode').innerText(),'2099900000001','Fast barcode must never select the previous highlighted product');await close('#quickAddProductModal');
+ console.log('PASS desktop mouse selection, ArrowDown/ArrowUp + Enter, no extra lookup, fast barcode stale-result guard');
+ await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.body.classList.contains('wrd-app-mode'));await settle();
+ const keys=await page.locator(rows).evaluateAll(elements=>elements.map(x=>x.dataset.receivingKey));
+ const a=keys.at(-1),b=keys.at(-2);
+ await row(a).locator('[data-wra-edit]').scrollIntoViewIfNeeded();await settle();
+ const startA=Number(await row(a).getAttribute('data-receiving-quantity')),startB=Number(await row(b).getAttribute('data-receiving-quantity'));
+ const burst=async(key,deltas)=>page.evaluate(({key,deltas})=>{
+  const row=[...document.querySelectorAll('#wrdLinesContainer tr[data-receiving-key]')].find(x=>x.dataset.receivingKey===key);
+  return deltas.map(delta=>{row.querySelector(`[data-wra-step="${delta}"]`).click();return row.querySelector('[data-wra-edit]').textContent;});
+ },{key,deltas});
+ let release,started;const gate=new Promise(resolve=>release=resolve),arrived=new Promise(resolve=>started=resolve),writes=[];
+ await page.route(`**/api/stock-documents/${info.receiptId}/lines/*`,async route=>{
+  if(route.request().method()!=='PUT'){await route.continue();return;}
+  writes.push({id:route.request().url().split('/').at(-1),...route.request().postDataJSON()});
+  if(writes.length===1){const response=await route.fetch();started();await gate;await route.fulfill({response});}else await route.continue();
+ });
+ const originalSummary=await page.locator('#wrdTotalQty').innerText();
+ await burst(a,[1,-1]);
+ assert.equal(await page.evaluate(()=>window.WarehouseReceivingQuantity.hasPending()),false,'Opposite taps cancel a draft before saving');
+ assert.equal(await page.locator('#wrdTotalQty').innerText(),originalSummary,'Cancelled draft restores the summary');
+ assert.equal(await row(a).locator('[data-wra-edit]').innerText(),String(startA));
+ const labels=await burst(a,[1,1,1,1,1,1,-1,-1]);
+ assert.deepEqual(labels.map(Number),[1,2,3,4,5,6,5,4].map(x=>startA+x),'Every tap updates immediately');
+ assert.equal(writes.length,0,'A burst is held locally for one combined save');
+ await deadline(arrived,'The debounced quantity was not sent');
+ assert.equal(await row(a).locator('[data-wra-step="1"]').isEnabled(),true,'Buttons remain usable while a save is waiting');
+ await burst(a,[1,1,1,1]);await row(b).locator('[data-wra-step="1"]').click();await burst(b,[1,1]);
+ assert.equal(await row(a).locator('[data-wra-edit]').innerText(),String(startA+8));assert.equal(await row(b).locator('[data-wra-edit]').innerText(),String(startB+3));
+ const before=await row(b).boundingBox();release();await idle();await settle();
+ assert.equal(Number(await row(a).getAttribute('data-receiving-quantity')),startA+8);assert.equal(Number(await row(b).getAttribute('data-receiving-quantity')),startB+3);
+ assert.equal(writes.length,3,'Fifteen taps use three batches, including taps during the first request');
+ assert.ok(Math.abs((await row(b).boundingBox()).y-before.y)<=4,'Batched refreshes preserve the current scroll position');
+ const priorWrites=writes.length;
+ await row(b).locator('[data-wra-step="1"]').click();await page.locator('#btnSubmitReceiving').click();await page.locator('#submitReceivingModal.show').waitFor();
+ assert.equal(writes.length,priorWrites+1,'Opening approval flushes the pending target');assert.equal(await page.locator('#btnConfirmSubmitReceiving').isDisabled(),false);await close('#submitReceivingModal');
+ await burst(b,[1]);await row(b).locator('[data-wra-edit]').click();await page.locator('#wraQuantityModal.show').waitFor();
+ assert.equal(Number(await page.locator('#wraQuantity').inputValue()),startB+5,'Quantity editor opens with the flushed target');await close('#wraQuantityModal');
+ await burst(b,[1]);await page.locator('#quickLookupInput + .select2').click();await field().waitFor();
+ assert.equal(Number(await row(b).getAttribute('data-receiving-quantity')),startB+6,'Inline search opens after saving the pending quantity');
+ assert.equal(await page.evaluate(()=>window.WarehouseReceivingQuantity.hasPending()),false);
+ await page.evaluate(()=>window.jQuery('#quickLookupInput').select2('close'));
+ await page.unroute(`**/api/stock-documents/${info.receiptId}/lines/*`);
+ await page.screenshot({path:path.join(out,'mobile-quantity-batches.png')});
+ console.log('PASS mobile immediate +/- bursts, row switching, continued taps during slow saves, grouped requests, scroll stability and flush before approval');
+ await page.locator('#wraMore').click();await page.locator('#wraNew').click();await page.locator('#receiptIntakeModal.show').waitFor();
+ await page.locator('#riNewName').fill('Hàng kiểm tra tăng giảm nhanh');await page.locator('#riBarcode').fill('BATCH-PROVISIONAL');
+ await page.evaluate(()=>{const select=document.querySelector('#riBaseUnit'),option=[...select.options].find(x=>x.value&&!x.value.startsWith('new:'));window.jQuery(select).val(option.value).trigger('change');});
+ await page.locator('#riQuantity').fill('3');await page.locator('#riSave').click();await page.locator('#receiptIntakeModal').waitFor({state:'hidden'});await idle();
+ const item=(await state()).items.find(x=>x.rawBarcode==='BATCH-PROVISIONAL'),p=`intake-${item.id}`;
+ let lose,provisionalStarted;const lostGate=new Promise(resolve=>lose=resolve),provisionalArrived=new Promise(resolve=>provisionalStarted=resolve),commands=[];
+ await page.route(`**/intake/${item.id}/quantity`,async route=>{
+  commands.push(route.request().postDataJSON());
+  if(commands.length===1){await route.fetch();provisionalStarted();await lostGate;await route.abort();}else await route.continue();
+ });
+ await burst(p,[1,1,1,1,1]);await deadline(provisionalArrived,'The provisional quantity was not sent');await burst(p,[1,1]);lose();
+ await page.waitForFunction(()=>window.WarehouseReceivingQuantity.hasFailed());
+ assert.equal(await row(p).locator('[data-wra-edit]').innerText(),'10','Lost response keeps all taps, including later ones');
+ assert.equal(await row(p).locator('[data-wra-step="1"]').isDisabled(),true);
+ await page.locator('#btnSubmitReceiving').click();assert.equal(await page.locator('#submitReceivingModal.show').count(),0,'Cannot approve unacknowledged changes');
+ await page.locator('#wraRetry').click();await idle();
+ assert.deepEqual(commands.map(x=>x.quantity),[8,8,10]);assert.equal(commands[0].commandId,commands[1].commandId);assert.notEqual(commands[1].commandId,commands[2].commandId);
+ assert.equal((await state()).items.find(x=>x.id===item.id).quantity,10);await page.unroute(`**/intake/${item.id}/quantity`);
+ await burst(p,[-1,-1,1]);await page.locator('#wrdOpenVoice').click();await page.locator('#wrdCaptureModal.show').waitFor();
+ assert.equal((await state()).items.find(x=>x.id===item.id).quantity,9,'Voice search starts after flushing quantity');await close('#wrdCaptureModal');
+ assert.deepEqual(errors,[]);
+ console.log('PASS provisional batching, lost-ack exact command replay then latest target, blocked approval on error, flush before voice search');
+};

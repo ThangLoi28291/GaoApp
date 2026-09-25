@@ -1,0 +1,215 @@
+@model GaoApp.Application.Interfaces.Services.Orders.DepositPageDto
+@using GaoApp.Application.Common.Security
+@using GaoApp.Domain.Enums
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
+@{
+    ViewData["Title"] = "Đặt cọc khách hàng";
+    ViewData["container"] = "container-fluid";
+    ViewData["menuFixed"] = "layout-menu-fixed";
+    Layout = "_ContentNavbarLayout";
+    var canReceive = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Receive)).Succeeded;
+    var canRefund = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Refund)).Succeeded;
+    var totalBalance = Model.Deposits.Sum(x => x.Balance);
+    var receiveTotal = Model.Journal.Where(x => x.Kind == "Receive").Sum(x => x.Amount);
+    var usedTotal = Math.Abs(Model.Journal.Where(x => x.Kind is "Apply" or "Refund").Sum(x => x.Amount));
+}
+
+@section header {
+    <div data-gao-ui="modern" class="w-100">
+        <div class="gds-page-header gds-page-header--compact">
+            <div class="gds-page-header__main">
+                <h3 class="gds-page-header__title">Quản lý tiền đặt cọc</h3>
+                <p class="gds-page-header__subtitle mb-0">Nhận cọc, sử dụng cọc và đối chiếu giao dịch của khách hàng.</p>
+            </div>
+        </div>
+    </div>
+}
+
+<div data-gao-ui="modern">
+<div id="customerDepositPage" class="deposit-page gds-page" data-customer-id="@Model.CustomerId">
+    @Html.AntiForgeryToken()
+    <section aria-label="Tổng quan tiền đặt cọc">
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
+            <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100">
+                <div class="gds-kpi-card__icon is-primary"><i class="bx bx-user-check"></i></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Khách đang chọn</div><div class="gds-kpi-card__value fw-bold text-primary">@(Model.CustomerId.HasValue ? 1 : 0)</div></div>
+            </article></div>
+            <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100">
+                <div class="gds-kpi-card__icon is-success"><i class="bx bx-wallet"></i></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Số dư cọc khả dụng</div><div class="gds-kpi-card__value fw-bold text-success">@totalBalance.ToString("N0") <small>đ</small></div></div>
+            </article></div>
+            <div class="col"><article class="card shadow-sm border-0 gds-kpi-card h-100">
+                <div class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-receipt"></i></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Phiếu còn số dư</div><div class="gds-kpi-card__value fw-bold text-warning">@Model.Deposits.Count</div></div>
+            </article></div>
+            <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--neutral h-100">
+                <div class="gds-kpi-card__icon is-neutral"><i class="bx bx-transfer-alt"></i></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Đã dùng / hoàn</div><div class="gds-kpi-card__value fw-bold text-secondary">@usedTotal.ToString("N0") <small>đ</small></div></div>
+            </article></div>
+        </div>
+    </section>
+
+    <div class="deposit-layout">
+        <section class="deposit-customer-pane card shadow-sm border-0">
+            <div class="card-header bg-transparent border-0 pb-0">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="avatar avatar-sm rounded bg-label-primary"><i class="bx bx-search-alt"></i></span>
+                    <div><h5 class="mb-0 text-dark">Chọn khách hàng</h5><small class="text-muted">Tìm nhanh theo tên hoặc số điện thoại để quản lý tiền đặt cọc.</small></div>
+                </div>
+            </div>
+            <div class="card-body pt-3">
+              <div class="deposit-customer-picker">
+                <div class="deposit-customer-searchbox">
+                    <label for="depositCustomerSearch" class="form-label fw-semibold text-dark">Tìm kiếm</label>
+                    <div class="deposit-search" role="combobox" aria-haspopup="listbox" aria-owns="depositCustomerSuggestions" aria-expanded="false">
+                        <i class="bx bx-search"></i>
+                        <input id="depositCustomerSearch" type="search" autocomplete="off" placeholder="Tên hoặc số điện thoại..." aria-label="Tìm khách hàng" aria-autocomplete="list" aria-controls="depositCustomerSuggestions" />
+                        <span class="deposit-search__key">F3</span>
+                    </div>
+                    <div id="depositCustomerSuggestions" class="deposit-customer-suggestions" role="listbox" aria-label="Khách hàng gợi ý" hidden></div>
+                </div>
+                @if (Model.CustomerId.HasValue)
+                {
+                    <div class="deposit-selected-customer">
+                        <span class="deposit-avatar">@((Model.CustomerName ?? "K").Trim().Substring(0, 1).ToUpperInvariant())</span>
+                        <span class="deposit-customer__copy"><small>KHÁCH HÀNG ĐANG CHỌN</small><strong>@Model.CustomerName</strong></span>
+                        <a href="/admin/customer-deposit" class="btn btn-sm btn-label-secondary">Đổi khách</a>
+                    </div>
+                }
+                else
+                {
+                    <div class="deposit-customer-guide"><i class="bx bx-user-plus"></i><span><strong>Chưa chọn khách hàng</strong><small>Nhập ít nhất 2 ký tự để xem gợi ý.</small></span></div>
+                }
+              </div>
+            </div>
+        </section>
+
+        <main class="deposit-workspace card shadow-sm border-0">
+            @if (!Model.CustomerId.HasValue)
+            {
+                <section class="deposit-empty deposit-empty--workspace">
+                    <span class="deposit-empty__icon"><i class="bx bx-user-check"></i></span>
+                    <h2>Chọn khách hàng để bắt đầu</h2>
+                    <p>Tìm theo tên hoặc số điện thoại, sau đó nhận cọc và xem lịch sử đối chiếu.</p>
+                </section>
+            }
+            else
+            {
+                <section class="deposit-customer-summary">
+                    <div class="deposit-customer-summary__identity">
+                        <span class="deposit-avatar deposit-avatar--large">@((Model.CustomerName ?? "K").Trim().Substring(0, 1).ToUpperInvariant())</span>
+                        <div><span>KHÁCH HÀNG ĐANG CHỌN</span><h2>@Model.CustomerName</h2></div>
+                    </div>
+                    <div class="deposit-balance-card"><span>SỐ DƯ CỌC KHẢ DỤNG</span><strong>@totalBalance.ToString("N0") <small>đ</small></strong><em><i class="bx bx-check-shield"></i> Có thể sử dụng tại POS</em></div>
+                    <div class="deposit-summary-metric"><span>Đã nhận</span><strong>@receiveTotal.ToString("N0") đ</strong></div>
+                    <div class="deposit-summary-metric"><span>Đã dùng / hoàn</span><strong>@usedTotal.ToString("N0") đ</strong></div>
+                </section>
+
+                <div class="deposit-tabs" role="tablist" aria-label="Nghiệp vụ đặt cọc">
+                    @if (canReceive) { <button type="button" class="is-active" data-deposit-tab="receive" role="tab" aria-selected="true"><i class="bx bx-plus-circle"></i> Nhận cọc mới</button> }
+                    <button type="button" class="@(!canReceive ? "is-active" : "")" data-deposit-tab="balances" role="tab" aria-selected="@(!canReceive ? "true" : "false")"><i class="bx bx-receipt"></i> Phiếu còn dư <b>@Model.Deposits.Count</b></button>
+                    <button type="button" data-deposit-tab="journal" role="tab" aria-selected="false"><i class="bx bx-history"></i> Lịch sử giao dịch</button>
+                    @if (canRefund && Model.Deposits.Count > 0) { <button type="button" data-deposit-tab="refund" role="tab" aria-selected="false"><i class="bx bx-undo"></i> Hoàn cọc</button> }
+                </div>
+
+                @if (canReceive)
+                {
+                    <section class="deposit-panel" data-deposit-panel="receive">
+                        <div class="deposit-panel__heading">
+                            <div><span class="deposit-step">01</span><div><h3>Lập phiếu nhận cọc</h3><p>Nhập thông tin hàng đặt và chọn cách khách thanh toán.</p></div></div>
+                            <span class="deposit-security"><i class="bx bx-lock-alt"></i> Ghi nhận theo ca</span>
+                        </div>
+                        <form id="depositReceive" data-action="receive" class="deposit-form">
+                            <div class="deposit-form__main">
+                                <label class="deposit-field deposit-field--wide"><span>Nội dung hàng đặt <b>*</b></span><textarea name="purpose" rows="3" required maxlength="500" placeholder="Ví dụ: 10 thùng sữa giao ngày 25/09"></textarea><small>Mô tả đủ để nhân viên nhận diện đơn đặt hàng.</small></label>
+                                <div class="deposit-field-grid">
+                                    <label class="deposit-field"><span>Số tiền cọc <b>*</b></span><div class="deposit-money-input"><input name="amount" type="number" min="1" step="1" required inputmode="numeric" placeholder="0" /><em>đ</em></div></label>
+                                    <label class="deposit-field"><span>Ngày dự kiến giao</span><input name="expectedDeliveryDate" type="date" /></label>
+                                </div>
+                                <label class="deposit-field"><span>Ghi chú nội bộ</span><input name="note" maxlength="500" placeholder="Thông tin cần lưu ý (không bắt buộc)" /></label>
+                            </div>
+                            <aside class="deposit-form__payment">
+                                <span class="deposit-form__caption">HÌNH THỨC NHẬN TIỀN</span>
+                                <div class="deposit-methods" role="radiogroup">
+                                    <label class="is-selected"><input type="radio" name="method" value="0" checked /><i class="bx bx-money"></i><span><strong>Tiền mặt</strong><small>Ghi tăng tiền trong ca</small></span><b>✓</b></label>
+                                    <label><input type="radio" name="method" value="1" /><i class="bx bx-qr-scan"></i><span><strong>Chuyển khoản QR</strong><small>@(Model.DefaultBank ?? "Chưa cấu hình ngân hàng")</small></span><b>✓</b></label>
+                                </div>
+                                <input name="reference" type="hidden" />
+                                <button type="button" id="depositCreateQr" class="deposit-qr-action" hidden><i class="bx bx-qr-scan"></i><span>Tạo mã QR để khách quét</span></button>
+                                <section id="depositQrPreview" class="deposit-qr-preview" hidden>
+                                    <div class="deposit-qr-preview__loading"><span class="spinner-border spinner-border-sm"></span> Đang tạo mã VietQR...</div>
+                                    <div class="deposit-qr-preview__content" hidden>
+                                        <img id="depositQrImage" alt="Mã QR nhận tiền đặt cọc" />
+                                        <div><strong id="depositQrAmount">0 đ</strong><span id="depositQrBank"></span><code id="depositQrContent"></code><small>QR cũng đang hiển thị trên màn hình khách.</small></div>
+                                    </div>
+                                </section>
+                                <label class="deposit-confirm"><input type="checkbox" required /><span><strong>Tôi đã kiểm tra và nhận đủ tiền</strong><small>Chỉ xác nhận sau khi đã nhận tiền mặt hoặc tiền đã vào tài khoản.</small></span></label>
+                                <button type="submit" class="deposit-primary-action"><i class="bx bx-check-circle"></i><span>Xác nhận nhận cọc</span><kbd>Ctrl + Enter</kbd></button>
+                                <div role="status" class="deposit-message" aria-live="polite"></div>
+                            </aside>
+                        </form>
+                    </section>
+                }
+
+                <section class="deposit-panel" data-deposit-panel="balances" @if(canReceive){<text>hidden</text>}>
+                    <div class="deposit-panel__heading"><div><span class="deposit-step">02</span><div><h3>Phiếu cọc còn số dư</h3><p>POS sẽ tự ưu tiên phiếu cũ nhất và trừ tối đa khi tính tiền.</p></div></div></div>
+                    <div class="deposit-card-grid">
+                        @foreach (var deposit in Model.Deposits)
+                        {
+                            <article class="deposit-ticket">
+                                <div class="deposit-ticket__top"><span>DC-@deposit.Id</span><em>Đang khả dụng</em></div>
+                                <h4>@deposit.Purpose</h4>
+                                <div class="deposit-ticket__balance"><span>Còn lại</span><strong>@deposit.Balance.ToString("N0") đ</strong></div>
+                                <div class="deposit-ticket__date"><i class="bx bx-calendar"></i> @(deposit.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa hẹn ngày giao")</div>
+                            </article>
+                        }
+                        @if (Model.Deposits.Count == 0) { <div class="deposit-empty deposit-empty--small"><i class="bx bx-receipt"></i><span>Khách chưa có phiếu cọc còn số dư.</span></div> }
+                    </div>
+                </section>
+
+                <section class="deposit-panel" data-deposit-panel="journal" hidden>
+                    <div class="deposit-panel__heading"><div><span class="deposit-step">03</span><div><h3>Sổ giao dịch đặt cọc</h3><p>Tối đa 500 giao dịch gần nhất, sắp xếp mới nhất trước.</p></div></div><button type="button" id="depositPrint" class="deposit-secondary-action"><i class="bx bx-printer"></i> In đối chiếu</button></div>
+                    <div class="deposit-table-wrap"><table class="deposit-table">
+                        <thead><tr><th>Chứng từ</th><th>Thời gian / nhân viên</th><th>Nghiệp vụ</th><th class="is-number">Phát sinh</th><th>Đối chiếu</th></tr></thead>
+                        <tbody>
+                        @foreach (var entry in Model.Journal)
+                        {
+                            var positive = entry.Amount >= 0;
+                            var kindLabel = entry.Kind switch { "Receive" => "Nhận cọc", "Apply" => "Dùng cọc", "Refund" => "Hoàn cọc", "Void" => "Khôi phục do hủy đơn", "Return" => "Trả hàng hoàn vào cọc", _ => entry.Kind };
+                            <tr>
+                                <td><strong>PCOC-@entry.Id</strong><small>Phiếu DC-@entry.DepositId</small></td>
+                                <td><strong>@entry.At.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong><small>NV #@entry.Employee · Ca #@entry.ShiftId</small></td>
+                                <td><span class="deposit-kind deposit-kind--@entry.Kind.ToLowerInvariant()">@kindLabel</span></td>
+                                <td class="is-number @(positive ? "is-positive" : "is-negative")">@entry.Amount.ToString("+#,##0;-#,##0;0") đ</td>
+                                <td><span>@(entry.Method == PaymentMethod.Cash ? "Tiền mặt" : entry.Method == PaymentMethod.BankTransfer ? "Chuyển khoản" : "Điều chỉnh hệ thống")</span><small>@entry.Bank @entry.Reference @entry.Note</small>@if(entry.OrderId.HasValue){<a href="/admin/pos/order-detail/@entry.OrderId">Xem đơn #@entry.OrderId <i class="bx bx-link-external"></i></a>}</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table></div>
+                </section>
+
+                @if (canRefund && Model.Deposits.Count > 0)
+                {
+                    <section class="deposit-panel" data-deposit-panel="refund" hidden>
+                        <div class="deposit-panel__heading"><div><span class="deposit-step deposit-step--danger">!</span><div><h3>Hoàn tiền cọc chưa sử dụng</h3><p>Đối chiếu phiếu và số tiền trước khi lập chứng từ chi.</p></div></div></div>
+                        <form id="depositRefund" data-action="refund" class="deposit-refund-form">
+                            <label class="deposit-field"><span>Phiếu cọc</span><select name="depositId">@foreach(var deposit in Model.Deposits){<option value="@deposit.Id">DC-@deposit.Id · @deposit.Purpose · @deposit.Balance.ToString("N0") đ</option>}</select></label>
+                            <label class="deposit-field"><span>Số tiền hoàn</span><div class="deposit-money-input"><input name="amount" type="number" min="1" step="1" required /><em>đ</em></div></label>
+                            <label class="deposit-field"><span>Chi bằng</span><select name="method"><option value="0">Tiền mặt</option><option value="1">Chuyển khoản · ngân hàng mặc định</option></select></label>
+                            <label class="deposit-field"><span>Mã giao dịch</span><input name="reference" maxlength="100" /></label>
+                            <label class="deposit-field deposit-field--wide"><span>Lý do hoàn</span><textarea name="note" rows="3" required maxlength="500"></textarea></label>
+                            <label class="deposit-confirm deposit-field--wide"><input type="checkbox" required /><span><strong>Tôi đã chi tiền hoàn cho khách</strong><small>Thao tác sẽ ghi giảm số dư phiếu cọc.</small></span></label>
+                            <button type="submit" class="deposit-danger-action"><i class="bx bx-undo"></i> Lập phiếu hoàn cọc</button>
+                            <div role="status" class="deposit-message deposit-field--wide"></div>
+                        </form>
+                    </section>
+                }
+            }
+        </main>
+    </div>
+</div>
+</div>
+
+@section PageScripts { <script src="~/Admin/js/customer-deposit.js" asp-append-version="true"></script> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-deposit.css" asp-append-version="true" /> }

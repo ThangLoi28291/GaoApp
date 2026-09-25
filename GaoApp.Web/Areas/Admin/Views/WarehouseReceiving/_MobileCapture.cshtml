@@ -1,0 +1,22 @@
+<div class="wrd-capture-actions" aria-label="Cách tìm sản phẩm">
+    <button type="button" class="wrd-camera-action" id="wrdOpenCamera"><i class="bx bx-barcode-reader" aria-hidden="true"></i><span>Quét camera</span><small>Đưa mã vào khung</small></button>
+    <button type="button" id="wrdOpenVoice"><i class="bx bx-microphone" aria-hidden="true"></i><span>Nói tên hàng</span><small>Tìm bằng giọng nói</small></button>
+</div>
+<div class="modal fade" id="wrdCaptureModal" tabindex="-1" aria-labelledby="wrdCaptureTitle" aria-hidden="true" data-decoder-url="@Url.Content("~/lib/zxing-browser/0.1.5/zxing-browser.min.js")">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content wrd-capture-content">
+        <div class="modal-header"><div><div class="wrd-capture-eyebrow">NHẬN HÀNG</div><h5 class="modal-title" id="wrdCaptureTitle">Quét mã vạch</h5></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <div id="wrdCameraPanel" hidden>
+                <div class="wrd-camera-stage"><video id="wrdCameraVideo" muted playsinline autoplay></video><div class="wrd-scan-frame" aria-hidden="true"></div><span>Giữ mã vạch rõ nét trong khung</span></div>
+                <div class="wrd-camera-tools"><button type="button" id="wrdTorch" class="btn btn-outline-secondary" hidden aria-pressed="false">Bật đèn</button><button type="button" id="wrdCameraRetry" class="btn btn-outline-primary">Quét lại</button></div>
+                <p class="wrd-hint">Mỗi lượt nhận một mã. Kiểm tra sản phẩm và số lượng trước khi thêm.</p>
+            </div>
+            <div id="wrdVoicePanel" hidden><div class="wrd-voice-orb"><i class="bx bx-microphone" aria-hidden="true"></i></div><p>Nói tên hàng, ví dụ “sữa tươi ít đường”.</p><button type="button" id="wrdVoiceRetry" class="btn btn-outline-primary">Nói lại</button></div>
+            <p id="wrdCaptureMessage" class="wrd-capture-message" role="status" aria-live="polite"></p>
+            <form id="wrdCaptureSearch" class="wrd-capture-search"><label for="wrdCaptureTerm">Tên sản phẩm hoặc mã vạch</label><div><input id="wrdCaptureTerm" class="form-control" maxlength="100" autocomplete="off" placeholder="Nhập tên hoặc mã…" /><button type="submit" class="btn btn-primary" aria-label="Tìm sản phẩm"><i class="bx bx-search" aria-hidden="true"></i></button></div></form>
+            <div id="wrdCaptureResults" class="wrd-capture-results" aria-live="polite"></div>
+            <button type="button" id="wrdCaptureUnknown" class="btn btn-outline-primary w-100 mt-3" hidden>Ghi nhận hàng chưa có</button>
+        </div>
+        <div class="modal-footer"><span class="wrd-hint">Chọn đúng đơn vị: cái, lốc hoặc thùng.</span><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button></div>
+    </div></div>
+</div>

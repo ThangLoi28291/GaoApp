@@ -4,6 +4,8 @@ namespace GaoApp.Application.Interfaces.Repositories.StoreBankAccounts;
 
 public interface IStoreBankAccountRepository
 {
+    Task<T> ExecuteStoreWriteAsync<T>(Func<Task<T>> operation, CancellationToken ct = default);
+
     Task<List<StoreBankAccount>> GetListAsync(CancellationToken ct = default);
 
     Task<StoreBankAccount?> GetByIdAsync(int id, CancellationToken ct = default);

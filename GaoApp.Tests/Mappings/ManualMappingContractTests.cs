@@ -56,6 +56,8 @@ public sealed class ManualMappingContractTests
     [Fact]
     public void Category_mapping_should_include_parent_name_and_editable_fields()
     {
+        var createdAtUtc = new DateTime(2026, 9, 1, 4, 30, 0, DateTimeKind.Utc);
+
         var entity = new Category
         {
             Id = 20,
@@ -64,7 +66,8 @@ public sealed class ManualMappingContractTests
             ParentId = 5,
             Parent = new Category { Id = 5, Code = "ROOT", Name = "Root" },
             SortOrder = 9,
-            IsActive = false
+            IsActive = false,
+            CreatedAtUtc = createdAtUtc
         };
 
         var listDto = entity.ToListItemDto();
@@ -72,6 +75,7 @@ public sealed class ManualMappingContractTests
         var newEntity = editDto.ToEntity();
 
         listDto.ParentName.Should().Be("Root");
+        listDto.CreatedAtUtc.Should().Be(createdAtUtc);
         editDto.Should().BeEquivalentTo(new CategoryEditDto
         {
             Id = 20,
@@ -148,6 +152,7 @@ public sealed class ManualMappingContractTests
     [Fact]
     public void Product_attribute_mapping_should_not_copy_values_or_entity_identity()
     {
+        var createdAt = new DateTime(2026, 9, 1, 8, 30, 0, DateTimeKind.Utc);
         var request = new CreateProductAttributeRequest
         {
             Code = "COLOR",
@@ -157,6 +162,18 @@ public sealed class ManualMappingContractTests
 
         var editDto = request.ToEditDto();
         var entity = editDto.ToEntity();
+        var listEntity = new ProductAttribute
+        {
+            Id = 41,
+            StoreId = 7,
+            Code = "SIZE",
+            Name = "Kích cỡ",
+            Status = true,
+            CreatedAtUtc = createdAt
+        };
+        var listDto = listEntity.ToListItemDto();
+        var createdAtProperty = typeof(ProductAttributeListItemDto)
+            .GetProperty("CreatedAtUtc");
 
         editDto.Should().BeEquivalentTo(new ProductAttributeEditDto
         {
@@ -169,6 +186,8 @@ public sealed class ManualMappingContractTests
         entity.Values.Should().BeEmpty();
         entity.Code.Should().Be("COLOR");
         entity.Status.Should().BeTrue();
+        createdAtProperty.Should().NotBeNull();
+        createdAtProperty!.GetValue(listDto).Should().Be(createdAt);
     }
 
     [Fact]

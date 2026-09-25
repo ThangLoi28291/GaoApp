@@ -43,10 +43,18 @@ public class CategoryService : ICategoryService
         int page,
         int pageSize,
         CancellationToken ct = default)
+        => await GetPagedAsync(search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<CategoryListItemDto>> GetPagedAsync(
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
         var storeId = _currentStore.StoreId;
 
-        var paged = await _repository.GetPagedAsync(storeId, search, page, pageSize, ct);
+        var paged = await _repository.GetPagedAsync(storeId, search, status, page, pageSize, ct);
 
         return new PagedResult<CategoryListItemDto>
         {
@@ -58,6 +66,10 @@ public class CategoryService : ICategoryService
                 .ToList()
         };
     }
+
+    public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        CancellationToken ct = default)
+        => _repository.GetSummaryAsync(_currentStore.StoreId, ct);
 
     public async Task<Result<CategoryEditDto>> GetForEditAsync(int id, CancellationToken ct = default)
     {

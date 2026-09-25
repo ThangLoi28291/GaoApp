@@ -195,6 +195,20 @@ public sealed class LocalExceptionBoundaryTests
             CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<PagedResult<TaxListItemDto>> GetPagedAsync(
+            int storeId,
+            string? search,
+            bool? status,
+            int page,
+            int pageSize,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+            int storeId,
+            CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<TaxEditDto?> GetForEditAsync(
             int storeId,
             int id,

@@ -8,18 +8,66 @@ namespace GaoApp.Infrastructure.Repositories.Categories;
 
 public class CategoryRepository : ICategoryRepository
 {
+    private const string AccentInsensitiveSearchCollation =
+        "Latin1_General_100_CI_AI";
+
     private readonly AppDbContext _db;
     public CategoryRepository(AppDbContext db) => _db = db;
 
-    public async Task<PagedResult<Category>> GetPagedAsync(int storeId, string? search, int page, int pageSize, CancellationToken ct = default)
+    public Task<PagedResult<Category>> GetPagedAsync(
+        int storeId,
+        string? search,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
+        => GetPagedAsync(storeId, search, status: null, page, pageSize, ct);
+
+    public async Task<PagedResult<Category>> GetPagedAsync(
+        int storeId,
+        string? search,
+        bool? status,
+        int page,
+        int pageSize,
+        CancellationToken ct = default)
     {
-        search ??= "";
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
 
         var q = _db.Set<Category>()
             .AsNoTracking()
             .Include(x => x.Parent)
-            .Where(x => x.StoreId == storeId
-                     && (search == "" || x.Code.Contains(search) || x.Name.Contains(search)));
+            .Where(x => x.StoreId == storeId && !x.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            search = search.Trim();
+
+            if (_db.Database.IsRelational())
+            {
+                var accentInsensitiveSearch = search
+                    .Replace('Đ', 'D')
+                    .Replace('đ', 'd');
+
+                q = q.Where(x =>
+                    EF.Functions.Collate(
+                        x.Code,
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch) ||
+                    EF.Functions.Collate(
+                        x.Name
+                            .Replace("Đ", "D")
+                            .Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(accentInsensitiveSearch));
+            }
+            else
+            {
+                q = q.Where(x =>
+                    x.Code.Contains(search) ||
+                    x.Name.Contains(search));
+            }
+        }
+
+        if (status.HasValue)
+            q = q.Where(x => x.IsActive == status.Value);
 
         var total = await q.CountAsync(ct);
 
@@ -35,6 +83,23 @@ public class CategoryRepository : ICategoryRepository
             TotalItems = total,
             Items = items
         };
+    }
+
+    public async Task<(int TotalItems, int ActiveItems, int InactiveItems)> GetSummaryAsync(
+        int storeId,
+        CancellationToken ct = default)
+    {
+        var q = _db.Set<Category>()
+            .AsNoTracking()
+            .Where(x => x.StoreId == storeId && !x.IsDeleted);
+
+        var totalItems = await q.CountAsync(ct);
+        var activeItems = await q.CountAsync(x => x.IsActive, ct);
+
+        return (
+            totalItems,
+            activeItems,
+            totalItems - activeItems);
     }
 
     public Task<Category?> GetByIdAsync(int storeId, int id, CancellationToken ct = default)

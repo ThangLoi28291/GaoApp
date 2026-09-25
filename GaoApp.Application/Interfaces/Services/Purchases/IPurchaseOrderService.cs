@@ -28,7 +28,7 @@ public interface IPurchaseOrderService
         UpdateSourcePurchaseOrderCommercialRequest request,
         CancellationToken ct = default);
     Task SubmitAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
-    Task ApproveAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
+    Task ApproveAsync(int id, ApprovePurchaseOrderRequest request, CancellationToken ct = default);
     Task ReturnForRevisionAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
     Task RejectAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);
     Task MarkSentAsync(int id, PurchaseWorkflowRequest request, CancellationToken ct = default);

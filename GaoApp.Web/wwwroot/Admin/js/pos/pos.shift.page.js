@@ -1,6 +1,18 @@
 ﻿(function () {
     'use strict';
 
+    const entryQuery = new URLSearchParams(window.location.search);
+    const receivingForPos = entryQuery.get('start') === '1';
+    function returnToPos() {
+        let target = '/admin/pos';
+        try {
+            const requested = new URL(entryQuery.get('returnUrl') || target, window.location.origin);
+            if (requested.origin === window.location.origin && /^\/admin\/pos(?:\/(?:v3|legacy))?\/?$/.test(requested.pathname))
+                target = requested.pathname + requested.search;
+        } catch { /* Fall back to the POS page on this host. */ }
+        window.location.replace(target);
+    }
+
     // =========================
     // Elements
     // =========================
@@ -26,7 +38,6 @@
     const cashInTotal = document.getElementById('cashInTotal');
     const cashOutTotal = document.getElementById('cashOutTotal');
     const closingCashExpected = document.getElementById('closingCashExpected');
-    const closingCashExpectedMirror = document.getElementById('closingCashExpectedMirror');
     const openNote = document.getElementById('openNote');
     const voidCountShift = document.getElementById('voidCountShift');
 
@@ -34,6 +45,7 @@
     const txtOpenNote = document.getElementById('txtOpenNote');
 
     const cashTxnType = document.getElementById('cashTxnType');
+    const cashTxnTypeButtons = Array.from(document.querySelectorAll('[data-cash-txn-type]'));
     const cashTxnAmount = document.getElementById('cashTxnAmount');
     const cashTxnReason = document.getElementById('cashTxnReason');
     const cashTxnNote = document.getElementById('cashTxnNote');
@@ -375,7 +387,22 @@
     function setClosingCashExpectedText(value) {
         const text = formatMoney(value);
         setText(closingCashExpected, text);
-        setText(closingCashExpectedMirror, text);
+    }
+
+    function syncCashTxnTypePresentation() {
+        const currentValue = (cashTxnType && cashTxnType.value || '1').toString();
+
+        cashTxnTypeButtons.forEach(button => {
+            const isActive = button.dataset.cashTxnType === currentValue;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+    }
+
+    function setCashTxnType(value) {
+        if (!cashTxnType) return;
+        cashTxnType.value = value.toString();
+        syncCashTxnTypePresentation();
     }
 
     function getCashTypeText(type) {
@@ -799,7 +826,7 @@
         if (cashTxnAmount) cashTxnAmount.value = '0';
         if (cashTxnReason) cashTxnReason.value = '';
         if (cashTxnNote) cashTxnNote.value = '';
-        if (cashTxnType) cashTxnType.value = '1';
+        setCashTxnType('1');
 
         if (cashTxnModal) {
             cashTxnModal.show();
@@ -957,11 +984,12 @@
 
             if (!shift) {
                 renderNoOpenShift();
-                return;
+                return null;
             }
 
             renderOpenShift(shift);
             await loadCashTransactions();
+            return shift;
         } catch (err) {
             renderNoOpenShift();
             window.PosError.handle(err, { showToast: false });
@@ -996,6 +1024,11 @@
                         : null
                 });
                 showSuccess('Đã mở ca thành công');
+
+                if (receivingForPos) {
+                    returnToPos();
+                    return;
+                }
 
                 if (openShiftModal) {
                     openShiftModal.hide();
@@ -1271,6 +1304,21 @@
         if (btnShowCashTxnModal) btnShowCashTxnModal.addEventListener('click', openCashTxnPopup);
         if (btnShowCloseModal) btnShowCloseModal.addEventListener('click', openCloseShiftPopup);
 
+        cashTxnTypeButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                setCashTxnType(this.dataset.cashTxnType || '1');
+
+                if (cashTxnAmount) {
+                    cashTxnAmount.focus();
+                    cashTxnAmount.select();
+                }
+            });
+        });
+
+        if (cashTxnType) {
+            cashTxnType.addEventListener('change', syncCashTxnTypePresentation);
+        }
+
         if (btnOpenShift) btnOpenShift.addEventListener('click', openShift);
         if (btnAddCashTxn) btnAddCashTxn.addEventListener('click', addCashTransaction);
         if (btnCloseShift) btnCloseShift.addEventListener('click', closeShift);
@@ -1425,11 +1473,12 @@
             });
 
             cashTxnModalEl.addEventListener('shown.bs.modal', function () {
-                setTimeout(() => {
-                    if (cashTxnType) {
-                        cashTxnType.focus();
-                    }
-                }, 80);
+                syncCashTxnTypePresentation();
+
+                if (cashTxnAmount) {
+                    cashTxnAmount.focus();
+                    cashTxnAmount.select();
+                }
             });
         }
 
@@ -1454,7 +1503,9 @@
     document.addEventListener('DOMContentLoaded', async function () {
         initDenomPanels();
         bindEvents();
+        syncCashTxnTypePresentation();
         await loadWarehouses();
-        await loadCurrentShift();
+        const currentShift = await loadCurrentShift();
+        if (receivingForPos && currentShift === null) openOpenShiftModal();
     });
 })();

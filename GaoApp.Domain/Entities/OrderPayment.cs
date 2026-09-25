@@ -13,6 +13,9 @@ public class OrderPayment : BaseStoreEntity
 
     public PaymentMethod Method { get; set; }
     public decimal Amount { get; set; }
+    public bool IsDebtCollection { get; set; }
+    // One durable identity per manual collection, retained even after soft deletion.
+    public Guid? ClientRequestId { get; set; }
 
     [StringLength(100)]
     public string? ReferenceCode { get; set; }

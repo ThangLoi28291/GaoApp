@@ -1,4 +1,4 @@
-﻿@model GaoApp.Application.DTOs.POS.OrderReceiptDto
+@model GaoApp.Application.DTOs.POS.OrderReceiptDto
 
 @{
     Layout = null;
@@ -294,6 +294,7 @@
             }
         }
     </style>
+<script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true" data-auto-close></script>
 </head>
 <body>
     <div class="print-toolbar">
@@ -446,6 +447,11 @@
                 <td>Còn thiếu</td>
                 <td class="right">@Model.BalanceDue.ToString("N0")</td>
             </tr>
+            @if (Model.DepositAmount > 0) { <tr><td>Đã dùng tiền đặt cọc</td><td class="right">@Model.DepositAmount.ToString("N0")</td></tr> }
+            @if (Model.IsCreditSale && Model.CreditDueDate.HasValue)
+            {
+                <tr><td>Hẹn trả công nợ</td><td class="right">@Model.CreditDueDate?.ToString("dd/MM/yyyy")</td></tr>
+            }
             <tr>
                 <td>Tiền thừa</td>
                 <td class="right">@Model.ChangeDue.ToString("N0")</td>
@@ -501,11 +507,7 @@
                 }, 250);
             });
 
-            window.addEventListener('afterprint', function () {
-                setTimeout(function () {
-                    window.close();
-                }, 150);
-            });
+
         </script>
     }
 </body>

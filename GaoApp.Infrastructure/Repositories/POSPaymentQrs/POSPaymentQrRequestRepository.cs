@@ -35,7 +35,7 @@ public class POSPaymentQrRequestRepository : IPOSPaymentQrRequestRepository
         var normalized = (content ?? string.Empty).Trim();
 
         return _db.PosPaymentQrRequests
-            .Where(x => x.Content == normalized)
+            .Where(x => x.RequestCode == normalized || x.Content == normalized)
             .OrderByDescending(x => x.Id)
             .FirstOrDefaultAsync(ct);
     }

@@ -16,12 +16,24 @@ public class InputInvoiceDetail : BaseEntity
 
     public int LineNo { get; set; }
 
+    [StringLength(200)]
+    public string? SupplierItemCode { get; set; }
+
+    [StringLength(200)]
+    public string? NormalizedSupplierItemCode { get; set; }
+
     [Required]
     [StringLength(500)]
     public string ItemName { get; set; } = default!;
 
+    [StringLength(500)]
+    public string? NormalizedItemName { get; set; }
+
     [StringLength(100)]
     public string? UnitName { get; set; }
+
+    [StringLength(100)]
+    public string? NormalizedUnitName { get; set; }
 
     [Column(TypeName = "decimal(18,3)")]
     public decimal Quantity { get; set; }

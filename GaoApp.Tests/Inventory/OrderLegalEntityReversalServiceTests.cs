@@ -550,8 +550,22 @@ public sealed class OrderLegalEntityReversalServiceTests
             => Task.CompletedTask;
     }
 
-    private sealed class FakeFragmentService : IReturnableValuationFragmentService
+    private sealed class FakeFragmentService : IReturnableValuationFragmentService,
+        IReturnableValuationCostEvidence
     {
+        public Task<List<ReturnableValuationFragmentDto>> GetQuantityOnlyForOrderLineAsync(
+            int orderId, int orderLineId, CancellationToken ct)
+            => GetForOrderLineAsync(orderId, orderLineId, ct);
+
+        public Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct)
+        {
+            // This recording fixture checks orchestration only. Persisted closure
+            // is exercised with the real reader in SaleCostReversalIntegrationTests.
+            if (!_fragmentsByOrderLine.ContainsKey(orderLineId))
+                throw new InvalidOperationException("Unknown closure line.");
+            return Task.CompletedTask;
+        }
+
         private readonly IReadOnlyDictionary<
             int,
             List<ReturnableValuationFragmentDto>> _fragmentsByOrderLine;

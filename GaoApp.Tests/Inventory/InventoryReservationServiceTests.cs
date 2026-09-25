@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions.Pos;
@@ -191,6 +192,57 @@ public sealed class InventoryReservationServiceTests
         (await context.InventoryBalances.SingleAsync(
             x => x.WarehouseId == 7 && x.ProductVariantId == 7001))
             .ReservedQty.Should().Be(2m);
+    }
+
+    [Fact]
+    public async Task ReserveForOrder_LegacyShortage_ShouldReturnTypedConflictWithUnitMetadataAndNoMutation()
+    {
+        await using var context = CreateContext();
+        await SeedLegacyReservationAsync(context, variantId: 7003, onHand: 10m);
+        var order = LegacyOrder(7003, quantity: 1m);
+        var line = order.Lines.Single();
+        line.ItemName = "Nước suối";
+        line.UnitName = "Thùng";
+        line.SellingUnitName = "Thùng";
+        line.BaseUnitName = "Chai";
+        line.Multiplier = 24m;
+        line.BaseQuantity = 24m;
+        var movements = new RecordingInventoryMovementService(context);
+
+        Func<Task> action = () => CreateService(context, movements)
+            .ReserveForOrderAsync(order);
+
+        var exception = (await action.Should().ThrowAsync<PosAppException>()).Which;
+        exception.ErrorCode.Should().Be(PosErrorCodes.CartHoldInsufficientInventory);
+        exception.ErrorType.Should().Be(PosErrorTypes.StateConflict);
+        exception.StatusCode.Should().Be(409);
+        exception.ActionHint.Should().Be(
+            "Hãy giảm số lượng hoặc kiểm tra tồn kho rồi thử lại.");
+        exception.Message.Should().Contain("Nước suối");
+        exception.Message.Should().Contain("Legacy warehouse");
+        exception.Message.Should().Contain("1 Thùng");
+        exception.Message.Should().Contain("24 Chai");
+        exception.Message.Should().Contain("10 Chai");
+
+        var metadata = JsonSerializer.SerializeToElement(exception.Metadata);
+        metadata.GetProperty("itemName").GetString().Should().Be("Nước suối");
+        metadata.GetProperty("warehouseName").GetString().Should().Be("Legacy warehouse");
+        metadata.GetProperty("availableBaseQty").GetDecimal().Should().Be(10m);
+        metadata.GetProperty("requiredBaseQty").GetDecimal().Should().Be(24m);
+        metadata.GetProperty("baseUnitName").GetString().Should().Be("Chai");
+        metadata.GetProperty("sellingQuantity").GetDecimal().Should().Be(1m);
+        metadata.GetProperty("sellingUnitName").GetString().Should().Be("Thùng");
+        metadata.GetProperty("multiplier").GetDecimal().Should().Be(24m);
+
+        movements.PreLockBatches.Should().ContainSingle()
+            .Which.Should().Equal(
+                new InventoryPostingLockKey(1, 7, 7003));
+        (await context.InventoryBalances.SingleAsync(
+            x => x.WarehouseId == 7 && x.ProductVariantId == 7003))
+            .ReservedQty.Should().Be(0m);
+        (await context.InventoryReservations.CountAsync()).Should().Be(0);
+        order.HasReservation.Should().BeFalse();
+        order.ReservedAtUtc.Should().BeNull();
     }
 
     [Fact]
