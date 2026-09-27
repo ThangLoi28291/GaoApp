@@ -159,6 +159,79 @@ public sealed class PosOfflineSqlServerTests
         Assert.True((await check.Orders.SingleAsync(x => x.Id == orderId)).CompletedAtUtc < DateTime.UtcNow.AddMinutes(-4));
     }
 
+    [Theory]
+    [InlineData(InvoiceIssuanceRoute.Automatic)]
+    [InlineData(InvoiceIssuanceRoute.Manual)]
+    public async Task Invoice_intent_replay_is_idempotent_for_completed_order_after_current_cart_advances(InvoiceIssuanceRoute route)
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        using var client = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        await client.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash = 0, warehouseId = store.WarehouseId });
+        var orderId = (await client.JsonAsync(HttpMethod.Post, "/admin/pos/draft")).GetProperty("orderId").GetInt32();
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/items?variantId={store.VariantId}&qty=3");
+        int shiftId;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+            shiftId = (await db.POSShifts.SingleAsync()).Id;
+        Assert.Equal(HttpStatusCode.OK, (await Send(client, "/admin/pos/cart/current/payment-and-finalize",
+            new { orderId, clientRequestId = Guid.NewGuid(), method = 0, amount = 60 }, Guid.NewGuid(), shiftId, 60)).Status);
+        DateTime? completedAt;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var order = await db.Orders.SingleAsync(x => x.Id == orderId);
+            // A delayed replay must not restart the public two-hour information window.
+            order.CompletedAtUtc = DateTime.UtcNow.AddHours(-3);
+            await db.SaveChangesAsync(); completedAt = order.CompletedAtUtc;
+        }
+        var nextId = (await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/new", new { })).GetProperty("orderId").GetInt32();
+        Assert.NotEqual(orderId, nextId);
+        var operationId = Guid.NewGuid();
+        for (var retry = 0; retry < 2; retry++)
+        {
+            var response = await Send(client, $"/admin/pos/{orderId}/invoice-route", new { route }, operationId, shiftId);
+            Assert.Equal(HttpStatusCode.OK, response.Status);
+            Assert.Equal(orderId, response.Body.GetProperty("orderId").GetInt32());
+            Assert.Equal(route.ToString(), response.Body.GetProperty("route").GetString());
+        }
+        var other = route == InvoiceIssuanceRoute.Manual ? InvoiceIssuanceRoute.Automatic : InvoiceIssuanceRoute.Manual;
+        Assert.Equal(HttpStatusCode.Conflict, (await Send(client, $"/admin/pos/{orderId}/invoice-route", new { route = other }, Guid.NewGuid(), shiftId)).Status);
+        await using var check = app.Database.CreateTenantContext(store.StoreId);
+        var final = await check.Orders.SingleAsync(x => x.Id == orderId);
+        Assert.Equal(route, final.InvoiceIssuanceRoute);
+        Assert.Equal(completedAt, final.CompletedAtUtc);
+        Assert.Equal(InvoiceIssuanceRoute.Unselected, (await check.Orders.SingleAsync(x => x.Id == nextId)).InvoiceIssuanceRoute);
+        Assert.Single(await check.Set<PosOperationReceipt>().Where(x => x.OperationId == operationId).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Invoice_intent_rejects_an_order_outside_the_originating_shift_without_recording_success()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var account = await app.AddAccountAsync(store, "*");
+        using var client = await app.LoginAsync(account);
+        await client.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash = 0, warehouseId = store.WarehouseId });
+        int currentShiftId, orderId;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            currentShiftId = (await db.POSShifts.SingleAsync()).Id;
+            var oldShift = new POSShift { StoreId = store.StoreId, TerminalId = store.TerminalId,
+                OpenedByUserId = account.UserId, WarehouseId = store.WarehouseId, Status = POSShiftStatus.Closed,
+                OpenedAtUtc = DateTime.UtcNow.AddDays(-1), ClosedAtUtc = DateTime.UtcNow.AddHours(-4) };
+            db.Add(oldShift); await db.SaveChangesAsync();
+            var order = new Order { StoreId = store.StoreId, POSShiftId = oldShift.Id,
+                Status = OrderStatus.Completed, CompletedAtUtc = DateTime.UtcNow.AddHours(-4) };
+            db.Add(order); await db.SaveChangesAsync(); orderId = order.Id;
+        }
+        var key = Guid.NewGuid();
+        var response = await Send(client, $"/admin/pos/{orderId}/invoice-route",
+            new { route = InvoiceIssuanceRoute.Manual }, key, currentShiftId);
+        Assert.Equal(HttpStatusCode.Conflict, response.Status);
+        await using var check = app.Database.CreateTenantContext(store.StoreId);
+        Assert.Equal(InvoiceIssuanceRoute.Unselected, (await check.Orders.SingleAsync(x => x.Id == orderId)).InvoiceIssuanceRoute);
+        Assert.Empty(await check.Set<PosOperationReceipt>().Where(x => x.OperationId == key).ToListAsync());
+    }
+
     private static async Task<(HttpStatusCode Status, JsonElement Body)> Send(FullApplicationFixture.Client client,
         string path, object body, Guid key, int? shiftId = null, decimal? expected = null)
     {

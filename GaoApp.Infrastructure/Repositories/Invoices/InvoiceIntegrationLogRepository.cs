@@ -20,6 +20,16 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
         InvoiceIntegrationLog log,
         CancellationToken ct = default)
     {
+        // Provider clients also run without a request tenant. Derive log ownership
+        // from the persisted invoice rather than a missing/default StoreId.
+        var storeId = await _db.InvoiceHeads.AsNoTracking()
+            .Where(x => x.Id == log.InvoiceHeadId && !x.IsDeleted)
+            .Select(x => (int?)x.StoreId)
+            .SingleOrDefaultAsync(ct);
+        if (storeId is null or <= 0 || (log.StoreId != 0 && log.StoreId != storeId.Value))
+            throw new InvalidOperationException("Integration log invoice/store ownership is invalid.");
+
+        log.StoreId = storeId.Value;
         await _db.InvoiceIntegrationLogs.AddAsync(log, ct);
     }
 
@@ -126,9 +136,23 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
             .FirstOrDefaultAsync(x => !x.IsDeleted && x.Id == id, ct);
     }
 
-    public Task SaveChangesAsync(CancellationToken ct = default)
+    public async Task SaveChangesAsync(CancellationToken ct = default)
     {
-        return _db.SaveChangesAsync(ct);
+        var pendingLogs = _db.ChangeTracker.Entries<InvoiceIntegrationLog>()
+            .Where(x => x.State == EntityState.Added).ToArray();
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // The caller reports log failure while preserving the provider result.
+            // A failed optional insert must not poison later business/heartbeat saves.
+            foreach (var entry in pendingLogs)
+                if (entry.State == EntityState.Added)
+                    entry.State = EntityState.Detached;
+            throw;
+        }
     }
     public async Task<List<InvoiceIntegrationLog>> GetLogsForDashboardAsync(
     DateTime fromDate,

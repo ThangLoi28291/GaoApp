@@ -512,5 +512,22 @@ public static class PermissionCodes
             public const string View = "system.integration.view";
             public const string Manage = "system.integration.manage";
         }
+        public static class Invoice
+        {
+            public const string ManualIssue =
+                "system.invoice.manualissue";
+
+            public const string Route =
+                "system.invoice.route";
+        }
+
+        public static class AutoInvoice
+        {
+            public const string Operate =
+                "system.autoinvoice.operate";
+
+            public const string Settings =
+                "system.autoinvoice.settings";
+        }
     }
 }

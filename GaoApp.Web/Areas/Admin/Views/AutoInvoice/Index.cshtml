@@ -1,9 +1,30 @@
 @model GaoApp.Application.DTOs.Invoices.AutoInvoiceDashboardDto
 @using GaoApp.Domain.Enums
 @using System.Globalization
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
 @{
     ViewData["Title"] = "Phát hành hóa đơn tự động";
     var tab = (string?)ViewBag.Tab ?? "today";
+    var canOperate = (await Authorization.AuthorizeAsync(User, PermissionCodes.System.AutoInvoice.Operate)).Succeeded;
+    var canSettings = (await Authorization.AuthorizeAsync(User, PermissionCodes.System.AutoInvoice.Settings)).Succeeded;
+    var canRoute = (await Authorization.AuthorizeAsync(User, PermissionCodes.System.Invoice.Route)).Succeeded;
+    var canSync = (await Authorization.AuthorizeAsync(User, PermissionCodes.System.Integration.Manage)).Succeeded;
+    var titles = new Dictionary<string, string>
+    {
+        ["today"] = "Hôm nay", ["waiting"] = "Chờ đủ tuổi", ["single"] = "Đơn lẻ",
+        ["groups"] = "Đợi gộp", ["errors"] = "Sự cố", ["history"] = "Đã phát hành",
+        ["old"] = "Tồn ngày trước", ["settings"] = "Cấu hình"
+    };
+    var title = titles.GetValueOrDefault(tab, "Theo tháng");
+    TimeZoneInfo zone;
+    try { zone = TimeZoneInfo.FindSystemTimeZoneById(Model.Settings.TimeZoneId); }
+    catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.Local; }
+    catch (InvalidTimeZoneException) { zone = TimeZoneInfo.Local; }
+    catch (ArgumentException) { zone = TimeZoneInfo.Local; }
+    string LocalTime(DateTime? utc) => utc.HasValue
+        ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc.Value, DateTimeKind.Utc), zone).ToString("dd/MM/yyyy HH:mm:ss") : "—";
     string Money(decimal value) => value.ToString("N0", CultureInfo.CurrentCulture);
 }
 
@@ -21,19 +42,18 @@
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
         <div>
             <h3 class="fw-bold mb-1">Phát hành hóa đơn tự động</h3>
-            <div class="text-muted">Queue SQL, gộp theo ngày, khóa chung với phát hành thủ công và trạng thái Windows Service.</div>
+            <div class="text-muted">Theo dõi hóa đơn tự động theo ngày bán, thời gian chờ và tình trạng xử lý.</div>
         </div>
         <div class="d-flex gap-2">
+            @if (canSettings)
+            {
             <form method="post" asp-action="Toggle">
                 @Html.AntiForgeryToken()
                 <button class="btn @(Model.Settings.IsEnabled ? "btn-warning" : "btn-success")" type="submit">
                     @(Model.Settings.IsEnabled ? "Tạm ngưng" : "Tiếp tục")
                 </button>
             </form>
-            <form method="post" asp-action="RunOnce">
-                @Html.AntiForgeryToken()
-                <button class="btn btn-outline-primary" type="submit">Chạy một chu kỳ</button>
-            </form>
+            }
         </div>
     </div>
 
@@ -46,13 +66,13 @@
                 <div>
                     <div class="fw-semibold">Admin: <span class="badge @(Model.Settings.IsEnabled ? "bg-success" : "bg-warning text-dark")">@(Model.Settings.IsEnabled ? "Đang bật" : "Tạm ngưng")</span></div>
                     <div class="fw-semibold mt-1">Worker: <span class="badge @(Model.Worker.IsRunning ? "bg-success" : "bg-danger")">@(Model.Worker.IsRunning ? "Đang chạy" : "Chưa heartbeat")</span></div>
-                    <div class="text-muted small mt-1">Tạm ngưng chỉ dừng gửi Viettel; POS vẫn tạo Invoice draft.</div>
+                    <div class="text-muted small mt-1">Tạm ngưng áp dụng cho cửa hàng này từ chu kỳ kế tiếp của worker trên server; lượt đã gửi Viettel có thể hoàn tất. POS vẫn tạo hóa đơn nháp.</div>
                 </div>
                 <div class="text-muted small text-end">
-                    <div>Heartbeat: @(Model.Worker.LastHeartbeatAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "chưa có")</div>
-                    <div>Lần quét: @(Model.Worker.LastScanAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "chưa có")</div>
+                    <div>Heartbeat: @LocalTime(Model.Worker.LastHeartbeatAtUtc)</div>
+                    <div>Lần quét: @LocalTime(Model.Worker.LastScanAtUtc)</div>
                     <div>Đang xử lý: @(Model.Worker.CurrentInvoiceHeadId?.ToString() ?? "—")</div>
-                    <div>Lần chạy kế tiếp: @(Model.Worker.NextRunAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "—")</div>
+                    <div>Lần chạy kế tiếp: @LocalTime(Model.Worker.NextRunAtUtc)</div>
                     @if (!string.IsNullOrWhiteSpace(Model.Worker.LastErrorMessage)) { <div class="text-danger">@Model.Worker.LastErrorCode: @Model.Worker.LastErrorMessage</div> }
                 </div>
             </div>
@@ -60,20 +80,22 @@
     </div>
 
     <div class="row g-3 mb-3">
-        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Hóa đơn hôm nay</span><strong>@Model.Summary.TodayCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Hôm nay · đang chờ trong phạm vi</span><strong>@Model.Summary.TodayCount</strong></div></div>
         <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chưa phát hành</span><strong>@Model.Summary.PendingCount</strong></div></div>
         <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chờ gộp</span><strong>@Model.Summary.GroupWaitingCount</strong></div></div>
         <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Cần xử lý</span><strong class="text-danger">@Model.Summary.ErrorCount</strong></div></div>
         <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Chưa xác định</span><strong class="text-warning">@Model.Summary.UnknownCount</strong></div></div>
-        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Đã phát hành</span><strong class="text-success">@Model.Summary.IssuedCount</strong></div></div>
+        <div class="col-md-2"><div class="auto-metric"><span class="auto-label">Đã phát hành · lịch sử gần đây</span><strong class="text-success">@Model.Summary.IssuedCount</strong></div></div>
     </div>
 
-    <ul class="nav nav-tabs mb-3">
-        @foreach (var item in new[] { ("today", "Hôm nay"), ("month", "Theo tháng"), ("groups", "Chờ gộp"), ("errors", "Cần xử lý"), ("history", "Lịch sử"), ("settings", "Cấu hình") })
+    <ul class="nav nav-tabs mb-3" aria-label="Vận hành hóa đơn tự động">
+        @foreach (var item in titles.Where(item => item.Key == "settings" ? canSettings : canOperate))
         {
-            <li class="nav-item"><a class="nav-link @(tab == item.Item1 ? "active" : "")" asp-route-tab="@item.Item1">@item.Item2</a></li>
+            <li class="nav-item"><a class="nav-link @(tab == item.Key ? "active" : "")" asp-action="Index" asp-route-tab="@item.Key" aria-current="@(tab == item.Key ? "page" : null)">@item.Value</a></li>
         }
     </ul>
+
+    <p class="text-muted">Chỉ đơn thanh toán hoàn toàn bằng tiền mặt mới xét ngưỡng tiền và được gộp. Đơn có chuyển khoản (kể cả thanh toán hỗn hợp), thẻ hoặc ví điện tử luôn phát hành riêng khi đủ thời gian chờ.</p>
 
     @if (tab == "settings")
     {
@@ -83,8 +105,8 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-4"><label class="form-label">Thời gian tối thiểu sau tính tiền (phút)</label><input class="form-control" type="number" min="0" name="MinimumAgeMinutes" value="@Model.Settings.MinimumAgeMinutes" /></div>
-                    <div class="col-md-4"><label class="form-label">Từ số tiền phát hành riêng</label><input class="form-control" type="number" min="1" name="SeparateAmountThreshold" value="@Model.Settings.SeparateAmountThreshold" /></div>
-                    <div class="col-md-4"><label class="form-label">Tổng tiền mục tiêu nhóm</label><input class="form-control" type="number" min="1" name="GroupTargetAmount" value="@Model.Settings.GroupTargetAmount" /></div>
+                    <div class="col-md-4"><label class="form-label">Tiền mặt: từ số tiền phát hành riêng</label><input class="form-control" type="number" min="1" step="0.01" required name="SeparateAmountThreshold" value="@Model.Settings.SeparateAmountThreshold.ToString("0.##", CultureInfo.InvariantCulture)" /></div>
+                    <div class="col-md-4"><label class="form-label">Tiền mặt: tổng tiền mục tiêu nhóm</label><input class="form-control" type="number" min="1" step="0.01" required name="GroupTargetAmount" value="@Model.Settings.GroupTargetAmount.ToString("0.##", CultureInfo.InvariantCulture)" /></div>
                     <div class="col-md-4"><label class="form-label">Khoảng cách giữa hai lần gửi (giây)</label><input class="form-control" type="number" min="1" name="SendIntervalSeconds" value="@Model.Settings.SendIntervalSeconds" /></div>
                     <div class="col-md-4"><label class="form-label">Giờ chốt phần dư</label><input class="form-control" type="time" name="ClosingTimeLocal" value="@Model.Settings.ClosingTimeLocal.ToString(@"hh\:mm")" /></div>
                     <div class="col-md-4"><label class="form-label">Múi giờ</label><input class="form-control" name="TimeZoneId" value="@Model.Settings.TimeZoneId" /></div>
@@ -98,20 +120,127 @@
             <div class="card-footer bg-white text-end"><button class="btn btn-primary" type="submit">Lưu cấu hình</button></div>
         </form>
     }
-    else if (tab == "groups")
-    {
-        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Hóa đơn đang chờ gộp</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Group key</th><th>Ngày bán</th><th>Nguồn</th><th class="text-end">Tổng tiền</th><th>Điều kiện</th></tr></thead><tbody>@foreach (var g in Model.Groups) { <tr><td><code>@g.GroupKey</code></td><td>@g.SaleDateLocal.ToString("dd/MM/yyyy")</td><td>@string.Join(", ", g.InvoiceHeadIds.Select(x => "#" + x))</td><td class="text-end">@Money(g.TotalAmount)</td><td>@(g.IsReadyByTarget ? "Đủ ngưỡng" : g.IsReadyByClosing ? "Đã đến giờ chốt" : "Đang chờ")</td></tr>}</tbody></table></div></div>
-    }
-    else if (tab == "errors")
-    {
-        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Hóa đơn lỗi cần xử lý</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Invoice</th><th>Lỗi</th><th>Hướng xử lý</th></tr></thead><tbody>@foreach (var e in Model.Errors) { <tr><td>#@e.InvoiceHeadId<br /><small>@e.OrderNumber</small></td><td><span class="text-danger fw-semibold">@e.ErrorCode</span><br />@e.ErrorMessage</td><td>@if (e.RequiresUuidLookup) { <form method="post" asp-controller="Invoice" asp-action="SyncViettelByUuid" class="d-inline">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@e.InvoiceHeadId" /><button class="btn btn-sm btn-warning" type="submit">Tra cứu UUID</button></form> } else { <a class="btn btn-sm btn-outline-primary" asp-controller="Invoice" asp-action="ViettelPayload" asp-route-id="@e.InvoiceHeadId">Mở xử lý</a> }</td></tr>}</tbody></table></div></div>
-    }
     else if (tab == "history")
     {
-        <div class="card auto-card"><div class="card-header bg-white fw-semibold">Lịch sử phát hành và nhật ký thao tác</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Operation</th><th>Loại</th><th>Trạng thái</th><th>Nguồn</th><th>Thời gian</th><th>Lỗi</th></tr></thead><tbody>@foreach (var h in Model.History) { <tr><td>#@h.OperationId</td><td>@h.Kind</td><td>@h.Status</td><td>@h.SourceCount</td><td>@h.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td><td>@h.ErrorCode<br />@h.ErrorMessage</td></tr>}</tbody></table></div></div>
+        <section class="card auto-card" aria-label="Đã phát hành">
+            <div class="card-header bg-white fw-semibold">Đã phát hành · chỉ tra cứu</div>
+            <div class="card-body text-muted small">Lịch sử tự động trong tối đa 100 thao tác gần nhất của cửa hàng. <a asp-controller="Invoice" asp-action="Index">Tra cứu tất cả hóa đơn</a></div>
+            <div class="table-responsive"><table class="table auto-table mb-0">
+                <thead><tr><th>Operation / Invoice</th><th>Luồng</th><th>Loại</th><th>Trạng thái</th><th>Ngày bán</th><th>Số nguồn</th><th>Hoàn tất</th></tr></thead>
+                <tbody>
+                @foreach (var h in Model.History.Where(x => x.Status == AutoInvoiceOperationStatus.Succeeded))
+                {
+                    <tr><td>#@h.OperationId @if (h.InvoiceHeadId.HasValue) { <a asp-controller="Invoice" asp-action="Detail" asp-route-id="@h.InvoiceHeadId">Hóa đơn #@h.InvoiceHeadId</a> }</td>
+                        <td><span class="badge bg-primary">Tự động</span></td><td>@(h.Kind == AutoInvoiceOperationKind.Group ? "Gộp" : "Đơn lẻ")</td>
+                        <td>@h.Status</td><td>@h.SaleDateLocal.ToString("dd/MM/yyyy")</td><td>@h.SourceCount</td><td>@LocalTime(h.CompletedAtUtc)</td></tr>
+                }
+                @if (!Model.History.Any(x => x.Status == AutoInvoiceOperationStatus.Succeeded))
+                {
+                    <tr><td colspan="7" class="text-muted text-center py-4">Chưa có lần phát hành thành công trong lịch sử gần đây.</td></tr>
+                }
+                </tbody>
+            </table></div>
+        </section>
     }
     else
     {
-        <div class="card auto-card"><div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center"><span>@(tab == "month" ? "Hóa đơn chưa phát hành theo phạm vi tháng" : "Hóa đơn hôm nay")</span>@if (tab == "month") { <form method="get" class="d-flex gap-2"><input type="hidden" name="tab" value="month" /><input class="form-control form-control-sm" type="month" name="month" /><button class="btn btn-sm btn-outline-primary" type="submit">Chọn tháng</button></form> }</div><div class="table-responsive"><table class="table auto-table mb-0"><thead><tr><th>Thứ tự bán</th><th>Invoice</th><th>Buyer</th><th>Ngày/giờ</th><th class="text-end">Tổng tiền</th><th>Trạng thái</th><th>Lỗi</th></tr></thead><tbody>@foreach (var row in Model.Queue) { <tr><td>@row.SaleAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>#@row.InvoiceHeadId<br /><small>Order #@row.OrderId</small></td><td>@row.BuyerDisplay</td><td>@row.SaleDateLocal.ToString("dd/MM/yyyy")</td><td class="text-end">@Money(row.GrandTotal)</td><td>@row.StatusName</td><td class="text-danger">@row.ErrorMessage</td></tr>}</tbody></table></div><div class="card-footer bg-white text-muted small">Thứ tự ngày bán cũ trước, trong ngày theo giờ bán. Không gộp qua ngày. Provider Viettel dùng cấu hình hiện hữu của InvoiceHead.</div></div>
+        <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
+            <div class="text-muted small">
+                Giờ cửa hàng: @Model.NowLocal.ToString("dd/MM/yyyy HH:mm") · @Model.Settings.TimeZoneId.
+                @if (tab == "old") { <span>Các hóa đơn chưa phát hành có ngày bán trước hôm nay, kể cả ngoài phạm vi worker.</span> }
+                else if (tab == "errors") { <span>Sự cố còn tồn đến hết hôm nay, kể cả ngoài phạm vi worker.</span> }
+                else { <span>Ngày bán: @Model.ScopeStartLocal.ToString("dd/MM/yyyy") – @Model.ScopeEndLocal.ToString("dd/MM/yyyy").</span> }
+            </div>
+            <form method="get" asp-action="Index" class="d-flex gap-2">
+                <input type="hidden" name="tab" value="month" />
+                <label class="visually-hidden" for="autoInvoiceMonth">Tháng bán</label>
+                <input id="autoInvoiceMonth" class="form-control form-control-sm" type="month" name="month" value="@Model.ScopeEndLocal.ToString("yyyy-MM")" />
+                <button class="btn btn-sm btn-outline-primary text-nowrap" type="submit">Theo tháng</button>
+            </form>
+        </div>
+        @if (tab is "groups" or "old")
+        {
+            <section class="card auto-card mb-3" aria-label="Đợi gộp / Gộp sẵn sàng">
+                <div class="card-header bg-white fw-semibold">Đợi gộp / Gộp sẵn sàng</div>
+                <div class="table-responsive"><table class="table auto-table mb-0">
+                    <thead><tr><th>Ngày bán / HKD</th><th>Hóa đơn nguồn</th><th class="text-end">Tổng / Mục tiêu</th><th>Điều kiện nhóm</th></tr></thead>
+                    <tbody>
+                    @foreach (var g in Model.Groups)
+                    {
+                        <tr><td>@g.SaleDateLocal.ToString("dd/MM/yyyy") · HKD #@g.LegalEntityId<br /><small>Cấu hình #@g.InvoiceProviderSettingId</small></td>
+                            <td>@string.Join(", ", g.InvoiceHeadIds.Select(id => "#" + id))</td>
+                            <td class="text-end">@Money(g.TotalAmount) / @Money(Model.Settings.GroupTargetAmount)</td>
+                            <td>
+                                @if (g.IsReadyByTarget) { <span class="badge bg-success">Đã đạt target</span> }
+                                @if (g.IsReadyByClosing) { <span class="badge bg-info">Cutoff-ready · đã đến giờ chốt</span> }
+                                @if (g.IsOldDayRemainder) { <span class="badge bg-info">Old-day remainder · phần dư ngày cũ</span> }
+                                @if (!g.IsReadyByTarget && !g.IsReadyByClosing && !g.IsOldDayRemainder) { <span class="badge bg-secondary">Đang đợi target</span> }
+                            </td></tr>
+                    }
+                    @if (Model.Groups.Count == 0) { <tr><td colspan="4" class="text-muted text-center py-4">Chưa có nhóm đủ tuổi và an toàn trong phạm vi này.</td></tr> }
+                    </tbody>
+                </table></div>
+                <div class="card-footer bg-white text-muted small">Nhóm theo ngày bán, cửa hàng, HKD và cấu hình hóa đơn tương thích. Worker kiểm tra lại trước khi phát hành.</div>
+            </section>
+        }
+        <section class="card auto-card" aria-label="@title">
+            <div class="card-header bg-white fw-semibold">@title · @Model.TotalRows hóa đơn chưa phát hành</div>
+            <div class="table-responsive"><table class="table auto-table mb-0">
+                <thead><tr><th>Invoice / Order</th><th>Ngày giờ bán</th><th class="text-end">Tổng tiền</th><th>Luồng / Loại</th><th>Tuổi / Trạng thái</th><th>Operation</th><th>Sự cố</th><th>Thao tác</th></tr></thead>
+                <tbody>
+                @foreach (var row in Model.Queue)
+                {
+                    <tr>
+                        <td><a asp-controller="Invoice" asp-action="Detail" asp-route-id="@row.InvoiceHeadId">Hóa đơn #@row.InvoiceHeadId</a><br /><small>Order #@row.OrderId · @row.OrderNumber</small></td>
+                        <td>@row.SaleAtLocal.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                        <td class="text-end">@Money(row.GrandTotal)</td>
+                        <td><span class="badge bg-primary">Tự động</span><br /><small>@(row.IsGroupedConsumer ? "Gộp" : "Đơn lẻ")</small></td>
+                        <td><span class="badge @(row.HasIncident ? "bg-danger" : row.IsReady ? "bg-success" : "bg-secondary")">@row.StatusName</span><br />
+                            <small>@(row.IsAgeEligible ? "Đã đủ tuổi" : "Chưa đủ tuổi") · @row.EligibleAtLocal.ToString("dd/MM/yyyy HH:mm:ss")</small></td>
+                        <td>@if (row.OperationId.HasValue) { <span>#@row.OperationId · @row.OperationStatus</span> } else { <span>—</span> }</td>
+                        <td class="text-danger text-break"><strong>@row.ErrorCode</strong><br />@row.ErrorMessage</td>
+                        <td>
+                            @if (row.IsUnknown)
+                            {
+                                @if (canSync && row.UuidLookupInvoiceHeadId.HasValue)
+                                {
+                                    <form method="post" asp-controller="Invoice" asp-action="SyncViettelByUuid" class="d-inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@row.UuidLookupInvoiceHeadId" />
+                                        <button class="btn btn-sm btn-warning" type="submit">Tra cứu UUID</button>
+                                    </form>
+                                }
+                                else { <span class="text-muted small">Cần kiểm tra trạng thái nhà cung cấp.</span> }
+                            }
+                            else if (canOperate && row.CanRecheck)
+                            {
+                                <form method="post" asp-action="RecheckIncident" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="invoiceHeadId" value="@row.InvoiceHeadId" />
+                                    <button class="btn btn-sm btn-outline-primary" type="submit">Kiểm tra lại</button>
+                                </form>
+                            }
+                            @if (canRoute && row.CanChangeToManual)
+                            {
+                                <form method="post" asp-action="ChangeToManual" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="invoiceHeadId" value="@row.InvoiceHeadId" />
+                                    <button class="btn btn-sm btn-outline-secondary" type="submit">Chuyển sang thủ công</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (Model.Queue.Count == 0) { <tr><td colspan="8" class="text-muted text-center py-4">Không có hóa đơn phù hợp trong trang này.</td></tr> }
+                </tbody>
+            </table></div>
+            <div class="card-footer bg-white d-flex justify-content-between flex-wrap gap-2">
+                <span class="text-muted small">Tuổi tính từ lần thay đổi nội dung gần nhất; ngày bán giữ theo thời điểm hoàn tất đơn hàng. Chuyển sang thủ công áp dụng cho toàn bộ đơn hàng.</span>
+                <nav aria-label="Phân trang hóa đơn tự động">
+                    @if (Model.Page > 1) { <a class="btn btn-sm btn-outline-primary" asp-action="Index" asp-route-tab="@tab" asp-route-page="@(Model.Page - 1)" asp-route-pageSize="@Model.PageSize" asp-route-startDateLocal="@Model.ScopeStartLocal.ToString("yyyy-MM-dd")" asp-route-scopeMode="@(tab == "month" ? AutoInvoiceScopeMode.Month : AutoInvoiceScopeMode.Today)">Trang trước</a> }
+                    @if ((long)Model.Page * Model.PageSize < Model.TotalRows) { <a class="btn btn-sm btn-outline-primary" asp-action="Index" asp-route-tab="@tab" asp-route-page="@(Model.Page + 1)" asp-route-pageSize="@Model.PageSize" asp-route-startDateLocal="@Model.ScopeStartLocal.ToString("yyyy-MM-dd")" asp-route-scopeMode="@(tab == "month" ? AutoInvoiceScopeMode.Month : AutoInvoiceScopeMode.Today)">Trang sau</a> }
+                </nav>
+            </div>
+        </section>
     }
 </div>

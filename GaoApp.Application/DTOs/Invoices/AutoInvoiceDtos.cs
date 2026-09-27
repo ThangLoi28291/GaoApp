@@ -37,6 +37,7 @@ public sealed class UpdateAutoInvoiceSettingsRequest
 
 public sealed class AutoInvoiceDashboardQueryDto
 {
+    public string Workspace { get; set; } = "today";
     public AutoInvoiceScopeMode ScopeMode { get; set; } = AutoInvoiceScopeMode.Today;
     public DateTime? StartDateLocal { get; set; }
     public DateTime? EndDateLocal { get; set; }
@@ -46,6 +47,12 @@ public sealed class AutoInvoiceDashboardQueryDto
 
 public sealed class AutoInvoiceDashboardDto
 {
+    public DateTime NowLocal { get; set; }
+    public DateTime ScopeStartLocal { get; set; }
+    public DateTime ScopeEndLocal { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalRows { get; set; }
     public AutoInvoiceSettingsDto Settings { get; set; } = new();
     public AutoInvoiceWorkerDto Worker { get; set; } = new();
     public AutoInvoiceDashboardSummaryDto Summary { get; set; } = new();
@@ -83,6 +90,19 @@ public sealed class AutoInvoiceWorkerDto
 
 public sealed class AutoInvoiceQueueItemDto
 {
+    public InvoiceIssuanceRoute InvoiceIssuanceRoute { get; set; }
+    public DateTime SaleAtLocal { get; set; }
+    public DateTime StableAtUtc { get; set; }
+    public DateTime EligibleAtLocal { get; set; }
+    public bool IsAgeEligible { get; set; }
+    public bool IsReady { get; set; }
+    public bool HasIncident { get; set; }
+    public bool IsUnknown { get; set; }
+    public bool CanRecheck { get; set; }
+    public bool CanChangeToManual { get; set; }
+    public int? UuidLookupInvoiceHeadId { get; set; }
+    public int? OperationId { get; set; }
+    public AutoInvoiceOperationStatus? OperationStatus { get; set; }
     public int InvoiceHeadId { get; set; }
     public int? OrderId { get; set; }
     public string? OrderNumber { get; set; }
@@ -111,11 +131,13 @@ public sealed class AutoInvoiceGroupDto
     public decimal TotalAmount { get; set; }
     public bool IsReadyByTarget { get; set; }
     public bool IsReadyByClosing { get; set; }
+    public bool IsOldDayRemainder { get; set; }
     public List<int> InvoiceHeadIds { get; set; } = new();
 }
 
 public sealed class AutoInvoiceErrorDto
 {
+    public AutoInvoiceQueueItemDto? Invoice { get; set; }
     public int InvoiceHeadId { get; set; }
     public int? OperationId { get; set; }
     public string? OrderNumber { get; set; }

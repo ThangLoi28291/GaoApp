@@ -56,59 +56,94 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         var storeId = RequireStore();
         var settings = await EnsureSettingsAsync(storeId, ct);
         var nowUtc = _clock.GetUtcNow().UtcDateTime;
-        var scope = ResolveScope(settings, query, nowUtc);
-        var candidates = await _repository.GetCandidateInvoicesAsync(
-            storeId,
-            scope.FromUtc,
-            scope.ToUtc,
-            ct);
+        var nowLocal = LocalNow(settings, nowUtc);
+        if (query.Workspace == "today")
+            query.ScopeMode = AutoInvoiceScopeMode.Today;
+        if (query.Workspace == "month" && !query.StartDateLocal.HasValue)
+        {
+            query.ScopeMode = AutoInvoiceScopeMode.Month;
+            query.StartDateLocal = new DateTime(nowLocal.Year, nowLocal.Month, 1);
+        }
+        var scope = ResolveScope(settings,
+            query.Workspace is "today" or "month" ? query : null, nowUtc);
+        if (query.Workspace is "old" or "errors")
+        {
+            // Operational backlog is independent of the worker's configured scope.
+            // Reapply original sale time below: the existing candidate query also
+            // matches InvoiceDate, which may differ from Order.CompletedAtUtc.
+            scope = (DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc),
+                TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(
+                    query.Workspace == "old" ? nowLocal.Date : nowLocal.Date.AddDays(1),
+                    DateTimeKind.Unspecified), GetZone(settings.TimeZoneId)));
+        }
+        var candidates = await _repository.GetCandidateInvoicesAsync(storeId, scope.FromUtc, scope.ToUtc, ct);
         var activeOperations = await _repository.GetActiveOperationsAsync(storeId, ct);
         var operations = await _repository.GetOperationsAsync(storeId, 100, ct);
         var worker = await _repository.GetWorkerStateAsync(storeId, WorkerName, ct);
+        var allOperations = activeOperations.Concat(operations).DistinctBy(x => x.Id).ToList();
+        var coveredIds = allOperations.SelectMany(x => x.Sources)
+            .Where(x => !x.IsDeleted && x.Status == AutoInvoiceSourceStatus.Succeeded)
+            .Select(x => x.InvoiceHeadId).ToHashSet();
+        var visible = candidates.Where(x =>
+                x.StoreId == storeId && !x.IsDeleted && !x.LegacyReadOnly && !x.IsAutoInvoiceGroup &&
+                x.Order?.InvoiceIssuanceRoute == InvoiceIssuanceRoute.Automatic &&
+                !InvoiceIssuanceStatePolicy.IsIssuedLike(x) && x.IssuedAtUtc == null &&
+                !coveredIds.Contains(x.Id) && SaleAtUtc(x) >= scope.FromUtc && SaleAtUtc(x) < scope.ToUtc)
+            .OrderBy(SaleAtUtc).ThenBy(x => x.Id).ToList();
 
-        var activeSourceIds = activeOperations
-            .SelectMany(x => x.Sources)
-            .Where(x => x.IsActive)
-            .Select(x => x.InvoiceHeadId)
-            .ToHashSet();
-
-        // Keep claimed/uncertain invoices visible to Admin. The worker still
-        // excludes activeSourceIds when selecting work, but hiding them here
-        // made an unissued invoice look as if it had disappeared.
-        var visible = candidates
-            .OrderBy(SaleAtUtc)
-            .ToList();
-        var processableVisible = visible
-            .Where(x => !activeSourceIds.Contains(x.Id))
-            .ToList();
-
+        // UUID recovery belongs to the issued target, not to a group's source draft.
+        var uuidTargets = new HashSet<int>();
+        foreach (var targetId in activeOperations.Where(x => !x.IsManual &&
+                     x.Status == AutoInvoiceOperationStatus.Unknown && x.InvoiceHeadId.HasValue)
+                     .Select(x => x.InvoiceHeadId!.Value).Distinct())
+        {
+            var target = await _repository.GetInvoiceHeadForAutomaticIssueAsync(storeId, targetId, ct);
+            if (target != null && !string.IsNullOrWhiteSpace(target.TransactionUuid))
+                uuidTargets.Add(targetId);
+        }
+        var rows = visible.Select(invoice => MapCockpitItem(invoice, settings, nowUtc, allOperations, uuidTargets)).ToList();
+        var readyIds = rows.Where(x => x.IsReady).Select(x => x.InvoiceHeadId).ToHashSet();
+        var groups = BuildGroups(visible.Where(x => readyIds.Contains(x.Id)).ToList(), settings, nowUtc);
+        var history = operations.Where(x => !x.IsManual).Select(MapHistory).ToList();
+        var selected = query.Workspace switch
+        {
+            "waiting" => rows.Where(x => !x.IsAgeEligible && !x.HasIncident && x.OperationStatus is not
+                (AutoInvoiceOperationStatus.Pending or AutoInvoiceOperationStatus.Processing or AutoInvoiceOperationStatus.Unknown)),
+            "single" => rows.Where(x => x.IsReady && !x.IsGroupedConsumer),
+            "groups" => rows.Where(x => x.IsReady && x.IsGroupedConsumer),
+            "errors" => rows.Where(x => x.HasIncident),
+            _ => rows.AsEnumerable()
+        };
+        var selectedRows = selected.ToList();
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, 100);
         var workerDto = MapWorker(worker);
         if (workerDto.LastHeartbeatAtUtc.HasValue &&
             workerDto.LastHeartbeatAtUtc.Value < nowUtc.AddSeconds(-Math.Max(30, settings.SendIntervalSeconds * 3)))
             workerDto.IsRunning = false;
-
-        var result = new AutoInvoiceDashboardDto
+        return new AutoInvoiceDashboardDto
         {
-            Settings = MapSettings(settings),
-            Worker = workerDto,
+            NowLocal = nowLocal,
+            ScopeStartLocal = query.Workspace is "old" or "errors" ? DateTime.MinValue :
+                TimeZoneInfo.ConvertTimeFromUtc(scope.FromUtc, GetZone(settings.TimeZoneId)),
+            ScopeEndLocal = TimeZoneInfo.ConvertTimeFromUtc(scope.ToUtc, GetZone(settings.TimeZoneId)).AddDays(-1),
+            Page = page, PageSize = pageSize, TotalRows = selectedRows.Count,
+            Settings = MapSettings(settings), Worker = workerDto,
             Summary = new AutoInvoiceDashboardSummaryDto
             {
-                TodayCount = candidates.Count(x => SaleDateLocal(x, settings, nowUtc) == LocalNow(settings, nowUtc).Date),
-                PendingCount = visible.Count,
-                GroupWaitingCount = BuildGroups(processableVisible, settings, nowUtc).Count,
-                ErrorCount = visible.Count(x => !string.IsNullOrWhiteSpace(x.LastErrorCode)),
-                UnknownCount = visible.Count(IsUnknown),
-                IssuedCount = candidates.Count(x => x.ProviderStatus is InvoiceProviderStatus.Issued or InvoiceProviderStatus.PdfDownloaded or InvoiceProviderStatus.ZipDownloaded or InvoiceProviderStatus.EmailSent)
+                TodayCount = rows.Count(x => x.SaleDateLocal.Date == nowLocal.Date),
+                PendingCount = rows.Count,
+                GroupWaitingCount = groups.Count(x => !x.IsReadyByTarget && !x.IsReadyByClosing && !x.IsOldDayRemainder),
+                ErrorCount = rows.Count(x => x.HasIncident),
+                UnknownCount = rows.Count(x => x.IsUnknown),
+                IssuedCount = history.Count(x => x.Status == AutoInvoiceOperationStatus.Succeeded)
             },
-            Queue = visible.Select(x => MapQueueItem(x, settings, nowUtc, activeSourceIds.Contains(x.Id))).ToList(),
-            Groups = BuildGroups(processableVisible, settings, nowUtc),
-            Errors = BuildErrors(visible, activeOperations),
-            History = operations.Select(MapHistory).ToList()
+            Queue = selectedRows.Skip((page - 1) * pageSize).Take(pageSize).ToList(),
+            Groups = groups,
+            Errors = BuildErrors(rows),
+            History = history
         };
-
-        return result;
     }
-
     public async Task MarkWorkerStoppedAsync(CancellationToken ct = default)
     {
         var storeIds = _tenant.StoreId.HasValue
@@ -307,11 +342,261 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         return result;
     }
 
+    public async Task<Result> RecheckIncidentAsync(
+    int invoiceHeadId,
+    CancellationToken ct = default)
+    {
+        if (invoiceHeadId <= 0)
+        {
+            return Result.Failure(
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
+        }
+
+        var storeId =
+            RequireStore();
+
+        // =========================================
+        // UNKNOWN là provider-recovery workflow riêng.
+        // Generic recheck tuyệt đối không resend/sync.
+        // =========================================
+        var activeOperations =
+            await _repository.GetActiveOperationsAsync(
+                storeId,
+                ct);
+
+        var relatedUnknown =
+            activeOperations.Any(operation =>
+                operation.Status ==
+                    AutoInvoiceOperationStatus.Unknown &&
+                (
+                    operation.InvoiceHeadId ==
+                        invoiceHeadId ||
+                    operation.Sources.Any(source =>
+                        source.InvoiceHeadId ==
+                            invoiceHeadId)
+                ));
+
+        if (relatedUnknown)
+        {
+            return Result.Failure(
+                Error.Conflict(
+                    "Hóa đơn đang ở trạng thái chưa xác định với Viettel. " +
+                    "Phải tra cứu UUID, không được dùng Kiểm tra lại."));
+        }
+
+        if (await _repository.HasActiveSourceAsync(
+                storeId,
+                invoiceHeadId,
+                ct))
+        {
+            return Result.Failure(
+                Error.Conflict(
+                    "Hóa đơn đang được một thao tác phát hành xử lý."));
+        }
+
+        var invoice =
+            await _repository.GetInvoiceHeadForClaimAsync(
+                storeId,
+                invoiceHeadId,
+                ct);
+
+        if (invoice == null)
+        {
+            return Result.Failure(
+                Error.NotFound(
+                    "Không tìm thấy hóa đơn."));
+        }
+
+        if (IsUnknown(invoice))
+        {
+            return Result.Failure(
+                Error.Conflict(
+                    "Hóa đơn đang ở trạng thái chưa xác định với Viettel. " +
+                    "Phải tra cứu UUID trước khi thực hiện thao tác khác."));
+        }
+
+        var currentError =
+            (invoice.LastErrorCode ?? string.Empty)
+                .Trim();
+
+        if (string.IsNullOrWhiteSpace(currentError))
+        {
+            return Result.Success();
+        }
+
+        if (!IsLocallyRecheckableIncident(
+                currentError))
+        {
+            return Result.Failure(
+                Error.Conflict(
+                    "Sự cố này không thuộc nhóm có thể Kiểm tra lại cục bộ. " +
+                    "Vui lòng xử lý theo trạng thái nhà cung cấp/hóa đơn."));
+        }
+
+        // =========================================
+        // UnitMissing:
+        // cho phép Admin sửa Product/Unit rồi recheck.
+        // =========================================
+        if (currentError.Equals(
+                "Invoice.UnitMissing",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var repaired =
+                await _repository
+                    .RepairMissingUnitNamesAsync(
+                        storeId,
+                        invoiceHeadId,
+                        ct);
+
+            if (repaired > 0)
+            {
+                await _repository.SaveChangesAsync(ct);
+
+                // Re-read đúng state vừa sửa.
+                invoice =
+                    await _repository
+                        .GetInvoiceHeadForClaimAsync(
+                            storeId,
+                            invoiceHeadId,
+                            ct);
+
+                if (invoice == null)
+                {
+                    return Result.Failure(
+                        Error.NotFound(
+                            "Không tìm thấy hóa đơn sau khi cập nhật đơn vị tính."));
+                }
+            }
+        }
+
+        // Credential recovery chỉ kiểm tra local encrypted config.
+        // Không gọi Viettel issue/sync.
+        if (currentError.Equals(
+                "InvoiceProvider.CredentialKeyUnavailable",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var credential =
+                await ValidateActiveProviderCredentialAsync(
+                    storeId,
+                    ct);
+
+            if (!credential.IsSuccess)
+            {
+                await _repository.MarkInvoiceErrorsAsync(
+                    storeId,
+                    new[] { invoiceHeadId },
+                    credential.Error!.Code,
+                    credential.Error.Message,
+                    ct);
+
+                return credential;
+            }
+        }
+
+        Result<bool> validation;
+
+        if (invoice.Order?.InvoiceIssuanceRoute ==
+            InvoiceIssuanceRoute.Automatic)
+        {
+            validation =
+                ValidateInvoiceForAutomaticClaim(
+                    invoice);
+        }
+        else if (invoice.Order?.InvoiceIssuanceRoute ==
+                 InvoiceIssuanceRoute.Manual)
+        {
+            validation =
+                ValidateInvoiceForManualIssue(
+                    invoice);
+        }
+        else
+        {
+            return Result.Failure(
+                Error.Conflict(
+                    "Hóa đơn chưa có phương thức phát hành hợp lệ."));
+        }
+
+        if (!validation.IsSuccess)
+        {
+            await _repository.MarkInvoiceErrorsAsync(
+                storeId,
+                new[] { invoiceHeadId },
+                validation.Error!.Code,
+                validation.Error.Message,
+                ct);
+
+            return Result.Failure(
+                validation.Error);
+        }
+
+        // =========================================
+        // Stock luôn recheck cuối cùng.
+        // =========================================
+        var availability =
+            await _inputStockRepository
+                .GetAvailabilityAsync(
+                    invoiceHeadId,
+                    ct);
+
+        if (!availability.IsSufficient)
+        {
+            var stockError =
+                Error.Validation(
+                    "Invoice.InputInvoiceStockInsufficient",
+                    BuildShortageMessage(
+                        availability));
+
+            await _repository.MarkInvoiceErrorsAsync(
+                storeId,
+                new[] { invoiceHeadId },
+                stockError.Code,
+                stockError.Message,
+                ct);
+
+            return Result.Failure(
+                stockError);
+        }
+
+        // Không đổi route.
+        // Không phát hành.
+        // Chỉ clear incident để invoice quay lại
+        // projection của route hiện hành.
+        await _repository.ClearInvoiceErrorsAsync(
+            storeId,
+            new[] { invoiceHeadId },
+            ct);
+
+        invoice.LastErrorCode = null;
+        invoice.LastErrorMessage = null;
+
+        return Result.Success();
+    }
+
     public async Task<Result<ViettelInvoiceLookupResultDto>> SyncUnknownAsync(
         int invoiceHeadId,
         CancellationToken ct = default)
     {
-        var storeId = RequireStore();
+        return await SyncUnknownForStoreAsync(RequireStore(), invoiceHeadId, ct);
+    }
+
+    private async Task<Result<ViettelInvoiceLookupResultDto>> SyncUnknownForStoreAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct)
+    {
+        if (invoiceHeadId <= 0)
+            return Result<ViettelInvoiceLookupResultDto>.Failure(Error.Validation(
+                "Invoice.InvalidInvoiceHeadId", "InvoiceHeadId không hợp lệ."));
+
+        // Background workers have no request tenant. Bind lookup to the store
+        // already selected by the worker before calling the ID-based provider service.
+        var invoice = await _repository.GetInvoiceHeadForAutomaticIssueAsync(storeId, invoiceHeadId, ct);
+        if (invoice == null || invoice.StoreId != storeId)
+            return Result<ViettelInvoiceLookupResultDto>.Failure(Error.NotFound(
+                "Không tìm thấy hóa đơn tại cửa hàng đang xử lý."));
+
         var result = await _syncService.SyncByTransactionUuidAsync(invoiceHeadId, ct);
         var operations = await _repository.GetActiveOperationsAsync(storeId, ct);
         var related = operations
@@ -391,7 +676,10 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
 
         var scope = ResolveScope(settings, null, nowUtc);
         var candidates = await _repository.GetCandidateInvoicesAsync(storeId, scope.FromUtc, scope.ToUtc, ct);
-        await ReopenResolvedStockErrorsAsync(candidates, ct);
+        await ReopenResolvedStockErrorsAsync(
+            storeId,
+            candidates,
+            ct);
         var activeIds = active.SelectMany(x => x.Sources).Where(x => x.IsActive).Select(x => x.InvoiceHeadId).ToHashSet();
         var ready = candidates
             .Where(x => !activeIds.Contains(x.Id))
@@ -404,7 +692,10 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             // must remain visible for UUID lookup, but can never be submitted
             // again automatically.
             .Where(x => !IsUnknown(x))
-            .Where(x => SaleAtUtc(x) <= nowUtc.AddMinutes(-settings.MinimumAgeMinutes))
+            .Where(x =>
+    StableAtUtc(x) <=
+    nowUtc.AddMinutes(
+        -settings.MinimumAgeMinutes))
             .OrderBy(SaleAtUtc)
             .ThenBy(x => x.Id)
             .ToList();
@@ -418,7 +709,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                 SaleAtUtc(x),
                 SaleDateLocal(x, settings, nowUtc),
                 x.GrandTotal,
-                IsConsumer(x),
+                IsCashOnlyAutomaticOrder(x),
                 BuildGroupKey(x, settings, nowUtc))).ToList(),
             settings.SeparateAmountThreshold,
             settings.GroupTargetAmount,
@@ -448,6 +739,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
     }
 
     private async Task ReopenResolvedStockErrorsAsync(
+        int storeId,
         IReadOnlyCollection<InvoiceHead> candidates,
         CancellationToken ct)
     {
@@ -457,15 +749,24 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                          "Invoice.InputInvoiceStockInsufficient",
                          StringComparison.OrdinalIgnoreCase)))
         {
-            var availability = await _inputStockRepository.GetAvailabilityAsync(invoice.Id, ct);
+            var availability =
+                await _inputStockRepository
+                    .GetAvailabilityAsync(
+                        invoice.Id,
+                        ct);
+
             if (!availability.IsSufficient)
                 continue;
 
-            // Candidates are intentionally read without tracking. Clearing the
-            // in-memory error is enough to re-enter this cycle; the issuance
-            // transaction persists the clean state when it claims the draft.
             invoice.LastErrorCode = null;
             invoice.LastErrorMessage = null;
+
+            // Persist ngay cả khi group vẫn chưa đạt target.
+            // Không chờ đến lúc invoice được claim.
+            await _repository.ClearInvoiceErrorsAsync(
+                storeId,
+                new[] { invoice.Id },
+                ct);
         }
     }
 
@@ -517,7 +818,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         {
             // A provider call may already have reached Viettel. Lookup first;
             // never submit an Issuing/IssuedWaitingNumber invoice blindly.
-            var lookup = await SyncUnknownAsync(invoice.Id, ct);
+            var lookup = await SyncUnknownForStoreAsync(storeId, invoice.Id, ct);
             if (!lookup.IsSuccess)
             {
                 if (lookup.Error?.Code == "InvoiceProvider.CredentialKeyUnavailable" ||
@@ -612,99 +913,409 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         AutoInvoiceSettings settings,
         CancellationToken ct)
     {
-        foreach (var invoice in invoices)
-        {
-            var validation = ValidateInvoiceForAutomaticIssue(invoice);
-            if (!validation.IsSuccess)
-            {
-                await RecordBlockedSingleAsync(storeId, invoice, validation.Error!, ct);
-                return;
-            }
+        var selectedIds = invoices
+            .Select(x => x.Id)
+            .Where(x => x > 0)
+            .Distinct()
+            .ToArray();
 
-            var availability = await _inputStockRepository.GetAvailabilityAsync(invoice.Id, ct);
-            if (!availability.IsSufficient)
-            {
-                await RecordBlockedSingleAsync(
-                    storeId,
-                    invoice,
-                    Error.Validation(
-                        "Invoice.InputInvoiceStockInsufficient",
-                        BuildShortageMessage(availability)),
-                    ct);
-                return;
-            }
-        }
+        if (selectedIds.Length == 0)
+            return;
 
-        var groupInvoice = BuildGroupInvoice(storeId, invoices, settings);
-        var groupKey = BuildGroupKey(invoices[0], settings, _clock.GetUtcNow().UtcDateTime);
-        var operation = new AutoInvoiceOperation
-        {
-            StoreId = storeId,
-            Kind = AutoInvoiceOperationKind.Group,
-            Status = AutoInvoiceOperationStatus.Pending,
-            SaleDateLocal = SaleDateLocal(invoices[0], settings, _clock.GetUtcNow().UtcDateTime),
-            GroupKey = groupKey,
-            IsManual = false,
-            Sources = invoices.Select(invoice =>
-                {
-                    var details = invoice.Details
-                        .Where(x => !x.IsDeleted)
-                        .ToList();
-                    var firstDetail = details.FirstOrDefault();
-                    return new AutoInvoiceOperationSource
-                    {
-                        StoreId = storeId,
-                        InvoiceHeadId = invoice.Id,
-                        OrderId = invoice.OrderId,
-                        InvoiceDetailId = firstDetail?.Id,
-                        OrderLineId = firstDetail?.OrderLineId,
-                        Status = AutoInvoiceSourceStatus.Pending,
-                        IsActive = true,
-                        SourceSnapshotJson = JsonSerializer.Serialize(new
-                        {
-                            InvoiceId = invoice.Id,
-                            invoice.OrderId,
-                            Details = details.Select(detail => new
-                            {
-                                DetailId = detail.Id,
-                                detail.OrderLineId,
-                                detail.ItemName,
-                                detail.UnitName,
-                                detail.Quantity,
-                                detail.TotalAmount
-                            }).ToList()
-                        })
-                    };
-                })
-                .ToList()
-        };
+        var nowUtc =
+            _clock.GetUtcNow().UtcDateTime;
+
+        await using var transaction =
+            await _unitOfWork.BeginTransactionAsync(ct);
+
+        AutoInvoiceOperation? operation = null;
+        InvoiceHead? groupInvoice = null;
 
         try
         {
-            await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
-            await _repository.AddInvoiceHeadAsync(groupInvoice, ct);
+            // Đây là cùng Store lock với SalesReturn và Single claim.
+            // Sau điểm này, return không thể thay đổi invoice
+            // giữa revalidation và durable claim.
+            await _inputStockRepository.LockStoreForIssueAsync(
+                storeId,
+                ct);
+
+            // Không dùng snapshot từ lúc queue scan.
+            // Re-read current InvoiceHead/Order/Details ngay dưới lock.
+            var currentHeads =
+                await _repository.GetInvoiceHeadsForClaimAsync(
+                    storeId,
+                    selectedIds,
+                    ct);
+
+            if (currentHeads.Count == 0)
+            {
+                await transaction.RollbackAsync(ct);
+                return;
+            }
+
+            var claimable =
+                new List<InvoiceHead>();
+
+            foreach (var invoice in currentHeads)
+            {
+                // Route có thể đã được Manager đổi trong khoảng
+                // scan -> claim.
+                if (invoice.Order == null ||
+                    invoice.Order.InvoiceIssuanceRoute !=
+                        InvoiceIssuanceRoute.Automatic)
+                {
+                    continue;
+                }
+
+                // Return/content change có thể vừa reset age.
+                if (StableAtUtc(invoice) >
+                    nowUtc.AddMinutes(
+                        -settings.MinimumAgeMinutes))
+                {
+                    continue;
+                }
+
+                // Full return hoặc không còn detail có giá trị
+                // => không còn gì để phát hành.
+                var hasIssueableDetail =
+                    invoice.Details.Any(x =>
+                        !x.IsDeleted &&
+                        x.Quantity > 0m &&
+                        x.TotalAmount > 0m);
+
+                if (!hasIssueableDetail ||
+                    invoice.GrandTotal <= 0m)
+                {
+                    continue;
+                }
+
+                // Một source đã được Auto operation thành công
+                // không bao giờ được consume lại.
+                if (await _repository.HasSuccessfulSourceAsync(
+                        storeId,
+                        invoice.Id,
+                        ct))
+                {
+                    continue;
+                }
+
+                // Worker/Manual khác có thể vừa claim source
+                // trước khi Store lock được lấy.
+                if (await _repository.HasActiveSourceAsync(
+                        storeId,
+                        invoice.Id,
+                        ct))
+                {
+                    continue;
+                }
+
+                var validation =
+                    ValidateInvoiceForAutomaticClaim(
+                        invoice);
+
+                if (!validation.IsSuccess)
+                {
+                    await RecordBlockedSingleAsync(
+                        storeId,
+                        invoice,
+                        validation.Error!,
+                        ct);
+
+                    continue;
+                }
+
+                var availability =
+                    await _inputStockRepository
+                        .GetAvailabilityAsync(
+                            invoice.Id,
+                            ct);
+
+                if (!availability.IsSufficient)
+                {
+                    await RecordBlockedSingleAsync(
+                        storeId,
+                        invoice,
+                        Error.Validation(
+                            "Invoice.InputInvoiceStockInsufficient",
+                            BuildShortageMessage(
+                                availability)),
+                        ct);
+
+                    continue;
+                }
+
+                claimable.Add(invoice);
+            }
+
+            if (claimable.Count == 0)
+            {
+                // Có thể đã persist Incident records.
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            // ===============================
+            // RECOMPUTE GROUP FROM CURRENT DATA
+            // ===============================
+            //
+            // GrandTotal, route, age và group key đều lấy từ
+            // current state dưới Store lock, không dùng selection cũ.
+            var reselection =
+                AutoInvoiceOrderingPolicy.Select(
+                    claimable
+                        .Select(x =>
+                            new AutoInvoiceCandidate(
+                                x.Id,
+                                SaleAtUtc(x),
+                                SaleDateLocal(
+                                    x,
+                                    settings,
+                                    nowUtc),
+                                x.GrandTotal,
+                                IsCashOnlyAutomaticOrder(x),
+                                BuildGroupKey(
+                                    x,
+                                    settings,
+                                    nowUtc)))
+                        .ToList(),
+
+                    settings.SeparateAmountThreshold,
+                    settings.GroupTargetAmount,
+                    settings.ClosingTimeLocal,
+                    settings.IssueOldDayRemainder,
+                    LocalNow(
+                        settings,
+                        nowUtc));
+
+            if (reselection == null)
+            {
+                // Ví dụ return làm tổng group tụt dưới target
+                // và chưa tới cutoff.
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            // Nếu current data biến một member thành SingleReady,
+            // không cố issue nó từ group path.
+            //
+            // Commit các Incident record nếu có, rồi để cycle sau
+            // ProcessStoreOnce chọn đúng lane mới.
+            if (reselection.Kind !=
+                AutoInvoiceOperationKind.Group)
+            {
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            var claimIds =
+                reselection.InvoiceHeadIds
+                    .ToHashSet();
+
+            var group = claimable
+                .Where(x =>
+                    claimIds.Contains(x.Id))
+                .OrderBy(SaleAtUtc)
+                .ThenBy(x => x.Id)
+                .ToList();
+
+            if (group.Count == 0)
+            {
+                await transaction.CommitAsync(ct);
+                return;
+            }
+
+            // Defensive: tất cả member cuối cùng phải cùng
+            // exact technical group key.
+            var groupKey =
+                BuildGroupKey(
+                    group[0],
+                    settings,
+                    nowUtc);
+
+            if (group.Any(x =>
+                    !string.Equals(
+                        BuildGroupKey(
+                            x,
+                            settings,
+                            nowUtc),
+                        groupKey,
+                        StringComparison.Ordinal)))
+            {
+                await transaction.RollbackAsync(ct);
+
+                throw new InvalidOperationException(
+                    "AutoInvoice group claim chứa các hóa đơn " +
+                    "không còn tương thích cùng một group key.");
+            }
+
+            groupInvoice =
+                BuildGroupInvoice(
+                    storeId,
+                    group,
+                    settings);
+
+            operation = new AutoInvoiceOperation
+            {
+                StoreId = storeId,
+                Kind = AutoInvoiceOperationKind.Group,
+                Status =
+                    AutoInvoiceOperationStatus.Pending,
+
+                SaleDateLocal =
+                    SaleDateLocal(
+                        group[0],
+                        settings,
+                        nowUtc),
+
+                GroupKey = groupKey,
+                IsManual = false,
+                ClaimedAtUtc = nowUtc,
+                AttemptCount = 1,
+
+                Sources = group
+                    .Select(invoice =>
+                    {
+                        var details = invoice.Details
+                            .Where(x => !x.IsDeleted)
+                            .ToList();
+
+                        var firstDetail =
+                            details.FirstOrDefault();
+
+                        return new AutoInvoiceOperationSource
+                        {
+                            StoreId = storeId,
+                            InvoiceHeadId = invoice.Id,
+                            OrderId = invoice.OrderId,
+
+                            InvoiceDetailId =
+                                firstDetail?.Id,
+
+                            OrderLineId =
+                                firstDetail?.OrderLineId,
+
+                            Status =
+                                AutoInvoiceSourceStatus.Claimed,
+
+                            IsActive = true,
+
+                            SourceSnapshotJson =
+                                JsonSerializer.Serialize(
+                                    new
+                                    {
+                                        InvoiceId =
+                                            invoice.Id,
+
+                                        invoice.OrderId,
+
+                                        StableAtUtc =
+                                            StableAtUtc(
+                                                invoice),
+
+                                        CurrentGrandTotal =
+                                            invoice.GrandTotal,
+
+                                        Details =
+                                            details
+                                                .Select(detail =>
+                                                    new
+                                                    {
+                                                        DetailId =
+                                                            detail.Id,
+
+                                                        detail.OrderLineId,
+                                                        detail.ItemName,
+                                                        detail.UnitName,
+                                                        detail.Quantity,
+                                                        detail.TotalAmount
+                                                    })
+                                                .ToList()
+                                    })
+                        };
+                    })
+                    .ToList()
+            };
+
+            await _repository.AddInvoiceHeadAsync(
+                groupInvoice,
+                ct);
+
             await _repository.SaveChangesAsync(ct);
-            operation.InvoiceHeadId = groupInvoice.Id;
-            await _repository.AddOperationAsync(operation, ct);
+
+            operation.InvoiceHeadId =
+                groupInvoice.Id;
+
+            await _repository.AddOperationAsync(
+                operation,
+                ct);
+
             await _repository.SaveChangesAsync(ct);
+
+            // Unique active-source constraint là final
+            // concurrency authority.
             await transaction.CommitAsync(ct);
         }
-        catch (Exception ex) when (IsActiveSourceConflict(ex))
+        catch (Exception ex)
+            when (IsActiveSourceConflict(ex))
         {
-            // Another worker already claimed one of the invoices, or this
-            // operation contained duplicate source rows. It is safe to skip;
-            // the next cycle will re-read the queue.
             _repository.DiscardFailedAutoInvoiceChanges();
+
+            try
+            {
+                await transaction.RollbackAsync(ct);
+            }
+            catch (Exception rollbackException)
+            {
+                throw new AggregateException(
+                    "Group claim conflicted and transaction rollback failed; provider issuance was not attempted.",
+                    ex,
+                    rollbackException);
+            }
+
+            // Worker khác thắng claim.
+            // Cycle sau sẽ đọc lại durable state.
             return;
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateException" || ex is InvalidOperationException)
+        catch (Exception ex)
+            when (
+                ex.GetType().Name ==
+                    "DbUpdateException" ||
+                ex is InvalidOperationException)
         {
             _repository.DiscardFailedAutoInvoiceChanges();
+
+            try
+            {
+                await transaction.RollbackAsync(ct);
+            }
+            catch (Exception rollbackException)
+            {
+                throw new AggregateException(
+                    "Group claim failed and transaction rollback failed; provider issuance was not attempted.",
+                    ex,
+                    rollbackException);
+            }
+
             throw;
         }
 
-        var result = await IssueSafelyAsync(groupInvoice.Id, ct);
-        await CompleteOperationAsync(operation, result, ct);
+        if (operation == null ||
+            groupInvoice == null)
+        {
+            return;
+        }
+
+        // Provider call chỉ xảy ra sau durable group claim commit.
+        var result =
+            await IssueSafelyAsync(
+                groupInvoice.Id,
+                ct);
+
+        await CompleteOperationAsync(
+            operation,
+            result,
+            ct);
     }
 
     private async Task<Result<ViettelInvoiceIssueResultDto>> IssueSafelyAsync(
@@ -737,53 +1348,162 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         }
     }
 
-    private async Task<Result<AutoInvoiceOperation>> CreateSingleOperationAsync(
-        int storeId,
-        int invoiceHeadId,
-        bool isManual,
-        CancellationToken ct)
+    private async Task<Result<AutoInvoiceOperation>>
+        CreateSingleOperationAsync(
+            int storeId,
+            int invoiceHeadId,
+            bool isManual,
+            CancellationToken ct)
     {
         if (invoiceHeadId <= 0)
-            return Result<AutoInvoiceOperation>.Failure(Error.Validation("Invoice.InvalidInvoiceHeadId", "InvoiceHeadId không hợp lệ."));
-
-        if (await _repository.HasActiveSourceAsync(storeId, invoiceHeadId, ct))
-            return Result<AutoInvoiceOperation>.Failure(Error.Conflict("Hóa đơn đang được phát hành bởi một thao tác khác."));
-
-        var operation = new AutoInvoiceOperation
         {
-            StoreId = storeId,
-            Kind = AutoInvoiceOperationKind.Single,
-            Status = AutoInvoiceOperationStatus.Processing,
-            InvoiceHeadId = invoiceHeadId,
-            IsManual = isManual,
-            RequestedByUserId = _currentUser.UserId,
-            RequestedByUserName = _currentUser.UserName,
-            ClaimedAtUtc = _clock.GetUtcNow().UtcDateTime,
-            AttemptCount = 1,
-            Sources = new List<AutoInvoiceOperationSource>
-            {
-                new()
-                {
-                    StoreId = storeId,
-                    InvoiceHeadId = invoiceHeadId,
-                    Status = AutoInvoiceSourceStatus.Claimed,
-                    IsActive = true
-                }
-            }
-        };
+            return Result<AutoInvoiceOperation>.Failure(
+                Error.Validation(
+                    "Invoice.InvalidInvoiceHeadId",
+                    "InvoiceHeadId không hợp lệ."));
+        }
+
+        await using var transaction =
+            await _unitOfWork.BeginTransactionAsync(ct);
 
         try
         {
-            await using var transaction = await _unitOfWork.BeginTransactionAsync(ct);
-            await _repository.AddOperationAsync(operation, ct);
+            // Cùng Store lock với return và Viettel issuing.
+            // Mọi state/route check bên dưới vì vậy là claim-time check.
+            await _inputStockRepository.LockStoreForIssueAsync(
+                storeId,
+                ct);
+
+            var invoice = isManual
+                ? await _repository.GetInvoiceHeadForManualClaimAsync(storeId, invoiceHeadId, ct)
+                : await _repository.GetInvoiceHeadForClaimAsync(storeId, invoiceHeadId, ct);
+
+            if (invoice == null)
+            {
+                await transaction.RollbackAsync(ct);
+
+                return Result<AutoInvoiceOperation>.Failure(
+                    Error.NotFound(
+                        "Không tìm thấy hóa đơn hợp lệ để phát hành."));
+            }
+
+            var routeGuard =
+                isManual
+                    ? ValidateInvoiceForManualIssue(invoice)
+                    : ValidateInvoiceForAutomaticClaim(invoice);
+
+            if (!routeGuard.IsSuccess)
+            {
+                await transaction.RollbackAsync(ct);
+
+                return Result<AutoInvoiceOperation>.Failure(
+                    routeGuard.Error!);
+            }
+
+            if (!isManual)
+            {
+                var settings = await EnsureSettingsAsync(storeId, ct);
+                var nowUtc = _clock.GetUtcNow().UtcDateTime;
+                if (StableAtUtc(invoice) > nowUtc.AddMinutes(-settings.MinimumAgeMinutes) ||
+                    invoice.GrandTotal <= 0 ||
+                    (IsCashOnlyAutomaticOrder(invoice) &&
+                     invoice.GrandTotal < settings.SeparateAmountThreshold))
+                {
+                    await transaction.RollbackAsync(ct);
+                    return Result<AutoInvoiceOperation>.Failure(Error.Conflict(
+                        "Hóa đơn đã thay đổi, chưa đủ thời gian ổn định hoặc không còn thuộc luồng phát hành riêng."));
+                }
+            }
+
+            if (await _repository.HasSuccessfulSourceAsync(
+                    storeId,
+                    invoiceHeadId,
+                    ct))
+            {
+                await transaction.RollbackAsync(ct);
+
+                return Result<AutoInvoiceOperation>.Failure(
+                    Error.Conflict(
+                        "Hóa đơn đã được bao phủ bởi một lần phát hành " +
+                        "tự động thành công trước đó."));
+            }
+
+            if (await _repository.HasActiveSourceAsync(
+                    storeId,
+                    invoiceHeadId,
+                    ct))
+            {
+                await transaction.RollbackAsync(ct);
+
+                return Result<AutoInvoiceOperation>.Failure(
+                    Error.Conflict(
+                        "Hóa đơn đang được phát hành bởi một thao tác khác."));
+            }
+
+            var operation = new AutoInvoiceOperation
+            {
+                StoreId = storeId,
+                Kind = AutoInvoiceOperationKind.Single,
+                Status = AutoInvoiceOperationStatus.Processing,
+                InvoiceHeadId = invoiceHeadId,
+
+                IsManual = isManual,
+
+                RequestedByUserId =
+                    _currentUser.UserId,
+
+                RequestedByUserName =
+                    _currentUser.UserName,
+
+                ClaimedAtUtc =
+                    _clock.GetUtcNow().UtcDateTime,
+
+                AttemptCount = 1,
+
+                Sources =
+                [
+                    new AutoInvoiceOperationSource
+                {
+                    StoreId = storeId,
+                    InvoiceHeadId = invoiceHeadId,
+                    Status =
+                        AutoInvoiceSourceStatus.Claimed,
+                    IsActive = true
+                }
+                ]
+            };
+
+            await _repository.AddOperationAsync(
+                operation,
+                ct);
+
             await _repository.SaveChangesAsync(ct);
+
             await transaction.CommitAsync(ct);
-            return Result<AutoInvoiceOperation>.Success(operation);
+
+            return Result<AutoInvoiceOperation>.Success(
+                operation);
         }
-        catch (Exception ex) when (ex.GetType().Name == "DbUpdateException")
+        catch (Exception ex)
+            when (ex.GetType().Name == "DbUpdateException")
         {
             _repository.DiscardFailedAutoInvoiceChanges();
-            return Result<AutoInvoiceOperation>.Failure(Error.Conflict("Hóa đơn vừa được thao tác bởi một yêu cầu khác."));
+
+            try
+            {
+                await transaction.RollbackAsync(ct);
+            }
+            catch (Exception rollbackException)
+            {
+                throw new AggregateException(
+                    "Single claim failed and transaction rollback failed; provider issuance was not attempted.",
+                    ex,
+                    rollbackException);
+            }
+
+            return Result<AutoInvoiceOperation>.Failure(
+                Error.Conflict(
+                    "Hóa đơn vừa được thao tác bởi một yêu cầu khác."));
         }
     }
 
@@ -838,6 +1558,9 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         Error error,
         CancellationToken ct)
     {
+        var now =
+            _clock.GetUtcNow().UtcDateTime;
+
         var operation = new AutoInvoiceOperation
         {
             StoreId = storeId,
@@ -847,27 +1570,138 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             SaleDateLocal = invoice.InvoiceDate.Date,
             ErrorCode = error.Code,
             ErrorMessage = error.Message,
-            CompletedAtUtc = _clock.GetUtcNow().UtcDateTime,
-            Sources = new List<AutoInvoiceOperationSource>
+            CompletedAtUtc = now,
+
+            Sources =
+            [
+                new AutoInvoiceOperationSource
             {
-                new()
-                {
-                    StoreId = storeId,
-                    InvoiceHeadId = invoice.Id,
-                    Status = AutoInvoiceSourceStatus.Failed,
-                    IsActive = false,
-                    ErrorCode = error.Code,
-                    ErrorMessage = error.Message,
-                    CompletedAtUtc = _clock.GetUtcNow().UtcDateTime
-                }
+                StoreId = storeId,
+                InvoiceHeadId = invoice.Id,
+                Status =
+                    AutoInvoiceSourceStatus.Failed,
+                IsActive = false,
+                ErrorCode = error.Code,
+                ErrorMessage = error.Message,
+                CompletedAtUtc = now
             }
+            ]
         };
-        invoice.LastErrorCode = error.Code;
-        invoice.LastErrorMessage = error.Message;
-        await _repository.AddOperationAsync(operation, ct);
+
+        await _repository.AddOperationAsync(
+            operation,
+            ct);
+
+        // Invoice có thể được re-read bằng AsNoTracking.
+        // Không dựa vào việc sửa object in-memory để persist lỗi.
+        await _repository.MarkInvoiceErrorsAsync(
+            storeId,
+            new[] { invoice.Id },
+            error.Code,
+            error.Message,
+            ct);
+
         await _repository.SaveChangesAsync(ct);
     }
 
+    private static Result<bool>
+    ValidateInvoiceForAutomaticClaim(
+        InvoiceHead invoice)
+    {
+        if (invoice.OriginalInvoiceHeadId.HasValue || invoice.CorrectionType.HasValue)
+            return Result<bool>.Failure(Error.Conflict(
+                "Hóa đơn điều chỉnh/thay thế phải được phát hành thủ công."));
+
+        if (invoice.Order == null ||
+            invoice.Order.InvoiceIssuanceRoute !=
+                InvoiceIssuanceRoute.Automatic)
+        {
+            return Result<bool>.Failure(
+                Error.Conflict(
+                    "Hóa đơn không còn thuộc luồng phát hành tự động."));
+        }
+
+        if (!InvoiceIssuanceStatePolicy
+                .CanChangeRoute(invoice))
+        {
+            return Result<bool>.Failure(
+                Error.Conflict(
+                    "Hóa đơn đang ở trạng thái không cho phép " +
+                    "tạo yêu cầu phát hành tự động mới."));
+        }
+
+        return ValidateInvoiceForAutomaticIssue(invoice);
+    }
+
+    private static Result<bool>
+        ValidateInvoiceForManualIssue(
+            InvoiceHead invoice)
+    {
+        if (invoice.OriginalInvoiceHeadId.HasValue || invoice.CorrectionType.HasValue)
+        {
+            // Corrections are explicit manual actions, independent of the original order's route.
+            // Keep the provider's correction-specific validation (including zero-value info lines).
+            var original = invoice.OriginalInvoiceHead;
+            if (invoice.OriginalInvoiceHeadId is not > 0 ||
+                original == null || original.Id == invoice.Id ||
+                original.StoreId != invoice.StoreId || original.IsDeleted ||
+                !InvoiceIssuanceStatePolicy.IsIssuedLike(original) ||
+                invoice.CorrectionType is not (InvoiceCorrectionType.Replacement or
+                    InvoiceCorrectionType.AdjustmentAmount or InvoiceCorrectionType.AdjustmentInfo) ||
+                !InvoiceIssuanceStatePolicy.CanChangeRoute(invoice))
+            {
+                return Result<bool>.Failure(Error.Conflict(
+                    "Hóa đơn điều chỉnh/thay thế không có hóa đơn gốc hợp lệ hoặc đang ở trạng thái không cho phép phát hành."));
+            }
+
+            return Result<bool>.Success(true);
+        }
+
+        if (invoice.Order == null ||
+            invoice.Order.InvoiceIssuanceRoute !=
+                InvoiceIssuanceRoute.Manual)
+        {
+            return Result<bool>.Failure(
+                Error.Conflict(
+                    "Hóa đơn không thuộc luồng phát hành thủ công."));
+        }
+
+        if (!InvoiceIssuanceStatePolicy
+                .CanChangeRoute(invoice))
+        {
+            return Result<bool>.Failure(
+                Error.Conflict(
+                    "Hóa đơn đang được xử lý hoặc đã phát hành."));
+        }
+
+        var buyerType =
+            InvoiceBuyerInfoHelper.NormalizeBuyerType(
+                invoice.BuyerType);
+
+        if (buyerType ==
+            InvoiceBuyerTypes.NoInvoice)
+        {
+            return Result<bool>.Failure(
+                Error.Validation(
+                    "InvoiceBuyer.InformationRequired",
+                    "Hóa đơn thủ công chưa có đủ thông tin người mua."));
+        }
+
+        var validation =
+            InvoiceBuyerInfoHelper.ValidateBuyerInfo(
+                buyerType,
+                invoice.BuyerName,
+                invoice.BuyerLegalName,
+                InvoiceBuyerInfoHelper
+                    .NormalizeBuyerTaxCodeForViettel(
+                        invoice.BuyerTaxCode),
+                invoice.BuyerAddress);
+
+        if (!validation.IsSuccess)
+            return validation;
+
+        return ValidateInvoiceForAutomaticIssue(invoice);
+    }
     private static Result<bool> ValidateInvoiceForAutomaticIssue(InvoiceHead invoice)
     {
         if (invoice.InvoiceProviderSettingId == null ||
@@ -962,8 +1796,12 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         DateTime nowUtc)
     {
         return invoices
-            .Where(IsConsumer)
-            .Where(x => string.IsNullOrWhiteSpace(x.LastErrorCode) && !IsUnknown(x))
+            .Where(IsCashOnlyAutomaticOrder)
+            .Where(x => x.GrandTotal > 0 && x.GrandTotal < settings.SeparateAmountThreshold &&
+                StableAtUtc(x).AddMinutes(settings.MinimumAgeMinutes) <= nowUtc &&
+                string.IsNullOrWhiteSpace(x.LastErrorCode) && string.IsNullOrWhiteSpace(x.LastErrorMessage) &&
+                !IsUnknown(x) && x.IssuedAtUtc == null && ValidateInvoiceForAutomaticClaim(x).IsSuccess &&
+                x.Details.Any(d => !d.IsDeleted && d.Quantity > 0 && d.TotalAmount > 0))
             .GroupBy(x => BuildGroupKey(x, settings, nowUtc))
             .Select(g =>
             {
@@ -980,7 +1818,8 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                     InvoiceProviderSettingId = first.InvoiceProviderSettingId,
                     TotalAmount = total,
                     IsReadyByTarget = total >= settings.GroupTargetAmount,
-                    IsReadyByClosing = closing || (date < today && settings.IssueOldDayRemainder),
+                    IsReadyByClosing = closing,
+                    IsOldDayRemainder = date < today && settings.IssueOldDayRemainder,
                     InvoiceHeadIds = g.OrderBy(SaleAtUtc).Select(x => x.Id).ToList()
                 };
             })
@@ -989,42 +1828,17 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             .ToList();
     }
 
-    private static List<AutoInvoiceErrorDto> BuildErrors(
-        IReadOnlyList<InvoiceHead> candidates,
-        IReadOnlyList<AutoInvoiceOperation> activeOperations)
-    {
-        var operationErrors = activeOperations
-            .Where(x => x.Status == AutoInvoiceOperationStatus.Unknown)
-            .SelectMany(x => x.Sources.Select(s => new AutoInvoiceErrorDto
-            {
-                InvoiceHeadId = s.InvoiceHeadId,
-                OperationId = x.Id,
-                ErrorCode = x.ErrorCode ?? "UNKNOWN_RESULT",
-                ErrorMessage = x.ErrorMessage ?? "Kết quả phát hành chưa xác định; cần tra cứu UUID.",
-                RequiresUuidLookup = true,
-                UpdatedAtUtc = x.ClaimedAtUtc
-            }))
-            .ToList();
-
-        operationErrors.AddRange(candidates
-            .Where(x => !string.IsNullOrWhiteSpace(x.LastErrorCode))
-            .Select(x => new AutoInvoiceErrorDto
-            {
-                InvoiceHeadId = x.Id,
-                OrderNumber = x.Order?.OrderNumber,
-                ErrorCode = x.LastErrorCode!,
-                ErrorMessage = x.LastErrorMessage ?? string.Empty,
-                RequiresUuidLookup = IsUncertain(x.LastErrorCode, x.LastErrorMessage),
-                UpdatedAtUtc = x.LastSyncedAtUtc
-            }));
-
-        return operationErrors
-            .GroupBy(x => new { x.InvoiceHeadId, x.ErrorCode })
-            .Select(x => x.First())
-            .OrderByDescending(x => x.UpdatedAtUtc)
-            .ToList();
-    }
-
+    private static List<AutoInvoiceErrorDto> BuildErrors(IReadOnlyList<AutoInvoiceQueueItemDto> rows)
+        => rows.Where(x => x.HasIncident).Select(x => new AutoInvoiceErrorDto
+        {
+            Invoice = x,
+            InvoiceHeadId = x.InvoiceHeadId,
+            OperationId = x.OperationId,
+            OrderNumber = x.OrderNumber,
+            ErrorCode = x.ErrorCode ?? string.Empty,
+            ErrorMessage = x.ErrorMessage ?? string.Empty,
+            RequiresUuidLookup = x.UuidLookupInvoiceHeadId.HasValue
+        }).ToList();
     private static AutoInvoiceHistoryDto MapHistory(AutoInvoiceOperation operation)
         => new()
         {
@@ -1041,50 +1855,69 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             RequestedByUserName = operation.RequestedByUserName
         };
 
-    private static AutoInvoiceQueueItemDto MapQueueItem(
+    private static AutoInvoiceQueueItemDto MapCockpitItem(
         InvoiceHead invoice,
         AutoInvoiceSettings settings,
         DateTime nowUtc,
-        bool hasActiveOperation)
+        IReadOnlyList<AutoInvoiceOperation> operations,
+        IReadOnlySet<int> uuidTargets)
     {
-        var status = hasActiveOperation
-            ? "Đang xử lý"
-            : invoice.LastErrorCode switch
+        var related = operations.Where(x => x.InvoiceHeadId == invoice.Id ||
+            x.Sources.Any(s => !s.IsDeleted && s.InvoiceHeadId == invoice.Id)).ToList();
+        var active = related.Where(x => x.Status is AutoInvoiceOperationStatus.Pending or
+            AutoInvoiceOperationStatus.Processing or AutoInvoiceOperationStatus.Unknown).ToList();
+        var operation = active.OrderByDescending(x => x.Status == AutoInvoiceOperationStatus.Unknown)
+            .ThenByDescending(x => x.Id).FirstOrDefault() ?? related.OrderByDescending(x => x.Id).FirstOrDefault();
+        var unknown = IsUnknown(invoice) || active.Any(x => x.Status == AutoInvoiceOperationStatus.Unknown);
+        var safeState = InvoiceIssuanceStatePolicy.CanChangeRoute(invoice) && invoice.IssuedAtUtc == null;
+        var hasDetails = invoice.GrandTotal > 0 && invoice.Details.Any(x => !x.IsDeleted && x.Quantity > 0 && x.TotalAmount > 0);
+        var validation = ValidateInvoiceForAutomaticClaim(invoice);
+        var storedError = !string.IsNullOrWhiteSpace(invoice.LastErrorCode) || !string.IsNullOrWhiteSpace(invoice.LastErrorMessage);
+        var hasIncident = unknown || storedError || (active.Count == 0 && (!safeState || !hasDetails || !validation.IsSuccess));
+        var stable = StableAtUtc(invoice);
+        var eligibleAt = stable.AddMinutes(settings.MinimumAgeMinutes);
+        var ageEligible = eligibleAt <= nowUtc;
+        var group = IsCashOnlyAutomaticOrder(invoice) &&
+                    invoice.GrandTotal < settings.SeparateAmountThreshold;
+        var errorCode = invoice.LastErrorCode;
+        var errorMessage = invoice.LastErrorMessage;
+        if (unknown && !storedError)
         {
-            "Invoice.UnitMissing" => "Thiếu đơn vị tính",
-            "Invoice.InputInvoiceStockInsufficient" => "Thiếu tồn hóa đơn",
-            "InvoiceProvider.NotConfigured" => "Thiếu cấu hình hóa đơn",
-            "InvoiceProvider.CredentialKeyUnavailable" => "Lỗi khóa bảo mật Viettel",
-            _ when IsUnknown(invoice) => "Chưa xác định — cần tra cứu UUID",
-            _ when !string.IsNullOrWhiteSpace(invoice.LastErrorCode) => "Cần xử lý",
-            _ when SaleAtUtc(invoice) > nowUtc.AddMinutes(-settings.MinimumAgeMinutes) => "Chờ tới giờ phát hành",
-            _ when IsConsumer(invoice) && invoice.GrandTotal < settings.SeparateAmountThreshold => "Chờ gộp",
-            _ => "Sẵn sàng"
-        };
+            errorCode = operation?.ErrorCode ?? "UNKNOWN_RESULT";
+            errorMessage = operation?.ErrorMessage ?? "Kết quả nhà cung cấp chưa xác định.";
+        }
+        else if (hasIncident && !storedError)
+        {
+            errorCode = !hasDetails ? "Invoice.NoIssueableDetails" : validation.Error?.Code ?? "Invoice.UnsafeState";
+            errorMessage = !hasDetails ? "Hóa đơn không còn giá trị hoặc dòng hàng có thể phát hành." :
+                validation.Error?.Message ?? "Trạng thái hóa đơn cần được kiểm tra.";
+        }
         return new AutoInvoiceQueueItemDto
         {
-            InvoiceHeadId = invoice.Id,
-            OrderId = invoice.OrderId,
-            OrderNumber = invoice.Order?.OrderNumber,
-            SaleAtUtc = SaleAtUtc(invoice),
-            SaleDateLocal = SaleDateLocal(invoice, settings, nowUtc),
+            InvoiceHeadId = invoice.Id, OrderId = invoice.OrderId, OrderNumber = invoice.Order?.OrderNumber,
+            InvoiceIssuanceRoute = invoice.Order!.InvoiceIssuanceRoute,
+            SaleAtUtc = SaleAtUtc(invoice), SaleAtLocal = SaleDateLocal(invoice, settings, nowUtc),
+            SaleDateLocal = SaleDateLocal(invoice, settings, nowUtc).Date,
+            StableAtUtc = stable,
+            EligibleAtLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(eligibleAt, DateTimeKind.Utc), GetZone(settings.TimeZoneId)),
+            IsAgeEligible = ageEligible,
+            IsReady = !hasIncident && active.Count == 0 && safeState && hasDetails && ageEligible,
+            HasIncident = hasIncident, IsUnknown = unknown,
+            CanRecheck = !unknown && active.Count == 0 && safeState && IsLocallyRecheckableIncident(invoice.LastErrorCode?.Trim()),
+            CanChangeToManual = safeState && active.Count == 0 && invoice.Order.Status == OrderStatus.Completed,
+            UuidLookupInvoiceHeadId = operation is { IsManual: false, Status: AutoInvoiceOperationStatus.Unknown, InvoiceHeadId: not null } &&
+                uuidTargets.Contains(operation.InvoiceHeadId.Value) ? operation.InvoiceHeadId : null,
+            OperationId = operation?.Id, OperationStatus = operation?.Status,
             BuyerType = invoice.BuyerType,
-            BuyerDisplay = invoice.BuyerType == InvoiceBuyerTypes.NoInvoice
-                ? "Bán cho người tiêu dùng"
-                : invoice.BuyerLegalName ?? invoice.BuyerName ?? invoice.BuyerTaxCode,
-            GrandTotal = invoice.GrandTotal,
-            ProviderStatus = invoice.ProviderStatus,
-            StatusName = status,
-            StoreName = invoice.Store?.Name,
-            LegalEntityId = invoice.LegalEntityId,
-            InvoiceProviderSettingId = invoice.InvoiceProviderSettingId,
-            ProviderCode = invoice.ProviderCode,
-            ErrorCode = invoice.LastErrorCode,
-            ErrorMessage = invoice.LastErrorMessage,
-            IsGroupedConsumer = IsConsumer(invoice) && invoice.GrandTotal < settings.SeparateAmountThreshold
+            BuyerDisplay = invoice.BuyerLegalName ?? invoice.BuyerName,
+            GrandTotal = invoice.GrandTotal, ProviderStatus = invoice.ProviderStatus,
+            StatusName = unknown ? "Chưa xác định" : hasIncident ? "Cần xử lý" : active.Count > 0 ? "Đang xử lý" :
+                !ageEligible ? "Chờ đủ tuổi" : group ? "Đợi gộp" : "Đơn lẻ sẵn sàng",
+            StoreName = invoice.Store?.Name, LegalEntityId = invoice.LegalEntityId,
+            InvoiceProviderSettingId = invoice.InvoiceProviderSettingId, ProviderCode = invoice.ProviderCode,
+            ErrorCode = errorCode, ErrorMessage = errorMessage, IsGroupedConsumer = group
         };
     }
-
     private static AutoInvoiceSettingsDto MapSettings(AutoInvoiceSettings x)
         => new()
         {
@@ -1261,13 +2094,57 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
 
     private static DateTime SaleAtUtc(InvoiceHead invoice)
         => invoice.Order?.CompletedAtUtc ?? DateTime.SpecifyKind(invoice.InvoiceDate, DateTimeKind.Utc);
-
+    private static DateTime StableAtUtc(
+    InvoiceHead invoice)
+    => invoice.LastIssuanceRelevantChangeAtUtc
+        ?? SaleAtUtc(invoice);
     private static DateTime SaleDateLocal(InvoiceHead invoice, AutoInvoiceSettings settings, DateTime nowUtc)
         => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(SaleAtUtc(invoice), DateTimeKind.Utc), GetZone(settings.TimeZoneId));
 
-    private static bool IsConsumer(InvoiceHead invoice)
-        => string.Equals(invoice.BuyerType, InvoiceBuyerTypes.NoInvoice, StringComparison.OrdinalIgnoreCase);
+    private static bool IsCashOnlyAutomaticOrder(InvoiceHead invoice)
+    {
+        var order = invoice.Order;
+        if (order == null || order.StoreId != invoice.StoreId ||
+            order.InvoiceIssuanceRoute != InvoiceIssuanceRoute.Automatic ||
+            order.GrandTotal <= 0 || order.DepositAmount > 0)
+            return false;
 
+        // Deposits have a separate ledger; without proof of cash-only funding,
+        // keep the order individual. Include debt collections: any bank portion
+        // also makes a mixed payment individual. Deleted/zero entries are not payments.
+        var payments = order.Payments.Where(x => !x.IsDeleted && x.Amount > 0).ToList();
+        return payments.Count > 0 &&
+               payments.All(x => x.StoreId == invoice.StoreId && x.OrderId == order.Id &&
+                                 x.Method == PaymentMethod.Cash) &&
+               payments.Sum(x => x.Amount) >= order.GrandTotal;
+    }
+
+    private static bool IsLocallyRecheckableIncident(
+    string? errorCode)
+    {
+        if (string.IsNullOrWhiteSpace(errorCode))
+            return false;
+
+        if (errorCode.StartsWith(
+                "InvoiceBuyer.",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return errorCode.Equals(
+                   "Invoice.UnitMissing",
+                   StringComparison.OrdinalIgnoreCase)
+               || errorCode.Equals(
+                   "Invoice.InputInvoiceStockInsufficient",
+                   StringComparison.OrdinalIgnoreCase)
+               || errorCode.Equals(
+                   "InvoiceProvider.NotConfigured",
+                   StringComparison.OrdinalIgnoreCase)
+               || errorCode.Equals(
+                   "InvoiceProvider.CredentialKeyUnavailable",
+                   StringComparison.OrdinalIgnoreCase);
+    }
     private static bool IsUnknown(InvoiceHead invoice)
         => invoice.ProviderStatus == InvoiceProviderStatus.Issuing ||
            invoice.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber ||
@@ -1298,25 +2175,28 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         return false;
     }
 
-    private static string BuildGroupKey(InvoiceHead invoice, AutoInvoiceSettings settings, DateTime nowUtc)
+    private static string BuildGroupKey(
+    InvoiceHead invoice,
+    AutoInvoiceSettings settings,
+    DateTime nowUtc)
     {
-        var warehouses = invoice.Details
-            .Where(x => !x.IsDeleted)
-            .Select(x => x.OrderLegalEntityAllocation?.WarehouseId ?? 0)
-            .Distinct()
-            .OrderBy(x => x)
-            .Select(x => x.ToString(CultureInfo.InvariantCulture));
         return string.Join(
             "|",
-            SaleDateLocal(invoice, settings, nowUtc).ToString("yyyy-MM-dd"),
+            SaleDateLocal(
+                invoice,
+                settings,
+                nowUtc).ToString("yyyy-MM-dd"),
+
+            // Business boundary
             invoice.StoreId,
             invoice.LegalEntityId ?? 0,
+
+            // Technical compatibility boundary
             invoice.InvoiceProviderSettingId ?? 0,
             invoice.ProviderCode ?? string.Empty,
             invoice.SupplierTaxCode ?? string.Empty,
             invoice.InvoiceType ?? string.Empty,
             invoice.TemplateCode ?? string.Empty,
-            invoice.InvoiceSeries ?? string.Empty,
-            string.Join(",", warehouses));
+            invoice.InvoiceSeries ?? string.Empty);
     }
 }

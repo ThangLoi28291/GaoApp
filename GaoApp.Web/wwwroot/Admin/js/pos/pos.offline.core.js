@@ -82,7 +82,10 @@
         if (response?.currentCart) state.currentId = response.currentCart.currentOrderId;
         const draft = response?.currentDraft || draftOf(response);
         if (draft) {
-            state.orders[draft.orderId] = clone(draft);
+            const local = invoiceIntentOrder(state, draft.orderId);
+            state.orders[draft.orderId] = { ...clone(draft),
+                ...(local?.invoiceIntentRequired ? { invoiceIntentRequired: true } : {}),
+                ...(local?.invoiceIntent ? { invoiceIntent: clone(local.invoiceIntent) } : {}) };
             if (draft.status === 0) state.currentId = draft.orderId;
             else if (state.currentId === draft.orderId) state.currentId = null;
         }
@@ -200,6 +203,7 @@
         if (draft.status === 2) return draft;
         if (draft.status !== 0) error('Chỉ được chốt giỏ đang bán.');
         if (!draft.lines.length || draft.grandTotal <= 0 || draft.balanceDue > 0) error('Đơn chưa có hàng, tổng tiền không hợp lệ hoặc chưa nhận đủ tiền.');
+        draft.invoiceIntentRequired = true;
         draft.status = 2; draft.completedAtUtc = at; draft.orderNumber = `OFF-${state.context.terminalId}-${draft.orderId}`;
         if (state.currentId === draft.orderId) state.currentId = null;
         return draft;
@@ -228,10 +232,51 @@
         if (orderId && state.orders[orderId]) return state.orders[orderId];
         error('Chức năng này cần kết nối server. Các đơn tại quầy vẫn được giữ.');
     }
+    function invoiceIntentOrder(state, orderId) {
+        return state.orders[orderId] || state.orders[mapId(state, 'order', orderId)] ||
+            Object.values(state.orders).find(x => Number(mapId(state, 'order', x.orderId)) === Number(orderId));
+    }
+    function pendingInvoiceIntent(state) {
+        return Object.values(state.orders).filter(x => x.status === 2 &&
+            (x.invoiceIntentRequired || x.offline) && ![1, 2].includes(x.invoiceIntent?.route))
+            .sort((a, b) => String(a.completedAtUtc || '').localeCompare(String(b.completedAtUtc || '')) || a.orderId - b.orderId)[0]?.orderId || null;
+    }
+    function confirmInvoiceIntent(state, operation, response) {
+        const match = operation.url.match(/^\/admin\/pos\/(\d+)\/invoice-route$/);
+        if (!match) return;
+        const expectedId = Number(mapId(state, 'order', match[1]));
+        const route = operation.body?.route;
+        if (response?.success !== true || Number(response.orderId) !== expectedId ||
+            response.route !== (route === 1 ? 'Automatic' : 'Manual'))
+            error('Kết quả lựa chọn hóa đơn không khớp yêu cầu tại quầy. Cần đối soát trước khi gửi tiếp.');
+        const order = invoiceIntentOrder(state, Number(match[1]));
+        if (order) {
+            order.invoiceIntentRequired = true;
+            order.invoiceIntent = { route, operationId: operation.id, selectedAtUtc: operation.occurredAt,
+                contextKey: state.key, pendingSync: false };
+        }
+    }
     function apply(state, catalog, operation) {
         const url = new URL(operation.url, 'https://pos.local'), path = url.pathname, p = url.searchParams;
         const body = operation.body || {}, method = operation.method, at = operation.occurredAt;
         if (method === 'GET') return clone(read(state, catalog, url));
+        const intentRoute = path.match(/^\/admin\/pos\/(\d+)\/invoice-route$/);
+        if (intentRoute) {
+            permission(state, 'pos.order.finalize');
+            if (method !== 'POST' || ![1, 2].includes(body.route) || state.key !== contextKey(state.context))
+                error('Lựa chọn hóa đơn hoặc phiên POS không hợp lệ.');
+            const order = invoiceIntentOrder(state, Number(intentRoute[1]));
+            if (!order || order.status !== 2) error('Chỉ chọn hóa đơn cho đơn đã hoàn tất tại quầy.');
+            if (order.invoiceIntent && (order.invoiceIntent.contextKey !== state.key || order.invoiceIntent.route !== body.route))
+                error('Đơn đã có lựa chọn hóa đơn. Kết nối server và dùng chức năng chuyển phương thức của quản lý.');
+            order.invoiceIntentRequired = true;
+            order.invoiceIntent ||= { route: body.route, operationId: operation.id, selectedAtUtc: at,
+                contextKey: state.key, pendingSync: true };
+            return { success: true, orderId: order.orderId, route: body.route === 1 ? 'Automatic' : 'Manual',
+                pendingSync: order.invoiceIntent.pendingSync };
+        }
+        if (pendingInvoiceIntent(state) && /\/(?:items|scan|payments|payment-and-finalize|manual-transfer|finalize)$/.test(path))
+            error('Vui lòng lưu lựa chọn hóa đơn của đơn đã hoàn tất trước khi bán tiếp.');
         if (path === '/admin/pos/customers/quick-create') {
             permission(state, 'pos.order.create');
             const draft = current(state); editable(draft);
@@ -345,6 +390,10 @@
         return draft.lines.map(l => `${l.variantId}:${l.sellingUnitId || 0}:${l.isPromotionGift ? 1 : 0}:${round(l.quantity, 4).toFixed(4).replace(/\.?0+$/, '')}`).sort().join('|');
     }
     function translate(state, op) {
+        const intentRoute = op.url.match(/^\/admin\/pos\/(\d+)\/invoice-route$/);
+        if (intentRoute && Number(intentRoute[1]) >= 1500000000 &&
+            Number(mapId(state, 'order', intentRoute[1])) === Number(intentRoute[1]))
+            error('Chưa ánh xạ được đơn offline. Phải đồng bộ đơn trước lựa chọn hóa đơn.');
         let url = op.url.replace(/(\/admin\/pos\/(?:orders\/)?)((?:\d)+)(?=\/|\?|$)/, (_, a, b) => a + mapId(state, 'order', b))
             .replace(/(\/lines\/)(\d+)/, (_, a, b) => a + mapId(state, 'line', b))
             .replace(/(\/payments\/)(\d+)/, (_, a, b) => a + mapId(state, 'payment', b))
@@ -381,5 +430,5 @@
         for (const c of text) { crc ^= c.charCodeAt(0) << 8; for (let i = 0; i < 8; i++) crc = ((crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1) & 0xffff; }
         return text + crc.toString(16).toUpperCase().padStart(4, '0');
     }
-    return { initial, clone, contextKey, absorb, screen, current, newDraft, recalc, apply, read, translate, learn, draftOf, mapId, vietQr, permission, linesSignature };
+    return { initial, clone, contextKey, absorb, screen, current, newDraft, recalc, apply, read, translate, learn, draftOf, mapId, vietQr, permission, linesSignature, invoiceIntentOrder, pendingInvoiceIntent, confirmInvoiceIntent };
 });

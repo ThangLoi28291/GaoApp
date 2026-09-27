@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
@@ -216,6 +217,12 @@ public class InvoiceRepository : IInvoiceRepository
                         d.SourceType == InvoiceDetailSourceType.Manual));
                 break;
 
+            case InvoiceListDisplayMode.ManualWaitingInfo:
+            case InvoiceListDisplayMode.ManualReady:
+            case InvoiceListDisplayMode.ManualNeedsAttention:
+                query = ApplyManualWorkspaceFilter(query, displayMode);
+                break;
+
             case InvoiceListDisplayMode.All:
             default:
                 break;
@@ -304,6 +311,53 @@ public class InvoiceRepository : IInvoiceRepository
             .ToListAsync(ct);
 
         return (items, total);
+    }
+
+    private static IQueryable<InvoiceHead> ApplyManualWorkspaceFilter(
+        IQueryable<InvoiceHead> query,
+        InvoiceListDisplayMode displayMode)
+    {
+        // Keep the issued-like rules aligned with InvoiceIssuanceStatePolicy,
+        // expressed inline so EF filters in SQL before counting and paging.
+        query = query.Where(x =>
+            x.Order != null &&
+            x.Order.InvoiceIssuanceRoute == InvoiceIssuanceRoute.Manual &&
+            string.IsNullOrWhiteSpace(x.ProviderInvoiceNo) &&
+            x.IssuedAtUtc == null &&
+            x.ProviderStatus != InvoiceProviderStatus.Issued &&
+            x.ProviderStatus != InvoiceProviderStatus.PdfDownloaded &&
+            x.ProviderStatus != InvoiceProviderStatus.ZipDownloaded &&
+            x.ProviderStatus != InvoiceProviderStatus.EmailSent);
+
+        if (displayMode == InvoiceListDisplayMode.ManualNeedsAttention)
+        {
+            return query.Where(x =>
+                (x.ProviderStatus != InvoiceProviderStatus.LocalDraft &&
+                 x.ProviderStatus != InvoiceProviderStatus.ReadyToIssue &&
+                 x.ProviderStatus != InvoiceProviderStatus.Previewed) ||
+                !string.IsNullOrWhiteSpace(x.LastErrorCode) ||
+                !string.IsNullOrWhiteSpace(x.LastErrorMessage) ||
+                x.GrandTotal <= 0 ||
+                !x.Details.Any(d => !d.IsDeleted && d.Quantity > 0 && d.TotalAmount > 0));
+        }
+
+        query = query.Where(x =>
+            (x.ProviderStatus == InvoiceProviderStatus.LocalDraft ||
+             x.ProviderStatus == InvoiceProviderStatus.ReadyToIssue ||
+             x.ProviderStatus == InvoiceProviderStatus.Previewed) &&
+            string.IsNullOrWhiteSpace(x.LastErrorCode) &&
+            string.IsNullOrWhiteSpace(x.LastErrorMessage) &&
+            x.GrandTotal > 0 &&
+            x.Details.Any(d => !d.IsDeleted && d.Quantity > 0 && d.TotalAmount > 0));
+
+        var buyerInfoComplete = displayMode == InvoiceListDisplayMode.ManualReady;
+        return query.Where(x =>
+            (!string.IsNullOrWhiteSpace(x.BuyerAddress) &&
+              ((x.BuyerType == InvoiceBuyerTypes.Individual &&
+                !string.IsNullOrWhiteSpace(x.BuyerName)) ||
+               (x.BuyerType == InvoiceBuyerTypes.Business &&
+                !string.IsNullOrWhiteSpace(x.BuyerLegalName) &&
+                !string.IsNullOrWhiteSpace(x.BuyerTaxCode)))) == buyerInfoComplete);
     }
 
     public Task<InvoiceHead?> GetInvoiceHeadDetailAsync(

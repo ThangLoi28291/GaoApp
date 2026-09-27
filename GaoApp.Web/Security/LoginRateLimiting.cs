@@ -42,6 +42,30 @@ public static class LoginRateLimiting
                     context.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown",
                     _ => Window(limits.IpAttemptsPerMinute));
             });
+            options.AddPolicy(
+    "invoice-buyer-self-service",
+    context =>
+    {
+        var key =
+            context.Connection.RemoteIpAddress?
+                .MapToIPv6()
+                .ToString()
+            ?? "unknown";
+
+        return RateLimitPartition
+            .GetSlidingWindowLimiter(
+                key,
+                _ =>
+                    new SlidingWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window =
+                            TimeSpan.FromMinutes(1),
+                        SegmentsPerWindow = 6,
+                        QueueLimit = 0,
+                        AutoReplenishment = true
+                    });
+    });
         });
         return services;
     }

@@ -129,3 +129,243 @@ test('bundled QR encoder creates the entire payment symbol without a network dep
     const matrix = context.qrcodegen.QrCode.encodeText(payload, context.qrcodegen.QrCode.Ecc.QUARTILE);
     assert.ok(matrix.size >= 21); assert.equal(matrix.getModule(0, 0), true); assert.equal(matrix.getModule(6, 6), true);
 });
+
+
+function completedIntentFixture(method = 'cash') {
+    const f = fixture();
+    f.act('/admin/pos/cart/current/scan', { barcode: '123456' });
+    const id = f.state.currentId;
+    f.act(method === 'cash' ? '/admin/pos/cart/current/payment-and-finalize' : '/admin/pos/offline/manual-transfer',
+        { orderId: id, clientRequestId: randomUUID(), method: 0, amount: 10000, bankAccountId: 1, referenceCode: 'OFF' });
+    return { ...f, id };
+}
+for (const method of ['cash', 'transfer']) for (const route of [1, 2])
+test(`invoice intent ${method} persists choice ${route} after finalize and reload without resetting completion time`, () => {
+    const { state, catalog, id } = completedIntentFixture(method);
+    const completed = state.orders[id].completedAtUtc;
+    assert.equal(core.pendingInvoiceIntent(state), id);
+    const op = { id: randomUUID(), url: `/admin/pos/${id}/invoice-route`, method: 'POST', body: { route }, occurredAt: '2026-09-09T04:00:00Z' };
+    const result = core.apply(state, catalog, op);
+    assert.equal(result.success, true); assert.equal(result.pendingSync, true);
+    const reloaded = JSON.parse(JSON.stringify(state));
+    assert.equal(core.pendingInvoiceIntent(reloaded), null);
+    assert.equal(reloaded.orders[id].invoiceIntent.route, route);
+    assert.equal(reloaded.orders[id].completedAtUtc, completed);
+    core.apply(reloaded, catalog, { ...op, id: randomUUID() });
+    assert.equal(reloaded.orders[id].invoiceIntent.operationId, op.id);
+    assert.throws(() => core.apply(reloaded, catalog, { ...op, body: { route: route === 1 ? 2 : 1 } }), /quản lý/);
+});
+
+test('invoice intent blocks incomplete, invalid, foreign-context and unauthorized selections', () => {
+    const f = fixture(), id = f.state.currentId;
+    const op = { url: `/admin/pos/${id}/invoice-route`, method: 'POST', body: { route: 1 } };
+    assert.throws(() => core.apply(f.state, f.catalog, op), /hoàn tất/);
+    const ready = completedIntentFixture(); op.url = `/admin/pos/${ready.id}/invoice-route`;
+    assert.throws(() => core.apply(ready.state, ready.catalog, { ...op, body: { route: 0 } }), /không hợp lệ/);
+    for (const field of ['storeId', 'terminalId', 'userId', 'shiftId']) {
+        const foreign = core.clone(ready.state); foreign.context[field]++;
+        assert.throws(() => core.apply(foreign, ready.catalog, op), /phiên POS/);
+    }
+    ready.state.context.permissions = [];
+    assert.throws(() => core.apply(ready.state, ready.catalog, op), /quyền/);
+});
+
+test('invoice intent restores old completed journals and blocks another sale until the missing choice is saved', () => {
+    const { state, catalog, id, act } = completedIntentFixture();
+    delete state.orders[id].invoiceIntentRequired; // Old journal schema; retain its completed offline sale.
+    assert.equal(core.pendingInvoiceIntent(JSON.parse(JSON.stringify(state))), id);
+    act('/admin/pos/cart/current/new');
+    assert.throws(() => act('/admin/pos/cart/current/scan', { barcode: '123456' }), /lựa chọn hóa đơn/);
+    act(`/admin/pos/${id}/invoice-route`, { route: 2 });
+    assert.equal(act('/admin/pos/cart/current/scan', { barcode: '123456' }).grandTotal, 10000);
+    assert.equal(core.pendingInvoiceIntent(core.initial(state.context)), null);
+});
+
+test('invoice intent translates the completed order instead of the new cart and rejects unmapped IDs or mismatched acknowledgments', () => {
+    const { state, catalog, id, act } = completedIntentFixture();
+    const op = { id: randomUUID(), url: `/admin/pos/${id}/invoice-route`, method: 'POST', body: { route: 2 } };
+    core.apply(state, catalog, op); act('/admin/pos/cart/current/new');
+    assert.throws(() => core.translate(state, op), /ánh xạ/);
+    state.maps.order[id] = 101; state.maps.order[state.currentId] = 102;
+    assert.equal(core.translate(state, op).url, '/admin/pos/101/invoice-route');
+    assert.throws(() => core.confirmInvoiceIntent(state, op, { success: true, orderId: 102, route: 'Manual' }), /không khớp/);
+    assert.throws(() => core.confirmInvoiceIntent(state, op, { success: true, orderId: 101, route: 'Automatic' }), /không khớp/);
+    core.confirmInvoiceIntent(state, op, { success: true, orderId: 101, route: 'Manual' });
+    assert.equal(state.orders[id].invoiceIntent.pendingSync, false);
+    assert.equal(state.orders[state.currentId].invoiceIntent, undefined);
+    core.absorb(state, { orderId: 101, status: 2, lines: [], payments: [] });
+    assert.equal(state.orders[101].invoiceIntent.route, 2);
+});
+
+async function intentTransportHarness(saved, controls = {}) {
+    const f = fixture(), key = f.state.key;
+    f.state.context.expiresAtUtc = new Date(Date.now() + 3600000).toISOString();
+    f.state.context.permissions.push('pos.order.reprint');
+    f.state.context.screen = { currentDraft: core.clone(f.state.orders[f.state.currentId]), currentCart: { currentOrderId: f.state.currentId }, draftOrders: [], heldOrders: [] };
+    const stores = saved || new Map([
+        ['sessions', new Map([[key, core.clone(f.state)]])],
+        ['catalogs', new Map([[key, { ...f.catalog, fetchedAtUtc: new Date().toISOString() }]])],
+        ['meta', new Map([['active', { key, expiresAt: f.state.context.expiresAtUtc }]])]
+    ]);
+    const server = controls.backend?.server || fixture();
+    if (!controls.backend) { server.state.orders = {}; server.state.currentId = null; server.state.nextId = 100; }
+    const requests = [], receipts = controls.backend?.receipts || new Map(), prints = [], events = [];
+    controls.backend = { server, receipts };
+    controls.online ||= false;
+    const database = { close() {}, transaction(names, mode) {
+        const tx = {}, writes = [];
+        tx.objectStore = name => ({
+            get(k) { const q = {}; queueMicrotask(() => { q.result = structuredClone(stores.get(name)?.get(k)); q.onsuccess?.(); }); return q; },
+            getAll() { const q = {}; queueMicrotask(() => { q.result = structuredClone([...stores.get(name).values()]); q.onsuccess?.(); }); return q; },
+            put(value, k) { writes.push([name, k, structuredClone(value)]); }
+        });
+        if (mode === 'readwrite') queueMicrotask(() => {
+            if (controls.failSave) { tx.error = new Error('Disk full'); tx.onabort?.(); }
+            else { for (const [name, k, value] of writes) stores.get(name).set(k, value); tx.oncomplete?.(); }
+        });
+        return tx;
+    } };
+    const window = {
+        PosOfflineCore: core, isSecureContext: false, PosPrinting: { openLocal: order => prints.push(structuredClone(order)) },
+        addEventListener() {}, dispatchEvent: event => events.push(event.type),
+        fetch: async (input, options = {}) => {
+            if (!controls.online) throw new TypeError('Offline');
+            const url = new URL(input, 'https://pos.local');
+            if (url.pathname.endsWith('/offline/status') || url.pathname.endsWith('/offline/bootstrap')) {
+                if (controls.authStatus) return Response.json({ message: 'Session rejected' }, { status: controls.authStatus });
+                return Response.json({ ...f.state.context, userId: controls.changedUserId || f.state.context.userId, antiForgeryToken: 'test' });
+            }
+            const id = options.headers?.['X-POS-Operation-Id'];
+            requests.push({ path: url.pathname, id, body: JSON.parse(options.body || '{}') });
+            if (controls.rejectRoute && url.pathname.endsWith('/invoice-route')) return Response.json({ message: 'Route conflict' }, { status: 409 });
+            let result = receipts.get(id);
+            if (!result) {
+                result = core.clone(core.apply(server.state, server.catalog, { id, url: url.pathname + url.search,
+                    method: options.method, body: JSON.parse(options.body || '{}'), occurredAt: options.headers?.['X-POS-Occurred-At'] }));
+                receipts.set(id, result);
+            }
+            if (controls.loseRouteResponse && url.pathname.endsWith('/invoice-route')) {
+                controls.loseRouteResponse = false; controls.online = false; throw new TypeError('Response lost after commit');
+            }
+            if (controls.failAfterRouteCommit && url.pathname.endsWith('/invoice-route')) {
+                controls.failAfterRouteCommit = false; controls.failSave = true;
+            }
+            return Response.json(result);
+        }
+    };
+    const location = { origin: 'https://pos.local', href: 'https://pos.local/admin/pos', reload() {} };
+    vm.runInNewContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.js'), 'utf8'), {
+        window, location, URL, Response, AbortController, DOMException, structuredClone, Date,
+        crypto: require('node:crypto').webcrypto, TextEncoder, setTimeout, clearTimeout,
+        setInterval: () => 1, clearInterval() {}, navigator: { locks: { request: (_, __, callback) => Promise.resolve(callback({})) } },
+        document: { getElementById: () => ({ dataset: { storeId: '1', terminalId: '2', userId: '3' } }) },
+        CustomEvent: class { constructor(type) { this.type = type; } },
+        indexedDB: { open() { const q = {}; queueMicrotask(() => { q.result = database; q.onsuccess?.(); }); return q; } }
+    });
+    await window.PosOffline.init();
+    await new Promise(resolve => setImmediate(resolve));
+    return { api: window.PosOffline, stores, controls, server, requests, receipts, prints,
+        state: () => stores.get('sessions').get(key),
+        post: async (url, body = {}) => { const response = await window.fetch(url, { method: 'POST', body: JSON.stringify(body) }); return { status: response.status, body: await response.json() }; }
+    };
+}
+async function sellOffline(h) {
+    const created = await h.post('/admin/pos/cart/current/new');
+    await h.post('/admin/pos/cart/current/scan', { barcode: '123456' });
+    const completed = await h.post('/admin/pos/cart/current/payment-and-finalize',
+        { orderId: created.body.orderId, clientRequestId: randomUUID(), method: 0, amount: 10000 });
+    assert.equal(completed.status, 200);
+    return created.body.orderId;
+}
+
+test('invoice intent journal acknowledges only durable storage, replays FIFO, and deduplicates a lost server response', async () => {
+    const h = await intentTransportHarness(); const id = await sellOffline(h);
+    assert.equal(h.api.pendingInvoiceIntentOrderId(), id);
+    assert.throws(() => h.api.print(id), /lựa chọn/);
+    const chosen = await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 });
+    assert.equal(chosen.status, 200); assert.equal(chosen.body.pendingSync, true);
+    const count = h.state().queue.length;
+    assert.equal((await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 })).status, 200);
+    assert.equal(h.state().queue.length, count);
+    assert.equal((await h.post(`/admin/pos/${id}/invoice-route`, { route: 1 })).status, 409);
+    assert.equal(h.api.print(id), true); assert.equal(h.prints[0].invoiceIntent.route, 2);
+    h.controls.online = true; h.controls.loseRouteResponse = true;
+    await h.api.sync();
+    assert.equal(h.state().queue.length, 1);
+    const request = h.requests.at(-1); assert.equal(request.path, '/admin/pos/101/invoice-route');
+    assert.ok(request.id);
+    h.controls.online = true; await h.api.sync();
+    assert.equal(h.state().queue.length, 0);
+    assert.equal(h.requests.at(-1).id, request.id);
+    assert.equal(h.state().orders[101].invoiceIntent.pendingSync, false);
+    assert.equal(h.receipts.size, count);
+});
+
+test('invoice intent restores the missing modal after reload and storage failure never confirms the choice', async () => {
+    const h = await intentTransportHarness(); const id = await sellOffline(h);
+    const reloaded = await intentTransportHarness(h.stores);
+    assert.equal(reloaded.api.pendingInvoiceIntentOrderId(), id);
+    reloaded.controls.failSave = true;
+    const result = await reloaded.post(`/admin/pos/${id}/invoice-route`, { route: 1 });
+    assert.equal(result.status, 409);
+    assert.equal(reloaded.state().orders[id].invoiceIntent, undefined);
+    assert.equal(reloaded.prints.length, 0);
+    assert.equal(reloaded.state().queue.filter(x => x.url.endsWith('/invoice-route')).length, 0);
+});
+
+test('invoice intent preserves a rejected replay for reconciliation and blocks receipt printing', async () => {
+    const h = await intentTransportHarness(); const id = await sellOffline(h);
+    await h.post(`/admin/pos/${id}/invoice-route`, { route: 1 });
+    h.controls.online = true; h.controls.rejectRoute = true; await h.api.sync();
+    assert.equal(h.state().queue.length, 1); assert.match(h.state().conflict.message, /Route conflict/);
+    assert.equal(h.state().orders[id].invoiceIntent.route, 1);
+    assert.throws(() => h.api.print(id), /Route conflict/);
+    assert.equal((await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 })).status, 409);
+});
+
+test('invoice intent UI restores the pending order without opening another modal during submission', () => {
+    const app = fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.app.js'), 'utf8');
+    const source = app.slice(app.indexOf('function restorePendingInvoiceIntent()'), app.indexOf('function openReceiptPrint(orderId)'));
+    const calls = [], context = { window: { PosOffline: { pendingInvoiceIntentOrderId: () => 123 } },
+        invoiceIntentBusy: false, pendingInvoiceIntentOrderId: null, openReceiptPrint: id => calls.push(id) };
+    vm.runInNewContext(source, context); context.restorePendingInvoiceIntent();
+    assert.deepEqual(calls, [123]); context.invoiceIntentBusy = true; context.restorePendingInvoiceIntent();
+    assert.deepEqual(calls, [123]);
+    assert.match(app, /resolveOrderId\(pendingInvoiceIntentOrderId\)/);
+});
+
+
+for (const failure of ['401', '403', 'changed-user'])
+test(`invoice intent pending replay survives ${failure} without submitting the route under another identity`, async () => {
+    const h = await intentTransportHarness(); const id = await sellOffline(h);
+    await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 });
+    const before = JSON.stringify(h.state().queue);
+    h.controls.online = true;
+    if (failure === 'changed-user') h.controls.changedUserId = 44; else h.controls.authStatus = Number(failure);
+    await h.api.sync();
+    assert.equal(JSON.stringify(h.state().queue), before);
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.state().orders[id].invoiceIntent.route, 2);
+});
+
+
+test('invoice intent online commit survives a failed response save and browser reload using the same operation key', async () => {
+    const h = await intentTransportHarness(); h.controls.online = true;
+    await h.api.sync();
+    const id = await sellOffline(h);
+    assert.equal(h.state().queue.length, 0);
+    h.controls.failAfterRouteCommit = true;
+    const response = await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 });
+    assert.equal(response.status, 409);
+    assert.equal(h.state().queue.length, 1);
+    const operationId = h.state().queue[0].id;
+    assert.ok(h.receipts.has(operationId));
+    assert.equal(h.state().orders[id].invoiceIntent.route, 2);
+    h.controls.failSave = false;
+    const reloaded = await intentTransportHarness(h.stores, h.controls);
+    for (let i = 0; i < 30 && reloaded.state().queue.length; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(reloaded.state().queue.length, 0);
+    assert.equal(reloaded.requests.at(-1).id, operationId);
+    assert.equal(reloaded.state().orders[id].invoiceIntent.pendingSync, false);
+    assert.equal(reloaded.api.pendingInvoiceIntentOrderId(), null);
+});

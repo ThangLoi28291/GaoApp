@@ -249,7 +249,8 @@ public sealed class ProductionBootstrapTests
                 "20260923140000_AddInvoiceStockLegacyDocumentReferences",
                 "20260923160000_AddLegacyInvoiceImport",
                 "20260923180000_AddLegacyReturnArchive",
-                "20260924100000_AddAutoInvoiceIssuance"
+                "20260924100000_AddAutoInvoiceIssuance",
+"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService"
             ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }

@@ -55,6 +55,19 @@ public sealed class OrderRepository : IOrderRepository
         => _db.OrderLines
             .Include(l => l.Order)
             .FirstOrDefaultAsync(l => l.Id == lineId && l.Order.Status == OrderStatus.Draft, ct);
+    public async Task<Order?> GetForInvoiceRouteChangeAsync(int storeId, int orderId, CancellationToken ct = default)
+    {
+        var order = await _db.Orders.FirstOrDefaultAsync(
+            x => x.StoreId == storeId && x.Id == orderId && !x.IsDeleted, ct);
+        if (order == null)
+            return null;
+
+        await _db.Entry(order).ReloadAsync(ct);
+        return _db.Entry(order).State == EntityState.Detached || order.IsDeleted || order.StoreId != storeId
+            ? null
+            : order;
+    }
+
     public Task<Order?> GetByIdAsync(int orderId, CancellationToken ct = default)
       => _db.Orders
           .Include(o => o.Customer)

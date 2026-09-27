@@ -200,6 +200,13 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceIntegrationLogCleanupService, InvoiceIntegrationLogCleanupService>();
         services.AddScoped<IInvoiceCorrectionService, InvoiceCorrectionService>();
         services.AddScoped<IAutoInvoiceService, AutoInvoiceService>();
+        services.AddScoped<
+    IInvoiceIssuanceRouteService,
+    InvoiceIssuanceRouteService>();
+
+        services.AddScoped<
+            IInvoiceBuyerSelfServiceService,
+            InvoiceBuyerSelfServiceService>();
 
 
 

@@ -28,6 +28,11 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         "20260827150000_AddInputInvoiceReconciliation";
     private const string ReceivingWorkbenchMigrationId =
         "20260830112901_AddReceivingWorkbench";
+    private const string InvoiceIssuanceRoutingMigrationId =
+    "20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService";
+
+    private const string InvoiceIssuanceRoutingBackfillSqlSha256 =
+        "84685fb83dde21db7b797aebd99d418153d71e7ac2e9a42de62770ff9497a2d2";
     private static readonly HashSet<string> ReceivingWorkbenchSqlSha256 =
     [
         "bd1bd38a8320d73b03bd1d15583f11064ebf3e6f4e3de80ad50705a6fc5d8cac",
@@ -326,6 +331,18 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 Convert.ToHexString(SHA256.HashData(
                         Encoding.UTF8.GetBytes(normalized)))
                     .ToLowerInvariant());
+        var isReviewedInvoiceIssuanceRoutingSql =
+    string.Equals(
+        migrationId,
+        InvoiceIssuanceRoutingMigrationId,
+        StringComparison.Ordinal)
+    && string.Equals(
+        Convert.ToHexString(
+            SHA256.HashData(
+                Encoding.UTF8.GetBytes(normalized)))
+            .ToLowerInvariant(),
+        InvoiceIssuanceRoutingBackfillSqlSha256,
+        StringComparison.Ordinal);
         // Reviewed ACB backfill copies existing receipt JSON into reconciliation rows; it performs no DDL.
         var isReviewedAcbReconciliationSql = string.Equals(
                 migrationId, "20260908192844_AddAcbQrNotificationReconciliation", StringComparison.Ordinal)
@@ -340,13 +357,14 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 migrationId, "20260909061611_EnableSnapshotProfitReads", StringComparison.Ordinal)
             && string.Equals(normalized, "ALTER DATABASE CURRENT SET ALLOW_SNAPSHOT_ISOLATION ON;", StringComparison.Ordinal);
         if (!isReviewedSnapshotOptionSql
-            && !isReviewedAcbReconciliationSql
-            && !isReviewedBankDefaultGuardSql
-            && !isReviewedCostPolicySql
-            && !isReviewedInputInvoiceIdentitySql
-            && !isReviewedInputInvoiceBuyerOwnerGuardSql
-            && !isReviewedInputInvoiceItemCatalogMappingSql
-            && !isReviewedReceivingWorkbenchSql)
+      && !isReviewedAcbReconciliationSql
+      && !isReviewedBankDefaultGuardSql
+      && !isReviewedCostPolicySql
+      && !isReviewedInputInvoiceIdentitySql
+      && !isReviewedInputInvoiceBuyerOwnerGuardSql
+      && !isReviewedInputInvoiceItemCatalogMappingSql
+      && !isReviewedReceivingWorkbenchSql
+      && !isReviewedInvoiceIssuanceRoutingSql)
         {
             throw new InvalidOperationException(
                 "The schema manifest encountered an unreviewed SQL migration operation.");

@@ -14,6 +14,15 @@ internal static class InvoiceDtoMapper
             Id = entity.Id,
             StoreId = entity.StoreId,
             OrderId = entity.OrderId,
+            InvoiceIssuanceRoute =
+    entity.Order?.InvoiceIssuanceRoute
+    ?? InvoiceIssuanceRoute.Unselected,
+
+            InvoiceIssuanceRouteSelectedAtUtc =
+    entity.Order?.InvoiceIssuanceRouteSelectedAtUtc,
+
+            InvoiceIssuanceRouteSelectedByUserId =
+    entity.Order?.InvoiceIssuanceRouteSelectedByUserId,
             LegacySourceId = entity.LegacySourceId,
             LegacyOrderCategoryId = entity.LegacyOrderCategoryId,
             LegacyMergeId = entity.LegacyMergeId,
@@ -33,6 +42,7 @@ internal static class InvoiceDtoMapper
             BuyerName = entity.BuyerName,
             BuyerLegalName = entity.BuyerLegalName,
             BuyerTaxCode = entity.BuyerTaxCode,
+            BuyerCitizenId = entity.BuyerCitizenId,
             BuyerAddress = entity.BuyerAddress,
             BuyerEmail = entity.BuyerEmail,
             BuyerPhone = entity.BuyerPhone,
@@ -129,6 +139,12 @@ internal static class InvoiceDtoMapper
         {
             Id = entity.Id,
             OrderId = entity.OrderId,
+            InvoiceIssuanceRoute =
+    entity.Order?.InvoiceIssuanceRoute
+    ?? InvoiceIssuanceRoute.Unselected,
+            ProviderStatus = entity.ProviderStatus,
+            LastErrorCode = entity.LastErrorCode,
+            LastErrorMessage = entity.LastErrorMessage,
             LegacySourceId = entity.LegacySourceId,
             LegacyOrderCategoryId = entity.LegacyOrderCategoryId,
             LegacyMergeId = entity.LegacyMergeId,

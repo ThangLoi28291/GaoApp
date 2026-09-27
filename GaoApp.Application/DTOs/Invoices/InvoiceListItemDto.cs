@@ -1,10 +1,16 @@
 ﻿namespace GaoApp.Application.DTOs.Invoices;
 
+using GaoApp.Domain.Enums;
 public class InvoiceListItemDto
 {
     public int Id { get; set; }
 
     public int? OrderId { get; set; }
+    public InvoiceIssuanceRoute InvoiceIssuanceRoute { get; set; }
+    = InvoiceIssuanceRoute.Unselected;
+    public InvoiceProviderStatus ProviderStatus { get; set; }
+    public string? LastErrorCode { get; set; }
+    public string? LastErrorMessage { get; set; }
     public long? LegacySourceId { get; set; }
     public long? LegacyOrderCategoryId { get; set; }
     public string? LegacyMergeId { get; set; }

@@ -1,6 +1,6 @@
 /* Cache only a prepared POS shell and public assets. API responses remain private in IndexedDB. */
 'use strict';
-const ASSETS = 'gao-pos-assets-v1', SHELLS = 'gao-pos-shells-v1';
+const ASSETS = 'gao-pos-assets-v2', LEGACY_ASSETS = 'gao-pos-assets-v1', SHELLS = 'gao-pos-shells-v1';
 const POS_PAGES = new Set(['/admin/pos', '/admin/pos/', '/admin/pos/v3', '/admin/pos/legacy']);
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
@@ -80,7 +80,10 @@ self.addEventListener('fetch', event => {
             const cache = await caches.open(ASSETS);
             // Cache.match returns a Promise; wait for a hit before choosing the network fallback.
             const cached = await cache.match(request);
-            return cached || fetch(request);
+            // Keep an already prepared shell usable until the new bundle is fully cached.
+            // Match the exact versioned URL; never clear pending IndexedDB journals on upgrade.
+            const legacy = cached ? null : await (await caches.open(LEGACY_ASSETS)).match(request);
+            return cached || legacy || fetch(request);
         })());
     }
 });

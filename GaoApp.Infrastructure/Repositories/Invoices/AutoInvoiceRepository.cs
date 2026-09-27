@@ -130,6 +130,150 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
                     .SetProperty(x => x.LastSyncedAtUtc, DateTime.UtcNow),
                 ct);
     }
+    public async Task ClearInvoiceErrorsAsync(
+    int storeId,
+    IReadOnlyCollection<int> invoiceHeadIds,
+    CancellationToken ct = default)
+    {
+        var ids = invoiceHeadIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToArray();
+
+        if (ids.Length == 0)
+            return;
+
+        await _db.InvoiceHeads
+            .Where(x =>
+                x.StoreId == storeId &&
+                ids.Contains(x.Id) &&
+                !x.IsDeleted)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(
+                        x => x.LastErrorCode,
+                        (string?)null)
+                    .SetProperty(
+                        x => x.LastErrorMessage,
+                        (string?)null)
+                    .SetProperty(
+                        x => x.LastSyncedAtUtc,
+                        DateTime.UtcNow),
+                ct);
+    }
+    public async Task<int> RepairMissingUnitNamesAsync(
+    int storeId,
+    int invoiceHeadId,
+    CancellationToken ct = default)
+    {
+        var details = await _db.InvoiceDetails
+            .AsSplitQuery()
+            .Include(x => x.OrderLine)
+            .Include(x => x.ProductVariant)
+                .ThenInclude(x => x!.Product)
+                    .ThenInclude(x => x.BaseUnit)
+            .Include(x => x.ProductVariant)
+                .ThenInclude(x => x!.UnitConversions)
+                    .ThenInclude(x => x.Unit)
+            .Where(x =>
+                x.StoreId == storeId &&
+                x.InvoiceHeadId == invoiceHeadId &&
+                !x.IsDeleted)
+            .ToListAsync(ct);
+
+        var changed = 0;
+
+        foreach (var detail in details)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    detail.UnitName))
+            {
+                continue;
+            }
+
+            string? unitName = null;
+
+            // Ưu tiên snapshot đúng thời điểm bán.
+            if (!string.IsNullOrWhiteSpace(
+                    detail.OrderLine?.UnitName))
+            {
+                unitName =
+                    detail.OrderLine.UnitName;
+            }
+            else if (!string.IsNullOrWhiteSpace(
+                         detail.OrderLine?.SellingUnitName))
+            {
+                unitName =
+                    detail.OrderLine.SellingUnitName;
+            }
+
+            // Nếu snapshot cũ thiếu, thử conversion hiện tại.
+            if (string.IsNullOrWhiteSpace(unitName) &&
+                detail.ProductVariant != null &&
+                detail.OrderLine?.ProductUnitConversionId
+                    is int conversionId)
+            {
+                unitName =
+                    detail.ProductVariant.UnitConversions
+                        .Where(x =>
+                            !x.IsDeleted &&
+                            x.Id == conversionId)
+                        .Select(x => x.Unit?.Name)
+                        .FirstOrDefault(x =>
+                            !string.IsNullOrWhiteSpace(x));
+            }
+
+            if (string.IsNullOrWhiteSpace(unitName) &&
+                detail.ProductVariant != null &&
+                detail.OrderLine?.SellingUnitId
+                    is int sellingUnitId)
+            {
+                unitName =
+                    detail.ProductVariant.UnitConversions
+                        .Where(x =>
+                            !x.IsDeleted &&
+                            x.UnitId == sellingUnitId)
+                        .Select(x => x.Unit?.Name)
+                        .FirstOrDefault(x =>
+                            !string.IsNullOrWhiteSpace(x));
+            }
+
+            if (string.IsNullOrWhiteSpace(unitName) &&
+                !string.IsNullOrWhiteSpace(
+                    detail.OrderLine?.BaseUnitName))
+            {
+                unitName =
+                    detail.OrderLine.BaseUnitName;
+            }
+
+            // Cuối cùng fallback đơn vị gốc hiện tại của Product.
+            if (string.IsNullOrWhiteSpace(unitName))
+            {
+                unitName =
+                    detail.ProductVariant?
+                        .Product?
+                        .BaseUnit?
+                        .Name;
+            }
+
+            if (string.IsNullOrWhiteSpace(unitName))
+                continue;
+
+            var normalized =
+                unitName.Trim();
+
+            if (normalized.Length > 100)
+            {
+                normalized =
+                    normalized[..100];
+            }
+
+            detail.UnitName = normalized;
+            changed++;
+        }
+
+        return changed;
+    }
 
     private async Task<List<InvoiceHead>> GetCandidateInvoicesCoreAsync(
         int storeId,
@@ -138,6 +282,17 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
         IReadOnlyCollection<InvoiceProviderStatus> issuedStatuses,
         CancellationToken ct)
     {
+        var succeededSourceIds =
+    await _db.AutoInvoiceOperationSources
+        .AsNoTracking()
+        .Where(x =>
+            x.StoreId == storeId &&
+            !x.IsDeleted &&
+            x.Status ==
+                AutoInvoiceSourceStatus.Succeeded)
+        .Select(x => x.InvoiceHeadId)
+        .Distinct()
+        .ToListAsync(ct);
         var orderBackedIds = await _db.InvoiceHeads
             .AsNoTracking()
             .Where(x =>
@@ -147,9 +302,12 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
                 !x.IsAutoInvoiceGroup &&
                 x.OriginalInvoiceHeadId == null &&
                 x.CorrectionType == null &&
+                x.Order != null &&
+x.Order.InvoiceIssuanceRoute ==
+    InvoiceIssuanceRoute.Automatic &&
+    !succeededSourceIds.Contains(x.Id) &&
                 !issuedStatuses.Contains(x.ProviderStatus) &&
-                ((x.Order != null &&
-                  x.Order.CompletedAtUtc.HasValue &&
+                ((x.Order.CompletedAtUtc.HasValue &&
                   x.Order.CompletedAtUtc.Value >= fromUtc &&
                   x.Order.CompletedAtUtc.Value < toUtc) ||
                  (x.InvoiceDate >= fromUtc && x.InvoiceDate < toUtc)))
@@ -173,9 +331,8 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
             .ToListAsync(ct);
 
         var ids = orderBackedIds
-            .Concat(legacyIds)
-            .Distinct()
-            .ToArray();
+    .Distinct()
+    .ToArray();
         if (ids.Length == 0)
             return [];
 
@@ -184,6 +341,7 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
             .AsSplitQuery()
             .Include(x => x.Store)
             .Include(x => x.Order)
+                .ThenInclude(x => x!.Payments)
             .Include(x => x.LegalEntity)
             .Include(x => x.InvoiceProviderSetting)
             .Include(x => x.Details)
@@ -224,7 +382,102 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
                 !x.IsDeleted,
                 ct);
     }
+    public Task<InvoiceHead?> GetInvoiceHeadForClaimAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default)
+        => GetInvoiceHeadForClaimCoreAsync(storeId, invoiceHeadId, includeCorrections: false, ct);
 
+    public Task<InvoiceHead?> GetInvoiceHeadForManualClaimAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default)
+        => GetInvoiceHeadForClaimCoreAsync(storeId, invoiceHeadId, includeCorrections: true, ct);
+
+    private Task<InvoiceHead?> GetInvoiceHeadForClaimCoreAsync(
+        int storeId,
+        int invoiceHeadId,
+        bool includeCorrections,
+        CancellationToken ct)
+    {
+        return _db.InvoiceHeads
+            .AsNoTrackingWithIdentityResolution()
+            .AsSplitQuery()
+            .Include(x => x.Order)
+                .ThenInclude(x => x!.Payments)
+            .Include(x => x.OriginalInvoiceHead)
+            .Include(x => x.InvoiceProviderSetting)
+            .Include(x => x.Details)
+                .ThenInclude(x =>
+                    x.OrderLegalEntityAllocation)
+            .FirstOrDefaultAsync(
+                x =>
+                    x.StoreId == storeId &&
+                    x.Id == invoiceHeadId &&
+                    !x.IsDeleted &&
+                    !x.LegacyReadOnly &&
+                    !x.IsAutoInvoiceGroup &&
+                    (includeCorrections ||
+                        (x.OriginalInvoiceHeadId == null && x.CorrectionType == null)),
+                ct);
+    }
+
+    public async Task<List<InvoiceHead>>
+        GetInvoiceHeadsForClaimAsync(
+            int storeId,
+            IReadOnlyCollection<int> invoiceHeadIds,
+            CancellationToken ct = default)
+    {
+        var ids = invoiceHeadIds
+            .Where(x => x > 0)
+            .Distinct()
+            .ToArray();
+
+        if (ids.Length == 0)
+            return [];
+
+        return await _db.InvoiceHeads
+            .AsNoTrackingWithIdentityResolution()
+            .AsSplitQuery()
+            .Include(x => x.Order)
+                .ThenInclude(x => x!.Payments)
+            .Include(x => x.InvoiceProviderSetting)
+            .Include(x => x.Details)
+                .ThenInclude(x =>
+                    x.OrderLegalEntityAllocation)
+            .Where(x =>
+                x.StoreId == storeId &&
+                ids.Contains(x.Id) &&
+                !x.IsDeleted &&
+                !x.LegacyReadOnly &&
+                !x.IsAutoInvoiceGroup &&
+                x.OriginalInvoiceHeadId == null &&
+                x.CorrectionType == null)
+            .OrderBy(x =>
+                x.Order != null &&
+                x.Order.CompletedAtUtc.HasValue
+                    ? x.Order.CompletedAtUtc.Value
+                    : x.InvoiceDate)
+            .ThenBy(x => x.Id)
+            .ToListAsync(ct);
+    }
+
+    public Task<bool> HasSuccessfulSourceAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default)
+    {
+        return _db.AutoInvoiceOperationSources
+            .AsNoTracking()
+            .AnyAsync(
+                x =>
+                    x.StoreId == storeId &&
+                    x.InvoiceHeadId == invoiceHeadId &&
+                    !x.IsDeleted &&
+                    x.Status ==
+                        AutoInvoiceSourceStatus.Succeeded,
+                ct);
+    }
     public Task<List<AutoInvoiceOperation>> GetOperationsAsync(
         int storeId,
         int take,

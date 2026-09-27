@@ -93,6 +93,33 @@ window.PosApp = (function () {
         const cartRetryStateEl = document.getElementById('posCartRetryState');
         const paymentRetryStateEl = document.getElementById('posPaymentRetryState');
         const holdRetryStateEl = document.getElementById('posHoldRetryState');
+        const invoiceIntentModalEl =
+    document.getElementById('invoiceIntentModal');
+
+const invoiceIntentOrderText =
+    document.getElementById('invoiceIntentOrderText');
+
+const invoiceIntentErrorBox =
+    document.getElementById('invoiceIntentErrorBox');
+
+const btnInvoiceIntentManual =
+    document.getElementById('btnInvoiceIntentManual');
+
+const btnInvoiceIntentAutomatic =
+    document.getElementById('btnInvoiceIntentAutomatic');
+
+const invoiceIntentModal =
+    invoiceIntentModalEl && window.bootstrap?.Modal
+        ? window.bootstrap.Modal.getOrCreateInstance(
+            invoiceIntentModalEl,
+            {
+                backdrop: 'static',
+                keyboard: false
+            })
+        : null;
+
+let pendingInvoiceIntentOrderId = null;
+let invoiceIntentBusy = false;
 
         const {
             paymentModal,
@@ -412,11 +439,214 @@ window.PosApp = (function () {
             }, 80);
         }
 
-        function openReceiptPrint(orderId) {
-            if (!orderId) return;
-            if (window.PosOffline?.print(orderId)) return;
-            window.open('/admin/pos/receipt/' + orderId, '_blank', 'noopener,noreferrer');
+function clearInvoiceIntentError() {
+    if (!invoiceIntentErrorBox) return;
+
+    invoiceIntentErrorBox.textContent = '';
+    invoiceIntentErrorBox.classList.add('d-none');
+}
+
+function showInvoiceIntentError(message) {
+    if (!invoiceIntentErrorBox) {
+        showError?.(
+            message ||
+            'Không thể lưu phương thức phát hành hóa đơn.'
+        );
+        return;
+    }
+
+    invoiceIntentErrorBox.textContent =
+        message ||
+        'Không thể lưu phương thức phát hành hóa đơn.';
+
+    invoiceIntentErrorBox.classList.remove('d-none');
+}
+
+function setInvoiceIntentBusy(busy) {
+    invoiceIntentBusy = !!busy;
+
+    if (btnInvoiceIntentManual) {
+        btnInvoiceIntentManual.disabled =
+            invoiceIntentBusy;
+    }
+
+    if (btnInvoiceIntentAutomatic) {
+        btnInvoiceIntentAutomatic.disabled =
+            invoiceIntentBusy;
+    }
+
+    if (btnInvoiceIntentManual) {
+        btnInvoiceIntentManual.classList.toggle(
+            'disabled',
+            invoiceIntentBusy
+        );
+    }
+
+    if (btnInvoiceIntentAutomatic) {
+        btnInvoiceIntentAutomatic.classList.toggle(
+            'disabled',
+            invoiceIntentBusy
+        );
+    }
+}
+
+function printReceiptAfterInvoiceIntent(
+    orderId,
+    preopenedWindow
+) {
+    if (window.PosOffline?.print(orderId)) {
+        try {
+            preopenedWindow?.close();
+        } catch (_) {
         }
+
+        return;
+    }
+
+    const printUrl =
+        '/admin/pos/receipt/' +
+        encodeURIComponent(orderId);
+
+    if (
+        preopenedWindow &&
+        !preopenedWindow.closed
+    ) {
+        try {
+            preopenedWindow.opener = null;
+        } catch (_) {
+        }
+
+        preopenedWindow.location.replace(
+            printUrl
+        );
+
+        return;
+    }
+
+    // Fallback nếu browser không cho pre-open.
+    window.open(
+        printUrl,
+        '_blank',
+        'noopener,noreferrer'
+    );
+}
+
+async function submitInvoiceIntent(route) {
+    const orderId =
+        Number(window.PosOffline?.resolveOrderId(pendingInvoiceIntentOrderId) || pendingInvoiceIntentOrderId);
+
+    if (
+        invoiceIntentBusy ||
+        !Number.isInteger(orderId) ||
+        orderId <= 0
+    ) {
+        return;
+    }
+
+    clearInvoiceIntentError();
+
+    // Mở tab trắng ngay trong user gesture.
+    // Sau await fetch browser vẫn cho ta điều hướng tab này.
+    const printWindow =
+        window.open(
+            'about:blank',
+            '_blank'
+        );
+
+    if (printWindow) {
+        try {
+            printWindow.opener = null;
+        } catch (_) {
+        }
+    }
+
+    setInvoiceIntentBusy(true);
+
+    try {
+        const data =
+            await postJson(
+                `/admin/pos/${orderId}/invoice-route`,
+                {
+                    route: route
+                }
+            );
+
+        invoiceIntentModal?.hide();
+
+        pendingInvoiceIntentOrderId = null;
+
+        printReceiptAfterInvoiceIntent(
+            Number(data?.orderId) || orderId,
+            printWindow
+        );
+    } catch (error) {
+        try {
+            printWindow?.close();
+        } catch (_) {
+        }
+
+        showInvoiceIntentError(
+            error?.message ||
+            'Không thể lưu phương thức phát hành hóa đơn. Vui lòng thử lại.'
+        );
+    } finally {
+        setInvoiceIntentBusy(false);
+        restorePendingInvoiceIntent();
+    }
+}
+
+function restorePendingInvoiceIntent() {
+    const orderId = window.PosOffline?.pendingInvoiceIntentOrderId();
+    if (orderId && !invoiceIntentBusy && Number(pendingInvoiceIntentOrderId) !== Number(orderId))
+        openReceiptPrint(orderId);
+}
+
+function openReceiptPrint(orderId) {
+    const targetOrderId =
+        Number(orderId);
+
+    if (
+        !Number.isInteger(targetOrderId) ||
+        targetOrderId <= 0
+    ) {
+        return;
+    }
+
+    if (window.PosOffline?.invoiceIntentStatus(targetOrderId)) {
+        printReceiptAfterInvoiceIntent(targetOrderId);
+        return;
+    }
+
+    // Fail closed:
+    // nếu modal không tồn tại thì không được in bỏ qua intent.
+    if (!invoiceIntentModal) {
+        showError?.(
+            'Không tải được bước chọn hóa đơn. ' +
+            'Vui lòng tải lại màn hình POS.'
+        );
+
+        return;
+    }
+
+    pendingInvoiceIntentOrderId =
+        targetOrderId;
+
+    if (invoiceIntentOrderText) {
+        invoiceIntentOrderText.textContent =
+            `#${targetOrderId}`;
+    }
+
+    clearInvoiceIntentError();
+    setInvoiceIntentBusy(false);
+
+    posState.ui.modals =
+        posState.ui.modals || {};
+
+    posState.ui.modals.invoiceIntent =
+        true;
+
+    invoiceIntentModal.show();
+}
 
         function nowIso() {
             return new Date().toISOString();
@@ -434,18 +664,20 @@ window.PosApp = (function () {
             return Number.isFinite(time) ? time : 0;
         }
 
-        function hasAnyModalOpen() {
-            const modals = posState?.ui?.modals || {};
-            return !!(
-                modals.payment ||
-                modals.customer ||
-                modals.quickCreateCustomer ||
-                modals.lineDiscount ||
-                modals.qtyEdit ||
-                modals.hold ||
-                modals.confirm
-            );
-        }
+function hasAnyModalOpen() {
+    const modals = posState?.ui?.modals || {};
+
+    return !!(
+        modals.payment ||
+        modals.customer ||
+        modals.quickCreateCustomer ||
+        modals.lineDiscount ||
+        modals.qtyEdit ||
+        modals.hold ||
+        modals.confirm ||
+        modals.invoiceIntent
+    );
+}
 
         function hasPendingActions() {
             const pending = posState?.network?.pendingActions;
@@ -1407,13 +1639,53 @@ window.PosApp = (function () {
                 }
             });
         }
+        function bindInvoiceIntentEvents() {
+    btnInvoiceIntentManual
+        ?.addEventListener(
+            'click',
+            async function () {
+                await submitInvoiceIntent(2);
+            });
 
-        function bindModuleEvents() {
-            posCustomer.bindEvents();
-            posPayment.bindEvents();
-            posBarcode.bindEvents();
-            posOrder.bindEvents();
-        }
+    btnInvoiceIntentAutomatic
+        ?.addEventListener(
+            'click',
+            async function () {
+                await submitInvoiceIntent(1);
+            });
+
+    invoiceIntentModalEl
+        ?.addEventListener(
+            'shown.bs.modal',
+            function () {
+                posState.ui.modals =
+                    posState.ui.modals || {};
+
+                posState.ui.modals.invoiceIntent =
+                    true;
+            });
+
+    invoiceIntentModalEl
+        ?.addEventListener(
+            'hidden.bs.modal',
+            function () {
+                posState.ui.modals =
+                    posState.ui.modals || {};
+
+                posState.ui.modals.invoiceIntent =
+                    false;
+
+                clearInvoiceIntentError();
+            });
+}
+function bindModuleEvents() {
+    posCustomer.bindEvents();
+    posPayment.bindEvents();
+    posBarcode.bindEvents();
+    posOrder.bindEvents();
+
+    bindInvoiceIntentEvents();
+}
         function bindMetaPanelToggle() {
             const { metaToggleButtons, metaSections } = dom.common;
 
@@ -1549,6 +1821,7 @@ window.PosApp = (function () {
                 const offline = window.PosOffline?.status();
                 if (window.PosError.redirectToShiftIfNeeded(offline?.sessionIssue?.code)) return;
                 if (offline?.ready) posState.offline.isOnline = offline.connected;
+                restorePendingInvoiceIntent();
                 renderNetworkBanner(posState);
                 refreshUiLocks?.(posState);
             });
@@ -1583,6 +1856,7 @@ window.PosApp = (function () {
                 focusBarcode: true,
                 scope: 'full'
             });
+            restorePendingInvoiceIntent();
 
             initSignalR();
         }

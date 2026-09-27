@@ -84,8 +84,9 @@ window.PosOffline = (function () {
     const base = '/admin/pos';
     function handled(url) {
         if (url.origin !== location.origin) return false;
-        return /^\/admin\/pos\/(screen|cart\/current(?:\/(?:new|scan|payments|payment-and-finalize|hold|cancel|finalize|note|discount|customer(?:\/\d+)?))?|cart\/ensure|draft|orders\/(?:drafts|held|\d+(?:\/(?:resume|receipt))?)|products\/search|customers\/(?:search|quick-create)|lines\/\d+(?:\/discount)?|payments\/\d+|\d+(?:\/(?:items|payments|finalize|cancel))?|offline\/manual-transfer)$/.test(url.pathname);
+        return /^\/admin\/pos\/(screen|cart\/current(?:\/(?:new|scan|payments|payment-and-finalize|hold|cancel|finalize|note|discount|customer(?:\/\d+)?))?|cart\/ensure|draft|orders\/(?:drafts|held|\d+(?:\/(?:resume|receipt))?)|products\/search|customers\/(?:search|quick-create)|lines\/\d+(?:\/discount)?|payments\/\d+|\d+(?:\/(?:items|payments|finalize|cancel|invoice-route))?|offline\/manual-transfer)$/.test(url.pathname);
     }
+    function invoiceIntentOperation(url) { return /^\/admin\/pos\/\d+\/invoice-route$/.test(new URL(url, location.origin).pathname); }
     function paymentOperation(url) { return /\/(payments|payment-and-finalize|finalize|manual-transfer)$/.test(new URL(url, location.origin).pathname); }
     function renumber(next) {
         const mapped = {};
@@ -166,12 +167,19 @@ window.PosOffline = (function () {
         }
         if (!canWork()) return fail(status().message || 'Quầy chưa sẵn sàng lưu giao dịch.');
         const op = operation(url, method, body);
+        const isInvoiceIntent = invoiceIntentOperation(url.href);
+        if (isInvoiceIntent) {
+            if (state.conflict) return fail(state.conflict.message);
+            const orderId = Number(url.pathname.match(/\/pos\/(\d+)\//)[1]);
+            if (core.invoiceIntentOrder(state, orderId)?.invoiceIntent)
+                return json(core.apply(core.clone(state), catalog, op)); // Same choice reuses the durable intent.
+        }
         if (localMode()) return enqueueLocal(op);
         let predicted = core.clone(state);
         try { op.localResult = core.clone(core.apply(predicted, catalog, op)); }
         catch { predicted = null; }
         op.serverRequest = core.translate(state, op);
-        const pending = core.clone(state); pending.queue.push(op);
+        const pending = isInvoiceIntent && predicted ? core.clone(predicted) : core.clone(state); pending.queue.push(op);
         await save(pending); // Write intent before making a request with side effects.
         let response;
         try { response = await send(op, options.signal); }
@@ -187,12 +195,17 @@ window.PosOffline = (function () {
         }
         if (response.status === 401) authBlocked = true;
         if (!response.ok) {
-            const next = core.clone(state); next.queue = next.queue.filter(x => x.id !== op.id); await save(next); notify(); return response;
+            const next = core.clone(state);
+            if (isInvoiceIntent) {
+                const problem = await response.clone().json().catch(() => ({}));
+                next.conflict = { operationId: op.id, message: problem.message || 'Lựa chọn hóa đơn cần được đối soát với server.' };
+            } else next.queue = next.queue.filter(x => x.id !== op.id);
+            await save(next); notify(); return response;
         }
         const result = await response.clone().json();
         const next = predicted || core.clone(state);
         next.queue = state.queue.filter(x => x.id !== op.id);
-        core.learn(next, op.localResult, result); renumber(next); core.absorb(next, result);
+        core.confirmInvoiceIntent(next, op, result); core.learn(next, op.localResult, result); renumber(next); core.absorb(next, result);
         await save(next); notify(); return response;
     }
     async function intercepted(input, options = {}) {
@@ -490,6 +503,11 @@ window.PosOffline = (function () {
                         accepted.conflict = { operationId: op.id, message: 'Server đã ghi nhận thao tác nhưng tổng tiền khác phiếu tại quầy. Cần đối soát trước khi gửi tiếp.' };
                         await save(accepted); return;
                     }
+                    try { core.confirmInvoiceIntent(accepted, op, result); }
+                    catch (error) {
+                        const failed = core.clone(state); failed.conflict = { operationId: op.id, message: error.message };
+                        await save(failed); return;
+                    }
                     core.learn(accepted, op.localResult, result); accepted.queue.shift();
                     if (!accepted.queue.length) { renumber(accepted); core.absorb(accepted, result); }
                     await save(accepted);
@@ -557,6 +575,9 @@ window.PosOffline = (function () {
         const order = state?.orders[orderId] || state?.orders[core.mapId(state, 'order', orderId)];
         if (!order || !localMode()) return false;
         core.permission(state, 'pos.order.reprint');
+        if (state.conflict) throw new Error(state.conflict.message);
+        if (order.status !== 2 || ![1, 2].includes(order.invoiceIntent?.route))
+            throw new Error('Vui lòng lưu lựa chọn hóa đơn trước khi in phiếu.');
         if (!window.PosPrinting) throw new Error('Chưa tải được bộ mẫu in offline.');
         const storeInfo = state.context.receiptStoreInfo || {};
         window.PosPrinting.openLocal({ ...order, storeName: storeInfo.storeName || state.context.storeName,
@@ -573,5 +594,7 @@ window.PosOffline = (function () {
         anchor.download = `gao-pos-pending-${state.context.terminalId}-${Date.now()}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     return { init, canWork, localMode, status, sync, print, exportPending, createQr, manualQr, prepareManualConfirmation,
+        pendingInvoiceIntentOrderId: () => ready && writer && state ? core.pendingInvoiceIntent(state) : null,
+        invoiceIntentStatus: id => state ? core.clone(core.invoiceIntentOrder(state, id)?.invoiceIntent || null) : null,
         resolveOrderId: id => state ? Number(core.mapId(state, 'order', id)) : id };
 })();

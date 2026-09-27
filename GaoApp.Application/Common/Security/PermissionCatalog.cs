@@ -270,6 +270,37 @@ P(PermissionCodes.Inventory.Adjustment.Cancel,  "Hủy phiếu điều chỉnh k
 
             P(PermissionCodes.System.Integration.View,   "Xem integration", "System", "system", "integration", "view"),
             P(PermissionCodes.System.Integration.Manage, "Quản lý integration", "System", "system", "integration", "manage"),
+            P(
+    PermissionCodes.System.Invoice.ManualIssue,
+    "Phát hành hóa đơn thủ công",
+    "System",
+    "system",
+    "invoice",
+    "manualissue"),
+
+P(
+    PermissionCodes.System.Invoice.Route,
+    "Chuyển phương thức phát hành hóa đơn",
+    "System",
+    "system",
+    "invoice",
+    "route"),
+
+P(
+    PermissionCodes.System.AutoInvoice.Operate,
+    "Vận hành phát hành hóa đơn tự động",
+    "System",
+    "system",
+    "autoinvoice",
+    "operate"),
+
+P(
+    PermissionCodes.System.AutoInvoice.Settings,
+    "Cấu hình phát hành hóa đơn tự động",
+    "System",
+    "system",
+    "autoinvoice",
+    "settings"),
         });
 
     /// <summary>

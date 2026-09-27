@@ -1,14 +1,33 @@
-﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
+﻿@using GaoApp.Domain.Enums
+@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
 
 @{
-    var generalInvoiceInfo = Model.Payload?.GeneralInvoiceInfo;
+    var generalInvoiceInfo =
+        Model.Payload?.GeneralInvoiceInfo;
 
     var isCorrectionPayload =
         generalInvoiceInfo != null &&
-        !string.IsNullOrWhiteSpace(generalInvoiceInfo.AdjustmentType) &&
+        !string.IsNullOrWhiteSpace(
+            generalInvoiceInfo.AdjustmentType) &&
         generalInvoiceInfo.AdjustmentType != "1";
 
-    var canShowCorrectionMenu = Model.IsIssued && !isCorrectionPayload;
+    var canShowCorrectionMenu =
+        Model.IsIssued &&
+        !isCorrectionPayload;
+
+    var invoiceRoute =
+        ViewBag.InvoiceIssuanceRoute
+            is InvoiceIssuanceRoute route
+                ? route
+                : InvoiceIssuanceRoute.Unselected;
+
+    var isManualRoute =
+        invoiceRoute ==
+        InvoiceIssuanceRoute.Manual;
+
+    var isAutomaticRoute =
+        invoiceRoute ==
+        InvoiceIssuanceRoute.Automatic;
 }
 
 <div class="card shadow-sm payload-card mb-3 viettel-toolbar-panel">
@@ -69,35 +88,55 @@
                         </a>
                     }
 
-                    @if (!Model.IsIssued && Model.CanIssue)
-                    {
-                        <form asp-area="Admin"
-                              asp-controller="Invoice"
-                              asp-action="ViettelIssue"
-                              asp-route-id="@Model.InvoiceHeadId"
-                              method="post"
-                              class="d-inline"
-                              data-submit-guard
-                              data-submit-loading-text="Đang phát hành..."
-                              onsubmit="return confirm('Xác nhận PHÁT HÀNH hóa đơn Viettel? Sau khi phát hành sẽ sinh số hóa đơn và không nên sửa nội dung nữa.');">
-                            @Html.AntiForgeryToken()
+                    @if (!Model.IsIssued &&
+     Model.CanIssue &&
+     (isManualRoute || isCorrectionPayload))
+{
+    <form asp-area="Admin"
+          asp-controller="Invoice"
+          asp-action="ViettelIssue"
+          asp-route-id="@Model.InvoiceHeadId"
+          method="post"
+          class="d-inline"
+          data-submit-guard
+          data-submit-loading-text="Đang phát hành..."
+          onsubmit="return confirm('Xác nhận PHÁT HÀNH hóa đơn Viettel? Sau khi phát hành sẽ sinh số hóa đơn và không nên sửa nội dung nữa.');">
 
-                            <button type="submit" class="btn btn-danger">
-                                <i class="bx bx-send"></i>
-                                Phát hành Viettel
-                            </button>
-                        </form>
-                    }
-                    else if (!Model.IsIssued)
-                    {
-                        <button type="button"
-                                class="btn btn-outline-danger"
-                                disabled
-                                title="@Model.IssueBlockReason">
-                            <i class="bx bx-lock"></i>
-                            Không thể phát hành
-                        </button>
-                    }
+        @Html.AntiForgeryToken()
+
+        <button type="submit"
+                class="btn btn-danger">
+
+            <i class="bx bx-send"></i>
+            Phát hành Viettel
+        </button>
+    </form>
+}
+else if (!Model.IsIssued)
+{
+    if (isAutomaticRoute && !isCorrectionPayload)
+    {
+        <button type="button"
+                class="btn btn-outline-primary"
+                disabled
+                title="Hóa đơn thuộc luồng AutoInvoice. Không được phát hành thủ công tại đây.">
+
+            <i class="bx bx-bot"></i>
+            Thuộc AutoInvoice
+        </button>
+    }
+    else
+    {
+        <button type="button"
+                class="btn btn-outline-danger"
+                disabled
+                title="@Model.IssueBlockReason">
+
+            <i class="bx bx-lock"></i>
+            Không thể phát hành
+        </button>
+    }
+}
 
                     @if (Model.CanSyncByUuid)
                     {

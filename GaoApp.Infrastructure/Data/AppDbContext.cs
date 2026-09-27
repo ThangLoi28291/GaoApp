@@ -140,6 +140,8 @@ public class AppDbContext : DbContext
         Set<StockDocumentInputInvoiceDetailReconciliation>();
     public DbSet<InvoiceHead> InvoiceHeads => Set<InvoiceHead>();
     public DbSet<InvoiceDetail> InvoiceDetails => Set<InvoiceDetail>();
+    public DbSet<InvoiceBuyerSelfServiceRequest> InvoiceBuyerSelfServiceRequests =>
+    Set<InvoiceBuyerSelfServiceRequest>();
     public DbSet<AutoInvoiceSettings> AutoInvoiceSettings => Set<AutoInvoiceSettings>();
     public DbSet<AutoInvoiceOperation> AutoInvoiceOperations => Set<AutoInvoiceOperation>();
     public DbSet<AutoInvoiceOperationSource> AutoInvoiceOperationSources => Set<AutoInvoiceOperationSource>();

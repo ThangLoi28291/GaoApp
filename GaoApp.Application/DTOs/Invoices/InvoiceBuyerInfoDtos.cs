@@ -25,6 +25,10 @@ public class UpdateInvoiceBuyerInfoRequest
     /// Không ép 10/13 số.
     /// </summary>
     public string? BuyerTaxCode { get; set; }
+    public string? BuyerCitizenId { get; set; }
+
+    // Null/omitted CitizenId preserves existing data. Clearing must be explicit.
+    public bool ClearBuyerCitizenId { get; set; }
 
     public string? BuyerAddress { get; set; }
 
@@ -54,6 +58,7 @@ public class InvoiceBuyerLookupDto
     public string? BuyerLegalName { get; set; }
 
     public string? BuyerTaxCode { get; set; }
+    public string? BuyerCitizenId { get; set; }
 
     public string? BuyerAddress { get; set; }
 

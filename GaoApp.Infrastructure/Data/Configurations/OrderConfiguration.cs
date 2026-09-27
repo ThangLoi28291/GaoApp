@@ -27,7 +27,14 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Enum -> byte
         b.Property(x => x.Status).HasConversion<byte>().IsRequired();
         b.Property(x => x.PaymentStatus).HasConversion<byte>().IsRequired();
+        b.Property(x => x.InvoiceIssuanceRoute)
+    .HasConversion<byte>()
+    .IsRequired()
+    .HasDefaultValue(InvoiceIssuanceRoute.Unselected);
 
+        b.Property(x => x.InvoiceIssuanceRouteSelectedAtUtc);
+
+        b.Property(x => x.InvoiceIssuanceRouteSelectedByUserId);
         // Tiền: decimal precision
         b.Property(x => x.Subtotal).HasPrecision(18, 2);
         b.Property(x => x.DiscountTotal).HasPrecision(18, 2);
@@ -70,7 +77,13 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Index phục vụ query theo ca
         b.HasIndex(x => new { x.StoreId, x.POSShiftId, x.Status });
         b.HasIndex(x => new { x.StoreId, x.CompletedAtUtc });
-
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.InvoiceIssuanceRoute,
+            x.CompletedAtUtc,
+            x.IsDeleted
+        });
         b.Property(x => x.LegalEntityCount)
             .IsRequired()
             .HasDefaultValue(0);

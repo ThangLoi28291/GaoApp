@@ -12,6 +12,8 @@
 <div id="printFeedback" role="status"></div><div id="receiptCanvas"><iframe id="receiptPaper" title="Hóa đơn bán hàng" sandbox="allow-same-origin allow-modals"></iframe></div>
 <script id="receiptPrintData" type="application/json">@Html.Raw(JsonSerializer.Serialize(Model, ReceiptTemplateService.Json))</script>
 <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
+<script src="~/Admin/js/pos/qrcodegen.js"
+        asp-append-version="true"></script>
 <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
 <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/pos.printing.js" asp-append-version="true"></script>

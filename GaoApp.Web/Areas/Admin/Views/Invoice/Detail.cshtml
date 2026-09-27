@@ -26,6 +26,25 @@
 
     var isAdjustmentAmountInvoice =
         invoice.CorrectionType == InvoiceCorrectionType.AdjustmentAmount;
+        var route =
+    invoice.InvoiceIssuanceRoute;
+
+var isRouteSwitchCandidate =
+    route is
+        InvoiceIssuanceRoute.Automatic or
+        InvoiceIssuanceRoute.Manual;
+
+var isPreProviderSafeStatus =
+    invoice.ProviderStatus is
+        InvoiceProviderStatus.LocalDraft or
+        InvoiceProviderStatus.ReadyToIssue or
+        InvoiceProviderStatus.Previewed;
+
+var canShowRouteChange =
+    invoice.OrderId.HasValue &&
+    !isHardLocked &&
+    isRouteSwitchCandidate &&
+    isPreProviderSafeStatus;
 
     var correctionHistory =
         ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
@@ -205,7 +224,107 @@
     @await Html.PartialAsync(
         "~/Areas/Admin/Views/Invoice/_InvoiceDetailHeader.cshtml",
         Model)
+        <div class="card shadow-sm invoice-card mb-3">
+    <div class="card-body d-flex flex-wrap
+                justify-content-between
+                align-items-center gap-3">
 
+        <div>
+            <div class="text-muted small mb-1">
+                Phương thức phát hành
+            </div>
+
+            @switch (route)
+            {
+                case InvoiceIssuanceRoute.Automatic:
+                    <span class="badge text-bg-primary">
+                        Tự động
+                    </span>
+
+                    <span class="text-muted ms-2">
+                        AutoInvoice chịu trách nhiệm phát hành.
+                    </span>
+                    break;
+
+                case InvoiceIssuanceRoute.Manual:
+                    <span class="badge text-bg-info">
+                        Thủ công
+                    </span>
+
+                    <span class="text-muted ms-2">
+                        Chờ thông tin người mua và quản lý phát hành.
+                    </span>
+                    break;
+
+                default:
+                    <span class="badge text-bg-secondary">
+                        Chưa phân loại
+                    </span>
+
+                    <span class="text-muted ms-2">
+                        Hóa đơn lịch sử hoặc chưa có phương thức phát hành.
+                    </span>
+                    break;
+            }
+        </div>
+
+        @if (canShowRouteChange)
+        {
+            if (route == InvoiceIssuanceRoute.Automatic)
+            {
+                <form asp-area="Admin"
+                      asp-controller="Invoice"
+                      asp-action="ChangeIssuanceRoute"
+                      method="post"
+                      class="m-0">
+
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           name="id"
+                           value="@invoice.Id" />
+
+                    <input type="hidden"
+                           name="route"
+                           value="@((int)InvoiceIssuanceRoute.Manual)" />
+
+                    <button type="submit"
+                            class="btn btn-outline-primary"
+                            onclick="return confirm('Chuyển hóa đơn này sang phát hành thủ công?');">
+                        <i class="bx bx-user me-1"></i>
+                        Chuyển sang thủ công
+                    </button>
+                </form>
+            }
+            else if (route == InvoiceIssuanceRoute.Manual)
+            {
+                <form asp-area="Admin"
+                      asp-controller="Invoice"
+                      asp-action="ChangeIssuanceRoute"
+                      method="post"
+                      class="m-0">
+
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           name="id"
+                           value="@invoice.Id" />
+
+                    <input type="hidden"
+                           name="route"
+                           value="@((int)InvoiceIssuanceRoute.Automatic)" />
+
+                    <button type="submit"
+                            class="btn btn-outline-secondary"
+                            onclick="return confirm('Chuyển hóa đơn này sang hàng đợi phát hành tự động?');">
+                        <i class="bx bx-bot me-1"></i>
+                        Chuyển sang tự động
+                    </button>
+                </form>
+            }
+        }
+    </div>
+</div>
     @await Html.PartialAsync(
         "~/Areas/Admin/Views/Invoice/_InvoiceDetailAlerts.cshtml",
         Model)

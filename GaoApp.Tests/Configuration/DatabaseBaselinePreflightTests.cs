@@ -256,7 +256,7 @@ public sealed class DatabaseBaselinePreflightTests
             DatabaseCompatibilityState.SupportedPendingUpgrade);
         preflight.SafeReasonCode.Should().Be(
             "SupportedMigrationPrefix");
-        preflight.SourceMigrationCount.Should().Be(42);
+        preflight.SourceMigrationCount.Should().Be(43);
         preflight.AppliedMigrationCount.Should().Be(1);
         preflight.SchemaMismatchCategoryCount.Should().Be(0);
     }
@@ -341,7 +341,8 @@ public sealed class DatabaseBaselinePreflightTests
 "20260923140000_AddInvoiceStockLegacyDocumentReferences",
 "20260923160000_AddLegacyInvoiceImport",
 "20260923180000_AddLegacyReturnArchive",
-"20260924100000_AddAutoInvoiceIssuance"
+"20260924100000_AddAutoInvoiceIssuance",
+"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService"
             ]);
     }
 

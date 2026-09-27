@@ -50,6 +50,12 @@ public class InvoiceHead : BaseStoreEntity
     public string? InvoiceNumber { get; set; }
 
     public DateTime InvoiceDate { get; set; } = DateTime.Now;
+    /// <summary>
+    /// Mốc thay đổi nghiệp vụ gần nhất có ảnh hưởng payload/số tiền phát hành.
+    /// AutoInvoice MinimumAgeMinutes tính từ mốc này nếu có.
+    /// Không thay thế Order.CompletedAtUtc.
+    /// </summary>
+    public DateTime? LastIssuanceRelevantChangeAtUtc { get; set; }
 
     /// <summary>
     /// Loại người mua:
@@ -82,6 +88,12 @@ public class InvoiceHead : BaseStoreEntity
     /// </summary>
     [StringLength(50)]
     public string? BuyerTaxCode { get; set; }
+    /// <summary>
+    /// CCCD/mã định danh cá nhân nếu khách cung cấp.
+    /// Không dùng thay BuyerTaxCode và chưa mặc định gửi sang provider.
+    /// </summary>
+    [StringLength(50)]
+    public string? BuyerCitizenId { get; set; }
 
     /// <summary>
     /// Địa chỉ xuất hóa đơn.

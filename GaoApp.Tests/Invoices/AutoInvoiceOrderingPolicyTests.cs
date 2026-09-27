@@ -5,21 +5,35 @@ namespace GaoApp.Tests.Invoices;
 
 public sealed class AutoInvoiceOrderingPolicyTests
 {
-    private static readonly DateTime Today = new(2026, 9, 24, 12, 0, 0, DateTimeKind.Unspecified);
+    private static readonly DateTime Today =
+        new(
+            2026,
+            9,
+            24,
+            12,
+            0,
+            0,
+            DateTimeKind.Unspecified);
 
     [Fact]
-    public void Selects_the_oldest_sale_before_a_newer_separate_invoice()
+    public void Waiting_group_does_not_block_newer_single_ready_invoice()
     {
-        var result = AutoInvoiceOrderingPolicy.Select(
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
             [
-                Candidate(1, "2026-09-24", 20_000m, "group-a", 8),
-                new AutoInvoiceCandidate(
+                Candidate(
+                    1,
+                    "2026-09-24",
+                    20_000m,
+                    "group-a",
+                    8),
+
+                Candidate(
                     2,
-                    new DateTime(2026, 9, 24, 9, 0, 0, DateTimeKind.Utc),
-                    new DateTime(2026, 9, 24, 9, 0, 0),
+                    "2026-09-24",
                     200_000m,
-                    IsConsumer: false,
-                    GroupKey: "buyer-specific")
+                    "group-b",
+                    9)
             ],
             separateAmountThreshold: 100_000m,
             groupTargetAmount: 100_000m,
@@ -27,17 +41,131 @@ public sealed class AutoInvoiceOrderingPolicyTests
             issueOldDayRemainder: true,
             nowLocal: Today);
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Single,
+            result!.Kind);
+
+        Assert.Equal(
+            [2],
+            result.InvoiceHeadIds);
     }
 
     [Fact]
-    public void Groups_only_same_day_and_same_group_key_when_target_is_reached()
+    public void Older_ready_group_is_selected_before_newer_single()
     {
-        var result = AutoInvoiceOrderingPolicy.Select(
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
             [
-                Candidate(1, "2026-09-23", 40_000m, "2026-09-23|1|2|3|10", 8),
-                Candidate(2, "2026-09-23", 70_000m, "2026-09-23|1|2|3|10", 9),
-                Candidate(3, "2026-09-24", 70_000m, "2026-09-24|1|2|3|10", 10)
+                Candidate(
+                    1,
+                    "2026-09-24",
+                    60_000m,
+                    "group-a",
+                    8),
+
+                Candidate(
+                    2,
+                    "2026-09-24",
+                    60_000m,
+                    "group-a",
+                    9),
+
+                Candidate(
+                    3,
+                    "2026-09-24",
+                    200_000m,
+                    "group-b",
+                    10)
+            ],
+            separateAmountThreshold: 100_000m,
+            groupTargetAmount: 100_000m,
+            closingTimeLocal: new(23, 0, 0),
+            issueOldDayRemainder: true,
+            nowLocal: Today);
+
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Group,
+            result!.Kind);
+
+        Assert.Equal(
+            [1, 2],
+            result.InvoiceHeadIds);
+    }
+
+    [Fact]
+    public void Older_single_is_selected_before_newer_ready_group()
+    {
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
+            [
+                Candidate(
+                    1,
+                    "2026-09-24",
+                    200_000m,
+                    "single",
+                    8),
+
+                Candidate(
+                    2,
+                    "2026-09-24",
+                    60_000m,
+                    "group-a",
+                    9),
+
+                Candidate(
+                    3,
+                    "2026-09-24",
+                    60_000m,
+                    "group-a",
+                    10)
+            ],
+            separateAmountThreshold: 100_000m,
+            groupTargetAmount: 100_000m,
+            closingTimeLocal: new(23, 0, 0),
+            issueOldDayRemainder: true,
+            nowLocal: Today);
+
+        Assert.NotNull(result);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Single,
+            result!.Kind);
+
+        Assert.Equal(
+            [1],
+            result.InvoiceHeadIds);
+    }
+
+    [Fact]
+    public void Groups_only_same_group_key_until_target_is_reached()
+    {
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
+            [
+                Candidate(
+                    1,
+                    "2026-09-23",
+                    40_000m,
+                    "2026-09-23|1|2|3|10",
+                    8),
+
+                Candidate(
+                    2,
+                    "2026-09-23",
+                    70_000m,
+                    "2026-09-23|1|2|3|10",
+                    9),
+
+                Candidate(
+                    3,
+                    "2026-09-23",
+                    70_000m,
+                    "different-group",
+                    10)
             ],
             separateAmountThreshold: 100_000m,
             groupTargetAmount: 100_000m,
@@ -46,15 +174,29 @@ public sealed class AutoInvoiceOrderingPolicyTests
             nowLocal: Today);
 
         Assert.NotNull(result);
-        Assert.Equal(AutoInvoiceOperationKind.Group, result!.Kind);
-        Assert.Equal([1, 2], result.InvoiceHeadIds);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Group,
+            result!.Kind);
+
+        Assert.Equal(
+            [1, 2],
+            result.InvoiceHeadIds);
     }
 
     [Fact]
-    public void Does_not_move_today_group_to_tomorrow_before_closing()
+    public void Today_group_waits_before_closing_when_target_not_reached()
     {
-        var result = AutoInvoiceOrderingPolicy.Select(
-            [Candidate(1, "2026-09-24", 20_000m, "today", 8)],
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
+            [
+                Candidate(
+                    1,
+                    "2026-09-24",
+                    20_000m,
+                    "today",
+                    8)
+            ],
             separateAmountThreshold: 100_000m,
             groupTargetAmount: 100_000m,
             closingTimeLocal: new(23, 0, 0),
@@ -65,10 +207,18 @@ public sealed class AutoInvoiceOrderingPolicyTests
     }
 
     [Fact]
-    public void Flushes_old_day_remainder_after_the_old_day_is_exhausted()
+    public void Old_day_remainder_is_ready_when_enabled()
     {
-        var result = AutoInvoiceOrderingPolicy.Select(
-            [Candidate(1, "2026-09-23", 20_000m, "old-day", 8)],
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
+            [
+                Candidate(
+                    1,
+                    "2026-09-23",
+                    20_000m,
+                    "old-day",
+                    8)
+            ],
             separateAmountThreshold: 100_000m,
             groupTargetAmount: 100_000m,
             closingTimeLocal: new(23, 0, 0),
@@ -76,30 +226,58 @@ public sealed class AutoInvoiceOrderingPolicyTests
             nowLocal: Today);
 
         Assert.NotNull(result);
-        Assert.Equal(AutoInvoiceOperationKind.Group, result!.Kind);
-        Assert.Equal([1], result.InvoiceHeadIds);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Group,
+            result!.Kind);
+
+        Assert.Equal(
+            [1],
+            result.InvoiceHeadIds);
     }
 
     [Fact]
-    public void Buyer_with_specific_information_is_always_separate()
+    public void Defensive_non_consumer_candidate_remains_single()
     {
-        var result = AutoInvoiceOrderingPolicy.Select(
-            [new AutoInvoiceCandidate(
-                1,
-                new DateTime(2026, 9, 24, 8, 0, 0, DateTimeKind.Utc),
-                new DateTime(2026, 9, 24),
-                20_000m,
-                IsConsumer: false,
-                GroupKey: "same-key")],
-            100_000m,
-            100_000m,
-            new(23, 0, 0),
-            true,
-            Today);
+        var result =
+            AutoInvoiceOrderingPolicy.Select(
+            [
+                new AutoInvoiceCandidate(
+                    1,
+                    new DateTime(
+                        2026,
+                        9,
+                        24,
+                        8,
+                        0,
+                        0,
+                        DateTimeKind.Utc),
+                    new DateTime(
+                        2026,
+                        9,
+                        24,
+                        8,
+                        0,
+                        0),
+                    20_000m,
+                    IsConsumer: false,
+                    GroupKey: "unexpected-non-consumer")
+            ],
+            separateAmountThreshold: 100_000m,
+            groupTargetAmount: 100_000m,
+            closingTimeLocal: new(23, 0, 0),
+            issueOldDayRemainder: true,
+            nowLocal: Today);
 
         Assert.NotNull(result);
-        Assert.Equal(AutoInvoiceOperationKind.Single, result!.Kind);
-        Assert.Equal([1], result.InvoiceHeadIds);
+
+        Assert.Equal(
+            AutoInvoiceOperationKind.Single,
+            result!.Kind);
+
+        Assert.Equal(
+            [1],
+            result.InvoiceHeadIds);
     }
 
     private static AutoInvoiceCandidate Candidate(
@@ -109,11 +287,28 @@ public sealed class AutoInvoiceOrderingPolicyTests
         string groupKey,
         int hour)
     {
-        var saleDate = DateTime.Parse(date, System.Globalization.CultureInfo.InvariantCulture);
+        var saleDate =
+            DateTime.Parse(
+                date,
+                System.Globalization.CultureInfo.InvariantCulture);
+
         return new AutoInvoiceCandidate(
             id,
-            new DateTime(saleDate.Year, saleDate.Month, saleDate.Day, hour, 0, 0, DateTimeKind.Utc),
-            new DateTime(saleDate.Year, saleDate.Month, saleDate.Day, hour, 0, 0),
+            new DateTime(
+                saleDate.Year,
+                saleDate.Month,
+                saleDate.Day,
+                hour,
+                0,
+                0,
+                DateTimeKind.Utc),
+            new DateTime(
+                saleDate.Year,
+                saleDate.Month,
+                saleDate.Day,
+                hour,
+                0,
+                0),
             amount,
             IsConsumer: true,
             groupKey);

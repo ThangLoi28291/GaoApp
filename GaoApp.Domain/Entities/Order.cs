@@ -117,6 +117,30 @@ public class Order : BaseStoreEntity, IAuditTrackedEntity
     /// Chỉ có khi Status = Completed.
     /// </summary>
     public DateTime? CompletedAtUtc { get; set; }
+    // =========================
+    // INVOICE ISSUANCE ROUTING
+    // =========================
+
+    /// <summary>
+    /// Quyết định phát hành hóa đơn của Order.
+    /// Unselected: POS đã hoàn tất bán hàng nhưng chưa xác nhận ý định hóa đơn.
+    /// Automatic: bán cho người tiêu dùng, AutoInvoice chịu trách nhiệm.
+    /// Manual: khách yêu cầu hóa đơn, chờ thông tin/phát hành thủ công.
+    /// </summary>
+    public InvoiceIssuanceRoute InvoiceIssuanceRoute { get; set; }
+        = InvoiceIssuanceRoute.Unselected;
+
+    /// <summary>
+    /// Thời điểm route được người dùng chọn/đổi lần cuối.
+    /// Backfill historical có thể để null.
+    /// </summary>
+    public DateTime? InvoiceIssuanceRouteSelectedAtUtc { get; set; }
+
+    /// <summary>
+    /// User thực hiện lựa chọn/đổi route.
+    /// Backfill historical có thể để null.
+    /// </summary>
+    public int? InvoiceIssuanceRouteSelectedByUserId { get; set; }
 
     /// <summary>
     /// Thời điểm đưa đơn vào giữ chỗ / hold.

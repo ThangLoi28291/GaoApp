@@ -1,0 +1,575 @@
+﻿@using GaoApp.Application.DTOs.Invoices
+@model InvoiceBuyerSelfServiceViewDto
+
+@{
+    Layout = null;
+
+    var isBusiness =
+        string.Equals(
+            Model.BuyerType,
+            "Business",
+            StringComparison.OrdinalIgnoreCase);
+
+    var expiresLocal =
+        Model.ExpiresAtUtc.ToLocalTime();
+}
+
+<!doctype html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1" />
+
+    <title>Thông tin hóa đơn</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #f4f6f5;
+            color: #1f2924;
+            font-family:
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        .page {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 20px 16px 40px;
+        }
+
+        .card {
+            background: #fff;
+            border: 1px solid #dde5e0;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow:
+                0 8px 28px
+                rgba(24, 58, 40, .06);
+        }
+
+        h1 {
+            margin: 0 0 6px;
+            font-size: 24px;
+        }
+
+        h2 {
+            margin: 24px 0 12px;
+            font-size: 17px;
+        }
+
+        .muted {
+            color: #66746c;
+        }
+
+        .summary {
+            display: grid;
+            gap: 8px;
+            margin: 20px 0;
+            padding: 14px;
+            background: #f7f9f8;
+            border-radius: 12px;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .summary-row strong {
+            text-align: right;
+        }
+
+        .notice {
+            margin: 16px 0;
+            padding: 12px 14px;
+            border-radius: 10px;
+        }
+
+        .notice-success {
+            background: #eaf7ef;
+            border: 1px solid #b9dfc8;
+        }
+
+        .notice-error {
+            background: #fff0f0;
+            border: 1px solid #efc1c1;
+            color: #842029;
+        }
+
+        .notice-expired {
+            background: #fff7e7;
+            border: 1px solid #ead3a0;
+        }
+
+        .type-switch {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .type-option {
+            position: relative;
+        }
+
+        .type-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .type-option label {
+            display: block;
+            padding: 12px;
+            border: 1px solid #cad5ce;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .type-option input:checked + label {
+            border-color: #234b38;
+            background: #eef5f1;
+            color: #163c2a;
+        }
+
+        .field {
+            margin-bottom: 14px;
+        }
+
+        .field label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .required::after {
+            content: " *";
+            color: #c62828;
+        }
+
+        input {
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid #cbd6cf;
+            border-radius: 9px;
+            font: inherit;
+        }
+
+        input:focus {
+            outline: 2px solid #b9d4c5;
+            border-color: #426b55;
+        }
+
+        .button {
+            width: 100%;
+            margin-top: 8px;
+            padding: 13px 16px;
+            border: 0;
+            border-radius: 10px;
+            background: #234b38;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .readonly-grid {
+            display: grid;
+            gap: 10px;
+        }
+
+        .readonly-item {
+            padding: 10px 12px;
+            background: #f7f9f8;
+            border-radius: 9px;
+        }
+
+        .readonly-item span {
+            display: block;
+            margin-bottom: 3px;
+            color: #66746c;
+            font-size: 12px;
+        }
+
+        .footer-note {
+            margin-top: 20px;
+            color: #66746c;
+            font-size: 13px;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+<div class="page">
+    <div class="card">
+
+        <h1>Thông tin hóa đơn</h1>
+
+        <div class="muted">
+            Nhập thông tin để cửa hàng
+            chuẩn bị hóa đơn điện tử.
+        </div>
+
+        <div class="summary">
+            <div class="summary-row">
+                <span>Đơn hàng</span>
+                <strong>
+                    @(Model.OrderNumber
+                      ?? $"#{Model.OrderId}")
+                </strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Tổng tiền</span>
+                <strong>
+    @(Model.GrandTotal.ToString("N0")) đ
+</strong>
+            </div>
+
+            <div class="summary-row">
+                <span>Tự cập nhật đến</span>
+<strong>
+    @(expiresLocal.ToString("dd/MM/yyyy HH:mm"))
+</strong>
+            </div>
+        </div>
+
+        @if (ViewData["SuccessMessage"]
+             is string successMessage)
+        {
+            <div class="notice notice-success">
+                @successMessage
+            </div>
+        }
+
+        @if (ViewData["ErrorMessage"]
+             is string errorMessage)
+        {
+            <div class="notice notice-error">
+                @errorMessage
+            </div>
+        }
+
+        @if (Model.IsExpired)
+        {
+            <div class="notice notice-expired">
+                <strong>
+                    Thời gian tự cập nhật đã kết thúc.
+                </strong>
+
+                <div style="margin-top:4px">
+                    Nếu cần thay đổi thông tin,
+                    vui lòng liên hệ cửa hàng.
+                </div>
+            </div>
+        }
+
+        @if (Model.CanEdit)
+        {
+            <form method="post">
+                @Html.AntiForgeryToken()
+
+                <h2>Loại người mua</h2>
+
+                <div class="type-switch">
+                    <div class="type-option">
+                        <input type="radio"
+                               id="buyerIndividual"
+                               name="BuyerType"
+                               value="Individual"
+                               @(isBusiness
+                                   ? null
+                                   : "checked") />
+
+                        <label for="buyerIndividual">
+                            Cá nhân
+                        </label>
+                    </div>
+
+                    <div class="type-option">
+                        <input type="radio"
+                               id="buyerBusiness"
+                               name="BuyerType"
+                               value="Business"
+                               @(isBusiness
+                                   ? "checked"
+                                   : null) />
+
+                        <label for="buyerBusiness">
+                            Doanh nghiệp
+                        </label>
+                    </div>
+                </div>
+
+                <div id="individualFields">
+                    <div class="field">
+                        <label class="required"
+                               for="BuyerName">
+                            Tên người mua
+                        </label>
+
+                        <input id="BuyerName"
+                               name="BuyerName"
+                               maxlength="200"
+                               value="@Model.BuyerName" />
+                    </div>
+                </div>
+
+                <div id="businessFields">
+                    <div class="field">
+                        <label class="required"
+                               for="BuyerLegalName">
+                            Tên đơn vị
+                        </label>
+
+                        <input id="BuyerLegalName"
+                               name="BuyerLegalName"
+                               maxlength="300"
+                               value="@Model.BuyerLegalName" />
+                    </div>
+
+                    <div class="field">
+                        <label class="required"
+                               for="BuyerTaxCode">
+                            Mã số thuế
+                        </label>
+
+                        <input id="BuyerTaxCode"
+                               name="BuyerTaxCode"
+                               maxlength="50"
+                               value="@Model.BuyerTaxCode" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="required"
+                           for="BuyerAddress">
+                        Địa chỉ
+                    </label>
+
+                    <input id="BuyerAddress"
+                           name="BuyerAddress"
+                           maxlength="500"
+                           value="@Model.BuyerAddress" />
+                </div>
+
+                <div class="field">
+                    <label for="BuyerEmail">
+                        Email
+                    </label>
+
+                    <input id="BuyerEmail"
+                           name="BuyerEmail"
+                           type="email"
+                           maxlength="200"
+                           value="@Model.BuyerEmail" />
+                </div>
+
+                <div class="field">
+                    <label for="BuyerPhone">
+                        Số điện thoại
+                    </label>
+
+                    <input id="BuyerPhone"
+                           name="BuyerPhone"
+                           maxlength="50"
+                           value="@Model.BuyerPhone" />
+                </div>
+
+                <div class="field">
+                    <label for="BuyerCitizenId">
+                        CCCD
+                    </label>
+
+                    <input id="BuyerCitizenId"
+                           name="BuyerCitizenId"
+                           maxlength="50"
+                           value="@Model.BuyerCitizenId" />
+                </div>
+
+                <button type="submit"
+                        class="button">
+                    Lưu thông tin hóa đơn
+                </button>
+            </form>
+        }
+        else
+        {
+            <h2>Thông tin hiện tại</h2>
+
+            <div class="readonly-grid">
+
+                @if (isBusiness)
+                {
+                    <div class="readonly-item">
+                        <span>Tên đơn vị</span>
+                        <strong>
+                            @(Model.BuyerLegalName ?? "—")
+                        </strong>
+                    </div>
+
+                    <div class="readonly-item">
+                        <span>Mã số thuế</span>
+                        <strong>
+                            @(Model.BuyerTaxCode ?? "—")
+                        </strong>
+                    </div>
+                }
+                else
+                {
+                    <div class="readonly-item">
+                        <span>Tên người mua</span>
+                        <strong>
+                            @(Model.BuyerName ?? "—")
+                        </strong>
+                    </div>
+                }
+
+                <div class="readonly-item">
+                    <span>Địa chỉ</span>
+                    <strong>
+                        @(Model.BuyerAddress ?? "—")
+                    </strong>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(
+                         Model.BuyerEmail))
+                {
+                    <div class="readonly-item">
+                        <span>Email</span>
+                        <strong>@Model.BuyerEmail</strong>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                         Model.BuyerPhone))
+                {
+                    <div class="readonly-item">
+                        <span>Điện thoại</span>
+                        <strong>@Model.BuyerPhone</strong>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(
+                         Model.BuyerCitizenId))
+                {
+                    <div class="readonly-item">
+                        <span>CCCD</span>
+                        <strong>@Model.BuyerCitizenId</strong>
+                    </div>
+                }
+
+            </div>
+        }
+
+        <div class="footer-note">
+            Việc gửi thông tin không đồng nghĩa
+            hóa đơn đã được phát hành.
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    const individual =
+        document.getElementById(
+            'buyerIndividual');
+
+    const business =
+        document.getElementById(
+            'buyerBusiness');
+
+    const individualFields =
+        document.getElementById(
+            'individualFields');
+
+    const businessFields =
+        document.getElementById(
+            'businessFields');
+
+    if (!individual ||
+        !business ||
+        !individualFields ||
+        !businessFields) {
+        return;
+    }
+
+    function updateBuyerType() {
+        const isBusiness =
+            business.checked;
+
+        individualFields.style.display =
+            isBusiness
+                ? 'none'
+                : '';
+
+        businessFields.style.display =
+            isBusiness
+                ? ''
+                : 'none';
+
+        const buyerName =
+            document.getElementById(
+                'BuyerName');
+
+        const buyerLegalName =
+            document.getElementById(
+                'BuyerLegalName');
+
+        const buyerTaxCode =
+            document.getElementById(
+                'BuyerTaxCode');
+
+        const buyerAddress =
+            document.getElementById(
+                'BuyerAddress');
+
+        if (buyerName) {
+            buyerName.required =
+                !isBusiness;
+        }
+
+        if (buyerLegalName) {
+            buyerLegalName.required =
+                isBusiness;
+        }
+
+        if (buyerTaxCode) {
+            buyerTaxCode.required =
+                isBusiness;
+        }
+
+        if (buyerAddress) {
+            buyerAddress.required =
+                true;
+        }
+    }
+
+    individual.addEventListener(
+        'change',
+        updateBuyerType);
+
+    business.addEventListener(
+        'change',
+        updateBuyerType);
+
+    updateBuyerType();
+})();
+</script>
+</body>
+</html>

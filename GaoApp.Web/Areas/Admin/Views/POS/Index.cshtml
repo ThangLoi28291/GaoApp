@@ -778,7 +778,87 @@
         </div>
     </div>
 </div>
+<!-- =========================================================
+     INVOICE ISSUANCE INTENT
+     Payment đã hoàn tất nhưng chưa được in bill
+     cho tới khi cashier chọn một route.
+========================================================== -->
+<div class="modal fade"
+     id="invoiceIntentModal"
+     tabindex="-1"
+     aria-labelledby="invoiceIntentModalTitle"
+     aria-hidden="true"
+     data-bs-backdrop="static"
+     data-bs-keyboard="false">
 
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content pos-card">
+
+            <div class="modal-body p-4">
+
+                <div class="text-center mb-4">
+                    <div class="fs-2 mb-2">
+                        🧾
+                    </div>
+
+                    <h4 class="mb-2"
+                        id="invoiceIntentModalTitle">
+                        Khách có lấy hóa đơn điện tử không?
+                    </h4>
+
+                    <div class="text-muted">
+                        Đơn hàng
+                        <strong id="invoiceIntentOrderText"></strong>
+                        đã thanh toán thành công.
+                        Chọn phương thức hóa đơn trước khi in bill.
+                    </div>
+                </div>
+
+                <div id="invoiceIntentErrorBox"
+                     class="alert alert-danger d-none mb-3"
+                     role="alert">
+                </div>
+
+                <div class="d-grid gap-3">
+
+                    <button type="button"
+                            class="btn btn-primary btn-lg text-start p-3"
+                            id="btnInvoiceIntentManual">
+
+                        <span class="d-block fw-semibold">
+                            Có — Khách lấy hóa đơn
+                        </span>
+
+                        <small class="d-block opacity-75 mt-1">
+                            Bill sẽ có QR để khách nhập thông tin.
+                            Hóa đơn chờ quản lý phát hành thủ công.
+                        </small>
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-lg text-start p-3"
+                            id="btnInvoiceIntentAutomatic">
+
+                        <span class="d-block fw-semibold">
+                            Không — Bán cho người tiêu dùng
+                        </span>
+
+                        <small class="d-block text-muted mt-1">
+                            Hệ thống sẽ đưa hóa đơn vào hàng đợi
+                            phát hành tự động.
+                        </small>
+                    </button>
+
+                </div>
+
+                <div class="small text-muted text-center mt-3">
+                    Bắt buộc chọn một phương thức để tiếp tục in bill.
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
 <!-- =========================================================
      CONFIRM MODAL
 ========================================================= -->

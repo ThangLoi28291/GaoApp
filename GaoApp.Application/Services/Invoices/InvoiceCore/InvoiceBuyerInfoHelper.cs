@@ -77,14 +77,15 @@ internal static class InvoiceBuyerInfoHelper
         string buyerType,
         string? buyerName,
         string? buyerLegalName,
-        string buyerTaxCode)
+        string buyerTaxCode,
+        string? buyerAddress)
     {
         if (!IsValidBuyerTaxCodeForViettel(buyerTaxCode))
         {
             return Result<bool>.Failure(
                 Error.Validation(
                     "InvoiceBuyer.TaxCodeInvalid",
-                    "MST/mã định danh không hợp lệ. Chỉ cho phép chữ, số, dấu gạch ngang và tối đa 20 ký tự."));
+                    "MST không hợp lệ. Chỉ cho phép chữ, số, dấu gạch ngang và tối đa 20 ký tự."));
         }
 
         if (buyerType == InvoiceBuyerTypes.NoInvoice)
@@ -97,7 +98,15 @@ internal static class InvoiceBuyerInfoHelper
                 return Result<bool>.Failure(
                     Error.Validation(
                         "InvoiceBuyer.BuyerNameRequired",
-                        "Vui lòng nhập tên khách hàng cá nhân."));
+                        "Vui lòng nhập tên người mua."));
+            }
+
+            if (string.IsNullOrWhiteSpace(buyerAddress))
+            {
+                return Result<bool>.Failure(
+                    Error.Validation(
+                        "InvoiceBuyer.AddressRequired",
+                        "Vui lòng nhập địa chỉ người mua."));
             }
 
             return Result<bool>.Success(true);
@@ -111,6 +120,22 @@ internal static class InvoiceBuyerInfoHelper
                     Error.Validation(
                         "InvoiceBuyer.BuyerLegalNameRequired",
                         "Vui lòng nhập tên đơn vị/công ty/hộ kinh doanh."));
+            }
+
+            if (string.IsNullOrWhiteSpace(buyerTaxCode))
+            {
+                return Result<bool>.Failure(
+                    Error.Validation(
+                        "InvoiceBuyer.TaxCodeRequired",
+                        "Vui lòng nhập mã số thuế."));
+            }
+
+            if (string.IsNullOrWhiteSpace(buyerAddress))
+            {
+                return Result<bool>.Failure(
+                    Error.Validation(
+                        "InvoiceBuyer.AddressRequired",
+                        "Vui lòng nhập địa chỉ đơn vị."));
             }
 
             return Result<bool>.Success(true);
@@ -128,6 +153,7 @@ internal static class InvoiceBuyerInfoHelper
         string? buyerName,
         string? buyerLegalName,
         string buyerTaxCode,
+        string? buyerCitizenId,
         string? buyerAddress,
         string? buyerEmail,
         string? buyerPhone)
@@ -142,6 +168,7 @@ internal static class InvoiceBuyerInfoHelper
             invoiceHead.BuyerAddress = null;
             invoiceHead.BuyerEmail = null;
             invoiceHead.BuyerPhone = null;
+            invoiceHead.BuyerCitizenId = null;
             return;
         }
 
@@ -152,6 +179,7 @@ internal static class InvoiceBuyerInfoHelper
             invoiceHead.BuyerTaxCode = string.IsNullOrWhiteSpace(buyerTaxCode)
                 ? null
                 : buyerTaxCode;
+            invoiceHead.BuyerCitizenId = buyerCitizenId;
             invoiceHead.BuyerAddress = buyerAddress;
             invoiceHead.BuyerEmail = buyerEmail;
             invoiceHead.BuyerPhone = buyerPhone;
@@ -163,6 +191,7 @@ internal static class InvoiceBuyerInfoHelper
         invoiceHead.BuyerTaxCode = string.IsNullOrWhiteSpace(buyerTaxCode)
             ? null
             : buyerTaxCode;
+        invoiceHead.BuyerCitizenId = buyerCitizenId;
         invoiceHead.BuyerAddress = buyerAddress;
         invoiceHead.BuyerEmail = buyerEmail;
         invoiceHead.BuyerPhone = buyerPhone;
@@ -220,6 +249,7 @@ internal static class InvoiceBuyerInfoHelper
             BuyerTaxCode = string.IsNullOrWhiteSpace(invoice.BuyerTaxCode)
                 ? taxCode
                 : invoice.BuyerTaxCode,
+            BuyerCitizenId = invoice.BuyerCitizenId,
             BuyerAddress = invoice.BuyerAddress,
             BuyerEmail = invoice.BuyerEmail,
             BuyerPhone = invoice.BuyerPhone,

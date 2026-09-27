@@ -17,6 +17,9 @@ public interface IOrderRepository
 
     Task<Order?> GetByIdAsync(int orderId, CancellationToken ct = default);
 
+    // Call inside the issuance store lock; refresh tracked scalar values and concurrency token.
+    Task<Order?> GetForInvoiceRouteChangeAsync(int storeId, int orderId, CancellationToken ct = default);
+
     Task<(List<Order> Items, int Total)> QueryOrdersAsync(
         DateTime? fromUtc,
         DateTime? toUtcExclusive,

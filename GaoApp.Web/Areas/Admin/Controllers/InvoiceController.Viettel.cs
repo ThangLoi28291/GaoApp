@@ -1,4 +1,7 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+﻿using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -7,20 +10,40 @@ public partial class InvoiceController
 {
     [HttpGet]
     public async Task<IActionResult> ViettelPayload(
-        int id,
-        CancellationToken ct)
+    int id,
+    CancellationToken ct)
     {
-        var result = await _viettelPayloadBuilder.BuildAsync(id, ct);
+        var result =
+            await _viettelPayloadBuilder.BuildAsync(
+                id,
+                ct);
 
         if (!result.IsSuccess)
         {
             FlashError(result.Error?.Message);
+
             return RedirectToInvoiceDetailPage(id);
         }
 
-        await LoadCorrectionHistoryViewBagAsync(id, ct);
+        await LoadCorrectionHistoryViewBagAsync(
+            id,
+            ct);
 
-        return View("ViettelPayload", result.Value);
+        // Route phải được truyền xuống toolbar để UI
+        // không cho phát hành thủ công hóa đơn Automatic.
+        var invoiceResult =
+            await _invoiceService.GetInvoiceDetailAsync(
+                id,
+                ct);
+
+        ViewBag.InvoiceIssuanceRoute =
+            invoiceResult.IsSuccess
+                ? invoiceResult.Value.InvoiceIssuanceRoute
+                : InvoiceIssuanceRoute.Unselected;
+
+        return View(
+            "ViettelPayload",
+            result.Value);
     }
 
     [HttpGet]
@@ -51,8 +74,10 @@ public partial class InvoiceController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Authorize(
+        Policy = PermissionCodes.System.Invoice.ManualIssue)]
     public async Task<IActionResult> ViettelIssue(
-        int id,
+            int id,
         CancellationToken ct)
     {
         var result = await _autoInvoiceService.IssueManualAsync(

@@ -9,6 +9,12 @@ public class InvoiceHeadDto
     public int StoreId { get; set; }
 
     public int? OrderId { get; set; }
+    public InvoiceIssuanceRoute InvoiceIssuanceRoute { get; set; }
+    = InvoiceIssuanceRoute.Unselected;
+
+    public DateTime? InvoiceIssuanceRouteSelectedAtUtc { get; set; }
+
+    public int? InvoiceIssuanceRouteSelectedByUserId { get; set; }
     public long? LegacySourceId { get; set; }
     public long? LegacyOrderCategoryId { get; set; }
     public string? LegacyMergeId { get; set; }
@@ -31,6 +37,7 @@ public class InvoiceHeadDto
     public string? BuyerName { get; set; }
 
     public string? BuyerTaxCode { get; set; }
+    public string? BuyerCitizenId { get; set; }
 
     public string? BuyerAddress { get; set; }
     public string BuyerType { get; set; } = "NoInvoice";

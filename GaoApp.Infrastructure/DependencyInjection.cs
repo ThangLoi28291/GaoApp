@@ -380,6 +380,9 @@ public static class DependencyInjection
         services.AddScoped<IInputInvoiceRepository, InputInvoiceRepository>();
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IAutoInvoiceRepository, AutoInvoiceRepository>();
+        services.AddScoped<
+    IInvoiceBuyerSelfServiceRepository,
+    InvoiceBuyerSelfServiceRepository>();
         services.AddScoped<IInvoiceInputStockRepository, InvoiceInputStockRepository>();
         services.AddScoped<IInvoiceInputStockReadRepository, InvoiceInputStockReadRepository>();
         services.AddScoped<IAdminMenuRepository, AdminMenuRepository>();

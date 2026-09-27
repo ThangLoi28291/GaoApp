@@ -68,6 +68,13 @@ public sealed class AutoInvoiceOperationSourceConfiguration : IEntityTypeConfigu
         b.HasIndex(x => new { x.StoreId, x.InvoiceHeadId })
             .IsUnique()
             .HasFilter("[IsActive] = 1 AND [IsDeleted] = 0");
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.InvoiceHeadId,
+            x.Status,
+            x.IsDeleted
+        });
         b.HasIndex(x => new { x.StoreId, x.AutoInvoiceOperationId, x.Status });
     }
 }

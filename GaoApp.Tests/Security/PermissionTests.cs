@@ -1,5 +1,5 @@
 using FluentAssertions;
-
+using GaoApp.Application.Common.Security;
 namespace GaoApp.Tests.Security;
 
 public class PermissionTests
@@ -48,5 +48,21 @@ public class PermissionTests
 
         // Assert
         canAccess.Should().BeTrue();
+    }
+    [Theory]
+    [InlineData(PermissionCodes.System.Invoice.ManualIssue)]
+    [InlineData(PermissionCodes.System.Invoice.Route)]
+    [InlineData(PermissionCodes.System.AutoInvoice.Operate)]
+    [InlineData(PermissionCodes.System.AutoInvoice.Settings)]
+    public void New_invoice_permissions_accept_legacy_integration_manage(
+    string canonicalPermission)
+    {
+        var accepted =
+            PermissionAliasMap.GetAcceptedCodes(
+                canonicalPermission);
+
+        Assert.Contains(
+            PermissionCodes.System.Integration.Manage,
+            accepted);
     }
 }

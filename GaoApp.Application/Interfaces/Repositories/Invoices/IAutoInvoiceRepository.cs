@@ -12,8 +12,36 @@ public interface IAutoInvoiceRepository
     Task<List<InvoiceHead>> GetCandidateInvoicesAsync(int storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
     Task<int> ClearRecoverableCredentialErrorsAsync(int storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
     Task MarkInvoiceErrorsAsync(int storeId, IReadOnlyCollection<int> invoiceHeadIds, string errorCode, string? errorMessage, CancellationToken ct = default);
+    Task ClearInvoiceErrorsAsync(
+    int storeId,
+    IReadOnlyCollection<int> invoiceHeadIds,
+    CancellationToken ct = default);
+
+    Task<int> RepairMissingUnitNamesAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default);
     Task<List<AutoInvoiceOperation>> GetActiveOperationsAsync(int storeId, CancellationToken ct = default);
     Task<InvoiceHead?> GetInvoiceHeadForAutomaticIssueAsync(int storeId, int invoiceHeadId, CancellationToken ct = default);
+    Task<InvoiceHead?> GetInvoiceHeadForClaimAsync(
+    int storeId,
+    int invoiceHeadId,
+    CancellationToken ct = default);
+
+    Task<InvoiceHead?> GetInvoiceHeadForManualClaimAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default);
+
+    Task<List<InvoiceHead>> GetInvoiceHeadsForClaimAsync(
+        int storeId,
+        IReadOnlyCollection<int> invoiceHeadIds,
+        CancellationToken ct = default);
+
+    Task<bool> HasSuccessfulSourceAsync(
+        int storeId,
+        int invoiceHeadId,
+        CancellationToken ct = default);
     Task<List<AutoInvoiceOperation>> GetOperationsAsync(int storeId, int take, CancellationToken ct = default);
     Task<AutoInvoiceOperation?> GetOperationAsync(int storeId, int operationId, CancellationToken ct = default);
     Task<bool> HasActiveSourceAsync(int storeId, int invoiceHeadId, CancellationToken ct = default);

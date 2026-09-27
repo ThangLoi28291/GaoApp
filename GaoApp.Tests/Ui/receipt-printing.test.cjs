@@ -114,3 +114,27 @@ test('missing printer and rejected spool jobs fail without rerouting or automati
     await assert.rejects(h.api.send(templates.render(order), context, h.printWindow), /Printer unavailable/);
     assert.equal(calls, 1); assert.deepEqual(h.browserPrints, []);
 });
+
+
+test('invoice intent Manual offline receipt records the choice without embedding a self-service token or QR', () => {
+    const result = templates.render({ ...order, invoiceIntent: { route: 2, pendingSync: true } }, {},
+        { offline: true, invoiceBuyerQrDataUrl: 'data:image/png;base64,FAKE_TOKEN' });
+    assert.match(result.body, /hóa đơn thủ công/); assert.match(result.body, /2 giờ/);
+    assert.match(result.body, /vui lòng liên hệ cửa hàng/);
+    assert.doesNotMatch(result.body, /FAKE_TOKEN|<img/);
+});
+
+test('invoice intent Automatic offline receipt records pending synchronization without claiming issuance', () => {
+    const result = templates.render({ ...order, invoiceIntent: { route: 1, pendingSync: true } }, {}, { offline: true });
+    assert.match(result.body, /hóa đơn tự động tại quầy/); assert.match(result.body, /chờ đồng bộ máy chủ/);
+    assert.doesNotMatch(result.body, /Đã phát hành/);
+    const online = templates.render(order, {}, { invoiceBuyerQrDataUrl: 'data:image/png;base64,SERVER_QR' });
+    assert.match(online.body, /SERVER_QR/);
+});
+
+
+test('invoice intent synchronized Automatic receipt does not regress to a pending-sync claim while offline', () => {
+    const result = templates.render({ ...order, invoiceIntent: { route: 1, pendingSync: false } }, {}, { offline: true });
+    assert.match(result.body, /Kết nối để tra cứu trạng thái phát hành/);
+    assert.doesNotMatch(result.body, /hóa đơn tự động tại quầy; chờ đồng bộ/);
+});

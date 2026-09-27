@@ -134,5 +134,27 @@ public static class PermissionAliasMap
     "InventoryAdjustment.Cancel",
     "inventory.adjustment.manage"
 },
+            // Invoice / AutoInvoice compatibility.
+            // Existing Admin/Manager đang có system.integration.manage
+            // không bị mất quyền ngay khi source mới được triển khai.
+            [PermissionCodes.System.Invoice.ManualIssue] = new[]
+{
+    PermissionCodes.System.Integration.Manage
+},
+
+            [PermissionCodes.System.Invoice.Route] = new[]
+{
+    PermissionCodes.System.Integration.Manage
+},
+
+            [PermissionCodes.System.AutoInvoice.Operate] = new[]
+{
+    PermissionCodes.System.Integration.Manage
+},
+
+            [PermissionCodes.System.AutoInvoice.Settings] = new[]
+{
+    PermissionCodes.System.Integration.Manage
+},
         };
 }

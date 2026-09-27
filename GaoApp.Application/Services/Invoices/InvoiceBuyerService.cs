@@ -208,15 +208,20 @@ public class InvoiceBuyerService : IInvoiceBuyerService
         var buyerName = InvoiceBuyerInfoHelper.NormalizeNullableText(request.BuyerName);
         var buyerLegalName = InvoiceBuyerInfoHelper.NormalizeNullableText(request.BuyerLegalName);
         var buyerTaxCode = InvoiceBuyerInfoHelper.NormalizeBuyerTaxCodeForViettel(request.BuyerTaxCode);
+        var buyerCitizenId =
+    InvoiceBuyerInfoHelper.NormalizeNullableText(
+        request.BuyerCitizenId);
         var buyerAddress = InvoiceBuyerInfoHelper.NormalizeNullableText(request.BuyerAddress);
         var buyerEmail = InvoiceBuyerInfoHelper.NormalizeNullableText(request.BuyerEmail);
         var buyerPhone = InvoiceBuyerInfoHelper.NormalizeNullableText(request.BuyerPhone);
 
-        var validation = InvoiceBuyerInfoHelper.ValidateBuyerInfo(
-            buyerType,
-            buyerName,
-            buyerLegalName,
-            buyerTaxCode);
+        var validation =
+    InvoiceBuyerInfoHelper.ValidateBuyerInfo(
+        buyerType,
+        buyerName,
+        buyerLegalName,
+        buyerTaxCode,
+        buyerAddress);
 
         if (!validation.IsSuccess)
         {
@@ -247,6 +252,9 @@ public class InvoiceBuyerService : IInvoiceBuyerService
                 buyerName,
                 buyerLegalName,
                 buyerTaxCode,
+                request.ClearBuyerCitizenId ? null : request.BuyerCitizenId == null
+                    ? target.BuyerCitizenId
+                    : buyerCitizenId,
                 buyerAddress,
                 buyerEmail,
                 buyerPhone);

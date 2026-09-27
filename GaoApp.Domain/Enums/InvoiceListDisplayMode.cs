@@ -41,5 +41,14 @@ public enum InvoiceListDisplayMode
     /// <summary>
     /// Chỉ hiển thị hóa đơn có dòng thêm tay.
     /// </summary>
-    HasManualLines = 6
+    HasManualLines = 6,
+
+    /// <summary>Hóa đơn thủ công an toàn, còn thiếu thông tin người mua.</summary>
+    ManualWaitingInfo = 7,
+
+    /// <summary>Hóa đơn thủ công đủ thông tin để chuẩn bị phát hành.</summary>
+    ManualReady = 8,
+
+    /// <summary>Hóa đơn thủ công cần kiểm tra trạng thái, lỗi hoặc dòng hàng.</summary>
+    ManualNeedsAttention = 9
 }

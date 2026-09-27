@@ -3,6 +3,73 @@
     const setup = JSON.parse(document.getElementById('receiptPrintData').textContent), frame = document.getElementById('receiptPaper');
     const select = document.getElementById('printTemplateChoice'), feedback = document.getElementById('printFeedback'), button = document.getElementById('printReceipt');
     let rendered, first = true, loading = false, printing = false;
+    function buildQrDataUrl(value) {
+    if (!value) return null;
+
+    if (!window.qrcodegen?.QrCode) {
+        throw new Error(
+            'Chưa tải được bộ tạo QR hóa đơn.'
+        );
+    }
+
+    const matrix =
+        qrcodegen.QrCode.encodeText(
+            String(value),
+            qrcodegen.QrCode.Ecc.QUARTILE
+        );
+
+    const canvas =
+        document.createElement('canvas');
+
+    const scale = 6;
+    const border = 4;
+
+    canvas.width =
+        canvas.height =
+            (matrix.size + border * 2) *
+            scale;
+
+    const drawing =
+        canvas.getContext('2d');
+
+    drawing.fillStyle = '#fff';
+
+    drawing.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    drawing.fillStyle = '#000';
+
+    for (
+        let y = 0;
+        y < matrix.size;
+        y++
+    ) {
+        for (
+            let x = 0;
+            x < matrix.size;
+            x++
+        ) {
+            if (!matrix.getModule(x, y)) {
+                continue;
+            }
+
+            drawing.fillRect(
+                (x + border) * scale,
+                (y + border) * scale,
+                scale,
+                scale
+            );
+        }
+    }
+
+    return canvas.toDataURL(
+        'image/png'
+    );
+}
     async function print() {
         if (loading || printing) return;
         printing = true; button.disabled = true; feedback.textContent = 'Đang gửi lệnh in…';
@@ -15,7 +82,23 @@
         finally { printing = false; button.disabled = false; }
     }
     function show(design) {
-        rendered = ReceiptTemplates.render(setup.receipt, design); loading = true; button.disabled = true;
+        const invoiceBuyerQrDataUrl =
+    setup.invoiceBuyerSelfServiceUrl
+        ? buildQrDataUrl(
+            setup.invoiceBuyerSelfServiceUrl
+        )
+        : null;
+
+rendered =
+    ReceiptTemplates.render(
+        setup.receipt,
+        design,
+        {
+            invoiceBuyerQrDataUrl,
+            invoiceBuyerQrExpiresAtUtc:
+                setup.invoiceBuyerSelfServiceExpiresAtUtc
+        }
+    ); loading = true; button.disabled = true;
         frame.style.width = rendered.size.width + 'mm';
         frame.onload = () => {
             frame.style.height = Math.ceil(frame.contentDocument.body.scrollHeight) + 'px';

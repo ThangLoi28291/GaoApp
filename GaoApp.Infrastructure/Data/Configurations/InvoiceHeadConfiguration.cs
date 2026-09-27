@@ -48,6 +48,7 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.InvoiceDate)
             .IsRequired();
+        b.Property(x => x.LastIssuanceRelevantChangeAtUtc);
         // =====================================================
         // THÔNG TIN NGƯỜI MUA XUẤT HÓA ĐƠN
         // =====================================================
@@ -65,6 +66,8 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.BuyerTaxCode)
             .HasMaxLength(50);
+        b.Property(x => x.BuyerCitizenId)
+    .HasMaxLength(50);
 
         b.Property(x => x.BuyerAddress)
             .HasMaxLength(1200);
@@ -234,5 +237,11 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
         // Giải thích:
         // Restrict để không bao giờ xóa Order kéo theo xóa InvoiceHead.
         // Hóa đơn là dữ liệu kế toán/đối soát, phải giữ độc lập.
+        b.HasIndex(x => new
+        {
+            x.StoreId,
+            x.LastIssuanceRelevantChangeAtUtc,
+            x.IsDeleted
+        });
     }
 }

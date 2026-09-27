@@ -38,6 +38,74 @@ public sealed class DraftInvoiceReturnSyncServiceTests
         hkd2.TotalQuantity.Should().Be(1m);
         hkd2.GrandTotal.Should().Be(100_000m);
     }
+    [Fact]
+    public async Task Partial_return_resets_only_the_affected_invoice_issuance_stability_time()
+    {
+        var saleAtUtc =
+            new DateTime(
+                2026, 9, 26,
+                1, 0, 0,
+                DateTimeKind.Utc);
+
+        var returnAtUtc =
+            saleAtUtc.AddMinutes(25);
+
+        await using var context = CreateContext();
+
+        await SeedSplitInvoiceAndReturnAsync(context);
+
+        var order =
+            await context.Orders
+                .SingleAsync(x => x.Id == 41);
+
+        order.CompletedAtUtc = saleAtUtc;
+
+        var salesReturn =
+            await context.SalesReturns
+                .SingleAsync(x => x.Id == 81);
+
+        salesReturn.CompletedAtUtc = returnAtUtc;
+
+        var unaffectedHead =
+            await context.InvoiceHeads
+                .SingleAsync(x => x.Id == 71);
+
+        var affectedHead =
+            await context.InvoiceHeads
+                .SingleAsync(x => x.Id == 72);
+
+        unaffectedHead.LastIssuanceRelevantChangeAtUtc =
+            saleAtUtc;
+
+        affectedHead.LastIssuanceRelevantChangeAtUtc =
+            saleAtUtc;
+
+        await context.SaveChangesAsync();
+
+        var service = CreateService(context);
+
+        await service.SyncAfterReturnAsync(
+            order.Id,
+            salesReturn.Id);
+
+        context.ChangeTracker.Clear();
+
+        unaffectedHead =
+            await context.InvoiceHeads
+                .SingleAsync(x => x.Id == 71);
+
+        affectedHead =
+            await context.InvoiceHeads
+                .SingleAsync(x => x.Id == 72);
+
+        Assert.Equal(
+            saleAtUtc,
+            unaffectedHead.LastIssuanceRelevantChangeAtUtc);
+
+        Assert.Equal(
+            returnAtUtc,
+            affectedHead.LastIssuanceRelevantChangeAtUtc);
+    }
 
     [Fact]
     public async Task IssuedHeadContainingReturnedLine_ShouldRequireAccountingReturn()
@@ -56,11 +124,63 @@ public sealed class DraftInvoiceReturnSyncServiceTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*nghiệp vụ kế toán/hóa đơn điện tử*");
     }
+    [Fact]
+    public async Task Active_auto_claim_blocks_return_for_affected_invoice()
+    {
+        await using var context =
+            CreateContext();
 
-    private static DraftInvoiceReturnSyncService CreateService(InMemoryAppDbContext context)
+        await SeedSplitInvoiceAndReturnAsync(
+            context);
+
+        context.AutoInvoiceOperations.Add(
+            new AutoInvoiceOperation
+            {
+                Id = 300,
+                StoreId = 1,
+                Kind =
+                    AutoInvoiceOperationKind.Single,
+                Status =
+                    AutoInvoiceOperationStatus.Processing,
+                InvoiceHeadId = 72,
+                Sources =
+                [
+                    new AutoInvoiceOperationSource
+                {
+                    Id = 301,
+                    StoreId = 1,
+                    InvoiceHeadId = 72,
+                    Status =
+                        AutoInvoiceSourceStatus.Claimed,
+                    IsActive = true
+                }
+                ]
+            });
+
+        await context.SaveChangesAsync();
+
+        var service =
+            CreateService(context);
+
+        var act = () =>
+            service.EnsurePosReturnAllowedAsync(
+                1,
+                41,
+                new[] { 51 });
+
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage(
+                "*đang được hệ thống phát hành*");
+    }
+
+    private static DraftInvoiceReturnSyncService
+        CreateService(
+            InMemoryAppDbContext context)
         => new(
             new InvoiceRepository(context),
             new InvoiceInputStockRepository(context),
+            new AutoInvoiceRepository(context),
             new OrderLegalEntityAllocationReversalRepository(context),
             new SalesReturnRepository(context));
 

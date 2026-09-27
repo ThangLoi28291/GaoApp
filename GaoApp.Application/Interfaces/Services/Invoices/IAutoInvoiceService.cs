@@ -27,7 +27,9 @@ public interface IAutoInvoiceService
     Task<Result<ViettelInvoiceIssueResultDto>> IssueManualAsync(
         int invoiceHeadId,
         CancellationToken ct = default);
-
+    Task<Result> RecheckIncidentAsync(
+    int invoiceHeadId,
+    CancellationToken ct = default);
     Task<Result<ViettelInvoiceLookupResultDto>> SyncUnknownAsync(int invoiceHeadId, CancellationToken ct = default);
 
     Task MarkWorkerStoppedAsync(CancellationToken ct = default);

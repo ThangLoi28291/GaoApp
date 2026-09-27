@@ -38,7 +38,35 @@
             .muted{color:#000;font-size:.92em;font-weight:600}.header-note,.footer{white-space:pre-line}.title{text-align:center;font-size:${narrow ? 12 : thermal ? 16 : 19}px;margin:4mm 0 1mm;font-weight:800;letter-spacing:.4px}
             .number{text-align:center;letter-spacing:.6px;font-size:1em;font-weight:800;margin-bottom:4mm}.meta{width:100%;border-collapse:collapse;margin-bottom:4mm}.meta td{padding:.8mm 0;vertical-align:top}.meta td:first-child{width:32%}
             table.items{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}td,th{overflow-wrap:anywhere}th{background:#fff;padding:2mm 1mm;border-bottom:1px solid #000;font-weight:800;text-align:left}td{vertical-align:top}table.items td{padding:2.5mm 1mm;border-bottom:1px solid #000}
-            strong,b,.item-name{font-weight:800}.num{text-align:right;font-variant-numeric:tabular-nums}td.num,.payment-line span:last-child{white-space:nowrap}table.items td.num{padding-left:.5mm;padding-right:.5mm}td.num .muted{white-space:normal}.totals{width:100%;border-collapse:collapse;margin-top:4mm;break-inside:avoid}.totals td{padding:1mm}.settlement td{font-weight:800;font-size:1.05em}.grand td{font-weight:800;font-size:1.35em;border-top:2px solid #000;border-bottom:3px double #000;padding:2.5mm 1mm}.payment{border-top:1px dashed #000;margin-top:3mm;padding-top:2mm}.payment-line{display:table;width:100%;margin:1mm 0}.payment-line span{display:table-cell}.payment-line span:last-child{text-align:right;font-weight:800}.footer{margin-top:5mm;padding-top:4mm;border-top:1px dashed #000;text-align:center;font-size:1em;break-inside:avoid}.offline-note{border:1px solid #000;padding:2mm;margin-top:4mm;font-size:1em;font-weight:800;break-inside:avoid}
+            strong,b,.item-name{font-weight:800}.num{text-align:right;font-variant-numeric:tabular-nums}td.num,.payment-line span:last-child{white-space:nowrap}table.items td.num{padding-left:.5mm;padding-right:.5mm}td.num .muted{white-space:normal}.totals{width:100%;border-collapse:collapse;margin-top:4mm;break-inside:avoid}.totals td{padding:1mm}.settlement td{font-weight:800;font-size:1.05em}.grand td{font-weight:800;font-size:1.35em;border-top:2px solid #000;border-bottom:3px double #000;padding:2.5mm 1mm}.payment{border-top:1px dashed #000;margin-top:3mm;padding-top:2mm}.payment-line{display:table;width:100%;margin:1mm 0}.payment-line span{display:table-cell}.payment-line span:last-child{text-align:right;font-weight:800}.footer{margin-top:5mm;padding-top:4mm;border-top:1px dashed #000;text-align:center;font-size:1em;break-inside:avoid}.offline-note{border:1px solid #000;padding:2mm;margin-top:4mm;font-size:1em;font-weight:800;break-inside:avoid}.invoice-buyer-qr{
+    margin-top:4mm;
+    padding-top:4mm;
+    border-top:1px dashed #000;
+    text-align:center;
+    break-inside:avoid;
+    page-break-inside:avoid
+}
+.invoice-buyer-qr-title{
+    font-size:1.1em;
+    font-weight:800;
+    margin-bottom:2mm
+}
+.invoice-buyer-qr img{
+    display:block;
+    width:${narrow ? 28 : 34}mm;
+    height:${narrow ? 28 : 34}mm;
+    margin:0 auto 2mm;
+    image-rendering:pixelated
+}
+.invoice-buyer-qr-note{
+    font-size:.92em;
+    line-height:1.4
+}
+.invoice-buyer-qr-expiry{
+    margin-top:1mm;
+    font-size:.86em;
+    font-weight:600
+}
             .classic .brand{border-top:3px double #000;border-bottom:3px double #000;padding:4mm 0}.classic th{border-top:1px solid #000;border-bottom:1px solid #000}
             .compact .brand{text-align:left;border-bottom:1px solid #000;padding:1mm 0 2mm}.compact .store{font-size:${narrow ? 14 : 18}px}.compact .title,.compact .number{text-align:left;margin:2mm 0}.compact table.items td{padding:1.5mm 0;border-bottom:1px dashed #000}.compact .meta{margin-bottom:2mm}.compact .footer{margin-top:3mm;padding-top:2mm}
             .itemwide .item-group{break-inside:avoid;page-break-inside:avoid}.itemwide .items .item-heading td{padding:2.5mm 0 .5mm;border-bottom:0}.itemwide .item-name{font-size:13px}.itemwide .items .item-values td{padding:.5mm .5mm 2mm;border-bottom:1px dashed #000}.itemwide .items th{padding:2mm .5mm;white-space:nowrap}.itemwide .item-unit{text-align:center}.itemwide .item-quantity{font-weight:800}
@@ -73,6 +101,47 @@
             return { columns: columns.map(value => `<col style="width:${value / width * 100}%">`).join(''), values, showHead: !lines.length || lines.some(fitsColumns) };
         }
         const wide = d.layout === 'itemwide' ? wideValues() : null;
+        const invoiceBuyerQrExpiry =
+    options.invoiceBuyerQrExpiresAtUtc
+        ? new Date(
+            options.invoiceBuyerQrExpiresAtUtc
+        )
+        : null;
+
+const invoiceBuyerQrExpiryText =
+    invoiceBuyerQrExpiry &&
+    !Number.isNaN(
+        invoiceBuyerQrExpiry.getTime()
+    )
+        ? invoiceBuyerQrExpiry
+            .toLocaleString('vi-VN')
+        : '';
+
+const invoiceBuyerQr =
+    options.invoiceBuyerQrDataUrl
+        ? `<section class="invoice-buyer-qr">
+            <div class="invoice-buyer-qr-title">
+                LẤY HÓA ĐƠN ĐIỆN TỬ
+            </div>
+            <img
+                src="${e(options.invoiceBuyerQrDataUrl)}"
+                alt="QR nhập thông tin hóa đơn">
+            <div class="invoice-buyer-qr-note">
+                Quét mã để nhập thông tin xuất hóa đơn.
+                Có thể tự cập nhật trong vòng 2 giờ
+                kể từ khi thanh toán.
+            </div>
+            ${invoiceBuyerQrExpiryText
+                ? `<div class="invoice-buyer-qr-expiry">
+                    Hạn tự cập nhật:
+                    ${e(invoiceBuyerQrExpiryText)}
+                   </div>`
+                : ''}
+            <div class="invoice-buyer-qr-note">
+                Sau thời gian trên, vui lòng liên hệ cửa hàng.
+            </div>
+           </section>`
+        : '';
         const wideItems = wide ? `<table class="items"><colgroup>${wide.columns}</colgroup>
             ${wide.showHead ? '<thead><tr><th class="num" scope="col">SL</th><th class="item-unit" scope="col">ĐVT</th><th class="num" scope="col">Đơn giá</th><th class="num" scope="col">Thành tiền</th></tr></thead>' : ''}
             ${lines.map(line => `<tbody class="item-group"><tr class="item-heading"><td colspan="4"><div class="item-name">${e(line.productVariantName || line.itemName || line.productName)}</div>
@@ -98,6 +167,11 @@
             <table class="totals">${row('Tạm tính', order.subtotal)}${row('Giảm giá', order.discountTotal)}${row('TỔNG CỘNG', order.grandTotal, 'grand')}
             ${row('Đã thanh toán', order.paidTotal, 'settlement')}${Number(order.balanceDue) > 0 ? row('Còn thiếu', order.balanceDue, 'settlement') : ''}${row('Tiền thừa', order.changeDue, 'settlement')}</table>
             ${d.showPayments && payments.length ? `<section class="payment"><strong>Thanh toán</strong>${payments.map(p => `<div class="payment-line"><span>${e(methods[p.method] || p.method || 'Khác')}${p.reference ? `<br><small class="muted">${e(p.reference)}</small>` : ''}</span><span>${m(p.amount)}</span></div>`).join('')}</section>` : ''}
+           ${options.offline ? '' : invoiceBuyerQr}
+           ${options.offline && order.invoiceIntent ? `<div class="offline-note">${order.invoiceIntent.route === 2
+                ? 'Đã ghi nhận yêu cầu hóa đơn thủ công tại quầy. QR nhập thông tin chờ kết nối; vui lòng liên hệ cửa hàng. Thời hạn tự nhập thông tin là 2 giờ từ lúc hoàn tất đơn.'
+                : order.invoiceIntent.pendingSync ? 'Đã chọn hóa đơn tự động tại quầy; chờ đồng bộ máy chủ.'
+                    : 'Đã chọn hóa đơn tự động. Kết nối để tra cứu trạng thái phát hành.'}</div>` : ''}
             ${options.offline ? '<div class="offline-note">Phiếu bán tại quầy · Chờ đồng bộ máy chủ.' + (payments.some(p => p.method === 1 || p.method === 'BankTransfer') ? '<br>Chuyển khoản do nhân viên xác nhận thủ công.' : '') + '</div>' : ''}
             <footer class="footer">${e(d.footerText)}</footer></article>`;
         return { design: d, size, css, body, html: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu ${e(label)}</title><style>${css}</style></head><body>${body}</body></html>` };

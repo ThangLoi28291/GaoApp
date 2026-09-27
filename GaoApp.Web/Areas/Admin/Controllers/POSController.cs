@@ -11,6 +11,8 @@ using GaoApp.Application.DTOs.POSPaymentQrs;
 using GaoApp.Application.Interfaces.Services.POSPaymentQrs;
 using GaoApp.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
+using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Application.Interfaces.Repositories.Orders;
 
 using GaoApp.Application.Common.Exceptions;
 
@@ -41,7 +43,10 @@ public class POSController : BasePOSPageController
         _posRealtimeNotifier = posRealtimeNotifier;
         _paymentQrService = paymentQrService;
     }
-
+    public sealed class SetInvoiceIssuanceRouteRequest
+    {
+        public InvoiceIssuanceRoute Route { get; set; }
+    }
     private int CurrentStoreIdValue()
     {
         return int.TryParse(User.FindFirstValue("store_id"), out var id) ? id : 0;
@@ -384,6 +389,79 @@ public class POSController : BasePOSPageController
             ct: ct);
 
         return Ok(result);
+    }
+    [HttpPost("{orderId:int}/invoice-route")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Finalize)]
+    public async Task<IActionResult> SetInitialInvoiceIssuanceRoute(
+    int orderId,
+    [FromBody] SetInvoiceIssuanceRouteRequest request,
+    [FromServices] IInvoiceIssuanceRouteService routeService,
+    [FromServices] IOrderRepository orders,
+    CancellationToken ct)
+    {
+        if (request == null ||
+            request.Route is not
+                (InvoiceIssuanceRoute.Automatic or
+                 InvoiceIssuanceRoute.Manual))
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message =
+                    "Phương thức phát hành hóa đơn không hợp lệ."
+            });
+        }
+
+        if (Request.Headers.ContainsKey("X-POS-Operation-Id"))
+        {
+            // A finalized order is no longer necessarily the current cart. Bind replay to
+            // its originating shift, whose store/terminal/owner are checked by the POS service.
+            var shift = await _posShiftService.GetCurrentOpenAsync(ct);
+            var order = await orders.GetByIdAsync(orderId, ct);
+            if (order == null || order.StoreId != CurrentStoreIdValue())
+                return NotFound(new { success = false, message = "Không tìm thấy đơn hàng tại cửa hàng hiện tại." });
+            if (shift == null ||
+                !int.TryParse(Request.Headers["X-POS-Shift-Id"], out var originalShiftId) ||
+                originalShiftId != shift.Id || order.POSShiftId != shift.Id)
+                return Conflict(new { success = false, message = "Đơn hàng không thuộc ca gốc của lựa chọn hóa đơn. Cần đối soát giao dịch tại quầy." });
+        }
+
+        var result =
+            await routeService.SetInitialRouteAsync(
+                orderId,
+                request.Route,
+                ct);
+
+        if (!result.IsSuccess)
+        {
+            var payload = new
+            {
+                success = false,
+                code = result.Error?.Code,
+                message =
+                    result.Error?.Message ??
+                    "Không thể lưu phương thức phát hành hóa đơn."
+            };
+
+            return result.Error?.Code switch
+            {
+                "NotFound" => NotFound(payload),
+                "Conflict" => Conflict(payload),
+                _ => BadRequest(payload)
+            };
+        }
+
+        return Ok(new
+        {
+            success = true,
+            orderId = result.Value.OrderId,
+            route = result.Value.Route.ToString(),
+            message =
+                result.Value.Route ==
+                InvoiceIssuanceRoute.Manual
+                    ? "Đã chuyển hóa đơn sang chờ phát hành thủ công."
+                    : "Đã đưa hóa đơn vào hàng đợi phát hành tự động."
+        });
     }
 
     [HttpPost("{orderId:int}/cancel")]
