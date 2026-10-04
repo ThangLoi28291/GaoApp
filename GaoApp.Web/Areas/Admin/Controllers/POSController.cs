@@ -167,7 +167,19 @@ public class POSController : BasePOSPageController
             return BadRequest("Không tìm thấy draft đơn hàng.");
         }
 
-        var qr = await acb.CreateQrAsync(draft, request ?? new CreatePOSPaymentQrRequest(), _paymentQrService, ct);
+        GaoApp.Application.DTOs.POSPaymentQrs.POSPaymentQrDto qr;
+        try
+        {
+            qr = await acb.CreateQrAsync(draft, request ?? new CreatePOSPaymentQrRequest(), _paymentQrService, ct);
+        }
+        catch (GaoApp.Web.Services.Acb.PendingPaymentQrException pending)
+        {
+            return Conflict(new
+            {
+                errorCode = "POS_QR_PENDING", errorType = "business", message = pending.Message,
+                metadata = new { orderId = pending.OrderId, qrId = pending.QrId, savedQr = pending.SavedQr }
+            });
+        }
 
         await NotifyTerminalAsync(
             eventType: "payment_qr_created",
@@ -323,6 +335,23 @@ public class POSController : BasePOSPageController
         return Ok(draft);
     }
 
+    [HttpPost("cart/current/clear-lines")]
+    [Authorize(Policy = PermissionCodes.Pos.Order.Create)]
+    public async Task<IActionResult> ClearCurrentCartLines(CancellationToken ct = default)
+    {
+        var draft = await _pos.ClearCurrentCartLinesAsync(ct);
+
+        await NotifyTerminalAsync(
+            eventType: PosRealtimeEventTypes.CartChanged,
+            orderId: draft?.OrderId,
+            cartChanged: true,
+            summaryChanged: true,
+            message: "Đã xóa toàn bộ sản phẩm khỏi giỏ nháp.",
+            ct: ct);
+
+        return Ok(draft);
+    }
+
     [HttpPost("{orderId:int}/payments")]
     [Authorize(Policy = PermissionCodes.Pos.Payment.Create)]
     public async Task<IActionResult> AddPayment(int orderId, [FromBody] UpsertPaymentRequest dto, CancellationToken ct)
@@ -451,10 +480,12 @@ public class POSController : BasePOSPageController
             };
         }
 
+        var receiptOrder = await orders.GetByIdAsync(result.Value.OrderId, ct);
         return Ok(new
         {
             success = true,
             orderId = result.Value.OrderId,
+            askBeforePrintingReceipt = receiptOrder?.Customer?.AskBeforePrintingReceipt == true,
             route = result.Value.Route.ToString(),
             message =
                 result.Value.Route ==
@@ -494,6 +525,7 @@ public class POSController : BasePOSPageController
         int orderId,
         [FromServices] GaoApp.Web.Services.Printing.ReceiptTemplateService templates,
         [FromServices] IPOSRuntimeContextAccessor runtime,
+        [FromServices] GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess receiptAdmin,
         [FromQuery] string? size = null,
         [FromQuery] bool autoPrint = true,
         CancellationToken ct = default)
@@ -501,30 +533,43 @@ public class POSController : BasePOSPageController
         var model = await _pos.GetReceiptAsync(orderId, ct);
 
         return View("~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
-            new GaoApp.Web.Services.Printing.ReceiptPrintModel(model, await templates.ListAsync(ct), CurrentStoreId, runtime.TerminalId, autoPrint, size));
+            new GaoApp.Web.Services.Printing.ReceiptPrintModel(model, [], CurrentStoreId, runtime.TerminalId, autoPrint,
+                ReceiptDefault: await templates.GetDefaultAsync(ct), CanManageTemplates: await receiptAdmin.IsAdminAsync(ct)));
     }
 
     [HttpGet("orders")]
     public async Task<IActionResult> GetOrders(
-        [FromQuery] DateTime? fromDate,
-        [FromQuery] DateTime? toDate,
-        [FromQuery] GaoApp.Domain.Enums.OrderStatus? status,
-        [FromQuery] string? keyword,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery] OrderListQueryDto query,
         CancellationToken ct = default)
     {
-        var query = new OrderListQueryDto
-        {
-            FromDate = fromDate,
-            ToDate = toDate,
-            Status = status,
-            Keyword = keyword,
-            Page = page,
-            PageSize = pageSize
-        };
+        if (!ModelState.IsValid)
+            return BadRequest(new { message = "Bộ lọc không hợp lệ. Vui lòng kiểm tra lại thông tin tìm kiếm." });
+        if (query.FromDate.HasValue && query.ToDate.HasValue && query.FromDate.Value.Date > query.ToDate.Value.Date)
+            return BadRequest(new { message = "Đến ngày phải bằng hoặc sau Từ ngày." });
 
-        return Ok(await _pos.GetOrdersAsync(query, ct));
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var result = await _pos.GetOrdersAsync(query, ct);
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        Response.Headers.Append("Server-Timing", FormattableString.Invariant($"orders;dur={elapsed:F1}"));
+        if (elapsed >= 1000)
+        {
+            HttpContext.RequestServices.GetRequiredService<ILogger<POSController>>().LogWarning(
+                "Slow POS order list: StoreId={StoreId}; Page={Page}; PageSize={PageSize}; HasKeyword={HasKeyword}; HasDateFilter={HasDateFilter}; Status={Status}; ElapsedMs={ElapsedMs}; TraceId={TraceId}",
+                CurrentStoreIdValue(), result.Page, result.PageSize, !string.IsNullOrWhiteSpace(query.Keyword),
+                query.FromDate.HasValue || query.ToDate.HasValue, query.Status, elapsed, HttpContext.TraceIdentifier);
+        }
+        return Ok(result);
+    }
+
+    [HttpGet("orders/filter-options")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> GetOrderFilterOptions(
+        [FromServices] IOrderRepository orders,
+        [FromQuery] string kind, [FromQuery] string? term, CancellationToken ct)
+    {
+        if (kind is not ("employee" or "terminal") || term?.Length > 200)
+            return BadRequest(new { message = "Thông tin tìm kiếm không hợp lệ." });
+        return Ok(await orders.GetListFilterOptionsAsync(kind == "employee", term, ct));
     }
 
     [HttpPost("orders/{orderId:int}/hold")]
@@ -1113,7 +1158,8 @@ public async Task<IActionResult> Dashboard(CancellationToken ct)
             refundMethod: request.RefundMethod,
             refundReferenceCode: request.RefundReferenceCode,
             refundProvider: request.RefundProvider,
-            ct: ct);
+            ct: ct,
+            allowPendingRestock: request.AllowPendingRestock);
 
         await NotifyStoreAsync(
             eventType: PosRealtimeEventTypes.OrderRefunded,

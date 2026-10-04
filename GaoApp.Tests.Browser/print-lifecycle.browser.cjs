@@ -16,6 +16,10 @@ const view = fs.readFileSync(path.join(web, 'Areas/Admin/Views/ReceiptTemplates/
 const errors = [], jobs = [];
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/Admin/js/pos/qrcodegen.js') {
+        res.setHeader('Content-Type', 'text/javascript');
+        res.end(fs.readFileSync(path.join(web, 'wwwroot/Admin/js/pos/qrcodegen.js'))); return;
+    }
     if (url.pathname.startsWith('/Admin/js/printing/')) {
         const name = path.basename(url.pathname);
         res.setHeader('Content-Type', 'text/javascript');

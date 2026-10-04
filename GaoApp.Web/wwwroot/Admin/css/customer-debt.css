@@ -98,12 +98,28 @@
 #customerDebtPage button:focus-visible,
 #customerDebtPage a:focus-visible { outline: 2px solid var(--debt-primary); outline-offset: 2px; }
 
+#customerDebtPage .debt-report-filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; padding: 0 1.5rem 1.5rem; }
+#customerDebtPage .debt-report-filters label { flex: 1 1 160px; min-width: 0; font-weight: 600; }
+#customerDebtPage .debt-report-filters .debt-report-search { flex-basis: 280px; }
+#customerDebtPage .debt-report-filters input, #customerDebtPage .debt-report-filters select { margin-top: .4rem; }
+#customerDebtPage .debt-filter-customer { flex-basis: 100%; margin: 0; }
+#customerDebtPage .debt-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.5rem; }
+#customerDebtPage .debt-receipt { max-width: 1000px; width: 100%; margin: 0 auto; }
+#customerDebtPage .debt-receipt-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin: 0; }
+#customerDebtPage .debt-receipt-info dt { color: var(--debt-muted); font-size: .8rem; font-weight: 500; }
+#customerDebtPage .debt-receipt-info dd { margin: .3rem 0 0; font-weight: 600; overflow-wrap: anywhere; }
+#customerDebtPage .debt-signatures { display: flex; justify-content: space-around; text-align: center; padding: 1.5rem 1rem 5rem; }
+#customerDebtPage .debt-signatures small { display: block; font-weight: 400; }
+
 @media (max-width: 1199px) {
     #customerDebtPage .debt-workspace--collect { grid-template-columns: minmax(0, 1fr); }
     #customerDebtPage .debt-collection .row > div { width: 50%; }
 }
 
 @media (max-width: 700px) {
+    #customerDebtPage .debt-report-filters > .debt-actions { width: 100%; justify-content: flex-end; }
+    #customerDebtPage .debt-report-filters { padding: 0 1rem 1rem; }
+    #customerDebtPage .debt-receipt-info { grid-template-columns: minmax(0, 1fr); }
     #customerDebtPage .debt-section-heading { padding: 1rem; }
     #customerDebtPage .debt-search { align-items: stretch; flex-direction: column; padding: 0 1rem 1rem; }
     #customerDebtPage .debt-search .btn { width: 100%; }
@@ -118,6 +134,9 @@
 }
 
 @media print {
+    #debtPrint, .gds-page-header__actions { display: none !important; }
+    body { background: white !important; }
+    #customerDebtPage .debt-receipt-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     body * { visibility: hidden; }
     #customerDebtPage, #customerDebtPage * { visibility: visible; }
     #customerDebtPage { position: absolute; inset: 0 auto auto 0; width: 100%; font-size: 10px; }

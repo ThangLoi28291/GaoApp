@@ -9,18 +9,64 @@ window.PosOffline = (function () {
     let preparing = false, blockedWriter = false, sessionIssue = null;
     let initPromise, writerRetryTimer, pageActive = true;
     let chain = Promise.resolve(), syncRunning = false, token = '', refreshTimer, unlock, shellReady = false;
+    let lastSyncAttemptAt = null, lastSyncAt = null, syncError = '';
     const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
     const fail = (message, status = 409) => json({ message, errorCode: 'POS_OFFLINE_REVIEW', errorType: 'business' }, status);
     const serial = work => { const next = chain.then(work, work); chain = next.catch(() => {}); return next; };
     const uuid = () => crypto.randomUUID();
     const isUnavailable = response => response.status >= 500 || response.status === 408;
+    const maxPosQuantity = 1000000;
+    function invalidQueueOperation(op) {
+        if (!op?.url) return null;
+        let quantityText = null, source = null;
+        try {
+            quantityText = new URL(op.url, 'https://offline.invalid').searchParams.get('qty');
+            source = quantityText === null ? null : 'url';
+        } catch (_) { return null; }
+        if (quantityText === null && op.body && (op.body.quantity != null || op.body.qty != null)) {
+            quantityText = String(op.body.quantity ?? op.body.qty);
+            source = 'body';
+        }
+        if (quantityText === null) {
+            const draft = core.draftOf(op.localResult);
+            const line = draft?.lines?.find(x => {
+                const value = Number(x.quantity);
+                return !Number.isFinite(value) || value <= 0 || value > maxPosQuantity;
+            });
+            if (line) { quantityText = String(line.quantity); source = 'localResult'; }
+        }
+        if (quantityText === null) return null;
+        const quantity = Number(quantityText);
+        if (Number.isFinite(quantity) && quantity > 0 && quantity <= maxPosQuantity) return null;
+        return { kind: 'invalid-operation', code: 'QTY_OUT_OF_RANGE', quantity: quantityText,
+            source, message: `Thao tác ${op.id} có số lượng bất thường (${quantityText}). Đã giữ lại để đối soát; cần cô lập thao tác này trước khi đồng bộ tiếp.` };
+    }
+    function quantityConflict(conflict) {
+        if (!conflict?.operationId || !/số lượng không hợp lệ|quantity.*invalid|qty.*invalid/i.test(String(conflict.message || ''))) return null;
+        return { ...core.clone(conflict), kind: 'invalid-operation', code: conflict.code || 'QTY_OUT_OF_RANGE' };
+    }
+    function paymentOverpayConflict(conflict) {
+        if (!conflict?.operationId) return null;
+        const message = String(conflict.message || '');
+        if (conflict.kind === 'payment-overpay' || /overpay|thanh toán dư/i.test(message))
+            return { ...core.clone(conflict), kind: 'payment-overpay' };
+        return null;
+    }
+    function blockedServerConflict(conflict) {
+        if (!conflict?.operationId) return null;
+        return quantityConflict(conflict) || (conflict.kind === 'invalid-operation' ? core.clone(conflict) : null)
+            || paymentOverpayConflict(conflict) || (conflict.kind === 'server-rejection' ? core.clone(conflict) : null);
+    }
     const expired = () => !state || new Date(state.context.expiresAtUtc).getTime() <= Date.now();
     function canWork() { return ready && writer && !authBlocked && !storageError && !sessionIssue && !expired(); }
     function localMode() { return canWork() && (!connected || state.queue.length > 0); }
     function notify() { window.dispatchEvent(new CustomEvent('pos:offline-status')); }
     function status() {
+        const queueIssue = blockedServerConflict(state?.conflict);
         return { ready, preparing, writer, connected, shellReady, sessionIssue, offline: !connected, pending: state?.queue.length || 0,
-            message: storageError || (authBlocked ? 'Cần đăng nhập lại đúng nhân viên để đồng bộ.' : sessionIssue?.message || (!writer && ready ? 'POS đang mở ở tab khác của quầy.' : expired() && ready ? 'Phiên offline đã hết hạn. Kết nối server để chuẩn bị lại quầy.' : state?.conflict?.message || '')),
+            syncing: syncRunning, lastSyncAttemptAt, lastSyncAt, syncError, queueIssue,
+            quarantined: state?.quarantined?.length || 0,
+            message: storageError || (authBlocked ? 'Cần đăng nhập lại đúng nhân viên để đồng bộ.' : sessionIssue?.message || (!writer && ready ? 'POS đang mở ở tab khác của quầy.' : expired() && ready ? 'Phiên offline đã hết hạn. Kết nối server để chuẩn bị lại quầy.' : queueIssue?.message || state?.conflict?.message || '')),
             expiresAt: state?.context.expiresAtUtc, context: state?.context };
     }
     async function sessionRejected(response) {
@@ -72,19 +118,30 @@ window.PosOffline = (function () {
     }
     async function raw(url, options = {}, timeoutMs = 4000) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        const abort = () => controller.abort();
+        let rejectDeadline;
+        const deadline = new Promise((_, reject) => { rejectDeadline = reject; });
+        const abort = () => { controller.abort(); rejectDeadline(new DOMException('Request aborted', 'AbortError')); };
+        const timer = setTimeout(() => {
+            controller.abort(); rejectDeadline(new DOMException('Server response timed out', 'TimeoutError'));
+        }, timeoutMs);
         options.signal?.addEventListener('abort', abort, { once: true });
         try {
-            const response = await nativeFetch(url, { ...options, credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-            if (response.redirected && !response.headers.get('content-type')?.includes('application/json')) return fail('Cần đăng nhập lại.', 401);
-            return response;
+            if (options.signal?.aborted) abort();
+            return await Promise.race([deadline, (async () => {
+                const response = await nativeFetch(url, { ...options, credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+                if (response.redirected && !response.headers.get('content-type')?.includes('application/json')) return fail('Cần đăng nhập lại.', 401);
+                // Fetch resolves at headers. Keep the deadline until the complete body is
+                // received so a stalled proxy response cannot hold the journal lock forever.
+                const body = await response.arrayBuffer();
+                return new Response([204, 205, 304].includes(response.status) ? null : body,
+                    { status: response.status, statusText: response.statusText, headers: response.headers });
+            })()]);
         } finally { clearTimeout(timer); options.signal?.removeEventListener('abort', abort); }
     }
     const base = '/admin/pos';
     function handled(url) {
         if (url.origin !== location.origin) return false;
-        return /^\/admin\/pos\/(screen|cart\/current(?:\/(?:new|scan|payments|payment-and-finalize|hold|cancel|finalize|note|discount|customer(?:\/\d+)?))?|cart\/ensure|draft|orders\/(?:drafts|held|\d+(?:\/(?:resume|receipt))?)|products\/search|customers\/(?:search|quick-create)|lines\/\d+(?:\/discount)?|payments\/\d+|\d+(?:\/(?:items|payments|finalize|cancel|invoice-route))?|offline\/manual-transfer)$/.test(url.pathname);
+        return /^\/admin\/pos\/(screen|cart\/current(?:\/(?:new|scan|payments|payment-and-finalize|hold|cancel|clear-lines|finalize|note|discount|customer(?:\/\d+)?))?|cart\/ensure|draft|orders\/(?:drafts|held|\d+(?:\/(?:resume|receipt))?)|products\/search|customers\/(?:search|quick-create)|lines\/\d+(?:\/discount)?|payments\/\d+|\d+(?:\/(?:items|payments|finalize|cancel|invoice-route))?|offline\/manual-transfer)$/.test(url.pathname);
     }
     function invoiceIntentOperation(url) { return /^\/admin\/pos\/\d+\/invoice-route$/.test(new URL(url, location.origin).pathname); }
     function paymentOperation(url) { return /\/(payments|payment-and-finalize|finalize|manual-transfer)$/.test(new URL(url, location.origin).pathname); }
@@ -110,7 +167,7 @@ window.PosOffline = (function () {
             expectedTotal: paymentOperation(url.href) && method !== 'DELETE' ? current?.grandTotal : null,
             expectedLines: paymentOperation(url.href) && current ? core.linesSignature(current) : null, localResult: null, serverRequest: null };
     }
-    async function send(op, signal) {
+    async function send(op, signal, timeoutMs = 4000) {
         const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest',
             'RequestVerificationToken': token || window.PosCommon?.getAntiForgeryToken?.() || '', 'X-POS-Operation-Id': op.id,
             'X-POS-Shift-Id': String(op.shiftId) };
@@ -121,7 +178,7 @@ window.PosOffline = (function () {
             if (op.expectedLines != null) headers['X-POS-Expected-Lines-Hash'] = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(op.expectedLines))), b => b.toString(16).padStart(2, '0')).join('');
         }
         return raw(op.serverRequest.url, { method: op.method, headers, signal,
-            body: op.method === 'DELETE' && op.serverRequest.body == null ? undefined : JSON.stringify(op.serverRequest.body || {}) });
+            body: op.method === 'DELETE' && op.serverRequest.body == null ? undefined : JSON.stringify(op.serverRequest.body || {}) }, timeoutMs);
     }
     async function enqueueLocal(op) {
         if (!canWork()) throw new Error(status().message || 'Quầy chưa sẵn sàng bán offline.');
@@ -262,7 +319,11 @@ window.PosOffline = (function () {
                     if (response.ok) await rememberQr(await response.clone().json());
                     return response;
                 }
-                catch (e) { return fail(e.message); }
+                catch (e) {
+                    if (e.errorCode === 'POS_QR_PENDING')
+                        return json({ message: e.message, errorCode: e.errorCode, errorType: 'business', metadata: e.metadata }, 409);
+                    return fail(e.message);
+                }
             });
         }
         const qrConfirm = url.pathname.match(/^\/admin\/pos\/payment-qr\/(\d+)\/manual-confirm$/);
@@ -359,6 +420,7 @@ window.PosOffline = (function () {
         window.fetch = intercepted;
         navigator.storage?.persist?.().catch(() => {});
         prepareWorker().catch(() => {});
+        clearInterval(refreshTimer);
         refreshTimer = setInterval(() => sync().catch(() => {}), 6000);
         sync().catch(() => {});
     }
@@ -424,7 +486,6 @@ window.PosOffline = (function () {
                 window.addEventListener('online', () => sync().catch(() => {}));
                 window.addEventListener('offline', () => { connected = false; notify(); });
                 window.addEventListener('pagehide', () => { writer = false; unlock?.(); clearInterval(refreshTimer); });
-                window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
                 if (writer) {
                     if (state.queue.length && !catalog) throw new Error('Thiếu danh mục gốc của giao dịch chờ đồng bộ. Cần phục hồi dữ liệu tại quầy.');
                     const cacheAge = Date.now() - new Date(catalog?.fetchedAtUtc).getTime();
@@ -448,7 +509,6 @@ window.PosOffline = (function () {
                 window.addEventListener('online', () => sync().catch(() => {}));
                 window.addEventListener('offline', () => { connected = false; notify(); });
                 window.addEventListener('pagehide', () => { writer = false; unlock?.(); clearInterval(refreshTimer); });
-                window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
             }
             if (!preparing) startTransport();
         } catch (e) {
@@ -458,15 +518,39 @@ window.PosOffline = (function () {
         }
         notify();
     }
+    async function quarantineFirstBlocked() {
+        if (!ready || !writer || !state?.queue.length) throw new Error('Không còn thao tác nào đang chờ đồng bộ.');
+        const result = await serial(async () => {
+            const op = state.queue[0], issue = invalidQueueOperation(op) || blockedServerConflict(state.conflict);
+            if (!issue) throw new Error('Thao tác đầu hàng đợi không có lỗi dữ liệu đã nhận diện. Hãy xuất bản đối soát trước khi xử lý.');
+            if (state.conflict?.operationId && state.conflict.operationId !== op.id)
+                throw new Error('Mã thao tác lỗi không còn đứng đầu hàng đợi. Hãy tải lại POS trước khi xử lý.');
+            const next = core.clone(state);
+            next.quarantined ||= [];
+            next.quarantined.push({ ...core.clone(op), quarantineReason: issue.code || issue.kind, quarantineMessage: issue.message,
+                quarantinedAtUtc: new Date().toISOString() });
+            next.queue.shift();
+            next.conflict = null;
+            await save(next);
+            syncError = '';
+            connected = true;
+            return issue;
+        });
+        notify();
+        return result;
+    }
+    const quarantineFirstInvalid = quarantineFirstBlocked;
     async function sync(force = false) {
-        if (syncRunning || !ready || !writer || storageError || authBlocked || (state.conflict && !state.conflict.recoverable && !force)) return;
+        if (syncRunning || !ready || !writer || storageError || !pageActive) return;
         syncRunning = true;
+        lastSyncAttemptAt = new Date().toISOString();
+        notify();
         const hadPending = state.queue.length > 0, wasConnected = connected, hadSessionIssue = !!sessionIssue;
         try {
-            const response = await raw(base + '/offline/status');
+            const response = await raw(base + '/offline/status', {}, 15000);
             if ([401, 403].includes(response.status)) { connected = true; sessionIssue = null; authBlocked = true; notify(); return; }
             if (!response.ok) {
-                if (isUnavailable(response)) connected = false;
+                if (isUnavailable(response)) { connected = false; syncError = `Máy chủ trả lỗi HTTP ${response.status}. POS sẽ tự thử lại.`; }
                 else await sessionRejected(response);
                 notify(); return;
             }
@@ -478,23 +562,42 @@ window.PosOffline = (function () {
                 notify(); return;
             }
             sessionIssue = null;
+            authBlocked = false;
+            syncError = '';
             token = info.antiForgeryToken;
-            if (info.receiptStoreInfo && info.receiptStoreInfo.rowVersion !== state.context.receiptStoreInfo?.rowVersion)
-                await serial(async () => { const next = core.clone(state); next.context.receiptStoreInfo = info.receiptStoreInfo; await save(next); });
-            if (force || state.conflict?.recoverable) await serial(async () => { const next = core.clone(state); next.conflict = null; await save(next); });
+            if ((info.receiptStoreInfo && info.receiptStoreInfo.rowVersion !== state.context.receiptStoreInfo?.rowVersion)
+                || (info.receiptDefault && JSON.stringify(info.receiptDefault) !== JSON.stringify(state.context.receiptDefault)))
+                await serial(async () => { const next = core.clone(state);
+                    if (info.receiptStoreInfo) next.context.receiptStoreInfo = info.receiptStoreInfo;
+                    if (info.receiptDefault) next.context.receiptDefault = info.receiptDefault;
+                    await save(next); });
+            if ((force || state.conflict?.recoverable) && !['invalid-operation', 'payment-overpay', 'server-rejection'].includes(state.conflict?.kind))
+                await serial(async () => { const next = core.clone(state); next.conflict = null; await save(next); });
             while (state.queue.length && !state.conflict) {
                 await serial(async () => {
                     const next = core.clone(state), op = next.queue[0];
                     if (!op) return;
+                    const issue = invalidQueueOperation(op);
+                    if (issue) {
+                        const failed = core.clone(state);
+                        failed.conflict = { operationId: op.id, ...issue, recoverable: false };
+                        await save(failed);
+                        return;
+                    }
                     if (!op.serverRequest) { op.serverRequest = core.translate(next, op); await save(next); }
                     let replay;
-                    try { replay = await send(op); }
-                    catch { connected = false; return; }
-                    if (isUnavailable(replay)) { connected = false; return; }
+                    try { replay = await send(op, undefined, 30000); }
+                    catch (error) { connected = false; syncError = syncFailure(error); return; }
+                    if (isUnavailable(replay)) { connected = false; syncError = `Máy chủ trả lỗi HTTP ${replay.status} khi đồng bộ. POS sẽ tự thử lại.`; return; }
                     if (!replay.ok) {
                         const data = await replay.json().catch(() => ({}));
-                        const failed = core.clone(state); failed.conflict = { operationId: op.id, message: data.message || 'Một giao dịch cần đối soát trước khi gửi tiếp.' };
-                        if (replay.status === 401) authBlocked = true;
+                        const message = data.message || 'Một giao dịch cần đối soát trước khi gửi tiếp.';
+                        const failed = core.clone(state); failed.conflict = { operationId: op.id, message,
+                            ...( /overpay|thanh toán dư/i.test(message)
+                                ? { kind: 'payment-overpay', code: 'PAYMENT_OVERPAY' }
+                                : replay.status >= 400 && replay.status < 500 && replay.status !== 401
+                                    ? { kind: 'server-rejection', code: data.errorCode || 'POS_REPLAY_REJECTED' } : {} ) };
+                        if (replay.status === 401) { authBlocked = true; failed.conflict.recoverable = true; }
                         await save(failed); return;
                     }
                     const result = await replay.json(), accepted = core.clone(state);
@@ -511,14 +614,25 @@ window.PosOffline = (function () {
                     core.learn(accepted, op.localResult, result); accepted.queue.shift();
                     if (!accepted.queue.length) { renumber(accepted); core.absorb(accepted, result); }
                     await save(accepted);
+                    lastSyncAt = new Date().toISOString();
                 });
                 notify();
                 if (!connected || authBlocked) break;
             }
-            if (!state.queue.length && connected && (hadPending || !wasConnected || hadSessionIssue)) window.dispatchEvent(new CustomEvent('pos:offline-synced'));
-        } catch { connected = false; }
+            if (!state.queue.length && connected) {
+                lastSyncAt = new Date().toISOString();
+                if (hadPending || !wasConnected || hadSessionIssue) window.dispatchEvent(new CustomEvent('pos:offline-synced'));
+            }
+        } catch (error) { connected = false; syncError = syncFailure(error); }
         finally { syncRunning = false; notify(); }
     }
+    function syncFailure(error) {
+        return error?.name === 'TimeoutError' || error?.name === 'AbortError'
+            ? 'Máy chủ phản hồi quá lâu. Giữ nguyên giao dịch tại quầy và tự thử lại.'
+            : 'Chưa nhận được phản hồi hợp lệ từ máy chủ. POS giữ giao dịch và tự thử lại; kiểm tra mạng hoặc HTTPS nếu lỗi kéo dài.';
+    }
+    window.addEventListener('focus', () => sync().catch(() => {}));
+    window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
     async function rememberQr(qr, extra = {}) {
         if (!qr?.id || !qr.orderId) return;
         const next = core.clone(state);
@@ -551,11 +665,24 @@ window.PosOffline = (function () {
         if (!canWork()) throw new Error('Quầy chưa sẵn sàng tạo QR offline.');
         core.permission(state, 'pos.payment.create');
         const draft = core.current(state), amount = Number(body.amount || draft.balanceDue);
-        if (amount > draft.balanceDue) throw new Error('Số tiền QR vượt số còn thiếu.');
+        const previous = body.clientRequestId && Object.values(state.qrs).find(x =>
+            Number(core.mapId(state, 'order', x.orderId)) === Number(core.mapId(state, 'order', draft.orderId)) &&
+            x.clientRequestId === body.clientRequestId && x.status === 0 && !x.readOnly && !x.result);
+        if (previous) return previous;
+        const pending = Object.values(state.qrs).filter(x =>
+            Number(core.mapId(state, 'order', x.orderId)) === Number(core.mapId(state, 'order', draft.orderId)) &&
+            !x.result && (!x.readOnly || ['Creating', 'Pending', 'Received', 'ReviewRequired', 'Failed', 'Expired'].includes(x.savedStatus)) &&
+            x.savedStatus !== 'Cancelled' && x.status !== (x.offline ? 2 : 4))
+            .sort((a, b) => b.id - a.id)[0];
+        if (pending) {
+            const qr = manualQr(pending);
+            throw Object.assign(new Error(`QR ${qr.requestCode} của đơn này chưa được xử lý. Xác nhận đã nhận tiền hoặc hủy QR trước khi tạo QR mới.`), {
+                errorCode: 'POS_QR_PENDING', metadata: { orderId: draft.orderId, qrId: qr.id,
+                    savedQr: { qr, status: qr.savedStatus || 'Pending', canCancel: qr.canCancel, readOnly: qr.readOnly, message: qr.savedMessage } }
+            });
+        }
         const account = state.context.accounts.find(x => body.bankAccountId ? x.id === body.bankAccountId : /^\d{6}$/.test(x.vietQrBankBin || ''));
         if (!account) throw new Error('Cần cấu hình BIN VietQR và tài khoản nhận tiền trước khi bán offline.');
-        const previous = Object.values(state.qrs).find(x => x.orderId === draft.orderId && x.clientRequestId === body.clientRequestId && x.status === 0);
-        if (previous) return previous;
         const next = core.clone(state), qrId = ++next.nextId, clientRequestId = body.clientRequestId || uuid();
         const content = 'GAO' + state.context.terminalId + clientRequestId.replace(/-/g, '').slice(0, 24).toUpperCase();
         const payload = core.vietQr(account.vietQrBankBin, account.accountNumber, amount, content);
@@ -571,7 +698,7 @@ window.PosOffline = (function () {
             createdAtUtc: new Date().toISOString(), expireAtUtc: state.context.expiresAtUtc };
         next.qrs[qrId] = qr; await save(next); return qr;
     }
-    function print(orderId) {
+    function print(orderId, postPayment = false, preopenedWindow = null) {
         const order = state?.orders[orderId] || state?.orders[core.mapId(state, 'order', orderId)];
         if (!order || !localMode()) return false;
         core.permission(state, 'pos.order.reprint');
@@ -583,7 +710,7 @@ window.PosOffline = (function () {
         window.PosPrinting.openLocal({ ...order, storeName: storeInfo.storeName || state.context.storeName,
             storeAddress: storeInfo.storeAddress, storePhone: storeInfo.storePhone,
             terminalName: state.context.terminalName, cashierName: state.context.userName },
-            state.context, state.context.receiptTemplates, true);
+            state.context, state.context.receiptTemplates, true, postPayment === true, preopenedWindow);
         return true;
     }
     function exportPending() {
@@ -593,8 +720,9 @@ window.PosOffline = (function () {
         const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url;
         anchor.download = `gao-pos-pending-${state.context.terminalId}-${Date.now()}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-    return { init, canWork, localMode, status, sync, print, exportPending, createQr, manualQr, prepareManualConfirmation,
+    return { init, canWork, localMode, status, sync, quarantineFirstInvalid, quarantineFirstBlocked, print, exportPending, createQr, manualQr, prepareManualConfirmation,
         pendingInvoiceIntentOrderId: () => ready && writer && state ? core.pendingInvoiceIntent(state) : null,
         invoiceIntentStatus: id => state ? core.clone(core.invoiceIntentOrder(state, id)?.invoiceIntent || null) : null,
+        receiptPrintPreference: id => state ? core.invoiceIntentOrder(state, id)?.askBeforePrintingReceipt === true : false,
         resolveOrderId: id => state ? Number(core.mapId(state, 'order', id)) : id };
 })();

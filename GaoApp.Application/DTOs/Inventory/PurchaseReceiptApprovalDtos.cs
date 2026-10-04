@@ -38,6 +38,8 @@ public sealed class PurchaseReceiptFinancialLineInputDto
 /// </summary>
 public sealed class ApprovePurchaseReceiptCommercialRequest
 {
+    public bool WaitForInputInvoice { get; set; }
+
     [Required]
     public string RowVersion { get; set; } = string.Empty;
 

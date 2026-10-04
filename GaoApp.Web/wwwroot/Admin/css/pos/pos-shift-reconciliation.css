@@ -1,0 +1,62 @@
+.recon-heading {display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:20px}
+.recon-heading h1 {font-size:1.85rem;margin:4px 0 8px;color:#182235;font-weight:800}
+.recon-heading p,.recon-card-head p {color:#667085;margin:0;line-height:1.5}
+.recon-eyebrow {font-size:.73rem;font-weight:800;letter-spacing:.08em;color:#3457d5}
+.recon-head-actions {display:flex;gap:10px;flex-shrink:0}
+.recon {color:#25334b;font-size:.94rem;max-width:1800px;margin:auto}
+.recon [hidden] {display:none!important}
+.recon-card {background:#fff;border:1px solid #e1e7f0;border-radius:16px;padding:22px;box-shadow:0 3px 12px #18223505}
+.recon-loading {padding:50px;text-align:center;color:#667085}
+.recon-context {background:#edf3ff;border:1px solid #d9e5ff;border-radius:14px;padding:16px 20px;display:flex;justify-content:space-between;gap:16px;margin-bottom:16px}
+.recon-context strong,.recon-context span,.recon-context small {display:block;line-height:1.6}
+.recon-context small {color:#667085}.recon-context>div:last-child {text-align:right}
+.recon-totals {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.recon-totals .recon-card>span {display:block;color:#667085;font-weight:650}
+.recon-totals strong {display:block;font-size:2.15rem;line-height:1.3;margin:12px 0;letter-spacing:-.025em;font-variant-numeric:tabular-nums;color:#182235}
+.recon-totals small {display:block;color:#667085}.recon-totals .is-short {background:#fff6f5;border-color:#fecaca}
+.recon-totals .is-short strong {color:#b42318}.recon-totals .is-over {background:#fffbeb;border-color:#fcd34d}
+.recon-totals .is-over strong {color:#b45309}.recon-totals .is-match {background:#f0fdf4;border-color:#bbf7d0}.recon-totals .is-match strong {color:#15803d}
+.recon-overview {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-bottom:16px}
+.recon-card-head {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.recon-card-head h2 {font-size:1.05rem;font-weight:800;margin:0 0 4px}.recon-card-head>span {font-size:.78rem;color:#667085;white-space:nowrap}
+.recon-formula button {display:flex;align-items:center;justify-content:space-between;gap:15px;width:100%;background:none;border:0;border-bottom:1px solid #eef1f6;padding:10px 0;color:inherit;text-align:left}
+.recon-formula button:hover {color:#3457d5}.recon-formula strong {font-variant-numeric:tabular-nums;white-space:nowrap}
+.recon-formula .recon-formula-total {font-weight:800;padding-top:14px;border:0;color:#182235}
+.recon-help {font-size:.83rem;line-height:1.55;color:#667085;margin:16px 0 0}
+.recon-data-check {font-size:.85rem;margin-top:16px;padding:12px;border-radius:10px;background:#f0fdf4;color:#166534}
+.recon-data-check.is-warning {background:#fffbeb;color:#92400e}
+.recon-count-details {margin-top:16px}.recon-count-details summary {cursor:pointer;font-weight:700}
+.recon-count-details p {color:#667085;margin:12px 0}.recon-denoms {display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.recon-denoms span {padding:6px 10px;background:#f7f9fc;border-radius:8px;font-size:.83rem}
+.recon-attention {display:grid;gap:8px}.recon-attention button {border:1px solid #f2dfba;background:#fffcf5;border-radius:10px;padding:12px 14px;text-align:left;color:#805519;line-height:1.5;width:100%}
+.recon-attention button:hover {background:#fff5de}.recon-attention strong {display:block}.recon-attention .is-clear {padding:20px;background:#f7f9fc;border-radius:10px;line-height:1.65;color:#667085}
+.recon-tabs {display:flex;gap:6px;overflow:auto;border-bottom:1px solid #e9edf5;padding-bottom:10px;margin-bottom:16px}
+.recon-tabs button {border:0;background:#f3f5f9;color:#475467;border-radius:9px;padding:10px 14px;font-weight:700;white-space:nowrap}
+.recon-tabs button.active {color:#fff;background:#3457d5}.recon-tabs span {font-size:.78rem;margin-left:6px;opacity:.8}
+.recon-filters {display:flex;gap:12px;align-items:end;flex-wrap:wrap}.recon-filters label {font-size:.8rem;font-weight:700;min-width:160px}
+.recon-filters .form-control,.recon-filters .form-select {margin-top:6px}.recon-search {flex:1;min-width:240px!important}
+.recon-filter-note {font-size:.8rem;color:#667085;margin:12px 0 20px}
+.recon-item {border:1px solid #e3e9f2;border-radius:12px;margin:10px 0;overflow:hidden}
+.recon-item.is-attention {border-left:4px solid #e5a735}.recon-item.is-cancelled {background:#fafafa;color:#667085}
+.recon-item>summary {padding:16px;display:grid;grid-template-columns:minmax(170px,1.3fr) minmax(200px,2fr) auto;gap:18px;align-items:center;cursor:pointer;list-style:none}
+.recon-item>summary::after {content:'⌄';font-size:1.2rem;grid-column:4;color:#667085}
+.recon-item[open]>summary {background:#f8faff;border-bottom:1px solid #e3e9f2}
+.recon-item-title {font-weight:800;color:#25334b}.recon-item small {display:block;font-size:.8rem;line-height:1.6;color:#667085}
+.recon-amounts {display:flex;gap:24px;flex-wrap:wrap}.recon-amounts strong {display:block;font-size:1.02rem;font-variant-numeric:tabular-nums}
+.recon-badges {display:flex;flex-wrap:wrap;gap:5px;max-width:260px}.recon-badge {display:inline-block;font-size:.76rem;background:#eef2f6;color:#475467;padding:4px 8px;border-radius:6px;line-height:1.45}
+.recon-badge.is-warning {background:#fff0d1;color:#925d0a}.recon-badge.is-good {background:#e8f8ee;color:#167342}.recon-badge.is-danger {background:#feeceb;color:#b42318}
+.recon-item-body {padding:18px}.recon-item-body p {margin:0 0 12px;line-height:1.6;overflow-wrap:anywhere}
+.recon-item-body h3 {font-size:.94rem;font-weight:800;margin:18px 0 10px}.recon-item-body a {font-weight:700}
+.recon-table-wrap {overflow:auto}.recon-table {width:100%;border-collapse:collapse;font-size:.86rem}
+.recon-table th {text-align:left;background:#f6f8fb;color:#667085;font-size:.77rem;padding:10px;white-space:nowrap}
+.recon-table td {padding:10px;border-bottom:1px solid #edf0f5;vertical-align:top;line-height:1.6;overflow-wrap:anywhere;min-width:100px}
+.recon-table td.money {white-space:nowrap;font-weight:700;text-align:right}.recon-empty {padding:40px 20px;text-align:center;color:#667085}
+.recon-pager {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px}.recon-pager>div {display:flex;gap:8px}
+.recon-item-actions {display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.recon-breakdown{margin:12px 0 16px}.recon-breakdown>summary,.recon-evidence>summary{cursor:pointer;color:#526079;font-weight:650}.recon-breakdown[open]>summary{margin-bottom:12px}
+.recon-priority{margin-bottom:16px}.recon-priority .recon-card{padding:16px 20px}.recon-priority .recon-card-head{margin-bottom:10px}.recon-attention{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.recon-attention .is-clear{padding:8px}
+.recon-evidence{margin:12px 0;font-size:.86rem}.recon-evidence[open]>summary{margin-bottom:12px}.recon-data-check{margin-bottom:12px}
+.recon-more-tabs{flex-shrink:0}.recon-more-tabs>summary,.recon-extra-filters>summary{cursor:pointer;padding:10px 14px;border-radius:9px;background:#f3f5f9;color:#475467;font-weight:650;white-space:nowrap}
+.recon-more-tabs>div,.recon-extra-filters>div{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.recon-tabs{align-items:flex-start}.recon-extra-filters{min-width:120px}.recon-extra-filters>div{max-width:400px}.recon-table td:last-child a{white-space:nowrap}
+@media(max-width:1100px){.recon-overview{grid-template-columns:1fr}.recon-totals strong{font-size:1.75rem}.recon-item>summary{grid-template-columns:1fr 1.4fr}.recon-badges{grid-column:1/-1;max-width:none}.recon-item>summary::after{display:none}}
+@media(max-width:700px){.recon-heading{align-items:flex-start;flex-direction:column}.recon-heading h1{font-size:1.55rem}.recon-totals{grid-template-columns:1fr;gap:10px}.recon-totals .recon-card{padding:16px}.recon-totals strong{margin:8px 0;font-size:1.9rem}.recon-context{flex-direction:column}.recon-context>div:last-child{text-align:left}.recon-card{padding:16px}.recon-card-head{flex-direction:column;gap:8px}.recon-item>summary{grid-template-columns:1fr;gap:10px;padding:14px}.recon-amounts{gap:18px}.recon-badges{grid-column:auto}.recon-item-body{padding:14px}.recon-filters label{flex:1;min-width:140px}.recon-pager{font-size:.82rem}.recon-context strong{overflow-wrap:anywhere}}

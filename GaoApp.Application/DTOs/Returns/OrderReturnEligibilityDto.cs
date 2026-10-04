@@ -9,6 +9,7 @@ public sealed class OrderReturnEligibilityDto
     public decimal RefundedTotal { get; set; }
     public decimal RefundableRemaining { get; set; }
     public decimal DepositRefundable { get; set; }
+    public decimal DepositAmount { get; set; }
     public bool IsCreditSale { get; set; }
     public decimal BalanceDue { get; set; }
     public List<OrderReturnEligibilityLineDto> Lines { get; set; } = new();

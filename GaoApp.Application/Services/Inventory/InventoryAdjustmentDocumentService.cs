@@ -20,8 +20,8 @@ namespace GaoApp.Application.Services.Inventory;
 /// - Gửi duyệt.
 /// - Xem chi tiết / danh sách.
 /// 
-/// Lưu ý cực quan trọng:
-/// Phase này chưa tạo InventoryMovement, chưa tác động tồn kho.
+/// Phiếu Draft/PendingApproval chưa tác động tồn kho. Khi duyệt, phiếu tăng/giảm
+/// tạo movement số lượng; phiếu Revaluation chỉ tạo valuation entry, không đổi số lượng.
 /// </summary>
 public class InventoryAdjustmentDocumentService
     : IInventoryAdjustmentDocumentService
@@ -252,7 +252,8 @@ IInventoryCostSuggestionService costSuggestionService)
 
             // Không bắt nhân viên kho nhập giá vốn.
             // Nếu có nhập thì lưu lại, nếu không có thì lúc duyệt tự đề xuất.
-            UnitCost = adjustmentType == InventoryTransactionType.AdjustmentIncrease
+            UnitCost = adjustmentType is InventoryTransactionType.AdjustmentIncrease
+                or InventoryTransactionType.Revaluation
                 ? requestLine.UnitCost
                 : null,
 
@@ -322,6 +323,14 @@ IInventoryCostSuggestionService costSuggestionService)
                 line.Factor,
                 line.BaseQuantity);
 
+            if (document.AdjustmentType == InventoryTransactionType.Revaluation)
+            {
+                if (!line.UnitCost.HasValue || line.UnitCost.Value <= 0)
+                    throw new InvalidOperationException(
+                        "Điều chỉnh giá vốn phải có giá vốn đúng trên đơn vị gốc.");
+                continue;
+            }
+
             CreateInventoryMovementRequest movementRequest;
 
             if (document.AdjustmentType == InventoryTransactionType.AdjustmentIncrease)
@@ -382,18 +391,38 @@ IInventoryCostSuggestionService costSuggestionService)
 
         try
         {
-            await _inventoryMovementService.PreLockBalancesAsync(
-                movementRequests.Select(movement => new InventoryPostingLockKey(
-                    document.StoreId,
-                    movement.WarehouseId,
-                    movement.ProductVariantId)),
+            var lockKeys = document.AdjustmentType == InventoryTransactionType.Revaluation
+                ? document.Lines.Select(line => new InventoryPostingLockKey(
+                    document.StoreId, document.WarehouseId, line.ProductVariantId))
+                : movementRequests.Select(movement => new InventoryPostingLockKey(
+                    document.StoreId, movement.WarehouseId, movement.ProductVariantId));
+            await _inventoryMovementService.PreLockBalancesAsync(lockKeys,
                 ct);
 
-            foreach (var movementRequest in movementRequests)
+            if (document.AdjustmentType == InventoryTransactionType.Revaluation)
             {
-                await _inventoryMovementService.CreateAsync(
-                    movementRequest,
-                    ct);
+                foreach (var line in document.Lines)
+                {
+                    await _inventoryMovementService.CreateRevaluationAsync(
+                        document.WarehouseId,
+                        line.ProductVariantId,
+                        line.BaseQuantity,
+                        line.UnitCost!.Value,
+                        documentReferenceId,
+                        line.Id,
+                        line.Note ?? document.Note,
+                        occurredAtUtc,
+                        ct);
+                }
+            }
+            else
+            {
+                foreach (var movementRequest in movementRequests)
+                {
+                    await _inventoryMovementService.CreateAsync(
+                        movementRequest,
+                        ct);
+                }
             }
 
             document.Status = InventoryAdjustmentDocumentStatus.Approved;

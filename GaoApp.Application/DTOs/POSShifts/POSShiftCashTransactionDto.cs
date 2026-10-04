@@ -3,6 +3,7 @@
 public class POSShiftCashTransactionDto
 {
     public int Id { get; set; }
+    public int? PendingAdjustmentId { get; set; }
 
     public int POSShiftId { get; set; }
 

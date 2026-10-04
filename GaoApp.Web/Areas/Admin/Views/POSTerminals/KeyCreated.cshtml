@@ -1,0 +1,23 @@
+@model GaoApp.Domain.Entities.POSTerminalDevice
+@{ ViewData["Title"] = "Đã tạo khóa máy"; }
+<div class="row justify-content-center"><div class="col-12 col-lg-8">
+    <div class="card"><div class="card-body p-4">
+        <div class="alert alert-success" role="status">Đã tạo khóa cho @Model.DeviceName.</div>
+        <h3>Khóa máy đã sẵn sàng</h3>
+        <p>Máy POS: <strong>@ViewBag.TerminalLabel</strong></p>
+        <label for="createdDeviceKey" class="form-label">Sao chép khóa trước khi rời trang này</label>
+        <textarea id="createdDeviceKey" class="form-control font-monospace mb-3" rows="3" readonly spellcheck="false">@Model.DeviceKey</textarea>
+        <button type="button" id="copyDeviceKey" class="btn btn-primary mb-2">Sao chép khóa</button>
+        <span id="copyKeyStatus" class="ms-2" role="status" aria-live="polite"></span>
+        <ol class="mt-3">
+            <li>Mở trang đăng nhập của cửa hàng trên thiết bị cần ghép.</li>
+            <li>Dán khóa vào ô “Khóa máy do admin cấp”.</li>
+            <li>Nhập tài khoản, mật khẩu và đăng nhập. Trình duyệt sẽ ghi nhớ máy POS.</li>
+        </ol>
+        <p class="text-muted">Khóa chỉ hiển thị ở lần tạo này. Nếu mất khóa, admin có thể thu hồi và tạo khóa mới.</p>
+        <a asp-action="Index" class="btn btn-outline-secondary">Về quản lý máy POS</a>
+    </div></div>
+</div></div>
+@section PageScripts {
+    <script src="~/Admin/js/pos-terminals.js" asp-append-version="true"></script>
+}

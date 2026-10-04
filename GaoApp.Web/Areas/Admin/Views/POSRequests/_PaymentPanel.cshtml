@@ -1,0 +1,30 @@
+@{ bool isAdmin = ViewBag.IsAdmin == true; }
+<section id="paymentAdjustments" class="ca-shell" data-admin="@(isAdmin ? "true" : "false")">
+    @Html.AntiForgeryToken()
+    <div id="paMessage" role="status" hidden></div>
+    <section class="ca-panel">
+        <div class="operations-panel-toolbar"><p>Đề nghị đổi phương thức nhận tiền của đơn hàng hoặc khoản cọc.</p><button type="button" id="paRefresh" class="btn btn-outline-primary">Tải lại</button></div>
+        <div class="ca-tabs" role="group" aria-label="Danh sách">
+            <button type="button" data-tab="requests" class="btn">Yêu cầu</button>
+            <button type="button" data-tab="payments" class="btn">Tiền đơn hàng</button>
+            <button type="button" data-tab="deposits" class="btn">Tiền nhận cọc</button>
+        </div>
+        <form id="paFilters" class="ca-filters">
+            <label id="paStatusLabel">Trạng thái<select id="paStatus" class="form-select">
+                <option value="Pending">Chờ duyệt</option><option value="NeedsReconciliation">Cần đối soát lại</option>
+                <option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option>
+                <option value="Withdrawn">Đã rút</option><option value="">Tất cả yêu cầu</option></select></label>
+            <label id="paKeywordLabel" hidden>Tìm khoản tiền<input id="paKeyword" class="form-control" maxlength="200" placeholder="Mã đơn, phiếu cọc, tên khách…" /></label>
+            <button type="submit" class="btn btn-primary">Tìm kiếm</button><button type="button" id="paClear" class="btn btn-outline-secondary">Xóa lọc</button>
+            <span id="paScope" class="text-muted"></span>
+        </form>
+        <div class="ca-table-wrap"><table class="table"><thead id="paHead"></thead><tbody id="paRows"></tbody></table></div>
+        <footer class="ca-pager"><span id="paCount"></span><div><button id="paPrev" class="btn btn-outline-secondary" type="button">Trước</button>
+            <span id="paPage"></span><button id="paNext" class="btn btn-outline-secondary" type="button">Sau</button></div></footer>
+    </section>
+    <dialog id="paDialog" class="ca-dialog" aria-labelledby="paDialogTitle">
+        <div class="ca-dialog-header"><div><span class="ca-eyebrow">ĐIỀU CHỈNH THANH TOÁN</span><h2 id="paDialogTitle"></h2></div>
+            <button type="button" id="paClose" class="btn btn-outline-secondary" aria-label="Đóng">✕</button></div>
+        <div id="paDialogError" class="alert alert-danger" role="alert" hidden></div><div id="paDialogBody"></div>
+    </dialog>
+</section>

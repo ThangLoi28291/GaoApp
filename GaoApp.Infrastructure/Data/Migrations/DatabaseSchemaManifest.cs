@@ -399,7 +399,9 @@ public static partial class DatabaseSchemaNormalization
     /// Canonicalizes CHECK-only numeric equality disjunctions. Only a complete
     /// group of column = number OR column = number on the same simple column
     /// is reordered. Logical grouping, other operators and constraint flags
-    /// are not changed. Index/default normalization keeps its existing path.
+    /// are not changed. Null-only OR-of-AND predicates also omit redundant
+    /// parentheses using SQL's AND-before-OR precedence. Index/default
+    /// normalization keeps its existing path.
     /// </summary>
     public static string? NormalizeCheckConstraintExpression(string? value)
     {
@@ -408,11 +410,66 @@ public static partial class DatabaseSchemaNormalization
             return null;
         }
 
-        var rewritten = TryTokenizeCheckExpression(value, out var tokens, out var closing)
-            ? RewriteCheckGroup(value, tokens, closing, 0, tokens.Count)
-            : value;
+        var rewritten = value;
+        if (TryTokenizeCheckExpression(value, out var tokens, out var closing))
+        {
+            rewritten = TryNormalizeNullCheckGroups(tokens, closing, out var nullChecks)
+                ? nullChecks
+                : RewriteCheckGroup(value, tokens, closing, 0, tokens.Count);
+        }
 
         return NormalizeSqlExpression(rewritten);
+    }
+
+    private static bool TryNormalizeNullCheckGroups(
+        IReadOnlyList<CheckExpressionToken> tokens,
+        IReadOnlyDictionary<int, int> closing,
+        out string normalized)
+    {
+        normalized = string.Empty;
+        // Accept only a complete OR of AND groups of simple IS [NOT] NULL
+        // atoms. Never remove parentheses around OR nested inside AND, NOT,
+        // functions, comparisons or any unsupported expression.
+        List<(int First, int End)> Split(int first, int end, string keyword)
+        {
+            UnwrapCheckTerm(tokens, closing, ref first, ref end);
+            var parts = new List<(int, int)>();
+            var start = first;
+            for (var i = first; i < end; i++)
+            {
+                if (tokens[i].Text == "(") i = closing[i];
+                else if (string.Equals(tokens[i].Text, keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add((start, i));
+                    start = i + 1;
+                }
+            }
+            parts.Add((start, end));
+            return parts;
+        }
+
+        var groups = new List<string>();
+        foreach (var group in Split(0, tokens.Count, "OR"))
+        {
+            var atoms = new List<string>();
+            foreach (var atom in Split(group.First, group.End, "AND"))
+            {
+                var first = atom.First;
+                var end = atom.End;
+                UnwrapCheckTerm(tokens, closing, ref first, ref end);
+                var count = end - first;
+                if ((count != 3 && count != 4) || !tokens[first].IsIdentifier
+                    || !string.Equals(tokens[first + 1].Text, "IS", StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(tokens[end - 1].Text, "NULL", StringComparison.OrdinalIgnoreCase)
+                    || (count == 4 && !string.Equals(tokens[first + 2].Text, "NOT", StringComparison.OrdinalIgnoreCase)))
+                    return false;
+
+                atoms.Add(tokens[first].Text + (count == 4 ? " IS NOT NULL" : " IS NULL"));
+            }
+            groups.Add(string.Join(" AND ", atoms));
+        }
+        normalized = string.Join(" OR ", groups);
+        return true;
     }
 
     private readonly record struct CheckExpressionToken(

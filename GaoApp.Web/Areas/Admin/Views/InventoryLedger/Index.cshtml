@@ -120,7 +120,7 @@
                         <input type="search"
                                id="ledgerKeyword"
                                class="form-control"
-                               placeholder="Tên sản phẩm, SKU, barcode, chứng từ..."
+                               placeholder="Nhập từ khóa theo mục đã chọn..."
                                autocomplete="off" />
                         <button type="button"
                                 id="ledgerClearSearch"
@@ -130,6 +130,13 @@
                             <i class="bx bx-x" aria-hidden="true"></i>
                         </button>
                     </div>
+                    <label for="ledgerSearchScope" class="form-label mt-2">Tìm theo</label>
+                    <select id="ledgerSearchScope" class="form-select">
+                        <option value="product">Sản phẩm / SKU / barcode</option>
+                        <option value="reference">Mã chứng từ</option>
+                        <option value="note">Ghi chú</option>
+                        <option value="all">Tất cả (nên chọn khoảng ngày)</option>
+                    </select>
                 </div>
 
                 <div class="ledger-desktop-filters">
@@ -251,7 +258,7 @@
             <div>
                 <h5 class="mb-1 text-dark">Lịch sử giao dịch kho</h5>
                 <small class="text-muted">Nhấp đúp một dòng hoặc bấm biểu tượng mắt để xem nhanh.</small>
-                <small class="text-muted d-block mt-1" data-ledger-cost-column hidden>Giá nhập là giá vốn ghi nhận theo từng lần nhập kho, tính trên đơn vị gốc và hiển thị làm tròn đến đồng.</small>
+                        <small class="text-muted d-block mt-1" data-ledger-cost-column hidden>Giá nhập là giá vốn theo lần nhập; giao dịch định giá lại hiển thị giá vốn sau điều chỉnh và phần chênh lệch giá trị tồn.</small>
             </div>
         </div>
 
@@ -262,16 +269,15 @@
                         <tr>
                             <th>Ngày giao dịch</th>
                             <th>Sản phẩm</th>
-                            <th>Kho</th>
                             <th>Biến động</th>
                             <th>Tồn trước → sau</th>
-                            <th class="text-end" data-ledger-cost-column hidden>Giá nhập lô</th>
+                            <th class="text-end" data-ledger-cost-column hidden>Giá vốn / điều chỉnh</th>
                             <th>Nguồn / chứng từ</th>
                             <th class="text-end">Trạng thái / thao tác</th>
                         </tr>
                     </thead>
                     <tbody id="ledgerDesktopBody">
-                        <tr><td colspan="7" class="gds-empty">Đang tải dữ liệu...</td></tr>
+                        <tr><td colspan="6" class="gds-empty">Đang tải dữ liệu...</td></tr>
                     </tbody>
                 </table>
             </div>

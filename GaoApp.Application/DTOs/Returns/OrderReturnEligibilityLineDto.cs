@@ -14,4 +14,8 @@ public sealed class OrderReturnEligibilityLineDto
     public decimal LineDiscount { get; set; }
     public decimal SuggestedRefundUnitAmount { get; set; }
     public decimal Multiplier { get; set; }
+    public bool CanRestock { get; set; } = true;
+    public string? RestockBlockCode { get; set; }
+    public string? RestockBlockReason { get; set; }
+    public string? RestockActionHint { get; set; }
 }

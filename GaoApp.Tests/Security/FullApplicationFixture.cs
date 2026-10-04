@@ -33,8 +33,13 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
     }
 
     internal static Task<FullApplicationFixture> StartAsync() => StartWithSecurityAsync(initializeSecurity: true);
+    internal static Task<FullApplicationFixture> StartWithInvoiceLibraryAsync() => StartConfiguredAsync(true, true);
+    internal string InvoiceLibraryRoot => Path.Combine(runtimeRoot, "uploads", "XML");
 
-    internal static async Task<FullApplicationFixture> StartWithSecurityAsync(bool initializeSecurity)
+    internal static Task<FullApplicationFixture> StartWithSecurityAsync(bool initializeSecurity)
+        => StartConfiguredAsync(initializeSecurity, false);
+
+    private static async Task<FullApplicationFixture> StartConfiguredAsync(bool initializeSecurity, bool enableInvoiceLibrary)
     {
         var fixture = new FullApplicationFixture();
         try
@@ -74,6 +79,7 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
                 Tenant = new { RootDomain = "localhost", AdminSubdomain = "admin" },
                 AllowedHosts = "127.0.0.1;localhost;*.localhost",
                 Storage = new { UploadRoot = Path.Combine(fixture.runtimeRoot, "uploads"), CreateIfMissing = true },
+                InputInvoiceLibrary = new { Enabled = enableInvoiceLibrary, RootPath = "XML" },
                 DataProtection = new { KeysPath = Path.Combine(fixture.runtimeRoot, "keys") },
                 SeedData = new { EnableDemoSeed = false, EnableDefaultAdminSeed = false },
                 TaxCodeLookup = new { Enabled = false },
@@ -85,7 +91,7 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
             var webDll = TestApplicationBuild.WebAssemblyPath();
             var start = new ProcessStartInfo("dotnet") { WorkingDirectory = contentRoot, UseShellExecute = false,
                 CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting" };
+            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "InputInvoiceLibrary", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting" };
             foreach (var key in start.Environment.Keys.ToArray())
                 if (configurationPrefixes.Any(prefix => key.StartsWith(prefix + "__", StringComparison.OrdinalIgnoreCase) || key.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase)))
                     start.Environment.Remove(key);

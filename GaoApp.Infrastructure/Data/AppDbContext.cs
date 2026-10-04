@@ -82,6 +82,7 @@ public class AppDbContext : DbContext
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
     public DbSet<OrderLegalEntityAllocation> OrderLegalEntityAllocations => Set<OrderLegalEntityAllocation>();
     public DbSet<OrderLegalEntityAllocationReversal> OrderLegalEntityAllocationReversals => Set<OrderLegalEntityAllocationReversal>();
+    public DbSet<SalesReturnRestockFragment> SalesReturnRestockFragments => Set<SalesReturnRestockFragment>();
     public DbSet<OrderPayment> OrderPayments => Set<OrderPayment>();
     public DbSet<POSShift> POSShifts => Set<POSShift>();
     public DbSet<POSShiftCashTransaction> POSShiftCashTransactions => Set<POSShiftCashTransaction>();
@@ -93,6 +94,12 @@ public class AppDbContext : DbContext
     public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
     public DbSet<StockDocument> StockDocuments => Set<StockDocument>();
     public DbSet<StockDocumentLine> StockDocumentLines => Set<StockDocumentLine>();
+    public DbSet<PurchaseReceiptPricingPlan> PurchaseReceiptPricingPlans => Set<PurchaseReceiptPricingPlan>();
+    public DbSet<PurchaseReceiptBillLine> PurchaseReceiptBillLines => Set<PurchaseReceiptBillLine>();
+    public DbSet<PurchaseReceiptPricingPlanLine> PurchaseReceiptPricingPlanLines => Set<PurchaseReceiptPricingPlanLine>();
+    public DbSet<PurchaseReceiptPricingRule> PurchaseReceiptPricingRules => Set<PurchaseReceiptPricingRule>();
+    public DbSet<PurchaseReceiptPricingRuleSource> PurchaseReceiptPricingRuleSources => Set<PurchaseReceiptPricingRuleSource>();
+    public DbSet<PurchaseReceiptGiftValuation> PurchaseReceiptGiftValuations => Set<PurchaseReceiptGiftValuation>();
     public DbSet<PurchaseReceiptAuditEvent> PurchaseReceiptAuditEvents =>
         Set<PurchaseReceiptAuditEvent>();
     public DbSet<PurchaseReceivingAction> PurchaseReceivingActions =>
@@ -127,6 +134,8 @@ public class AppDbContext : DbContext
     public DbSet<PosPaymentQrRequest> PosPaymentQrRequests => Set<PosPaymentQrRequest>();
     public DbSet<DisplayPromotion> DisplayPromotions => Set<DisplayPromotion>();
     public DbSet<InputInvoiceHead> InputInvoiceHeads => Set<InputInvoiceHead>();
+    public DbSet<InputInvoiceLibraryEntry> InputInvoiceLibraryEntries => Set<InputInvoiceLibraryEntry>();
+    public DbSet<InputInvoiceLibraryReview> InputInvoiceLibraryReviews => Set<InputInvoiceLibraryReview>();
     public DbSet<InputInvoiceDetail> InputInvoiceDetails => Set<InputInvoiceDetail>();
     public DbSet<InputInvoiceItemCatalogMap> InputInvoiceItemCatalogMaps =>
         Set<InputInvoiceItemCatalogMap>();
@@ -202,6 +211,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.GuestWifiPassword).HasMaxLength(128);
             e.Property(x => x.ReceiptAddress).HasMaxLength(300);
             e.Property(x => x.ReceiptPhone).HasMaxLength(50);
+            e.Property(x => x.ReceiptTemplateKey).HasMaxLength(100);
             e.Property(x => x.SubDomain).HasMaxLength(60).IsRequired();
             e.Property(x => x.SubDomainNormalized).HasMaxLength(60).IsRequired();
             e.HasIndex(x => x.SubDomainNormalized).IsUnique();

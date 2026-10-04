@@ -105,6 +105,12 @@ public class ProductUnitConversionService : IProductUnitConversionService
             if (entity == null)
                 throw new BusinessRuleException("Không tìm thấy ProductUnitConversion.");
 
+            if (entity.StoreId != _currentStore.StoreId || entity.ProductVariantId != dto.ProductVariantId)
+                throw new BusinessRuleException("Đơn vị không thuộc biến thể đang chỉnh sửa.");
+            if (entity.IsBaseUnit && (dto.UnitId != entity.UnitId || !dto.IsBaseUnit || dto.Factor != 1m || !dto.IsActive))
+                throw new BusinessRuleException("Đơn vị gốc phải đồng bộ với Đơn vị cơ bản của sản phẩm, tỷ lệ bằng 1 và đang hoạt động. Hãy đổi tại Thông tin chung rồi lưu sản phẩm.");
+            await ValidateBaseUnitAsync(entity.StoreId, dto.ProductVariantId, dto.UnitId, dto.IsBaseUnit, entity.Id, ct);
+
             var exists = await _conversionRepo.ExistsByVariantAndUnitAsync(
                 dto.ProductVariantId,
                 dto.UnitId,
@@ -151,10 +157,22 @@ public class ProductUnitConversionService : IProductUnitConversionService
 
         return created.Id;
     }
-    /// <summary>
-    /// Chuẩn hóa tiền nullable.
-    /// null hoặc <= 0 thì lưu null.
-    /// </summary>
+    private async Task ValidateBaseUnitAsync(int storeId, int variantId, int unitId, bool isBase, int? excludeId, CancellationToken ct)
+    {
+        var variant = await _conversionRepo.GetVariantForUnitSetupAsync(storeId, variantId, ct);
+        if (variant is null)
+            throw new BusinessRuleException("Không tìm thấy biến thể thuộc cửa hàng này.");
+        if (isBase != (unitId == variant.Product.BaseUnitId))
+            throw new BusinessRuleException("Đơn vị gốc phải trùng Đơn vị cơ bản của sản phẩm. Hãy đổi tại Thông tin chung rồi lưu sản phẩm.");
+        if (isBase)
+        {
+            var rows = await _conversionRepo.GetByVariantIdAsync(variantId, ct);
+            if (rows.Any(x => !x.IsDeleted && x.IsBaseUnit && x.Id != excludeId))
+                throw new BusinessRuleException("Biến thể đã có đơn vị gốc. Hãy đổi Đơn vị cơ bản tại Thông tin chung của sản phẩm.");
+        }
+    }
+
+    /// <summary>Chuẩn hóa tiền nullable: null hoặc &lt;= 0 thì lưu null.</summary>
     private static decimal? NormalizeNullableMoney(decimal? value)
     {
         if (!value.HasValue)
@@ -488,6 +506,8 @@ public class ProductUnitConversionService : IProductUnitConversionService
 
         if (request.UnitId <= 0)
             throw new BusinessRuleException("UnitId không hợp lệ.");
+
+        await ValidateBaseUnitAsync(request.StoreId, request.ProductVariantId, request.UnitId, request.IsBaseUnit, null, ct);
 
         var factor = request.Factor <= 0 ? 1m : request.Factor;
 

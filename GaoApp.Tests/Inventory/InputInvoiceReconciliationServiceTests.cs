@@ -16,15 +16,23 @@ public sealed class InputInvoiceReconciliationServiceTests
 {
     [Theory]
     [InlineData(InputInvoiceReconciliationState.NotApplicable)]
-    [InlineData(InputInvoiceReconciliationState.Incomplete)]
     [InlineData(InputInvoiceReconciliationState.Matched)]
-    [InlineData(InputInvoiceReconciliationState.Mismatch)]
     [InlineData(InputInvoiceReconciliationState.AcceptedMismatch)]
-    public void Every_known_reconciliation_state_is_confirm_ready(
+    public void Clean_or_manager_accepted_reconciliation_is_confirm_ready(
         InputInvoiceReconciliationState state)
     {
         new InputInvoiceReconciliationDto { State = state }
             .ConfirmReady.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(InputInvoiceReconciliationState.Incomplete)]
+    [InlineData(InputInvoiceReconciliationState.Mismatch)]
+    public void Incomplete_or_mismatched_reconciliation_requires_manager_acceptance(
+        InputInvoiceReconciliationState state)
+    {
+        new InputInvoiceReconciliationDto { State = state }
+            .ConfirmReady.Should().BeFalse();
     }
 
     [Fact]
@@ -293,7 +301,7 @@ public sealed class InputInvoiceReconciliationServiceTests
             "XmlBaseUnitPriceBeforeVat"));
         Assert.Equal(-10_000m, ReadNullableDecimal(detail, "BaseUnitPriceDifference"));
         Assert.Equal(InputInvoiceDetailReconciliationState.AmountMismatch, detail.State);
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Fact]
@@ -389,7 +397,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(InputInvoiceDetailReconciliationState.NeedsReview,
             Assert.Single(result.Details).State);
         Assert.True(result.Header!.NeedsReview);
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Fact]
@@ -404,7 +412,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(InputInvoiceReconciliationState.Incomplete, result.State);
         Assert.Contains(result.Details, x =>
             x.State == InputInvoiceDetailReconciliationState.Unmatched);
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Fact]
@@ -473,20 +481,22 @@ public sealed class InputInvoiceReconciliationServiceTests
     }
 
     [Fact]
-    public async Task Incomplete_reconciliation_can_never_be_manager_accepted()
+    public async Task Manager_can_accept_incomplete_reconciliation()
     {
         var scenario = Scenario.Create();
         foreach (var map in scenario.Receipt.LineInputInvoiceMaps)
             map.InputInvoiceDetailId = null;
         var incomplete = await scenario.Service.GetForReceiptAsync(1, 10);
 
-        var action = () => scenario.Service.AcceptMismatchWithinTransactionAsync(
-            1, 10, "Không được phép", incomplete.EvidenceFingerprint);
+        var accepted = await scenario.Service.AcceptMismatchWithinTransactionAsync(
+            1, 10, "Quản lý xác nhận thiếu dòng XML", incomplete.EvidenceFingerprint);
 
-        var error = await Assert.ThrowsAsync<BusinessRuleException>(action);
-        Assert.Contains("chưa đầy đủ", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(scenario.Audits, x => x.EventType ==
+        Assert.Equal(InputInvoiceReconciliationState.AcceptedMismatch, accepted.State);
+        var acceptanceAudit = Assert.Single(scenario.Audits, x => x.EventType ==
             PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted);
+        using var payload = JsonDocument.Parse(acceptanceAudit.NewValuesJson);
+        Assert.Equal("Incomplete", payload.RootElement.GetProperty("OldState").GetString());
+        Assert.Equal("AcceptedMismatch", payload.RootElement.GetProperty("NewState").GetString());
     }
 
     [Fact]
@@ -529,7 +539,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(1, ReadProperty<int>(result, "MatchedProductCount"));
         Assert.Equal(0, ReadProperty<int>(result, "DifferingProductCount"));
         Assert.Equal(0, ReadProperty<int>(result, "UnresolvedXmlDetailCount"));
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Fact]
@@ -560,7 +570,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(108m, ReadProperty<decimal>(product, "ReceiptBaseQuantity"));
         Assert.Equal(108m, ReadProperty<decimal>(product, "XmlBaseQuantity"));
         Assert.Equal(0, result.ExcludedLineCount);
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
         Assert.All(scenario.Receipt.LineInputInvoiceMaps, lineMap =>
         {
             Assert.False(lineMap.UseInputInvoice);
@@ -594,7 +604,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(96m, ReadProperty<decimal>(product, "ReceiptBaseQuantity"));
         Assert.Equal(1, result.ExcludedLineCount);
         Assert.Equal(51, Assert.Single(result.ExcludedLines).StockDocumentLineId);
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Theory]
@@ -718,7 +728,7 @@ public sealed class InputInvoiceReconciliationServiceTests
         Assert.Equal(2, ReadProperty<int>(product, "ReceiptLineCount"));
         Assert.Equal(10m, ReadProperty<decimal>(product, "ReceiptBaseQuantity"));
         Assert.Equal("NeedsReview", ReadProperty<string>(product, "VatStatus"));
-        Assert.True(result.ConfirmReady);
+        Assert.False(result.ConfirmReady);
     }
 
     [Fact]

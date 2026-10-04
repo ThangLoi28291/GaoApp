@@ -1,0 +1,26 @@
+@using GaoApp.Domain.Enums
+@model GaoApp.Application.Interfaces.Services.Orders.DebtReceiptDetailDto
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = $"Phiếu thu PTCN-{Model.Receipt.Id:D6}";
+    ViewData["container"] = "container-fluid";
+    var r = Model.Receipt;
+}
+@section header {
+    <div data-gao-ui="modern" class="w-100"><div class="gds-page-header gds-page-header--compact"><div class="gds-page-header__main"><h3 class="gds-page-header__title">Chi tiết phiếu thu công nợ</h3></div><div class="gds-page-header__actions"><a class="btn btn-outline-secondary" href="/admin/customer-debt/collections">Báo cáo thu nợ</a><a class="btn btn-outline-primary" href="/admin/customer-debt?customerId=@r.CustomerId">Sổ công nợ khách</a><button type="button" class="btn btn-primary" id="debtPrint"><i class="bx bx-printer"></i> In phiếu thu</button></div></div></div>
+}
+<div data-gao-ui="modern"><div id="customerDebtPage" class="gds-page">
+    <article class="debt-surface card border-0 debt-receipt">
+        <div class="px-4 pt-4 fw-bold">@Model.StoreName</div>
+        <header class="debt-section-heading"><div><span class="debt-eyebrow">PHIẾU THU CÔNG NỢ</span><h2>PTCN-@r.Id.ToString("D6")</h2><p>@r.At.AddHours(7).ToString("dd/MM/yyyy HH:mm") · UTC+7</p></div><span class="debt-badge debt-badge--green">Đã ghi nhận</span></header>
+        <div class="card-body"><dl class="debt-receipt-info"><div><dt>Khách hàng</dt><dd>@r.CustomerName</dd></div><div><dt>Điện thoại</dt><dd>@(r.Phone ?? "—")</dd></div><div><dt>Số tiền thu</dt><dd class="fs-3 text-success">@r.Amount.ToString("N0") đ</dd></div><div><dt>Phương thức</dt><dd>@(r.Method == PaymentMethod.Cash ? "Tiền mặt" : "Chuyển khoản")</dd></div><div><dt>Người thu / ca</dt><dd>@(r.UserName ?? $"NV #{r.UserId}") · Ca #@r.ShiftId</dd></div><div><dt>Tài khoản nhận</dt><dd>@(r.Bank ?? "—")</dd></div><div><dt>Tham chiếu</dt><dd>@(r.Reference ?? "—")</dd></div><div><dt>Ghi chú</dt><dd>@(r.Note ?? "—")</dd></div></dl></div>
+        <div class="debt-section-heading"><h2>Phân bổ vào đơn hàng</h2></div>
+        <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Đơn hàng</th><th class="text-end">Số tiền giảm nợ (đ)</th></tr></thead><tbody>
+        @foreach(var a in Model.Allocations) { <tr><td><a href="/admin/pos/order-detail/@a.OrderId">@a.OrderNumber</a></td><td class="text-end">@a.Amount.ToString("N0")</td></tr> }
+        </tbody><tfoot><tr><td>TỔNG THU</td><td class="text-end debt-balance">@r.Amount.ToString("N0")</td></tr></tfoot></table></div>
+        <p class="debt-table-note">Khoản thu này dùng thanh toán công nợ các đơn trên. Không tính thêm doanh thu bán hàng.</p>
+        <div class="debt-signatures"><div>Người nộp tiền<small>(Ký, ghi rõ họ tên)</small></div><div>Người thu tiền<small>(Ký, ghi rõ họ tên)</small></div></div>
+    </article>
+</div></div>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script> }

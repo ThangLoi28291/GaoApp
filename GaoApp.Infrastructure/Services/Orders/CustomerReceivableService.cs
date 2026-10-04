@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Orders;
 
-public sealed class CustomerReceivableService(AppDbContext db, IAppUnitOfWork uow, ICurrentPOSContext pos) : ICustomerReceivableService
+public sealed partial class CustomerReceivableService(AppDbContext db, IAppUnitOfWork uow, ICurrentPOSContext pos) : ICustomerReceivableService
 {
     private int StoreId => db.CurrentStoreId ?? throw new BusinessRuleException("Chưa chọn cửa hàng.");
 
@@ -149,23 +149,37 @@ public sealed class CustomerReceivableService(AppDbContext db, IAppUnitOfWork uo
         return receipt.Id;
     }
 
-    public async Task<ReceivablePageDto> GetAsync(int? customerId, string? search, CancellationToken ct)
+    public async Task<ReceivablePageDto> GetAsync(int? customerId, string? search, CancellationToken ct, int pageNumber = 1, string? status = null)
     {
         var storeId = StoreId;
         var today = DateTime.UtcNow.AddHours(7).Date;
         var debts = db.Orders.AsNoTracking().Where(x => x.StoreId == storeId && x.IsCreditSale && x.Status == OrderStatus.Completed);
         var customers = db.Customers.AsNoTracking().Where(x => x.StoreId == storeId);
-        if (!string.IsNullOrWhiteSpace(search)) customers = customers.Where(x => x.Name.Contains(search) || (x.Phone != null && x.Phone.Contains(search)));
+        if (status is not (null or "" or "open" or "settled" or "overdue")) throw new BusinessRuleException("Trạng thái công nợ không hợp lệ.");
+        var selectedName = customerId.HasValue ? await customers.Where(x => x.Id == customerId).Select(x => x.Name).SingleOrDefaultAsync(ct)
+            ?? throw new BusinessRuleException("Không tìm thấy khách hàng tại cửa hàng này.") : null;
+        search = search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search)) customers = customers.Where(x => x.Name.Contains(search) || (x.Phone != null && x.Phone.Contains(search)) || (x.Code != null && x.Code.Contains(search)));
         var page = new ReceivablePageDto { CustomerId = customerId };
-        page.Customers = await customers.Where(c => db.Set<CustomerReceivableEntry>().Any(e => e.StoreId == storeId && e.CustomerId == c.Id))
-            .OrderByDescending(c => debts.Where(o => o.CustomerId == c.Id).Sum(o => o.BalanceDue)).Take(200)
-            .Select(c => new ReceivableCustomerDto(c.Id, c.Name, c.Phone,
-                debts.Where(o => o.CustomerId == c.Id).Sum(o => o.BalanceDue),
-                debts.Where(o => o.CustomerId == c.Id && o.CreditDueDate < today).Sum(o => o.BalanceDue)))
-            .ToListAsync(ct);
+        var customerRows = customers.Where(c => db.Set<CustomerReceivableEntry>().Any(e => e.StoreId == storeId && e.CustomerId == c.Id))
+            .Select(c => new { c.Id, c.Name, c.Phone,
+                Balance = debts.Where(o => o.CustomerId == c.Id).Sum(o => o.BalanceDue),
+                Overdue = debts.Where(o => o.CustomerId == c.Id && o.CreditDueDate < today).Sum(o => o.BalanceDue) });
+        if (status == "open") customerRows = customerRows.Where(x => x.Balance > 0);
+        if (status == "settled") customerRows = customerRows.Where(x => x.Balance == 0);
+        if (status == "overdue") customerRows = customerRows.Where(x => x.Overdue > 0);
+        page.TotalCustomers = await customerRows.CountAsync(ct);
+        page.OpenCustomers = await customerRows.CountAsync(x => x.Balance > 0, ct);
+        page.SettledCustomers = await customerRows.CountAsync(x => x.Balance == 0, ct);
+        var matchingDebts = debts.Where(x => customerRows.Select(c => (int?)c.Id).Contains(x.CustomerId));
+        page.TotalBalance = await matchingDebts.SumAsync(x => x.BalanceDue, ct);
+        page.TotalOverdue = await matchingDebts.Where(x => x.CreditDueDate < today).SumAsync(x => x.BalanceDue, ct);
+        page.Page = Math.Clamp(pageNumber, 1, Math.Max(1, (page.TotalCustomers + page.PageSize - 1) / page.PageSize));
+        page.Customers = await customerRows.OrderByDescending(x => x.Balance).ThenBy(x => x.Id)
+            .Skip((page.Page - 1) * page.PageSize).Take(page.PageSize)
+            .Select(x => new ReceivableCustomerDto(x.Id, x.Name, x.Phone, x.Balance, x.Overdue)).ToListAsync(ct);
         if (!customerId.HasValue) return page;
-        page.CustomerName = await customers.Where(x => x.Id == customerId).Select(x => x.Name).SingleOrDefaultAsync(ct)
-            ?? throw new BusinessRuleException("Không tìm thấy khách hàng tại cửa hàng này.");
+        page.CustomerName = selectedName;
         page.Orders = await debts.Where(x => x.CustomerId == customerId).OrderBy(x => x.CreditDueDate)
             .Select(x => new ReceivableOrderDto(x.Id, x.OrderNumber, x.GrandTotal, x.PaidTotal, x.BalanceDue, x.CreditDueDate)).ToListAsync(ct);
         page.Journal = await (from e in db.Set<CustomerReceivableEntry>().AsNoTracking()

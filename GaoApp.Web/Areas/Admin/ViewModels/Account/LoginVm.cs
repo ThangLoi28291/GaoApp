@@ -12,6 +12,11 @@ namespace GaoApp.Web.Areas.Admin.ViewModels.Account;
 /// </summary>
 public class LoginVm
 {
+    public bool ManageTerminals { get; set; }
+
+    [StringLength(100, ErrorMessage = "Khóa máy tối đa 100 ký tự.")]
+    public string? PairingKey { get; set; }
+
     [Required(ErrorMessage = "Vui lòng nhập tên đăng nhập.")]
     [StringLength(100, ErrorMessage = "Tên đăng nhập tối đa 100 ký tự.")]
     public string UserName { get; set; } = default!;

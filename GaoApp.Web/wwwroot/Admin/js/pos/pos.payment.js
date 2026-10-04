@@ -37,6 +37,7 @@ window.PosPayment = (function () {
     }
 
     function create(deps) {
+        const { parseMoneyInput, setMoneyInput, bindMoneyInput } = window.PosCommon;
         const {
             posState,
             elements,
@@ -129,7 +130,7 @@ window.PosPayment = (function () {
             }
             await requestScreenRefresh({ reason: 'qr-payment-recorded', force: true, scope: 'full' });
             if (sameOrder && !data.finalized && Number(getCurrentDraft()?.orderId) === Number(data.orderId)) {
-                if (payAmount) payAmount.value = getDraftBalance(getCurrentDraft());
+                setMoneyInput(payAmount, getDraftBalance(getCurrentDraft()));
                 renderPaymentModalDraftSafe(getCurrentDraft());
                 renderPaymentPreviewSafe();
                 showSuccess?.('Đã ghi nhận chuyển khoản. Có thể tạo QR tiếp theo cho số còn thiếu.');
@@ -637,8 +638,7 @@ window.PosPayment = (function () {
         const depositChoice = document.getElementById('posDepositChoice');
         let depositSignature = '';
         let depositBusy = false;
-        let depositOptOutOrderId = 0;
-        async function applyDepositSelection(depositId, automatic) {
+        async function applyDepositSelection(depositId) {
             const draft = getCurrentDraft();
             if (!draft?.customerId || navigator.onLine === false || depositBusy) return;
             const selected = draft.availableDeposits?.find(item => item.id === Number(depositId));
@@ -648,7 +648,7 @@ window.PosPayment = (function () {
             const status = document.getElementById('posDepositStatus');
             depositBusy = true;
             depositChoice.disabled = true;
-            if (status) status.textContent = automatic ? 'Đang tự áp dụng tiền cọc...' : 'Đang cập nhật...';
+            if (status) status.textContent = 'Đang cập nhật...';
             try {
                 const next = await postJson(`/admin/customer-deposit/orders/${draft.orderId}/select`, {
                     expectedCustomerId: draft.customerId,
@@ -665,7 +665,7 @@ window.PosPayment = (function () {
                         refreshLocksSafe();
                     }
                 });
-                if (status) status.textContent = selected ? `Đã tự trừ ${formatMoneyLocal(amount)} khỏi số cần thanh toán.` : 'Đơn này không sử dụng tiền cọc.';
+                if (status) status.textContent = selected ? `Đã trừ ${formatMoneyLocal(amount)} khỏi số cần thanh toán.` : 'Đơn này không sử dụng tiền cọc.';
             } catch (error) {
                 if (status) status.textContent = error.message;
                 showPaymentInlineError(error.message, 'warning');
@@ -673,14 +673,6 @@ window.PosPayment = (function () {
                 depositBusy = false;
                 depositChoice.disabled = navigator.onLine === false;
             }
-        }
-        function ensureAutomaticDepositSelection() {
-            const draft = getCurrentDraft();
-            const deposits = draft?.availableDeposits || [];
-            if (!paymentModalEl?.classList.contains('show') || depositBusy || !draft?.customerId ||
-                draft.customerDepositId || !deposits.length || getDraftBalance(draft) <= 0 ||
-                depositOptOutOrderId === Number(draft.orderId) || navigator.onLine === false) return;
-            void applyDepositSelection(deposits[0].id, true);
         }
         function syncDepositPresentation() {
             if (!depositPanel) return;
@@ -692,20 +684,22 @@ window.PosPayment = (function () {
             const applied = document.getElementById('depositAppliedLabel');
             if (applied) applied.textContent = Number(draft?.depositAmount) > 0
                 ? `Đã áp dụng ${formatMoneyLocal(draft.depositAmount)} cho đơn này.`
-                : 'Hệ thống tự áp dụng tối đa khi mở thanh toán.';
+                : 'Chưa sử dụng cọc. Chọn phiếu nếu khách muốn dùng.';
             const signature = JSON.stringify([draft?.orderId, draft?.customerId, draft?.customerDepositId, draft?.depositAmount, deposits]);
             if (signature !== depositSignature) {
                 depositSignature = signature;
                 depositChoice.replaceChildren(new Option('Không sử dụng cọc', ''));
                 deposits.forEach(d => depositChoice.add(new Option(`DC-${d.id} · ${d.purpose} · ${formatMoneyLocal(d.balance)}`, d.id)));
                 depositChoice.value = draft?.customerDepositId || '';
+                const status = document.getElementById('posDepositStatus');
+                if (status) status.textContent = Number(draft?.depositAmount) > 0
+                    ? `Đã trừ ${formatMoneyLocal(draft.depositAmount)} khỏi số cần thanh toán.`
+                    : 'Đơn này không sử dụng tiền cọc.';
             }
             depositChoice.disabled = navigator.onLine === false || depositBusy;
         }
         depositChoice?.addEventListener('change', async () => {
-            const draft = getCurrentDraft();
-            depositOptOutOrderId = depositChoice.value ? 0 : Number(draft?.orderId || 0);
-            await applyDepositSelection(Number(depositChoice.value) || null, false);
+            await applyDepositSelection(Number(depositChoice.value) || null);
         });
 
         const creditToggle = document.getElementById('btnCreditPayment');
@@ -766,7 +760,6 @@ window.PosPayment = (function () {
             syncCreditPresentation();
             syncPaymentMethodButtons();
             renderQuickCashButtons();
-            ensureAutomaticDepositSelection();
         }
 
         function setPaymentWorkspaceOpen(open) {
@@ -866,8 +859,10 @@ window.PosPayment = (function () {
                     draft
                 );
 
+            const method = getCurrentMethod();
+
             const amount =
-                Number(
+                parseMoneyInput(
                     payAmount?.value || 0
                 );
 
@@ -889,6 +884,18 @@ window.PosPayment = (function () {
             if (amount < balance) {
                 payPreviewStateText.textContent =
                     'Sau khoản này vẫn còn thiếu';
+                return;
+            }
+
+            if (method === 1 && amount > balance) {
+                payPreviewStateText.textContent =
+                    `Chuyển khoản dư ${formatMoneyLocal(amount - balance)} đ. Vẫn ghi nhận đủ ${formatMoneyLocal(amount)} đ.`;
+                return;
+            }
+
+            if (method !== 0 && method !== 1 && amount > balance) {
+                payPreviewStateText.textContent =
+                    'Không được thanh toán dư với phương thức này';
                 return;
             }
 
@@ -1092,7 +1099,7 @@ window.PosPayment = (function () {
                 getCurrentMethod();
 
             const amount =
-                Number(
+                parseMoneyInput(
                     payAmount?.value || 0
                 );
 
@@ -1237,8 +1244,7 @@ window.PosPayment = (function () {
                     draft
                 );
 
-            payAmount.value =
-                balance;
+            setMoneyInput(payAmount, balance);
 
             updatePayExactAmountText(
                 balance
@@ -1267,10 +1273,10 @@ window.PosPayment = (function () {
             const value =
                 Number(amount || 0);
 
-            payAmount.value =
+            setMoneyInput(payAmount,
                 Number.isFinite(value)
                     ? value
-                    : 0;
+                    : 0);
 
             clearPaymentInlineError();
 
@@ -1288,7 +1294,7 @@ window.PosPayment = (function () {
             }
 
             const current =
-                parseFloat(
+                parseMoneyInput(
                     payAmount.value ||
                     '0'
                 );
@@ -1308,10 +1314,10 @@ window.PosPayment = (function () {
                         : 0
                 );
 
-            payAmount.value =
+            setMoneyInput(payAmount,
                 next > 0
                     ? next
-                    : 0;
+                    : 0);
 
             clearPaymentInlineError();
 
@@ -1387,7 +1393,7 @@ window.PosPayment = (function () {
             const pending = createCollectionIntents(sessionStorage, collectionUuid).read(Number(getCurrentDraft()?.orderId));
             if (!pending) return false;
             if (payMethod) payMethod.value = String(pending.method);
-            if (payAmount) payAmount.value = String(pending.amount);
+            setMoneyInput(payAmount, pending.amount);
             if (payReference) payReference.value = pending.referenceCode || '';
             if (payProvider) payProvider.value = pending.provider || '';
             updateAddPaymentButtonText();
@@ -1471,7 +1477,7 @@ window.PosPayment = (function () {
                 getCurrentMethod();
 
             const amount =
-                parseFloat(
+                parseMoneyInput(
                     payAmount?.value ||
                     '0'
                 );
@@ -1488,6 +1494,11 @@ window.PosPayment = (function () {
 
             if (!Number.isFinite(amount) || amount <= 0 || amount >= 10000000000000000 || !Number.isInteger(amount)) {
                 return 'Vui lòng nhập số tiền thanh toán hợp lệ.';
+            }
+
+            const balance = getDraftBalance(draft);
+            if (method !== 0 && method !== 1 && amount > balance) {
+                return 'Phương thức này không cho phép thanh toán dư. Hãy nhập tối đa số còn phải thu.';
             }
 
             if (
@@ -1543,7 +1554,7 @@ window.PosPayment = (function () {
             try {
                 collectionIntents = createCollectionIntents(sessionStorage, collectionUuid);
                 collectionIntent = collectionIntents.prepare(Number(getCurrentDraft()?.orderId), {
-                    method: getCurrentMethod(), amount: parseFloat(payAmount?.value || '0'),
+                    method: getCurrentMethod(), amount: parseMoneyInput(payAmount?.value || '0'),
                     referenceCode: (payReference?.value || '').trim() || null,
                     provider: (payProvider?.value || '').trim() || null
                 });
@@ -1665,10 +1676,7 @@ window.PosPayment = (function () {
                                                 nextDraft
                                             );
 
-                                        if (payAmount) {
-                                            payAmount.value =
-                                                remaining;
-                                        }
+                                        setMoneyInput(payAmount, remaining);
 
                                         updatePayExactAmountText(
                                             remaining
@@ -1830,6 +1838,9 @@ window.PosPayment = (function () {
         async function finalizeRecordedPayment(orderId = Number(getCurrentDraft()?.orderId), creditRequest = null) {
             const targetOrderId = Number(orderId);
             if (!Number.isInteger(targetOrderId) || targetOrderId <= 0) return;
+            const cashSummary = Number(getCurrentDraft()?.orderId) === targetOrderId
+                ? window.PosCheckoutFeedback?.cashSummary(getCurrentDraft()) : null;
+            const askBeforePrintingReceipt = Number(getCurrentDraft()?.orderId) === targetOrderId && getCurrentDraft()?.askBeforePrintingReceipt === true;
             clearPaymentInlineError();
 
             return await runPosAction(
@@ -1955,7 +1966,10 @@ window.PosPayment = (function () {
                                             openReceiptPrint(
                                                 data.orderId,
                                                 '80',
-                                                true
+                                                true,
+                                                true,
+                                                cashSummary,
+                                                askBeforePrintingReceipt
                                             );
                                         }
                                     }
@@ -2403,6 +2417,11 @@ window.PosPayment = (function () {
 
             currentPaymentQr =
                 qr;
+            const pendingWarning = document.getElementById('paymentQrPendingWarning');
+            if (pendingWarning) {
+                pendingWarning.hidden = !qr.pendingWarningMessage;
+                pendingWarning.textContent = qr.pendingWarningMessage || '';
+            }
             const qrTitle = document.getElementById('paymentQrPopupTitle');
             if (qrTitle) qrTitle.textContent = qr.savedStatus ? 'QR thanh toán đã tạo' : 'Quét mã thanh toán';
             const qrCode = document.getElementById('paymentQrRequestCode');
@@ -2424,7 +2443,7 @@ window.PosPayment = (function () {
             if (acbStatus) { acbStatus.hidden = !qr.automaticConfirmation && !qr.savedMessage; acbStatus.textContent = qr.savedMessage || (qr.automaticConfirmation ? 'Chưa nhận xác nhận thanh toán. Có thể bấm Kiểm tra ngay để tra cứu ACB.' : ''); }
             if (qrEls.btnCancelQr) qrEls.btnCancelQr.hidden = qr.canCancel === false;
             const shortcuts = document.getElementById('paymentQrShortcuts');
-            if (shortcuts) shortcuts.textContent = qr.readOnly ? 'ESC = Đóng QR · Chỉ xem lịch sử' : qr.automaticConfirmation
+            if (shortcuts) shortcuts.textContent = qr.readOnly ? 'ESC = Đóng QR' + (qr.canCancel === true ? ' · F10 = Hủy QR' : ' · Chỉ xem lịch sử') : qr.automaticConfirmation
                 ? 'F9 = Kiểm tra ACB · ESC = Đóng QR' + (qr.canCancel === false ? '' : ' · F10 = Hủy QR')
                 : 'F9 = Đã nhận tiền · ESC = Đóng QR · F10 = Hủy QR';
 
@@ -2580,7 +2599,7 @@ window.PosPayment = (function () {
             }
 
             let amount =
-                Number(
+                parseMoneyInput(
                     payAmount?.value ||
                     0
                 );
@@ -2604,8 +2623,8 @@ window.PosPayment = (function () {
                 return;
             }
 
-            if (amount > getDraftBalance(draft) || !Number.isInteger(amount)) {
-                showPaymentInlineError('Số tiền QR phải là số đồng nguyên, không vượt quá số còn thiếu.', 'warning');
+            if (!Number.isInteger(amount) || amount >= 10000000000000000) {
+                showPaymentInlineError('Số tiền QR phải là số đồng nguyên dương, nhỏ hơn 10.000.000.000.000.000 đồng.', 'warning');
                 return;
             }
             // Keep the same key after an uncertain response, including a page reload.
@@ -2624,17 +2643,14 @@ window.PosPayment = (function () {
                 'payment:createQr',
 
                 async function () {
-                    return await postJson(
-                        '/admin/pos/cart/current/payment-qr',
-                        {
-                            clientRequestId: intent.clientRequestId,
-                            bankAccountId:
-                                null,
-
-                            amount:
-                                amount
-                        }
-                    );
+                    try {
+                        return await postJson('/admin/pos/cart/current/payment-qr', {
+                            clientRequestId: intent.clientRequestId, bankAccountId: null, amount
+                        });
+                    } catch (error) {
+                        if (error.errorCode !== 'POS_QR_PENDING') throw error;
+                        return { blockedByPendingQr: true, message: error.message, ...error.metadata };
+                    }
                 },
 
                 {
@@ -2683,6 +2699,24 @@ window.PosPayment = (function () {
                     onSuccess:
                         function (qr) {
                             try { sessionStorage.removeItem(intentStorageKey); } catch (_) { }
+                            if (qr.blockedByPendingQr) {
+                                if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
+                                const saved = qr.savedQr;
+                                if (saved?.qr?.orderId === qr.orderId && saved.qr.id === qr.qrId) {
+                                    renderPaymentQr({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly,
+                                        savedStatus: saved.status, savedMessage: saved.message, pendingWarningMessage: qr.message });
+                                }
+                                showPaymentInlineError(qr.message, 'warning');
+                                if (!saved?.qr) {
+                                    const link = document.createElement('a');
+                                    link.href = `/admin/acb/payments/orders/${qr.orderId}`;
+                                    link.target = '_blank'; link.rel = 'noopener'; link.className = 'd-block mt-2';
+                                    link.textContent = 'Mở lịch sử giao dịch để xử lý QR';
+                                    ensurePaymentErrorBox()?.appendChild(link);
+                                }
+                                qrHistory?.refresh();
+                                return;
+                            }
                             renderPaymentQr(
                                 qr
                             );
@@ -2713,7 +2747,8 @@ window.PosPayment = (function () {
                     scopes: ['checkout', 'modalSubmit'], conflictScopes: ['cartMutate', 'checkout', 'modalSubmit'],
                     requireOnline: true, displayMode: 'inline', inlineTarget: ensurePaymentErrorBox(),
                     onSuccess: async data => {
-                        if (data.printUrl) openReceiptPrint(data.orderId, '80', true);
+                        if (data.printUrl) openReceiptPrint(data.orderId, '80', true, data.finalized === true, null,
+                            Number(getCurrentDraft()?.orderId) === Number(data.orderId) && getCurrentDraft()?.askBeforePrintingReceipt === true);
                         await applyQrPaymentResult(data);
                     },
                     onFinally: refreshLocksSafe
@@ -2984,6 +3019,9 @@ window.PosPayment = (function () {
         }
 
         async function handlePaymentModalHotkeys(e) {
+            // QR is the active dialog. Its hotkeys must not also act on the payment form underneath.
+            const qrModal = document.getElementById('paymentQrModal');
+            if (qrModal?.classList.contains('show') || qrModal?.contains?.(e.target)) return;
             if (!isPaymentModalOpen()) {
                 return;
             }
@@ -3299,6 +3337,7 @@ window.PosPayment = (function () {
          * ===================================================== */
 
         function bindEvents() {
+            bindMoneyInput(payAmount);
             ensurePaymentErrorBox();
 
             bindUiLocks();
@@ -3453,7 +3492,8 @@ window.PosPayment = (function () {
 
             document.addEventListener(
                 'keydown',
-                handlePaymentQrModalHotkeys
+                handlePaymentQrModalHotkeys,
+                true // Handle the active QR before Bootstrap or the payment form handles the same key.
             );
 
             paymentModalEl

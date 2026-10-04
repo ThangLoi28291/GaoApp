@@ -22,6 +22,12 @@ let unlinkInputInvoiceModalInstance = null;
 let linkedInputInvoicePreviewObjectUrl = null;
 let pendingUnlinkInputInvoice = null;
 let cachedInputInvoiceAssociation = null;
+let inputInvoiceAssociationGeneration = 0;
+
+function invalidateInputInvoiceAssociation() {
+    inputInvoiceAssociationGeneration += 1;
+    cachedInputInvoiceAssociation = null;
+}
 let inputInvoiceAssociationReturnFocus = null;
 let inputInvoiceReconciliationReasonModalInstance = null;
 let pendingReconciliationReasonResolve = null;
@@ -164,7 +170,15 @@ function initStockDocumentWorkbenchTabs() {
     const workbench = document.getElementById('commercialApprovalWorkbench');
     if (!workbench) return;
     const storageKey = `stockDocumentWorkbenchTab:${window.stockDocumentPage?.documentId || 0}`;
-    activateStockDocumentWorkbenchTab(sessionStorage.getItem(storageKey) || 'goods', false);
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    activateStockDocumentWorkbenchTab(requestedTab || sessionStorage.getItem(storageKey) || 'goods', false);
+    if (requestedTab === 'xml') {
+        const invoiceSection = document.querySelector('.sd-optional-xml');
+        if (invoiceSection) {
+            invoiceSection.open = true;
+            requestAnimationFrame(() => invoiceSection.scrollIntoView({ block: 'start' }));
+        }
+    }
 
     workbench.addEventListener('click', event => {
         const button = event.target.closest?.('[data-workbench-tab]');
@@ -567,7 +581,8 @@ let stockDocumentIndexState = {
     page: 1,
     pageSize: 20,
     keyword: '',
-    status: 'active'
+    status: 'needsAction',
+    invoice: 'all'
 };
 
 async function loadReceiptList() {
@@ -585,7 +600,7 @@ async function loadReceiptList() {
         const api = await readApiResponse(response);
 
         if (!api.ok) {
-            body.innerHTML = renderIndexErrorRow(api.data?.message || 'Không tải được danh sách phiếu nhập.');
+            showReceiptListError(api.data?.message || 'Không tải được danh sách phiếu nhập.');
             return;
         }
 
@@ -597,11 +612,42 @@ async function loadReceiptList() {
         applyStockDocumentIndexFilter();
     } catch (error) {
         console.error(error);
-        body.innerHTML = renderIndexErrorRow('Có lỗi khi tải danh sách phiếu nhập.');
+        showReceiptListError('Có lỗi khi tải danh sách phiếu nhập.');
     }
 }
 
+function showReceiptListError(message) {
+    const body = document.getElementById('sdReceiptTableBody');
+    if (body) body.innerHTML = renderIndexErrorRow(message);
+    const mobile = document.getElementById('sdReceiptMobileList');
+    if (mobile) mobile.innerHTML = `<div class="text-center text-danger py-4">${escapeHtml(message)}</div>`;
+    setText('sdPaginationInfo', 'Không tải được danh sách. Vui lòng tải lại trang.');
+    setText('sdCurrentPageText', '—');
+    ['sdCountAll', 'sdCountWorking', 'sdCountPending', 'sdCountConfirmed', 'sdCountWaitingInvoice'].forEach(id => setText(id, '—'));
+    ['sdBtnPrevPage', 'sdBtnNextPage'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = true;
+    });
+}
+
 function bindStockDocumentIndexFilters() {
+    const invoiceSelect = document.getElementById('sdInvoiceFilter');
+    if (invoiceSelect && !invoiceSelect.dataset.bound) {
+        invoiceSelect.dataset.bound = '1';
+        invoiceSelect.addEventListener('change', () => {
+            stockDocumentIndexState.invoice = invoiceSelect.value;
+            // Choosing an invoice status must also show already-approved receipts.
+            stockDocumentIndexState.status = 'all';
+            document.getElementById('sdStatusFilter').value = 'all';
+            stockDocumentIndexState.page = 1;
+            syncStockDocumentIndexKpiFilters();
+            applyStockDocumentIndexFilter();
+        });
+        document.getElementById('sdWaitingInvoiceKpi')?.addEventListener('click', () => {
+            invoiceSelect.value = 'Waiting';
+            invoiceSelect.dispatchEvent(new Event('change'));
+        });
+    }
     const keywordInput = document.getElementById('sdSearchKeyword');
     const statusSelect = document.getElementById('sdStatusFilter');
     const pageSizeSelect = document.getElementById('sdPageSize');
@@ -648,6 +694,8 @@ function bindStockDocumentIndexFilters() {
         resetBtn.addEventListener('click', function () {
             stockDocumentIndexState.keyword = '';
             stockDocumentIndexState.status = 'all';
+            stockDocumentIndexState.invoice = 'all';
+            if (invoiceSelect) invoiceSelect.value = 'all';
             stockDocumentIndexState.page = 1;
 
             if (keywordInput) keywordInput.value = '';
@@ -693,6 +741,9 @@ function bindStockDocumentIndexKpiFilters() {
                 const statusSelect = document.getElementById('sdStatusFilter');
 
                 stockDocumentIndexState.status = filter;
+                stockDocumentIndexState.invoice = 'all';
+                const invoiceSelect = document.getElementById('sdInvoiceFilter');
+                if (invoiceSelect) invoiceSelect.value = 'all';
                 stockDocumentIndexState.page = 1;
                 if (statusSelect) statusSelect.value = filter;
 
@@ -705,6 +756,7 @@ function bindStockDocumentIndexKpiFilters() {
 }
 
 function syncStockDocumentIndexKpiFilters() {
+    document.getElementById('sdWaitingInvoiceKpi')?.setAttribute('aria-pressed', String(stockDocumentIndexState.invoice === 'Waiting'));
     document.querySelectorAll('[data-stock-document-index] .sd-index-kpi-filter[data-status-filter]')
         .forEach(button => {
             button.setAttribute(
@@ -731,9 +783,13 @@ function applyStockDocumentIndexFilter() {
             statusToText(x.status)
         ].some(v => String(v || '').toLowerCase().includes(keyword));
 
-        const matchStatus = status === 'all' || matchStockDocumentStatusGroup(x.status, status);
+        const matchStatus = status === 'all' || (status === 'needsAction'
+            ? [1, 2, 4].includes(Number(x.status)) || Number(x.status) === 3 && ['Waiting', 'NeedsReview'].includes(x.invoiceFollowUp)
+            : matchStockDocumentStatusGroup(x.status, status));
+        const matchInvoice = stockDocumentIndexState.invoice === 'all' ||
+            Number(x.status) === 3 && (x.invoiceFollowUp || 'Unclassified') === stockDocumentIndexState.invoice;
 
-        return matchKeyword && matchStatus;
+        return matchKeyword && matchStatus && matchInvoice;
     });
 
     updateStockDocumentIndexStats();
@@ -811,6 +867,8 @@ function openStockDocumentInfoModal(item) {
         'sdInfoWarehouse',
         [item.legalEntityName, item.warehouseName].filter(Boolean).join(' · ') || '-');
     setText('sdInfoSupplier', item.supplierName || '-');
+    setText('sdInfoCreatedBy', item.createdByName || 'Chưa ghi nhận');
+    setText('sdInfoEntryTerminal', [item.entryTerminalName, item.entryTerminalCode].filter(Boolean).join(' · ') || 'Chưa ghi nhận');
 
     setText('sdInfoDocumentDate', formatDate(item.documentDate) || '-');
     setText('sdInfoCreatedAt', formatDate(item.createdAtUtc || item.documentDate) || '-');
@@ -855,7 +913,7 @@ function renderStockDocumentIndexRows(items) {
 
         const actionText = hasRevisionRequest
             ? 'Xử lý sửa'
-            : (x.status === 2 ? 'Duyệt' : (x.status === 3 ? 'Xem' : 'Mở'));
+            : (x.status === 2 ? 'Duyệt' : (x.status === 3 ? (x.invoiceFollowUp === 'Waiting' ? 'Bổ sung XML' : x.invoiceFollowUp === 'NeedsReview' ? 'Đối chiếu XML' : 'Xem') : 'Mở'));
 
         const actionClass = hasRevisionRequest
             ? 'btn-danger'
@@ -863,7 +921,7 @@ function renderStockDocumentIndexRows(items) {
                 ? 'btn-warning'
                 : (x.status === 3 ? 'btn-outline-primary' : 'btn-primary'));
 
-        const title = x.purchaseOrderTitle || x.documentTitle || 'Chưa đặt tên phiếu';
+        const title = x.documentTitle || x.purchaseOrderTitle || 'Chưa đặt tên phiếu';
         const purchaseContext = [x.purchaseOrderNumber, x.supplierName]
             .filter(Boolean)
             .join(' · ');
@@ -883,12 +941,13 @@ function renderStockDocumentIndexRows(items) {
                     <div class="sd-index-doc-no">${escapeHtml(receiptContext || '-')}</div>
                     <div class="text-muted small text-truncate">${escapeHtml(purchaseContext || x.supplierName || '-')}</div>
                 </td>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(x.warehouseName || '-')}</div>
-                    <div class="text-muted small">${escapeHtml(x.legalEntityName || '-')}</div>
+                <td class="sd-index-entry">
+                    <div class="sd-index-entry-line fw-semibold"><i class="bx bx-user" aria-hidden="true"></i><span>${escapeHtml(x.createdByName || 'Chưa ghi nhận')}</span></div>
+                    <div class="sd-index-entry-line text-muted small"><i class="bx bx-desktop" aria-hidden="true"></i><span>${escapeHtml(x.entryTerminalName || 'Chưa ghi nhận')}${x.entryTerminalCode ? ` <span class="sd-index-terminal-code">${escapeHtml(x.entryTerminalCode)}</span>` : ''}</span></div>
                 </td>
                 <td>
                     ${renderStatusBadge(x.status)}
+                    ${window.GaoReceiptInvoiceFollowUp?.badgeHtml(x) || ''}
                     ${window.GaoLabels?.progressHtml(x.id) || ''}
                     ${submittedContext ? `<div class="sd-index-progress-note">${submittedContext}</div>` : ''}
                     ${hasRevisionRequest ? `<div class="sd-index-revision-note" title="${escapeHtml(x.revisionRequestNote || 'Có yêu cầu sửa')}">Có yêu cầu sửa</div>` : ''}
@@ -898,13 +957,14 @@ function renderStockDocumentIndexRows(items) {
                 <td>${renderIndexDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate)}</td>
                 <td class="text-end">
                     <div class="sd-index-actions">
+                        ${window.GaoReceiptDocumentActions?.buttons(x) || ''}
                         <button type="button"
                                 class="btn btn-outline-secondary btn-sm gds-icon-button js-stock-document-quick-view"
                                 data-id="${x.id}"
                                 aria-label="Xem nhanh ${escapeHtml(title)}">
                             <i class="bx bx-show" aria-hidden="true"></i>
                         </button>
-                        <a class="btn btn-sm ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}">${actionText}</a>
+                        <a class="btn btn-sm ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}${x.status === 3 && ['Waiting', 'NeedsReview'].includes(x.invoiceFollowUp) ? '?tab=xml' : ''}">${actionText}</a>
                     </div>
                 </td>
             </tr>`;
@@ -920,11 +980,11 @@ function renderStockDocumentIndexMobileCards(items) {
         const hasRevisionRequest = x.hasRevisionRequest === true;
         const actionText = hasRevisionRequest
             ? 'Xử lý sửa'
-            : (x.status === 2 ? 'Duyệt' : (x.status === 3 ? 'Xem' : 'Mở'));
+            : (x.status === 2 ? 'Duyệt' : (x.status === 3 ? (x.invoiceFollowUp === 'Waiting' ? 'Bổ sung XML' : x.invoiceFollowUp === 'NeedsReview' ? 'Đối chiếu XML' : 'Xem') : 'Mở'));
         const actionClass = hasRevisionRequest
             ? 'btn-danger'
             : (x.status === 2 ? 'btn-warning' : (x.status === 3 ? 'btn-outline-primary' : 'btn-primary'));
-        const title = x.purchaseOrderTitle || x.documentTitle || 'Chưa đặt tên phiếu';
+        const title = x.documentTitle || x.purchaseOrderTitle || 'Chưa đặt tên phiếu';
         const context = [x.documentNo, x.purchaseOrderNumber, x.supplierName]
             .filter(Boolean)
             .join(' · ');
@@ -937,21 +997,24 @@ function renderStockDocumentIndexMobileCards(items) {
                         <div class="gds-row-card__meta">${escapeHtml(context || '-')}</div>
                     </div>
                     ${renderStatusBadge(x.status)}
+                    ${window.GaoReceiptInvoiceFollowUp?.badgeHtml(x) || ''}
                 </div>
                 ${hasRevisionRequest ? `<div class="sd-index-revision-note">Có yêu cầu sửa</div>` : ''}
                 <div class="sd-index-mobile-facts">
-                    <div><span>Kho / HKD</span><strong>${escapeHtml([x.warehouseName, x.legalEntityName].filter(Boolean).join(' · ') || '-')}</strong></div>
+                    <div><span>Nhân viên tạo phiếu</span><strong>${escapeHtml(x.createdByName || 'Chưa ghi nhận')}</strong></div>
+                    <div><span>Quầy nhập</span><strong>${escapeHtml([x.entryTerminalName, x.entryTerminalCode].filter(Boolean).join(' · ') || 'Chưa ghi nhận')}</strong></div>
                     <div><span>Loại sản phẩm</span><strong>${formatNumber(x.totalProductTypes || 0)}</strong></div>
                     <div><span>Tổng tiền</span><strong class="text-primary">${formatNumber(x.totalAmount || 0)} ₫</strong></div>
                     <div><span>Cập nhật</span><strong>${formatDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate) || '-'}</strong></div>
                 </div>
                 <div class="gds-row-card__actions">
+                        ${window.GaoReceiptDocumentActions?.buttons(x) || ''}
                     <button type="button"
                             class="btn btn-outline-secondary gds-action-button js-stock-document-quick-view"
                             data-id="${x.id}">
                         <i class="bx bx-show" aria-hidden="true"></i> Xem nhanh
                     </button>
-                    <a class="btn ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}">${actionText}</a>
+                    <a class="btn ${actionClass} gds-action-button" href="/admin/stock-documents/${x.id}${x.status === 3 && ['Waiting', 'NeedsReview'].includes(x.invoiceFollowUp) ? '?tab=xml' : ''}">${actionText}</a>
                 </div>
             </article>`;
     }).join('');
@@ -976,6 +1039,7 @@ function updateStockDocumentIndexStats() {
     setText('sdCountWorking', formatNumber(all.filter(x => x.status === 1 || x.status === 4).length));
     setText('sdCountPending', formatNumber(all.filter(x => x.status === 2).length));
     setText('sdCountConfirmed', formatNumber(all.filter(x => x.status === 3).length));
+    setText('sdCountWaitingInvoice', formatNumber(all.filter(x => x.status === 3 && x.invoiceFollowUp === 'Waiting').length));
 }
 
 function updateStockDocumentPaginationInfo(totalItems, totalPages) {
@@ -1096,7 +1160,7 @@ function resetCreateReceiptModal() {
     const documentDate = document.getElementById('createDocumentDate');
     const title = document.getElementById('createDocumentTitle');
     if (title) title.value = '';
-    if (directReason) directReason.value = '';
+    if (directReason) directReason.value = 'Nhà phân phối giao';
 
     if (legalEntity) legalEntity.value = '';
     if (warehouse) warehouse.innerHTML = '<option value="">-- Chọn HKD trước --</option>';
@@ -2935,6 +2999,9 @@ async function loadInputInvoicesForStockDocument() {
         }
 
         renderInputInvoiceList(api.data || []);
+        window.dispatchEvent(new CustomEvent('input-invoices-updated', {
+            detail: { stockDocumentId: documentId }
+        }));
         await loadItemCatalogLineStatuses();
         await loadInputInvoiceReconciliation();
         await refreshCommercialReconciliationPreviewAfterXmlMutation();
@@ -2949,6 +3016,7 @@ async function loadInputInvoicesForStockDocument() {
 }
 
 async function loadInputInvoiceAssociation() {
+    const generation = ++inputInvoiceAssociationGeneration;
     const documentId = Number(document.getElementById('StockDocumentId')?.value || 0);
     const state = document.getElementById('inputInvoiceAssociationState');
     if (!documentId || !state) return;
@@ -2956,6 +3024,7 @@ async function loadInputInvoiceAssociation() {
         `/admin/api/stock-documents/${documentId}/input-invoices/association`,
         { credentials: 'same-origin', cache: 'no-store' });
     const api = await readApiResponse(response);
+    if (generation !== inputInvoiceAssociationGeneration) return;
     if (!api.ok) {
         cachedInputInvoiceAssociation = null;
         state.textContent = api.data?.message || 'Không tải được trạng thái liên kết XML.';
@@ -4037,6 +4106,7 @@ function focusInputInvoiceReconciliationTarget(target) {
 }
 
 function renderInputInvoiceReconciliation(model) {
+    if (!model?.isCommercialPreview) window.GaoReceiptInvoiceFollowUp?.refresh();
     const panel = document.getElementById('inputInvoiceReconciliationPanel');
     if (!panel || !model) return;
     const preview = model.isCommercialPreview === true;
@@ -4152,9 +4222,9 @@ function renderInputInvoiceReconciliation(model) {
             'Dữ liệu đối chiếu chính thức chỉ được cập nhật trong giao dịch duyệt.</div>';
     } else acceptance.innerHTML = model.acceptedAtUtc
         ? `<div class="alert alert-info mb-0">Đã chấp nhận bởi user #${model.acceptedByUserId || '-'} lúc ${formatDateTime(model.acceptedAtUtc)}.<br>${escapeHtml(model.acceptanceReason || '')}</div>`
-        : (!confirmed && (model.stateName === 'Mismatch' || model.state === 3))
+        : (!confirmed && (model.stateName === 'Incomplete' || model.stateName === 'Mismatch' || model.state === 1 || model.state === 3))
             ? `<button type="button" class="btn btn-warning js-recon-accept"
-                       ${firstActionAssigned ? '' : 'data-recon-focus="action"'}>Chấp nhận chênh lệch</button>`
+                       ${firstActionAssigned ? '' : 'data-recon-focus="action"'}>Quản lý xác nhận để duyệt</button>`
             : '';
 }
 

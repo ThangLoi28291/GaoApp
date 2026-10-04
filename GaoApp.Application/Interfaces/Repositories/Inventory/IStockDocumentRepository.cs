@@ -1,5 +1,6 @@
 ﻿using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using GaoApp.Application.DTOs.Inventory;
 
 namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 
@@ -78,7 +79,7 @@ public interface IStockDocumentRepository
 
    
 
-    Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default);
+    Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default);
 
     Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default);
 

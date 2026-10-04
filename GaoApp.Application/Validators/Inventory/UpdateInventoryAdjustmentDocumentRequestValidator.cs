@@ -19,7 +19,8 @@ public class UpdateInventoryAdjustmentDocumentRequestValidator
 
         RuleFor(x => x.AdjustmentType)
             .Must(x => x == InventoryTransactionType.AdjustmentIncrease ||
-                       x == InventoryTransactionType.AdjustmentDecrease)
+                       x == InventoryTransactionType.AdjustmentDecrease ||
+                       x == InventoryTransactionType.Revaluation)
             .WithMessage("Loại điều chỉnh không hợp lệ.");
 
         RuleFor(x => x.Note)
@@ -53,6 +54,14 @@ public class UpdateInventoryAdjustmentDocumentRequestValidator
                      $"Lines[{i}].ProvisionalUnitCost",
                      "Giá vốn tạm phải lớn hơn 0.");
              }
+
+         if (context.InstanceToValidate.AdjustmentType == InventoryTransactionType.Revaluation &&
+             (!line.UnitCost.HasValue || line.UnitCost.Value <= 0))
+         {
+             context.AddFailure(
+                 $"Lines[{i}].UnitCost",
+                 "Điều chỉnh giá vốn phải nhập giá vốn đúng trên đơn vị gốc.");
+         }
          }
      });
     }

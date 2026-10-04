@@ -1,361 +1,95 @@
-﻿@model GaoApp.Application.DTOs.Security.Permissions.RolePermissionMatrixDto
-
+@model GaoApp.Application.DTOs.Security.Permissions.RolePermissionMatrixDto
+@using GaoApp.Application.DTOs.Security.UserInStores
 @{
-    ViewData["Title"] = "Phân quyền vai trò";
-    var canRoleView = (bool?)ViewBag.CanRoleView == true;
-    var canRoleUpdate = (bool?)ViewBag.CanRoleUpdate == true;
-    var canRolePermissions = (bool?)ViewBag.CanRolePermissions == true;
+    ViewData["Title"] = "Phân quyền nhân viên";
+    ViewData["container"] = "container-fluid";
+    var roles = ViewBag.Roles as List<RoleLookupItemDto> ?? new();
+    var canView = (bool?)ViewBag.CanRoleView == true;
+    var canEdit = canView && (bool?)ViewBag.CanRoleUpdate == true;
+    var canCreate = canView && (bool?)ViewBag.CanRoleCreate == true;
 }
-
-<div class="container-fluid role-permission-page">
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <div>
-            <h3 class="mb-1">Phân quyền vai trò</h3>
-            <div class="text-muted">
-                Quản lý permission cho vai trò trong cửa hàng hiện tại.
-            </div>
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/role-permissions.css" asp-append-version="true" />
+}
+<div class="rp-page" id="rolePermissionsPage">
+    <header class="rp-header">
+        <div><p class="rp-eyebrow">NHÂN SỰ & PHÂN QUYỀN</p><h1>Ai được làm gì?</h1><p>Chọn vai trò, cấp quyền theo công việc và lưu để áp dụng cho nhân viên.</p></div>
+        <div class="rp-actions">
+            @if (canView) { <a asp-controller="Roles" asp-action="Index" class="rp-btn">Danh sách vai trò</a> }
+            @if (canCreate) { <a asp-controller="Roles" asp-action="Create" class="rp-btn rp-primary"><i class="bx bx-plus" aria-hidden="true"></i> Tạo vai trò</a> }
         </div>
-
-        <div class="d-flex flex-wrap gap-2">
-            @if (canRoleView)
-            {
-                <a asp-area="Admin"
-                       asp-controller="Roles"
-                       asp-action="Index"
-                       class="btn btn-outline-secondary">
-                    <i class="bi bi-arrow-left me-1"></i> Quay lại danh sách
-                </a>
-            }
-
-            @if (canRoleUpdate)
-            {
-                <a asp-area="Admin"
-                       asp-controller="Roles"
-                       asp-action="Edit"
-                       asp-route-id="@Model.RoleId"
-                       class="btn btn-outline-primary">
-                    <i class="bi bi-pencil-square me-1"></i> Sửa vai trò
-                </a>
-            }
+    </header>
+    @if (TempData["Error"] != null) { <div class="alert alert-danger" role="alert">@TempData["Error"]</div> }
+    <section class="rp-role-card" aria-label="Vai trò đang phân quyền">
+        <div class="rp-role-field"><label for="rolePicker">Vai trò cần phân quyền</label>
+            <select id="rolePicker" data-url="@Url.Action("Index", "RolePermissions")">
+                <option value="0">— Chọn vai trò —</option>
+                @foreach (var role in roles) { <option value="@role.RoleId" selected="@(role.RoleId == Model.RoleId)">@role.DisplayText</option> }
+                @if (Model.RoleId > 0 && !roles.Any(r => r.RoleId == Model.RoleId)) { <option value="@Model.RoleId" selected>@Model.RoleName (@Model.RoleCode)</option> }
+            </select>
         </div>
-    </div>
-
-    @if (TempData["Success"] != null)
+        @if (Model.RoleId > 0)
+        {
+            <div class="rp-role-meta"><span class="rp-status">@(Model.RoleIsActive ? "Đang hoạt động" : "Ngưng sử dụng")</span><span>@Model.UserCount nhân viên đang dùng vai trò này</span></div>
+            @if (canEdit) { <a asp-controller="Roles" asp-action="Edit" asp-route-id="@Model.RoleId" class="rp-text-link">Sửa tên vai trò <i class="bx bx-pencil" aria-hidden="true"></i></a> }
+        }
+    </section>
+    @if (Model.RoleId == 0)
     {
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            @TempData["Success"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
+        <section class="rp-empty-start"><i class="bx bx-shield-quarter" aria-hidden="true"></i><h2>Bắt đầu từ vai trò của nhân viên</h2><p>Chọn một vai trò ở trên để xem và thêm quyền.</p><p>Ví dụ: Thu ngân, Nhân viên kho hoặc Quản lý cửa hàng.</p>
+            @if (canCreate) { <a asp-controller="Roles" asp-action="Create" class="rp-btn rp-primary">Tạo vai trò mới</a> }
+        </section>
     }
-
-    @if (TempData["Error"] != null)
+    else
     {
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            @TempData["Error"]
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    }
-
-    <div class="row g-3 mb-4">
-        <div class="col-xl-3 col-md-6">
-            <div class="card border-0 shadow-sm h-100 stat-card">
-                <div class="card-body">
-                    <div class="text-muted small">Mã vai trò</div>
-                    <div class="fs-5 fw-bold mt-2">@Model.RoleCode</div>
-                    <div class="text-muted small mt-1">@Model.RoleName</div>
-                </div>
+        <form asp-controller="RolePermissions" asp-action="Save" method="post" id="rolePermissionForm" data-role-id="@Model.RoleId">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="RoleId" value="@Model.RoleId" />
+            <div class="rp-summary" aria-label="Tổng quan quyền">
+                <button type="button" class="rp-stat" data-state="all" aria-pressed="true"><span>Toàn bộ quyền</span><strong>@Model.TotalPermissionCount</strong><small>Trong @Model.Groups.Count nhóm chức năng</small></button>
+                <button type="button" class="rp-stat" data-state="selected" aria-pressed="false"><span>Đã chọn</span><strong id="selectedPermissionCount">@Model.SelectedPermissionCount</strong><small>Xem những việc được phép làm</small></button>
+                <button type="button" class="rp-stat" data-state="unselected" aria-pressed="false"><span>Chưa chọn</span><strong id="unselectedPermissionCount">@(Model.TotalPermissionCount - Model.SelectedPermissionCount)</strong><small>Tìm và thêm quyền còn thiếu</small></button>
+                <button type="button" class="rp-stat rp-stat-changes" data-state="changed" aria-pressed="false"><span>Thay đổi chưa lưu</span><strong id="changedPermissionCount">0</strong><small id="changeSummary">Chưa có thay đổi</small></button>
             </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6">
-            <div class="card border-0 shadow-sm h-100 stat-card">
-                <div class="card-body">
-                    <div class="text-muted small">Trạng thái</div>
-                    <div class="mt-2">
-                        @if (Model.RoleIsActive)
+            <div class="rp-workspace">
+                <aside class="rp-sidebar" aria-label="Nhóm chức năng"><h2>Nhóm chức năng</h2>
+                    <button type="button" class="rp-group-tab" data-group-filter="all" aria-pressed="true"><span>Tất cả nhóm</span><small>@Model.TotalPermissionCount</small></button>
+                    @for (var i = 0; i < Model.Groups.Count; i++)
+                    {
+                        var group = Model.Groups[i];
+                        <button type="button" class="rp-group-tab" data-group-filter="@i" aria-pressed="false"><span>@group.GroupName</span><small data-group-count="@i">@group.SelectedCount / @group.TotalCount</small></button>
+                    }
+                    <p class="rp-sidebar-note"><i class="bx bx-info-circle" aria-hidden="true"></i> Các thay đổi chỉ có hiệu lực khi bạn bấm lưu phân quyền.</p>
+                </aside>
+                <main class="rp-content">
+                    <div class="rp-toolbar">
+                        <label for="permissionSearch">Tìm chức năng hoặc quyền</label>
+                        <div class="rp-search"><i class="bx bx-search" aria-hidden="true"></i><input id="permissionSearch" type="search" placeholder="Ví dụ: in tem, nhập hàng, hoàn tiền…" autocomplete="off" /></div>
+                        <div class="rp-tools"><span id="resultCount" role="status">@Model.TotalPermissionCount quyền</span><button type="button" class="rp-text-link" id="clearFilters">Xóa bộ lọc</button><label class="rp-code-toggle"><input type="checkbox" id="showCodes" /> Hiện mã quyền</label></div>
+                        <div class="rp-bulk"><span>Quyền đang hiển thị:</span><button type="button" class="rp-btn rp-small" id="selectVisible">Chọn tất cả</button><button type="button" class="rp-btn rp-small" id="clearVisible">Bỏ chọn</button><span class="rp-muted">Không đổi các quyền bị ẩn bởi bộ lọc.</span></div>
+                    </div>
+                    <div id="permissionGroups">
+                        @for (var i = 0; i < Model.Groups.Count; i++)
                         {
-                            <span class="badge rounded-pill bg-success-subtle text-success px-3 py-2">Đang hoạt động</span>
-                        }
-                        else
-                        {
-                            <span class="badge rounded-pill bg-secondary-subtle text-secondary px-3 py-2">Ngưng sử dụng</span>
+                            <partial name="_PermissionGroupCard" model="Model.Groups[i]" view-data='new ViewDataDictionary(ViewData) { ["Index"] = i }' />
                         }
                     </div>
-                </div>
+                    <div class="rp-empty" id="noResults" hidden><i class="bx bx-search-alt" aria-hidden="true"></i><h3>Không tìm thấy quyền phù hợp</h3><p>Thử từ khóa khác hoặc xóa bộ lọc để xem đầy đủ.</p><button type="button" class="rp-btn" id="resetSearch">Xóa bộ lọc</button></div>
+                </main>
             </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6">
-            <div class="card border-0 shadow-sm h-100 stat-card">
-                <div class="card-body">
-                    <div class="text-muted small">Permission đang chọn</div>
-                    <div class="fs-3 fw-bold mt-2" id="selectedPermissionCount">@Model.SelectedPermissionCount</div>
-                    <div class="text-muted small">trên tổng @Model.TotalPermissionCount quyền</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6">
-            <div class="card border-0 shadow-sm h-100 stat-card">
-                <div class="card-body">
-                    <div class="text-muted small">User đang dùng vai trò</div>
-                    <div class="fs-3 fw-bold mt-2">@Model.UserCount</div>
-                    <div class="text-muted small">cần cẩn thận khi thay đổi quyền</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <form asp-area="Admin"
-          asp-controller="RolePermissions"
-          asp-action="Save"
-          method="post"
-          id="rolePermissionForm">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="RoleId" value="@Model.RoleId" />
-
-        <div class="card border-0 shadow-sm mb-4 top-toolbar-card">
-            <div class="card-body">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-                    <div>
-                        <div class="fw-semibold">Thao tác nhanh</div>
-                        <div class="text-muted small">Chọn nhanh theo toàn bộ trang hoặc theo từng nhóm.</div>
-                    </div>
-
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-outline-primary" id="btnCheckAll">
-                            <i class="bi bi-check2-square me-1"></i> Chọn tất cả
-                        </button>
-
-                        <button type="button" class="btn btn-outline-secondary" id="btnUncheckAll">
-                            <i class="bi bi-square me-1"></i> Bỏ chọn tất cả
-                        </button>
-
-                        <button type="button" class="btn btn-outline-dark" id="btnExpandAll">
-                            <i class="bi bi-arrows-expand me-1"></i> Mở tất cả nhóm
-                        </button>
-
-                        <button type="button" class="btn btn-outline-dark" id="btnCollapseAll">
-                            <i class="bi bi-arrows-collapse me-1"></i> Thu gọn tất cả
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        @if (Model.Groups == null || !Model.Groups.Any())
-        {
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center py-5 text-muted">
-                    Không có dữ liệu permission để hiển thị.
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="accordion permission-accordion" id="permissionAccordion">
-                @for (int i = 0; i < Model.Groups.Count; i++)
-                {
-                    var group = Model.Groups[i];
-                    <partial name="_PermissionGroupCard" model="group" view-data='new ViewDataDictionary(ViewData)
-                                                                                           {
-                                                                                               ["Index"] = i
-                                                                                           }' />
-                }
-            </div>
-        }
-
-        @if (canRolePermissions)
-        {
-            <div class="sticky-save-bar mt-4">
-                <div class="card border-0 shadow-lg">
-                    <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
-                        <div>
-                            <div class="fw-semibold">Sẵn sàng lưu thay đổi</div>
-                            <div class="text-muted small">
-                                Đã chọn <span class="fw-bold" id="selectedPermissionCountBottom">@Model.SelectedPermissionCount</span> / @Model.TotalPermissionCount permission.
-                            </div>
-                        </div>
-
-                        <div class="d-flex flex-wrap gap-2">
-                            <a asp-area="Admin"
-                                   asp-controller="Roles"
-                                   asp-action="Edit"
-                                   asp-route-id="@Model.RoleId"
-                                   class="btn btn-light border">
-                                Quay lại
-                            </a>
-
-                            <button type="submit" class="btn btn-primary px-4">
-                                <i class="bi bi-save me-1"></i> Lưu phân quyền
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    </form>
+            <footer class="rp-save-bar">
+                <div><strong id="saveTitle">Chưa có thay đổi</strong><p id="saveSummary">Chọn quyền để thêm hoặc bỏ quyền của vai trò này.</p></div>
+                <div class="rp-actions"><button type="button" class="rp-btn" id="undoChanges" disabled>Hoàn tác</button><button type="submit" class="rp-btn rp-primary" id="reviewChanges" disabled><i class="bx bx-check-shield" aria-hidden="true"></i> Kiểm tra & lưu</button></div>
+            </footer>
+            <dialog class="rp-dialog" id="changesDialog" aria-labelledby="changesTitle">
+                <header><div><p class="rp-eyebrow">KIỂM TRA TRƯỚC KHI LƯU</p><h2 id="changesTitle">Cập nhật quyền cho @Model.RoleName</h2></div><button type="button" class="rp-btn rp-close" data-close-dialog aria-label="Đóng">×</button></header>
+                <p class="rp-dialog-note">Áp dụng cho @Model.UserCount nhân viên đang dùng vai trò này. Những quyền khác được giữ nguyên.</p>
+                <div id="changesList" class="rp-changes-list"></div>
+                <footer><button type="button" class="rp-btn" data-close-dialog>Quay lại chỉnh sửa</button><button type="button" class="rp-btn rp-primary" id="confirmSave">Lưu phân quyền</button></footer>
+            </dialog>
+        </form>
+    }
 </div>
-
-<style>
-    .role-permission-page .stat-card {
-        border-radius: 18px;
-    }
-
-    .role-permission-page .top-toolbar-card {
-        border-radius: 18px;
-    }
-
-    .role-permission-page .permission-accordion .accordion-item {
-        border: 0;
-        border-radius: 18px;
-        overflow: hidden;
-        box-shadow: 0 .125rem .5rem rgba(0,0,0,.06);
-        margin-bottom: 1rem;
-    }
-
-    .role-permission-page .permission-accordion .accordion-button {
-        background: #fff;
-        font-weight: 600;
-        padding: 1rem 1.25rem;
-        box-shadow: none !important;
-    }
-
-        .role-permission-page .permission-accordion .accordion-button:not(.collapsed) {
-            color: inherit;
-            background: #f8fafc;
-        }
-
-    .role-permission-page .permission-group-meta {
-        font-size: .875rem;
-        color: #6c757d;
-    }
-
-    .role-permission-page .permission-table thead th {
-        white-space: nowrap;
-        font-size: .875rem;
-        color: #6c757d;
-        background: #f8fafc;
-    }
-
-    .role-permission-page .permission-table tbody td,
-    .role-permission-page .permission-table tbody th {
-        vertical-align: middle;
-    }
-
-    .role-permission-page .permission-table .row-title {
-        min-width: 220px;
-    }
-
-    .role-permission-page .permission-checkbox-cell {
-        text-align: center;
-        min-width: 90px;
-    }
-
-    .role-permission-page .permission-checkbox {
-        transform: scale(1.15);
-        cursor: pointer;
-    }
-
-    .role-permission-page .group-toolbar .btn {
-        border-radius: 10px;
-    }
-
-    .role-permission-page .sticky-save-bar {
-        position: sticky;
-        bottom: 12px;
-        z-index: 20;
-    }
-
-    .role-permission-page .entity-badge {
-        border-radius: 999px;
-        padding: .35rem .7rem;
-        font-size: .75rem;
-        font-weight: 600;
-        background: #eef2ff;
-        color: #4338ca;
-    }
-
-    .role-permission-page .summary-chip {
-        border-radius: 999px;
-        padding: .4rem .8rem;
-        background: #f1f5f9;
-        color: #334155;
-        font-size: .8rem;
-        font-weight: 600;
-    }
-</style>
-
-@section Scripts {
-    <script>
-        (function () {
-            const allCheckboxes = () => Array.from(document.querySelectorAll('.permission-checkbox[data-available="true"]'));
-            const selectedCountTop = document.getElementById('selectedPermissionCount');
-            const selectedCountBottom = document.getElementById('selectedPermissionCountBottom');
-
-            function updateSelectedCount() {
-                const checked = allCheckboxes().filter(x => x.checked).length;
-                if (selectedCountTop) selectedCountTop.textContent = checked;
-                if (selectedCountBottom) selectedCountBottom.textContent = checked;
-
-                document.querySelectorAll('.group-selected-count').forEach(el => {
-                    const groupName = el.getAttribute('data-group');
-                    const groupCheckboxes = Array.from(document.querySelectorAll('.permission-checkbox[data-group="' + groupName + '"][data-available="true"]'));
-                    const selected = groupCheckboxes.filter(x => x.checked).length;
-                    el.textContent = selected;
-                });
-            }
-
-            function setAllCheckboxes(state) {
-                allCheckboxes().forEach(cb => cb.checked = state);
-                updateSelectedCount();
-            }
-
-            document.getElementById('btnCheckAll')?.addEventListener('click', function () {
-                setAllCheckboxes(true);
-            });
-
-            document.getElementById('btnUncheckAll')?.addEventListener('click', function () {
-                setAllCheckboxes(false);
-            });
-
-            document.getElementById('btnExpandAll')?.addEventListener('click', function () {
-                document.querySelectorAll('.accordion-collapse').forEach(el => {
-                    el.classList.add('show');
-                });
-            });
-
-            document.getElementById('btnCollapseAll')?.addEventListener('click', function () {
-                document.querySelectorAll('.accordion-collapse').forEach(el => {
-                    el.classList.remove('show');
-                });
-            });
-
-            document.querySelectorAll('.permission-checkbox').forEach(cb => {
-                cb.addEventListener('change', updateSelectedCount);
-            });
-
-            document.querySelectorAll('.btn-check-group').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const group = btn.getAttribute('data-group');
-                    document.querySelectorAll('.permission-checkbox[data-group="' + group + '"][data-available="true"]').forEach(cb => {
-                        cb.checked = true;
-                    });
-                    updateSelectedCount();
-                });
-            });
-
-            document.querySelectorAll('.btn-uncheck-group').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const group = btn.getAttribute('data-group');
-                    document.querySelectorAll('.permission-checkbox[data-group="' + group + '"][data-available="true"]').forEach(cb => {
-                        cb.checked = false;
-                    });
-                    updateSelectedCount();
-                });
-            });
-
-            updateSelectedCount();
-        })();
-    </script>
+@section PageScripts {
+    <script src="~/Admin/js/role-permissions.js" asp-append-version="true"></script>
 }

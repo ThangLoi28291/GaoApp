@@ -13,6 +13,8 @@ using GaoApp.Infrastructure.Repositories.Invoices;
 using GaoApp.Infrastructure.Tenant;
 using GaoApp.Tests.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using System.Text.Json;
 
 namespace GaoApp.Tests.Invoices;
 
@@ -587,6 +589,198 @@ public sealed class InvoiceInputStockRepositoryTests
         balance.Held.Should().Be(4m);
         balance.Available.Should().Be(92m);
         rows.Should().NotContain(x => x.InvoiceHeadId == 303);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Manager_confirmation_counts_all_posted_goods_once_when_evidence_is_current(bool accepted)
+    {
+        await using var db = CreateContext();
+        var data = await SeedManagerConfirmedReceiptAsync(db, accepted);
+
+        var rows = await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1);
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, x => Assert.StartsWith("reviewed-receipt-", x.Key));
+        Assert.Equal(60m, Assert.Single(rows, x => x.ProductVariantId == data.VariantId).Change);
+        var gift = Assert.Single(rows, x => x.ProductVariantId == 32);
+        Assert.Equal(8m, gift.Change);
+        Assert.Equal(3m, gift.UnitCost);
+        Assert.Equal(24m, gift.TotalCost);
+        Assert.Equal(68m, rows.Sum(x => x.Change));
+        Assert.True((await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId)).IsSufficient);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Manager_confirmation_changed_evidence_falls_back_to_xml_until_confirmed_again(bool accepted)
+    {
+        await using var db = CreateContext();
+        var data = await SeedManagerConfirmedReceiptAsync(db, accepted);
+        var reconciliation = await db.StockDocumentInputInvoiceReconciliations.SingleAsync();
+        reconciliation.EvidenceFingerprint = "evidence-2";
+        await db.SaveChangesAsync();
+
+        var rows = await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1);
+        var xml = Assert.Single(rows);
+        Assert.StartsWith("xml-", xml.Key);
+        Assert.Equal(40m, xml.Change);
+        var availability = await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId);
+        Assert.False(availability.IsSufficient);
+        Assert.Equal(40m, Assert.Single(availability.Lines).EligibleInboundBaseQuantity);
+        Assert.Equal(10m, Assert.Single(availability.Lines).ShortageBaseQuantity);
+
+        await AddManagerDecisionAsync(db, accepted);
+        rows = await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1);
+        Assert.Equal(68m, rows.Sum(x => x.Change));
+        Assert.True((await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId)).IsSufficient);
+        Assert.Equal(2, await db.InventoryTransactions.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(false, PurchaseReceiptAuditEventType.InputInvoiceLinked)]
+    [InlineData(false, PurchaseReceiptAuditEventType.InputInvoiceUnlinked)]
+    [InlineData(false, PurchaseReceiptAuditEventType.InputInvoiceRelinked)]
+    [InlineData(true, PurchaseReceiptAuditEventType.InputInvoiceReconciliationAcceptanceInvalidated)]
+    [InlineData(true, PurchaseReceiptAuditEventType.InputInvoiceRelinked)]
+    public async Task Manager_confirmation_later_invalidation_removes_whole_receipt_credit_even_from_cache(
+        bool accepted, PurchaseReceiptAuditEventType eventType)
+    {
+        await using var db = CreateContext();
+        await SeedManagerConfirmedReceiptAsync(db, accepted);
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var repository = new InvoiceInputStockReadRepository(db, cache);
+        Assert.Equal(68m, (await repository.GetMovementsAsync(1)).Sum(x => x.Change));
+        db.PurchaseReceiptAuditEvents.Add(new()
+        {
+            StoreId = 1, StockDocumentId = 101, EventType = eventType,
+            ActorUserId = 1, IsSuccess = true, OccurredAtUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var rows = await repository.GetMovementsAsync(1);
+        Assert.Equal(40m, Assert.Single(rows).Change);
+        Assert.StartsWith("xml-", Assert.Single(rows).Key);
+        Assert.Equal(68m, await db.InventoryTransactions.SumAsync(x => x.QuantityChange));
+    }
+
+    [Theory]
+    [InlineData(false, "broken")]
+    [InlineData(false, "[]")]
+    [InlineData(false, "{\"MapId\":9999,\"EvidenceFingerprint\":\"evidence-1\"}")]
+    [InlineData(false, "{\"MapId\":2101,\"EvidenceFingerprint\":\"old-evidence\"}")]
+    [InlineData(true, "broken")]
+    [InlineData(true, "[]")]
+    [InlineData(true, "{\"InputInvoiceHeadId\":9999,\"EvidenceFingerprint\":\"evidence-1\"}")]
+    [InlineData(true, "{\"InputInvoiceHeadId\":1101,\"EvidenceFingerprint\":\"old-evidence\"}")]
+    public async Task Manager_confirmation_invalid_or_wrong_invoice_evidence_cannot_credit_whole_receipt(
+        bool accepted, string evidenceJson)
+    {
+        await using var db = CreateContext();
+        await SeedManagerConfirmedReceiptAsync(db, accepted, evidenceJson);
+
+        var rows = await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1);
+        Assert.Equal(40m, Assert.Single(rows).Change);
+        Assert.StartsWith("xml-", Assert.Single(rows).Key);
+    }
+
+    [Theory]
+    [InlineData("receipt-unconfirmed")]
+    [InlineData("receipt-deleted")]
+    [InlineData("link-deleted")]
+    [InlineData("xml-deleted")]
+    [InlineData("reconciliation-deleted")]
+    public async Task Manager_confirmation_requires_current_confirmed_receipt_and_active_invoice_context(string scenario)
+    {
+        await using var db = CreateContext();
+        await SeedManagerConfirmedReceiptAsync(db, accepted: false);
+        switch (scenario)
+        {
+            case "receipt-unconfirmed": db.StockDocuments.Single().Status = StockDocumentStatus.PendingApproval; break;
+            case "receipt-deleted": db.StockDocuments.Single().IsDeleted = true; break;
+            case "link-deleted": db.StockDocumentInputInvoiceMaps.Single().IsDeleted = true; break;
+            case "xml-deleted": db.InputInvoiceHeads.Single().IsDeleted = true; break;
+            case "reconciliation-deleted": db.StockDocumentInputInvoiceReconciliations.Single().IsDeleted = true; break;
+        }
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1));
+        Assert.Equal(2, await db.InventoryTransactions.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Manager_confirmation_acceptance_requires_current_accepted_state_and_fingerprint(bool clearFingerprint)
+    {
+        await using var db = CreateContext();
+        await SeedManagerConfirmedReceiptAsync(db, accepted: true);
+        var reconciliation = await db.StockDocumentInputInvoiceReconciliations.SingleAsync();
+        if (clearFingerprint) reconciliation.AcceptedEvidenceFingerprint = null;
+        else reconciliation.OverallState = InputInvoiceReconciliationState.Mismatch;
+        await db.SaveChangesAsync();
+
+        Assert.Equal(40m, Assert.Single(await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1)).Change);
+    }
+
+    private static async Task<SeededData> SeedManagerConfirmedReceiptAsync(
+        InMemoryAppDbContext db, bool accepted, string? evidenceJson = null)
+    {
+        var data = await SeedBaseAsync(db, requiredQuantity: 50m);
+        await AddReceiptAsync(db, 101, 201, data.VariantId, 60m, withInputInvoice: true);
+        db.ProductVariants.Add(new()
+        {
+            Id = 32, StoreId = 1, ProductId = 1, Sku = "GIFT-32",
+            ProductVariantName = "Quà chưa ghép XML", IsActive = true, RowVersion = new byte[8]
+        });
+        db.StockDocumentLines.Add(new()
+        {
+            Id = 202, StockDocumentId = 101, LineNo = 2, ProductVariantId = 32,
+            Quantity = 8m, BaseQuantity = 8m, Factor = 1m,
+            ProductNameSnapshot = "Quà chưa ghép XML", RowVersion = new byte[8]
+        });
+        db.InventoryTransactions.AddRange(
+            new InventoryTransaction
+            {
+                Id = 1001, StoreId = 1, WarehouseId = 11, ProductVariantId = data.VariantId,
+                ReferenceType = InventoryReferenceType.StockDocument, ReferenceId = "101", ReferenceLineId = 201,
+                TransactionType = InventoryTransactionType.PurchaseReceipt, QuantityChange = 60m,
+                UnitCostSnapshot = 10m, TotalCost = 600m, RowVersion = new byte[8]
+            },
+            new InventoryTransaction
+            {
+                Id = 1002, StoreId = 1, WarehouseId = 11, ProductVariantId = 32,
+                ReferenceType = InventoryReferenceType.StockDocument, ReferenceId = "101", ReferenceLineId = 202,
+                TransactionType = InventoryTransactionType.PurchaseReceipt, QuantityChange = 8m,
+                UnitCostSnapshot = 3m, TotalCost = 24m, RowVersion = new byte[8]
+            });
+        var evidence = await db.StockDocumentInputInvoiceDetailReconciliations.SingleAsync();
+        evidence.XmlQuantity = 40m;
+        evidence.DerivedBaseQuantity = 40m;
+        var reconciliation = await db.StockDocumentInputInvoiceReconciliations.SingleAsync();
+        reconciliation.EvidenceFingerprint = "evidence-1";
+        await AddManagerDecisionAsync(db, accepted, evidenceJson);
+        return data;
+    }
+
+    private static async Task AddManagerDecisionAsync(InMemoryAppDbContext db, bool accepted, string? evidenceJson = null)
+    {
+        var reconciliation = await db.StockDocumentInputInvoiceReconciliations.SingleAsync();
+        reconciliation.OverallState = accepted
+            ? InputInvoiceReconciliationState.AcceptedMismatch : InputInvoiceReconciliationState.Incomplete;
+        reconciliation.AcceptedEvidenceFingerprint = accepted ? reconciliation.EvidenceFingerprint : null;
+        db.PurchaseReceiptAuditEvents.Add(new()
+        {
+            StoreId = 1, StockDocumentId = 101, ActorUserId = 1, IsSuccess = true,
+            EventType = accepted ? PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted
+                : PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed,
+            OccurredAtUtc = DateTime.UtcNow,
+            NewValuesJson = evidenceJson ?? (accepted
+                ? JsonSerializer.Serialize(new { reconciliation.InputInvoiceHeadId, reconciliation.EvidenceFingerprint })
+                : JsonSerializer.Serialize(new { MapId = reconciliation.StockDocumentInputInvoiceMapId, reconciliation.EvidenceFingerprint }))
+        });
+        await db.SaveChangesAsync();
     }
 
     private static async Task<SeededData> SeedBaseAsync(

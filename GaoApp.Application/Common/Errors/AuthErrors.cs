@@ -8,6 +8,12 @@ namespace GaoApp.Application.Common.Errors;
 /// </summary>
 public static class AuthErrors
 {
+    public static readonly Error TerminalManagementDenied =
+        new("Auth.TerminalManagementDenied", "Chỉ admin của cửa hàng được quản lý máy POS.");
+
+    public static readonly Error InvalidPairingKey =
+        new("Auth.InvalidPairingKey", "Khóa máy không hợp lệ, đã thu hồi hoặc máy POS đã ngừng hoạt động.");
+
     public static readonly Error InvalidCredentials =
         new("Auth.InvalidCredentials", "Tên đăng nhập hoặc mật khẩu không đúng.");
 

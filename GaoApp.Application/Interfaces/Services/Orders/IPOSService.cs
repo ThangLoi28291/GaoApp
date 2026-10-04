@@ -36,6 +36,8 @@ public interface IPOSService
 
     Task<OrderDraftDto> RemoveLineAsync(int lineId, CancellationToken ct = default);
 
+    Task<OrderDraftDto> ClearCurrentCartLinesAsync(CancellationToken ct = default);
+
     Task<OrderDraftDto> AddPaymentAsync(int orderId, UpsertPaymentRequest dto, CancellationToken ct = default);
 
     Task<OrderDraftDto> RemovePaymentAsync(int paymentId, CancellationToken ct = default);
@@ -104,7 +106,8 @@ public interface IPOSService
      PaymentMethod refundMethod,
      string? refundReferenceCode = null,
      string? refundProvider = null,
-     CancellationToken ct = default);
+     CancellationToken ct = default,
+     bool allowPendingRestock = false);
 
     Task<POSShiftDashboardDto> GetCurrentShiftDashboardAsync(CancellationToken ct = default);
     Task<OrderDraftDto> ApplyRewardVouchersToCurrentCartAsync(

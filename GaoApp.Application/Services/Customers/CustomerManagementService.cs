@@ -65,6 +65,7 @@ public sealed class CustomerManagementService : ICustomerManagementService
             Note = entity.Note,
             PriceTier = entity.PriceTier,
             HaveDebt = entity.HaveDebt,
+            AskBeforePrintingReceipt = entity.AskBeforePrintingReceipt,
             IsActive = entity.IsActive,
             RowVersion = entity.RowVersion is { Length: > 0 }
                 ? Convert.ToBase64String(entity.RowVersion)
@@ -94,6 +95,7 @@ public sealed class CustomerManagementService : ICustomerManagementService
             Note = dto.Note,
             PriceTier = dto.PriceTier,
             HaveDebt = dto.HaveDebt,
+            AskBeforePrintingReceipt = dto.AskBeforePrintingReceipt,
             IsActive = dto.IsActive
         };
 
@@ -147,6 +149,7 @@ public sealed class CustomerManagementService : ICustomerManagementService
         entity.Note = dto.Note;
         entity.PriceTier = dto.PriceTier;
         entity.HaveDebt = dto.HaveDebt;
+        entity.AskBeforePrintingReceipt = dto.AskBeforePrintingReceipt;
         entity.IsActive = dto.IsActive;
 
         return await SaveAsync(storeId, dto.Id, ct);

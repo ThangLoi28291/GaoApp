@@ -2,6 +2,7 @@ using FluentAssertions;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
@@ -838,6 +839,192 @@ public sealed class InputInvoiceItemCatalogMappingServiceTests
         (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync(x =>
             x.EventType == PurchaseReceiptAuditEventType.InputInvoiceItemMappingAutoApplied))
             .Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pricing_mapping_teaches_explicit_xml_unit_alias_without_pairing_receipt_lines()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        var detail = await fixture.Context.InputInvoiceDetails.SingleAsync();
+        detail.UnitName = "TH";
+        detail.NormalizedUnitName = "TH";
+        fixture.Line.ProductUnitConversionId = 60;
+        fixture.Line.UnitId = 40;
+        fixture.Line.UnitNameSnapshot = "Lon";
+        fixture.Line.Factor = 1m;
+        fixture.Line.Quantity = fixture.Line.BaseQuantity = 120m;
+        AddReceiptLine(fixture, 102, 2, 60, 40, "Lon", 1m, 10m);
+        var lineMap = await fixture.Context.StockDocumentLineInputInvoiceMaps
+            .SingleAsync(x => x.StockDocumentLineId == 101);
+        lineMap.UseInputInvoice = false;
+        lineMap.MatchStatus = InputInvoiceMatchStatus.Excluded;
+        lineMap.ExclusionReason = "Giữ nguyên quyết định cũ";
+        await fixture.Context.SaveChangesAsync();
+        var receiptBefore = fixture.Context.Entry(fixture.Receipt).CurrentValues.Clone();
+        var lineBefore = fixture.Context.Entry(fixture.Line).CurrentValues.Clone();
+        var associationBefore = fixture.Context.Entry(lineMap).CurrentValues.Clone();
+
+        var result = await fixture.Service.ConfirmForPricingAsync(1, 100, request);
+
+        result.MappingId.Should().BePositive();
+        result.State.Should().Be(InputInvoiceItemCatalogResolutionState.Confirmed);
+        result.ConfirmedFactor.Should().Be(24m);
+        result.ConfirmedUnitName.Should().Be("Thùng 24");
+        var mapping = await fixture.Context.InputInvoiceItemCatalogMaps.SingleAsync();
+        mapping.NormalizedSupplierUnitName.Should().Be("TH");
+        var audit = await fixture.Context.PurchaseReceiptAuditEvents.SingleAsync();
+        audit.EventType.Should().Be(PurchaseReceiptAuditEventType.InputInvoiceItemMappingConfirmed);
+        audit.StockDocumentLineId.Should().BeNull();
+        audit.ActorUserId.Should().Be(7);
+        foreach (var property in receiptBefore.Properties)
+            fixture.Context.Entry(fixture.Receipt).Property(property.Name).CurrentValue
+                .Should().BeEquivalentTo(receiptBefore[property]);
+        foreach (var property in lineBefore.Properties)
+            fixture.Context.Entry(fixture.Line).Property(property.Name).CurrentValue
+                .Should().BeEquivalentTo(lineBefore[property]);
+        foreach (var property in associationBefore.Properties)
+            fixture.Context.Entry(lineMap).Property(property.Name).CurrentValue
+                .Should().BeEquivalentTo(associationBefore[property]);
+        (await fixture.Context.StockDocumentInputInvoiceReconciliations.CountAsync()).Should().Be(0);
+        (await fixture.Context.InventoryTransactions.CountAsync()).Should().Be(0);
+        (await fixture.Context.PurchasePayables.CountAsync()).Should().Be(0);
+        (await fixture.Service.ResolveForReceiptAsync(1, 100))[200].State
+            .Should().Be(InputInvoiceItemCatalogResolutionState.Confirmed);
+    }
+
+    [Fact]
+    public async Task Pricing_name_only_mapping_is_remembered_and_retries_without_extra_audit()
+    {
+        await using var fixture = await Fixture.CreateAsync(code: null);
+        var request = await PricingRequestAsync(fixture);
+
+        var first = await fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        var second = await fixture.Service.ConfirmForPricingAsync(1, 100, request);
+
+        second.MappingId.Should().Be(first.MappingId);
+        (await fixture.Context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(1);
+        (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync()).Should().Be(1);
+        var suggestion = (await fixture.Service.ResolveForReceiptAsync(1, 100))[200];
+        suggestion.State.Should().Be(InputInvoiceItemCatalogResolutionState.NeedsConfirmation);
+        suggestion.ReasonCode.Should().Be("NameUnitSuggestionRequiresConfirmation");
+        suggestion.ProductVariantId.Should().Be(50);
+    }
+
+    [Theory]
+    [InlineData(StockDocumentStatus.Draft)]
+    [InlineData(StockDocumentStatus.Rejected)]
+    [InlineData(StockDocumentStatus.Confirmed)]
+    public async Task Pricing_mapping_only_accepts_pending_approval(StockDocumentStatus status)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        fixture.Receipt.Status = status;
+        await fixture.Context.SaveChangesAsync();
+
+        var action = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await action.Should().ThrowAsync<BusinessRuleException>();
+        (await fixture.Context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+        (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync()).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-base64")]
+    [InlineData("AgMEBQYHCAk=")]
+    public async Task Pricing_mapping_rejects_missing_invalid_or_stale_receipt_version(string version)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        request.ReceiptRowVersion = version;
+
+        var action = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await action.Should().ThrowAsync<PurchaseReceiptPricingConflictException>();
+        (await fixture.Context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+        (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pricing_mapping_rejects_relinked_invoice_foreign_detail_and_supplier_mismatch()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        request.InputInvoiceHeadId = 151;
+        var relinked = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await relinked.Should().ThrowAsync<PurchaseReceiptPricingConflictException>();
+
+        request.InputInvoiceHeadId = 150;
+        request.InputInvoiceDetailId = 201;
+        var foreignDetail = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await foreignDetail.Should().ThrowAsync<BusinessRuleException>();
+
+        request.InputInvoiceDetailId = 200;
+        fixture.Invoice.ResolvedSupplierId = 11;
+        await fixture.Context.SaveChangesAsync();
+        var wrongSupplier = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await wrongSupplier.Should().ThrowAsync<BusinessRuleException>();
+        (await fixture.Context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+        (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pricing_mapping_rejects_unreceived_product_and_inactive_conversion()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        request.ProductVariantId = 51;
+        var absentSku = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await absentSku.Should().ThrowAsync<BusinessRuleException>()
+            .WithMessage("*hàng thực nhận*");
+
+        request.ProductVariantId = 50;
+        fixture.BoxConversion.IsActive = false;
+        await fixture.Context.SaveChangesAsync();
+        var inactive = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await inactive.Should().ThrowAsync<BusinessRuleException>();
+        request.ProductUnitConversionId = 999;
+        var nonexistent = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await nonexistent.Should().ThrowAsync<BusinessRuleException>();
+        (await fixture.Context.InputInvoiceItemCatalogMaps.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pricing_mapping_requires_current_mapping_version_to_change_remembered_conversion()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var request = await PricingRequestAsync(fixture);
+        await fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        var mapping = await fixture.Context.InputInvoiceItemCatalogMaps.SingleAsync();
+        mapping.RowVersion = [2, 3, 4, 5, 6, 7, 8, 9];
+        await fixture.Context.SaveChangesAsync();
+        request.ProductUnitConversionId = 60;
+        var missing = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await missing.Should().ThrowAsync<PurchaseReceiptPricingConflictException>();
+        request.MappingRowVersion = "AQIDBAUGBwg=";
+        var stale = () => fixture.Service.ConfirmForPricingAsync(1, 100, request);
+        await stale.Should().ThrowAsync<PurchaseReceiptPricingConflictException>();
+        mapping.ProductUnitConversionId.Should().Be(61);
+        request.MappingRowVersion = Convert.ToBase64String(mapping.RowVersion);
+
+        var changed = await fixture.Service.ConfirmForPricingAsync(1, 100, request);
+
+        changed.ProductUnitConversionId.Should().Be(60);
+        changed.ConfirmedFactor.Should().Be(1m);
+        (await fixture.Context.PurchaseReceiptAuditEvents.CountAsync()).Should().Be(2);
+    }
+
+    private static async Task<ConfirmInputInvoicePricingMappingRequest> PricingRequestAsync(Fixture fixture)
+    {
+        fixture.Receipt.RowVersion = [1, 2, 3, 4, 5, 6, 7, 8];
+        await fixture.Context.SaveChangesAsync();
+        return new()
+        {
+            ReceiptRowVersion = Convert.ToBase64String(fixture.Receipt.RowVersion),
+            InputInvoiceHeadId = 150,
+            InputInvoiceDetailId = 200,
+            ProductVariantId = 50,
+            ProductUnitConversionId = 61
+        };
     }
 
     private static ProductUnitConversion AddConversion(

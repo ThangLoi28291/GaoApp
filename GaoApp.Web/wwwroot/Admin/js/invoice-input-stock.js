@@ -5,7 +5,7 @@
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const num = value => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 4 });
     const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }); };
-    const labels = { increase: 'Nhập từ XML', decrease: 'Đã phát hành', hold: 'Đang giữ' };
+    const labels = { increase: 'Nhập sau xác nhận', decrease: 'Đã phát hành', hold: 'Đang giữ' };
     const params = new URLSearchParams(location.search);
     let view = params.get('view') === 'ledger' ? 'ledger' : 'balance', page = Math.max(1, Number(params.get('page')) || 1), totalPages = 1, rows = [], controller, sequence = 0, returnFocus;
     let productId = Number(params.get('productVariantId')) || null;
@@ -25,7 +25,7 @@
         $('xsKind').value = kind; if ($('xsKind').selectedIndex < 0) $('xsKind').value = '';
         $('xsHeading').textContent = view === 'ledger' ? 'Lịch sử tăng / giảm tồn XML' : 'Tồn XML theo sản phẩm';
         $('xsHint').textContent = view === 'ledger' ? 'Tồn trước → sau tính theo toàn bộ lịch sử. Nhấp đúp để xem chứng từ.' : 'Nhấp đúp một dòng để xem nhanh và truy vết chứng từ.';
-        const columns = view === 'ledger' ? ['Ngày ghi nhận', 'Sản phẩm', 'Kho', 'Biến động', 'Tồn trước → sau', 'Nguồn / chứng từ', '']
+        const columns = view === 'ledger' ? ['Ngày ghi nhận', 'Sản phẩm', 'Kho', 'Biến động', 'Giá vốn', 'Tồn trước → sau', 'Nguồn / chứng từ', '']
             : ['Sản phẩm', 'Kho', 'Tồn đầu', 'Nhập / tăng', 'Xuất / giảm', 'Đang giữ', 'Còn khả dụng', ''];
         $('xsHead').innerHTML = '<tr>' + columns.map(x => `<th scope="col">${esc(x)}</th>`).join('') + '</tr>';
     }
@@ -44,10 +44,11 @@
                     + cell('Còn khả dụng', `<strong>${num(row.available)}</strong><small class="xs-sub">Tồn XML: ${num(row.remaining)}</small>`, `num ${row.available < 0 ? 'xs-bad' : 'xs-good'}`)
                 : cell('Ngày ghi nhận', esc(date(row.dateUtc))) + cell('Sản phẩm', product(row), 'product') + cell('Kho', warehouse(row))
                     + cell('Biến động', `<strong>${row.kind === 'hold' ? 'Giữ ' + num(row.held) : (row.change > 0 ? '+' : '') + num(row.change)}</strong><small class="xs-sub">${badge(row)}</small>`, row.kind === 'hold' ? 'xs-warn' : row.change > 0 ? 'xs-good' : 'xs-bad')
+                    + cell('Giá vốn', row.unitCost == null ? '—' : `${num(row.unitCost)} đ/${esc(row.baseUnit || 'đơn vị')}${row.isProvisionalCost ? '<small class="xs-sub">Tạm tính</small>' : ''}`, 'num')
                     + cell('Tồn trước → sau', `${num(row.before)} <span aria-hidden="true">→</span> <strong class="${row.after < 0 ? 'xs-bad' : ''}">${num(row.after)}</strong>`, 'num')
                     + cell('Nguồn / chứng từ', `${esc(row.sourceCode)}${row.xmlNumber ? `<small class="xs-sub">XML: ${esc(row.xmlNumber)}</small>` : ''}`);
             return `<tr data-index="${index}">${content}${action}</tr>`;
-        }).join('') : `<tr><td colspan="${view === 'balance' ? 8 : 7}" class="xs-empty"><i class="bx bx-file-find" aria-hidden="true"></i>Chưa có dữ liệu phù hợp.<small class="xs-sub">Chỉ các dòng nhập đã duyệt và map đủ chi tiết XML mới được ghi tăng.</small></td></tr>`;
+        }).join('') : `<tr><td colspan="${view === 'balance' ? 8 : 8}" class="xs-empty"><i class="bx bx-file-find" aria-hidden="true"></i>Chưa có dữ liệu phù hợp.<small class="xs-sub">Các dòng nhập đã được quản lý xác nhận sẽ ghi tăng theo đơn vị gốc; XML chỉ hỗ trợ đối chiếu.</small></td></tr>`;
     }
     async function load(reset = false) {
         if (view === 'ledger' && $('xsFrom').value && $('xsTo').value && $('xsFrom').value > $('xsTo').value) { $('xsDateError').hidden = false; return; }
@@ -60,7 +61,7 @@
         if (productId) query.set('productVariantId', String(productId));
         $('xsClearProduct').hidden = !productId; $('xsResults').setAttribute('aria-busy', 'true');
         $('xsPrevious').disabled = true; $('xsNext').disabled = true;
-        rows = []; $('xsBody').innerHTML = `<tr><td colspan="${view === 'balance' ? 8 : 7}" class="xs-empty">Đang tải dữ liệu…</td></tr>`;
+        rows = []; $('xsBody').innerHTML = `<tr><td colspan="${view === 'balance' ? 8 : 8}" class="xs-empty">Đang tải dữ liệu…</td></tr>`;
         const timeout = setTimeout(() => active.abort(), 20000);
         try {
             const response = await fetch('/admin/invoice-input-stock/data?' + query, { signal: active.signal, headers: { Accept: 'application/json' } });
@@ -83,7 +84,7 @@
             if (ticket !== sequence) return;
             ['xsProducts', 'xsIn', 'xsOut', 'xsHold'].forEach(id => $(id).textContent = '—');
             $('xsCount').textContent = 'Chưa tải được'; $('xsSummary').textContent = ''; $('xsNegative').hidden = true;
-            $('xsBody').innerHTML = `<tr><td colspan="${view === 'balance' ? 8 : 7}" class="xs-empty">${esc(error.name === 'AbortError' ? 'Máy chủ phản hồi quá lâu.' : error.message)}<br><button type="button" data-retry class="btn btn-label-primary mt-3">Thử lại</button></td></tr>`;
+            $('xsBody').innerHTML = `<tr><td colspan="${view === 'balance' ? 8 : 8}" class="xs-empty">${esc(error.name === 'AbortError' ? 'Máy chủ phản hồi quá lâu.' : error.message)}<br><button type="button" data-retry class="btn btn-label-primary mt-3">Thử lại</button></td></tr>`;
         } finally { clearTimeout(timeout); if (ticket === sequence) $('xsResults').setAttribute('aria-busy', 'false'); }
     }
     function preview(index, focus) {
@@ -91,7 +92,7 @@
         returnFocus = focus; $('xsDialogTitle').textContent = row.productName;
         const pairs = [['Mã sản phẩm', row.code || '—'], ['Kho', row.warehouseName], ['Đơn vị gốc', row.baseUnit], ['Chủ thể', row.legalEntityName || '—']];
         if (view === 'balance') pairs.push(['Tồn đầu chuyển sang', num(row.opening)], ['Nhập / tăng', num(row.received)], ['Xuất / giảm', num(row.issued)], ['Tồn XML', num(row.remaining)], ['Đang giữ', num(row.held)], ['Còn khả dụng', num(row.available)]);
-        else pairs.push(['Ngày ghi nhận', date(row.dateUtc)], ['Nghiệp vụ', row.operationLabel || labels[row.kind]], ['Chứng từ', row.sourceCode], ['Biến động', row.kind === 'hold' ? 'Giữ ' + num(row.held) : num(row.change)], ['Tồn trước → sau', `${num(row.before)} → ${num(row.after)}`]);
+        else pairs.push(['Ngày ghi nhận', date(row.dateUtc)], ['Nghiệp vụ', row.operationLabel || labels[row.kind]], ['Chứng từ', row.sourceCode], ['Biến động', row.kind === 'hold' ? 'Giữ ' + num(row.held) : num(row.change)], ['Giá vốn', row.unitCost == null ? '—' : `${num(row.unitCost)} đ/${row.baseUnit || 'đơn vị'}`], ['Tồn trước → sau', `${num(row.before)} → ${num(row.after)}`]);
         if (view === 'ledger') {
             if (row.legacySourceKey) {
                 pairs.push(['OrderID (GaoStore)', row.legacyOrderId || 'Không áp dụng'],
@@ -116,6 +117,7 @@
     $('xsDialog').addEventListener('click', event => { if (event.detail > 1 || event.target !== $('xsDialog')) return; const r = $('xsDialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('xsDialog').close(); });
     $('xsFilters').onsubmit = event => { event.preventDefault(); load(true); };
     $('xmlReload').onclick = () => load();
+    window.addEventListener('invoice-stock-updated', () => load());
     $('xsReset').onclick = () => { $('xsFilters').reset(); productId = null; setView(view); load(true); };
     $('xsClearProduct').onclick = () => { productId = null; load(true); };
     $('xsPrevious').onclick = () => { if (page > 1) { page--; load(); } }; $('xsNext').onclick = () => { if (page < totalPages) { page++; load(); } };

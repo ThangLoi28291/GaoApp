@@ -19,7 +19,7 @@ public static class PermissionCatalog
             P(PermissionCodes.CustomerDebt.Sell, "Chốt đơn bán công nợ", "Customers", "customer", "debt", "sell"),
             P(PermissionCodes.CustomerDebt.Collect, "Thu công nợ khách hàng", "Customers", "customer", "debt", "collect"),
             P(PermissionCodes.Admin.DashboardView, "Xem trang tổng quan quản trị", "Admin", "admin", "dashboard", "view"),
-            P(PermissionCodes.System.ReceiptTemplate.Manage, "Quản lý mẫu hóa đơn POS", "System", "system", "receipttemplate", "manage"),
+            P(PermissionCodes.System.ReceiptTemplate.Manage, "Quản lý mẫu hóa đơn POS (chỉ quản trị viên)", "System", "system", "receipttemplate", "manage"),
             P(PermissionCodes.System.ProductLabel.Manage, "Quản lý mẫu tem và máy in tem", "System", "system", "productlabel", "manage"),
             P(PermissionCodes.System.ProductLabel.Print, "In tem sản phẩm và quản lý phiếu in", "System", "system", "productlabel", "print"),
             P(PermissionCodes.Catalog.Customer.ManageRewards, "Điều chỉnh tích điểm và quản lý voucher", "Catalog", "catalog", "customer", "managerewards"),

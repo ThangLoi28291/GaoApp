@@ -57,6 +57,6 @@ public sealed class DeploymentStartupSafetyTests
         Assert.Equal(0, await db.AdminMenuItems.IgnoreQueryFilters().CountAsync());
         Assert.Equal(0, await db.Users.IgnoreQueryFilters().CountAsync());
         Assert.Equal(2, await db.Stores.IgnoreQueryFilters().CountAsync());
-        Assert.Equal(43, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(60, (await db.Database.GetAppliedMigrationsAsync()).Count());
     }
 }

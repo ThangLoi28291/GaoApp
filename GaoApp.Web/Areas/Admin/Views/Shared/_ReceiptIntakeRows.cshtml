@@ -5,6 +5,10 @@
     <tr class="ri-received-row" data-intake-item-id="@item.Id" data-receiving-key="intake-@item.Id"
         data-receiving-quantity="@item.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)">
         <td>@(++index)</td>
+        @if (Model.HasImageColumn)
+        {
+            <td><span class="sd-commercial-image-empty" title="Chưa có ảnh"><i class="bx bx-image" aria-hidden="true"></i></span></td>
+        }
         <td>
             <strong>@item.Name</strong>
             <span class="badge bg-label-info ms-1">@(item.ProposedProductVariantId.HasValue ? "Quy cách mới" : "Sản phẩm mới")</span>

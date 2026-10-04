@@ -65,6 +65,18 @@ public static class WebOptionsRegistration
 
         services.AddOptions<InputInvoiceLibraryOptions>()
             .Bind(configuration.GetSection(InputInvoiceLibraryOptions.SectionName))
+            .PostConfigure<IHostEnvironment, IOptions<StorageOptions>>((options, environment, storage) =>
+            {
+                if (string.IsNullOrWhiteSpace(options.RootPath) ||
+                    string.Equals(options.RootPath.Trim(), "XML", StringComparison.OrdinalIgnoreCase))
+                {
+                    var uploadRoot = storage.Value.UploadRoot;
+                    if (string.IsNullOrWhiteSpace(uploadRoot)) return;
+                    options.RootPath = Path.GetFullPath(Path.Combine(
+                        Path.IsPathRooted(uploadRoot) ? uploadRoot : Path.Combine(environment.ContentRootPath, uploadRoot), "XML"));
+                    options.CreateIfMissing = storage.Value.CreateIfMissing;
+                }
+            })
             .Validate(
                 x => !x.Enabled || !string.IsNullOrWhiteSpace(x.RootPath),
                 "InputInvoiceLibrary:RootPath là bắt buộc khi thư viện hóa đơn được bật.")

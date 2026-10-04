@@ -1,5 +1,6 @@
 {
-  "Status": "REVIEWED_TEST_RESET_PLAN_REQUIRES_FRESH_PREVIEW_BACKUP_AND_DRYRUN",
+  "Status": "SCHEMA_20260928_TEST_RESET_REQUIRES_FRESH_PREVIEW_BACKUP_AND_DRYRUN",
+  "SupportedLatestMigration": "20260928200000_AddStoreReceiptDefault",
   "Tables": [
     {
       "Table": "__EFMigrationsHistory",
@@ -840,6 +841,41 @@
       "TestRows": 2,
       "Reason": "Kho 1 và liên kết chủ thể.",
       "ReceiveStep": "—"
+    },
+    {
+      "Table": "AutoInvoiceSettings",
+      "Action": "KEEP",
+      "TestRows": 1,
+      "Reason": "Giữ nguyên cấu hình. Phải tạm ngưng phát hành (IsEnabled=0) trước PREVIEW/backup/dọn/chép; gói không tự bật lại.",
+      "ReceiveStep": "Không chép cấu hình tự động từ GaoStore"
+    },
+    {
+      "Table": "AutoInvoiceOperations",
+      "Action": "CLEAR",
+      "TestRows": 97,
+      "Reason": "Các lượt phát hành TEST tham chiếu hóa đơn TEST; dọn cùng nghiệp vụ sau khi dừng worker.",
+      "ReceiveStep": "Để rỗng, không phát hành trong migration"
+    },
+    {
+      "Table": "AutoInvoiceOperationSources",
+      "Action": "CLEAR",
+      "TestRows": 195,
+      "Reason": "Liên kết nhóm/hóa đơn/đơn hàng TEST; dọn cùng AutoInvoiceOperations.",
+      "ReceiveStep": "Để rỗng, không tự gộp hóa đơn lịch sử"
+    },
+    {
+      "Table": "AutoInvoiceWorkerStates",
+      "Action": "CLEAR",
+      "TestRows": 1,
+      "Reason": "Trạng thái chạy, heartbeat và ID công việc TEST. Worker tạo lại khi được vận hành sau chuyển.",
+      "ReceiveStep": "Để rỗng; phải dừng dịch vụ worker trước khi dọn"
+    },
+    {
+      "Table": "InvoiceBuyerSelfServiceRequests",
+      "Action": "CLEAR",
+      "TestRows": 2,
+      "Reason": "Yêu cầu/token của đơn hàng TEST. Không giữ token để liên kết nhầm đơn mới có cùng ID.",
+      "ReceiveStep": "Để rỗng, không tạo token cho đơn lịch sử"
     },
     {
       "Table": "LegacyReturnArchives",

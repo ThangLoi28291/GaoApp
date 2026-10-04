@@ -73,6 +73,7 @@ try
     builder.Services.RemoveAll<IReceiptIntakeCatalog>();
     builder.Services.RemoveAll<ICustomerDepositService>();
     builder.Services.RemoveAll<ICustomerReceivableService>();
+    builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Customers.ICustomerProfileReader>();
     builder.Services.AddSingleton<
         IInputInvoiceXmlDocumentParser,
         InputInvoiceXmlDocumentParser>();

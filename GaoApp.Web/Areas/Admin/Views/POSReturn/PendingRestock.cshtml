@@ -1,0 +1,46 @@
+@model List<GaoApp.Application.DTOs.Returns.PendingReturnRestockDto>
+@using System.Globalization
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = "Hàng trả chờ nhập kho";
+    var vi = CultureInfo.GetCultureInfo("vi-VN");
+}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h3 class="mb-2">Hàng trả chờ nhập kho <span id="pendingRestockCount" class="badge bg-warning text-dark">@Model.Count phiếu</span></h3>
+        <p class="text-muted mb-0">Đã nhận hàng và ghi nhận tiền hoàn. Nhập kho sau khi xác định giá vốn, không hoàn tiền lần nữa.</p>
+    </div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="/admin/pos-shift">Ca POS</a><a class="btn btn-outline-primary" href="/admin/pos/returns/pending-restock">Tải lại</a></div>
+</div>
+@Html.AntiForgeryToken()
+<div id="pendingRestockMessage" class="alert" role="status" hidden></div>
+@if (Model.Count == 0)
+{
+    <div class="card p-4 text-center text-muted">Không có hàng trả đang chờ nhập kho.</div>
+}
+@foreach (var item in Model)
+{
+    <div class="card mb-3 p-3 p-md-4" data-return-id="@item.ReturnId">
+        <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
+            <div>
+                <a class="fw-bold" href="/admin/pos/order-detail/@item.OrderId">@item.OrderNumber</a>
+                <div class="small text-muted">@item.ReturnNumber · Nhận trả @item.ReceivedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                <div class="mt-1">Đã hoàn: <strong>@item.RefundedAmount.ToString("N0", vi) đ</strong></div>
+            </div>
+            <div><button class="btn btn-primary js-complete-restock" type="button" data-return-id="@item.ReturnId" disabled="@(!item.CanComplete)">Hoàn tất nhập kho</button></div>
+        </div>
+        <div class="table-responsive"><table class="table mb-0">
+            <thead><tr><th>Hàng đã nhận</th><th>Kho nhập lại</th><th class="text-end" title="Số lượng theo đơn vị gốc">SL gốc</th><th>Giá vốn</th></tr></thead>
+            <tbody>
+            @foreach (var line in item.Items)
+            {
+                <tr><td>@line.ItemName</td><td>@line.WarehouseName</td><td class="text-end fw-semibold">@line.BaseQuantity.ToString("0.####", vi)</td>
+                    <td style="min-width:220px;max-width:440px">@if (line.BlockReason != null) {<span class="text-warning">@line.BlockReason</span>} else {<span class="text-success">Đã xác định</span>}</td></tr>
+            }
+            </tbody>
+        </table></div>
+    </div>
+}
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.pending.restock.page.js" asp-append-version="true"></script>
+}

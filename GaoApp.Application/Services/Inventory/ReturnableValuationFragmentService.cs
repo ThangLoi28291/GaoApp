@@ -15,6 +15,11 @@ public interface IReturnableValuationCostEvidence
     Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct);
 }
 
+public interface IPendingRestockCostEvidence
+{
+    Task<ReturnableValuationFragmentDto> GetReservedSourceAsync(int orderId, int orderLineId, int sourceId, CancellationToken ct);
+}
+
 /// <summary>
 /// Dựng danh sách source valuation fragments còn outstanding cho 1 order line.
 ///
@@ -35,17 +40,20 @@ public interface IReturnableValuationCostEvidence
 /// Tối ưu query có thể làm sau.
 /// </summary>
 public class ReturnableValuationFragmentService : IReturnableValuationFragmentService,
-    IReturnableValuationCostEvidence
+    IReturnableValuationCostEvidence, IReturnableValuationReadiness, IPendingRestockCostEvidence
 {
     private readonly IInventoryValuationEntryRepository _valuationRepository;
     private readonly IOrderLegalEntityAllocationReversalRepository _reversalRepository;
+    private readonly ISalesReturnRestockRepository? _pending;
 
     public ReturnableValuationFragmentService(
         IInventoryValuationEntryRepository valuationRepository,
-        IOrderLegalEntityAllocationReversalRepository reversalRepository)
+        IOrderLegalEntityAllocationReversalRepository reversalRepository,
+        ISalesReturnRestockRepository? pending = null)
     {
         _valuationRepository = valuationRepository;
         _reversalRepository = reversalRepository;
+        _pending = pending;
     }
 
     public Task<List<ReturnableValuationFragmentDto>> GetForOrderLineAsync(
@@ -57,6 +65,25 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
     public Task<List<ReturnableValuationFragmentDto>> GetQuantityOnlyForOrderLineAsync(
         int orderId, int orderLineId, CancellationToken ct)
         => GetCoreAsync(orderId, orderLineId, false, ct);
+
+    public async Task<ReturnRestockReadiness> GetRestockReadinessAsync(int orderId, int orderLineId, CancellationToken ct = default)
+    {
+        try
+        {
+            if ((await GetForOrderLineAsync(orderId, orderLineId, ct)).Count > 0)
+                return new(true);
+        }
+        catch (SaleRestockCostException ex)
+        {
+            return new(false, ex.ErrorCode, ex.SafeMessage, ex.ActionHint);
+        }
+        catch (InvalidOperationException)
+        {
+            // Do not expose internal quantity/linkage details in the POS form.
+        }
+        var unavailable = new SaleRestockCostException(orderId, orderLineId, SaleValuationCostPolicy.Quality.Unavailable, null);
+        return new(false, unavailable.ErrorCode, unavailable.SafeMessage, unavailable.ActionHint);
+    }
 
     public async Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct)
     {
@@ -74,6 +101,26 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
         }
     }
 
+    public async Task<ReturnableValuationFragmentDto> GetReservedSourceAsync(int orderId, int orderLineId, int sourceId, CancellationToken ct)
+    {
+        var source = (await _valuationRepository.GetSaleIssueEntriesByOrderLineAsync(orderId, orderLineId, ct))
+            .SingleOrDefault(x => x.Id == sourceId)
+            ?? throw new SaleRestockCostException(orderId, orderLineId, SaleValuationCostPolicy.Quality.Unavailable, "Reserved source is missing.");
+        var cost = SaleValuationCostPolicy.Evaluate(source,
+            await _valuationRepository.GetRevaluationEntriesBySourceIdAsync(source.Id, ct),
+            await _valuationRepository.GetReverseEntriesBySourceEntryIdAsync(source.Id, ct));
+        if (cost.State != SaleValuationCostPolicy.Quality.Finalized || cost.FinalUnitCost is not > 0)
+            throw new SaleRestockCostException(orderId, orderLineId, cost.State, cost.Reason);
+        return new ReturnableValuationFragmentDto {
+            InventoryTransactionId = source.InventoryTransactionId, WarehouseId = source.WarehouseId,
+            ProductVariantId = source.ProductVariantId, SourceValuationEntryId = source.Id,
+            ReferenceSubKey = source.ReferenceSubKey, SourceQuantityAbs = Math.Abs(source.Quantity),
+            ReversedQuantityAbs = cost.InventoryReversedQuantity,
+            RemainingQuantityAbs = Math.Abs(source.Quantity) - cost.InventoryReversedQuantity,
+            UnitCost = cost.RequireFinalUnitCost(), IsProvisional = false
+        };
+    }
+
     private async Task<List<ReturnableValuationFragmentDto>> GetCoreAsync(
         int orderId, int orderLineId, bool requireFinalCost, CancellationToken ct)
     {
@@ -88,6 +135,8 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
             .GetReversedBaseQuantityBySourceEntryIdsAsync(
                 sourceEntries.Select(x => x.Id).ToList(),
                 ct);
+        var legacyReserved = _pending == null ? new Dictionary<int, decimal>()
+            : await _pending.GetLegacyReservedQuantitiesAsync(sourceEntries.Select(x => x.Id).ToList(), ct);
 
         var result = new List<ReturnableValuationFragmentDto>();
 
@@ -132,7 +181,7 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
             // vì vậy dùng Max thay vì cộng để không đếm đôi. NoRestock chỉ có record.
             var reversedQuantityAbs = Math.Max(
                 valuationReversedQuantityAbs,
-                recordedReversedQuantityAbs);
+                recordedReversedQuantityAbs) + legacyReserved.GetValueOrDefault(source.Id);
             var remainingQuantityAbs = sourceQuantityAbs - reversedQuantityAbs;
 
             if (remainingQuantityAbs < 0 || recordedReversedQuantityAbs < 0)
@@ -144,6 +193,8 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
             if (requireFinalCost)
             {
                 var cost = SaleValuationCostPolicy.Evaluate(source, revaluationEntries, reverseEntries);
+                if (cost.State != SaleValuationCostPolicy.Quality.Finalized)
+                    throw new SaleRestockCostException(orderId, orderLineId, cost.State, cost.Reason);
                 finalUnitCost = cost.RequireFinalUnitCost();
             }
 

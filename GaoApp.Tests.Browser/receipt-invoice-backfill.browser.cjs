@@ -1,0 +1,65 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { chromium } = require('playwright');
+(async () => {
+    const info = JSON.parse(await new Promise(resolve => { let input = ''; process.stdin.on('data', x => input += x); process.stdin.on('end', () => resolve(input)); }));
+    const browser = await chromium.launch({ channel: 'chrome', headless: true });
+    try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+        const errors = []; page.on('pageerror', e => errors.push(e.message));
+        await page.goto(info.baseUrl + '/admin/account/login');
+        await page.locator('[name="UserName"]').fill(info.user); await page.locator('[name="Password"]').fill(info.password);
+        await page.locator('[name="SelectedTerminalId"]').selectOption(String(info.terminalId));
+        await page.locator('button[type="submit"]').click();
+        await page.goto(info.baseUrl + '/admin/invoice-input-stock');
+        await page.locator('#xsBackfillOpen').click();
+        assert.equal(await page.locator('#xsBackfillFrom').inputValue(), '2026-09-26');
+        await page.locator('#xsBackfillTo').fill('2026-09-26');
+        await page.getByRole('button', { name: 'Rà soát', exact: true }).click();
+        await page.waitForFunction(() => document.querySelectorAll('#xsBackfillBody tr[data-status]').length === 2 && !document.getElementById('xsBackfillConfirm').disabled);
+        assert.equal(await page.locator('#xsBackfillBody tr[data-status="Ready"]').count(), 1);
+        assert.equal(await page.locator('#xsBackfillBody tr[data-status="Blocked"]').count(), 1);
+        assert.equal(await page.locator('#xsBackfillBody input').count(), 1);
+        await page.locator('#xsBackfillSelectAll').uncheck(); assert.equal(await page.locator('#xsBackfillConfirm').isDisabled(), true);
+        await page.locator('#xsBackfillSelectAll').check(); assert.equal(await page.locator('#xsBackfillConfirm').isEnabled(), true);
+        await page.locator('#xsBackfillFrom').fill('2026-09-27'); assert.equal(await page.locator('#xsBackfillConfirm').isDisabled(), true);
+        await page.locator('#xsBackfillFrom').fill('2026-09-26');
+        await page.getByRole('button', { name: 'Rà soát', exact: true }).click();
+        await page.waitForFunction(() => !document.getElementById('xsBackfillConfirm').disabled);
+        await page.locator('#xsBackfillReason').fill(''); assert.equal(await page.locator('#xsBackfillConfirm').isDisabled(), true);
+        await page.locator('#xsBackfillReason').fill('Đã kiểm tra phiếu cũ có XML');
+        assert.equal(await page.locator('#xsBackfillConfirm').isEnabled(), true);
+        fs.mkdirSync(info.evidenceRoot, { recursive: true });
+        await page.screenshot({ path: path.join(info.evidenceRoot, 'backfill-desktop.png') });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({ path: path.join(info.evidenceRoot, 'backfill-mobile.png') });
+        assert.ok(await page.locator('#xsBackfillConfirm').isVisible());
+        const mobileAction = await page.locator('#xsBackfillConfirm').boundingBox();
+        assert.ok(mobileAction.width > 250 && mobileAction.height <= 60, 'Mobile action must remain wide and readable.');
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        // Inject a concurrency rejection without changing fixture evidence; backend success is tested separately.
+        let payload, release;
+        const gate = new Promise(resolve => release = resolve);
+        await page.route('**/admin/api/receipt-invoice-backfill/confirm', async route => {
+            payload = route.request().postDataJSON();
+            assert.equal(payload.linkedFromDate, '2026-09-26'); assert.equal(payload.linkedToDate, '2026-09-26');
+            assert.deepEqual(payload.items.map(x => x.receiptId), [info.receiptId]);
+            assert.match(payload.items[0].snapshotHash, /^[A-F0-9]{64}$/);
+            assert.ok(route.request().headers().requestverificationtoken);
+            await gate;
+            await route.fulfill({ json: [{ receiptId: info.receiptId, status: 'Blocked', message: '<XML đã thay đổi>' }] });
+        });
+        await page.locator('#xsBackfillConfirm').click();
+        await page.waitForFunction(() => document.getElementById('xsBackfillDialog').getAttribute('aria-busy') === 'true');
+        await page.keyboard.press('Escape'); assert.equal(await page.locator('#xsBackfillDialog').evaluate(el => el.open), true);
+        release();
+        await page.waitForFunction(() => document.getElementById('xsBackfillNotice').textContent.includes('1 phiếu cần kiểm tra lại.'));
+        assert.ok((await page.locator('#xsBackfillNotice').textContent()).includes('<XML đã thay đổi>'));
+        assert.equal(await page.locator('#xsBackfillNotice XML').count(), 0);
+        await page.waitForFunction(() => document.getElementById('xsBackfillDialog').getAttribute('aria-busy') === 'false');
+        assert.deepEqual(errors, []);
+        console.log('PASS: real page, date filters, eligible selection, stale filter invalidation, safe error display, desktop/mobile layout.');
+    } finally { await browser.close(); }
+})().catch(error => { console.error(error.stack || error.message); process.exitCode = 1; });

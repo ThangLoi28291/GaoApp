@@ -12,6 +12,45 @@ namespace GaoApp.Tests.Configuration;
 /// </summary>
 public sealed class CheckConstraintNormalizationRegressionTests
 {
+    private const string ExpectedMenuTarget =
+        "([RoleId] IS NOT NULL AND [UserInStoreId] IS NULL) OR ([RoleId] IS NULL AND [UserInStoreId] IS NOT NULL)";
+    private const string ActualMenuTarget =
+        "([RoleId] IS NOT NULL AND [UserInStoreId] IS NULL OR [RoleId] IS NULL AND [UserInStoreId] IS NOT NULL)";
+
+    [Fact]
+    public void Server_menu_target_definition_matches_migration_without_redundant_and_parentheses()
+    {
+        Assert.Equal(Normalize(ExpectedMenuTarget), Normalize(ActualMenuTarget));
+        Assert.True(DatabaseSchemaComparer.Compare(Manifest(ExpectedMenuTarget), Manifest(ActualMenuTarget)).IsMatch);
+    }
+
+    [Theory]
+    [InlineData("((A IS NULL) AND (B IS NOT NULL)) OR ((C IS NULL))", "A IS NULL AND B IS NOT NULL OR C IS NULL")]
+    [InlineData("((A IS NULL AND B IS NULL))", "A IS NULL AND B IS NULL")]
+    [InlineData("[OR] IS NULL AND [AND] IS NOT NULL", "([OR] IS NULL) AND ([AND] IS NOT NULL)")]
+    public void Null_only_groups_remove_only_redundant_parentheses(string expected, string actual)
+    {
+        Assert.Equal(Normalize(expected), Normalize(actual));
+        Assert.Equal(Normalize(actual), Normalize(Normalize(actual)));
+    }
+
+    [Theory]
+    [InlineData("A IS NULL AND (B IS NULL OR C IS NULL)", "A IS NULL AND B IS NULL OR C IS NULL")]
+    [InlineData("(A IS NULL OR B IS NULL) AND C IS NULL", "A IS NULL OR B IS NULL AND C IS NULL")]
+    [InlineData("A IS NULL AND B IS NULL", "A IS NULL OR B IS NULL")]
+    [InlineData("A IS NULL", "A IS NOT NULL")]
+    [InlineData("A IS NULL", "B IS NULL")]
+    [InlineData("NOT (A IS NULL AND B IS NULL)", "A IS NULL AND B IS NULL")]
+    public void Null_predicate_normalization_preserves_meaning(string expected, string changed)
+        => Assert.NotEqual(Normalize(expected), Normalize(changed));
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Menu_target_disabled_or_untrusted_still_rejects(bool disabled, bool untrusted)
+        => Assert.False(DatabaseSchemaComparer.Compare(
+            Manifest(ExpectedMenuTarget), Manifest(ActualMenuTarget, disabled, untrusted)).IsMatch);
+
     private const string ExpectedReceiving =
         "[ReceiptAllocationKind] = 0 AND [OutsidePoDecisionStatus] = 0 OR " +
         "[ReceiptAllocationKind] = 1 AND [PurchaseOrderLineId] IS NOT NULL AND [OutsidePoDecisionStatus] = 0 OR " +

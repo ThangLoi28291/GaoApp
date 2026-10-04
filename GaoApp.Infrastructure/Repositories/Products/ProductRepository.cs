@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Products;
 
-public sealed class ProductRepository : IProductRepository
+public sealed partial class ProductRepository : IProductRepository
 {
     private const string AccentInsensitiveSearchCollation =
         "Latin1_General_100_CI_AI";
@@ -44,6 +44,12 @@ public sealed class ProductRepository : IProductRepository
         int page,
         int pageSize,
         CancellationToken ct = default)
+    {
+        return await SearchCatalogAsync(storeId, search, categoryId, isActive, isSellable, page, pageSize, new(), ct);
+    }
+
+    public async Task<PagedResult<ProductListItemDto>> SearchCatalogAsync(int storeId, string? search, int? categoryId,
+        bool? isActive, bool? isSellable, int page, int pageSize, ProductListFilters filters, CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
@@ -110,6 +116,14 @@ public sealed class ProductRepository : IProductRepository
         if (isSellable.HasValue)
             q = q.Where(x => x.IsSellable == isSellable.Value);
 
+        if (filters.SupplierId is > 0) q = q.Where(x => x.SupplierId == filters.SupplierId && x.Supplier.StoreId == storeId);
+        if (filters.BrandId is > 0) q = q.Where(x => x.BrandId == filters.BrandId && x.Brand != null && x.Brand.StoreId == storeId);
+        if (filters.BaseUnitId is > 0) q = q.Where(x => x.BaseUnitId == filters.BaseUnitId && x.BaseUnit.StoreId == storeId);
+        if (filters.DataIssue == "no-brand") q = q.Where(x => x.BrandId == null);
+        if (filters.DataIssue == "no-image") q = q.Where(x => !x.ProductImages.Any(i => i.StoreId == storeId && !i.IsDeleted && !i.MediaAsset.IsDeleted && i.MediaAsset.StoreId == storeId));
+        if (filters.DataIssue == "no-barcode") q = q.Where(x => !x.Variants.Any(v => v.StoreId == storeId && v.IsActive &&
+            v.UnitConversions.Any(c => c.StoreId == storeId && c.IsActive && c.Barcodes.Any(b => b.StoreId == storeId && b.IsActive))));
+
         var total = await q.CountAsync(ct);
 
         var items = await q
@@ -144,6 +158,8 @@ public sealed class ProductRepository : IProductRepository
                     .FirstOrDefault()
             })
             .ToListAsync(ct);
+
+        await PopulateSaleUnitsAsync(storeId, items, ct);
 
         return new PagedResult<ProductListItemDto>
         {

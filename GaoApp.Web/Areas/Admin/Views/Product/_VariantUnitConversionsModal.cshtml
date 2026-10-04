@@ -587,8 +587,9 @@
                             </div>
 
                             <div class="form-check">
-                                <input id="uc_IsBaseUnit" class="form-check-input" type="checkbox" />
+                                <input id="uc_IsBaseUnit" class="form-check-input" type="checkbox" disabled />
                                 <label class="form-check-label" for="uc_IsBaseUnit">Đơn vị gốc</label>
+                                <div class="form-text">Đơn vị gốc lấy từ Đơn vị cơ bản trong Thông tin chung của sản phẩm.</div>
                             </div>
 
                             <div class="form-check">
@@ -712,6 +713,7 @@
         }
 
         function resetConversionEditor() {
+            ['uc_UnitId', 'uc_Factor', 'uc_IsActive'].forEach(id => { document.getElementById(id).disabled = false; });
             document.getElementById('uc_Id').value = '';
             document.getElementById('uc_UnitId').value = '';
             document.getElementById('uc_Factor').value = '';

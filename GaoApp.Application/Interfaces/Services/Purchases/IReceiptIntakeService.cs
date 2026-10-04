@@ -19,6 +19,8 @@ public interface IReceiptIntakeService
 /// <summary>Uses the receipt transaction; never commits or changes stock itself.</summary>
 public interface IReceiptIntakeCatalog
 {
+    Task ValidateCompletionAsync(int storeId, ReceiptIntakeCompletionDto draft, bool approving, CancellationToken ct);
+    Task CompleteAsync(StockDocument document, StockDocumentProvisionalItem item, ReceiptIntakeCompletionDto draft, CancellationToken ct);
     Task LockAsync(int storeId, CancellationToken ct);
     Task<ProductUnitConversion> PrepareKnownAsync(StockDocument document, RecordKnownReceiptItemRequest request, CancellationToken ct);
     Task ValidateAsync(int storeId, CaptureReceiptIntakeRequest request, CancellationToken ct);

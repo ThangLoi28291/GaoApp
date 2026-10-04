@@ -34,6 +34,12 @@ public sealed class InputInvoicePickerLinkUnlinkSqlServerTests
         var catalog = await database.SeedInventoryCatalogAsync();
         var seed = await SeedAsync(database, catalog);
         await SeedGenuinePostedEffectsAsync(database, catalog, seed);
+        await using (var expectation = CreateContext(database, seed.StoreId))
+        {
+            // This receipt explicitly waits for XML; historical null choices remain unclassified.
+            (await expectation.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId)).WaitForInputInvoice = true;
+            await expectation.SaveChangesAsync();
+        }
         var before = await SnapshotAsync(database, seed);
         before.InventoryTransactions.Should().BeGreaterThan(0);
         before.InventoryBalances.Should().BeGreaterThan(0);
@@ -55,6 +61,9 @@ public sealed class InputInvoicePickerLinkUnlinkSqlServerTests
             result.Association.LifecycleState.Should().Be(
                 InputInvoiceAssociationLifecycleStates.WaitingXml);
             result.Association.IsWaitingXml.Should().BeTrue();
+            var followUp = new GaoApp.Infrastructure.Services.Inventory.ReceiptInvoiceFollowUpService(
+                unlinkContext, new TenantStub(seed.StoreId), new UserStub());
+            (await followUp.GetAsync(seed.ReceiptId, default)).State.Should().Be("Waiting");
         }
 
         await using (var linkContext = CreateContext(database, seed.StoreId))
@@ -70,6 +79,11 @@ public sealed class InputInvoicePickerLinkUnlinkSqlServerTests
                 "late-9001.xml",
                 BuildInvoiceXml("9001"));
             result.InputInvoiceHeadId.Should().Be(seed.TargetInvoiceId);
+            var followUp = new GaoApp.Infrastructure.Services.Inventory.ReceiptInvoiceFollowUpService(
+                linkContext, new TenantStub(seed.StoreId), new UserStub());
+            (await followUp.GetAsync(seed.ReceiptId, default)).State.Should().BeOneOf("Complete", "NeedsReview");
+            var list = await new StockDocumentRepository(linkContext).GetReceiptListAsync();
+            list.Single(x => x.Id == seed.ReceiptId).InvoiceFollowUp.Should().BeOneOf("Complete", "NeedsReview");
         }
 
         await using (var blankUnlinkContext = CreateContext(database, seed.StoreId))

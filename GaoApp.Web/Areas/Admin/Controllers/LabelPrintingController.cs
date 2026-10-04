@@ -22,7 +22,19 @@ public sealed class LabelPrintingController(ProductLabelService labels, IAuthori
         ViewBag.StoreId = CurrentStoreId;
         return View();
     }
+    [HttpPost("barcodes/check"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> CheckBarcodes([FromBody] LabelBarcodeRequest request, CancellationToken ct) =>
+        ModelState.IsValid ? Ok(await labels.CheckLabelBarcodes(request, ct)) : ValidationProblem(ModelState);
+    [HttpPost("barcodes/prepare"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> PrepareBarcodes([FromBody] LabelBarcodeRequest request, CancellationToken ct) =>
+        ModelState.IsValid ? Ok(await labels.PrepareLabelBarcodes(request, ct)) : ValidationProblem(ModelState);
     [HttpGet("templates")] public async Task<IActionResult> Templates(CancellationToken ct) => Ok(await labels.Templates(ct));
+    [HttpGet("products"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> Products([FromQuery] string? q, [FromQuery] int? productId, [FromQuery] int? variantId, CancellationToken ct)
+        => Ok(await labels.QuickProducts(q, productId, variantId, ct));
+    [HttpPost("products/refresh"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> RefreshProducts([FromBody] QuickLabelRefresh request, CancellationToken ct)
+        => ModelState.IsValid ? Ok(await labels.RefreshQuickProducts(request, ct)) : ValidationProblem(ModelState);
     [HttpPost("templates"), Authorize(Policy = PermissionCodes.System.ProductLabel.Manage)]
     public async Task<IActionResult> CreateTemplate([FromBody] SaveLabelTemplate request, CancellationToken ct) =>
         ModelState.IsValid ? Ok(await labels.SaveTemplate(null, request, ct)) : ValidationProblem(ModelState);
@@ -44,7 +56,7 @@ public sealed class LabelPrintingController(ProductLabelService labels, IAuthori
     {
         if (!ProductLabelLayouts.All.Any(x => x.Key == key)) return NotFound();
         if (!OperatingSystem.IsWindows()) return Conflict(new { message = "Xem trước tem cần máy chủ Windows." });
-        return File(ProductLabelRenderer.Preview(new ProductLabelDesign { Layout = key, Columns = 1 }), "image/png");
+        return File(ProductLabelRenderer.Preview(ProductLabelLayouts.DefaultDesign(key)), "image/png");
     }
     public sealed record LabelPreviewRequest(ProductLabelDesign Design, LabelProduct? Product, int Dpi = 203);
     [HttpGet("printers")] public async Task<IActionResult> Printers(CancellationToken ct) => Ok(await labels.Printers(ct));
@@ -57,8 +69,17 @@ public sealed class LabelPrintingController(ProductLabelService labels, IAuthori
     public async Task<IActionResult> SavePrinter(int id, [FromBody] SaveLabelPrinter request, CancellationToken ct) =>
         ModelState.IsValid ? Ok(await labels.SavePrinter(id, request, ct)) : ValidationProblem(ModelState);
     [HttpGet("tasks"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)] public async Task<IActionResult> Tasks(CancellationToken ct) => Ok(await labels.Tasks(ct));
+    [HttpGet("workspace"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> Workspace(string? q, string? state, int page = 1, CancellationToken ct = default) => Ok(await labels.Workspace(q, state, page, ct));
+    [HttpPost("tasks/{id:int}/resolve"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> Resolve(int id, [FromBody] LabelLineResolution request, CancellationToken ct) =>
+        ModelState.IsValid ? Ok(await labels.ResolveLines(id, request, ct)) : ValidationProblem(ModelState);
     [HttpPost("receipts/{id:int}"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)] public async Task<IActionResult> AddReceipt(int id, CancellationToken ct) => Ok(await labels.AddReceipt(id, ct));
+    [HttpGet("receipts/{id:int}/preview"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> ReceiptPreview(int id, CancellationToken ct) => Ok(await labels.ReceiptPreview(id, ct));
     [HttpGet("tasks/{id:int}"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)] public async Task<IActionResult> Detail(int id, CancellationToken ct) => Ok(await labels.Detail(id, ct));
+    [HttpGet("tasks/{id:int}/state"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
+    public async Task<IActionResult> TaskState(int id, CancellationToken ct) => Ok(await labels.TaskState(id, ct));
     [HttpPost("tasks/{id:int}/refresh"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]
     public async Task<IActionResult> Refresh(int id, [FromBody] LabelVersion request, CancellationToken ct) => Ok(await labels.Refresh(id, request.RowVersion, ct));
     [HttpPut("tasks/{id:int}/plan"), Authorize(Policy = PermissionCodes.System.ProductLabel.Print)]

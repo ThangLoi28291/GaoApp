@@ -83,9 +83,13 @@ public class InventoryAdjustmentDocumentRepository
             WarehouseName = document.Warehouse?.Name ?? string.Empty,
 
             AdjustmentType = document.AdjustmentType,
-            AdjustmentTypeText = document.AdjustmentType == InventoryTransactionType.AdjustmentIncrease
-                ? "Điều chỉnh tăng"
-                : "Điều chỉnh giảm",
+            AdjustmentTypeText = document.AdjustmentType switch
+            {
+                InventoryTransactionType.AdjustmentIncrease => "Điều chỉnh tăng",
+                InventoryTransactionType.AdjustmentDecrease => "Điều chỉnh giảm",
+                InventoryTransactionType.Revaluation => "Điều chỉnh giá vốn",
+                _ => "Điều chỉnh khác"
+            },
 
             Status = document.Status,
             StatusText = document.Status.ToString(),
@@ -221,7 +225,11 @@ public class InventoryAdjustmentDocumentRepository
                 AdjustmentType = x.AdjustmentType,
                 AdjustmentTypeText = x.AdjustmentType == InventoryTransactionType.AdjustmentIncrease
                     ? "Điều chỉnh tăng"
-                    : "Điều chỉnh giảm",
+                    : x.AdjustmentType == InventoryTransactionType.AdjustmentDecrease
+                        ? "Điều chỉnh giảm"
+                        : x.AdjustmentType == InventoryTransactionType.Revaluation
+                            ? "Điều chỉnh giá vốn"
+                            : "Điều chỉnh khác",
 
                 Status = x.Status,
                 StatusText = x.Status.ToString(),

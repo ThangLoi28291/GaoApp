@@ -76,8 +76,11 @@
     }
     function scheduleRefresh(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;refresh();});}
     function captureListViewport(){
-        if(!media.matches || tab!=='items')return null;
-        const top=page.querySelector('.wra-header').getBoundingClientRect().bottom;
+        if(tab!=='items')return null;
+        // Keep the visible row anchored on every layout. On desktop the table is
+        // replaced after saving a quantity as well, and replacing the focused
+        // input can otherwise make the browser jump back to the page top.
+        const top=page.querySelector('.wra-header')?.getBoundingClientRect().bottom ?? 0;
         const anchor=rows().find(row=>row.getBoundingClientRect().bottom>top);
         return {key:anchor?.dataset.receivingKey,top:anchor?.getBoundingClientRect().top,left:scrollX,scroll:scrollY};
     }
@@ -85,9 +88,9 @@
         // The server partial has no mobile steppers. Build them before measuring or painting
         // so the receipt never collapses for a frame when its rows are replaced.
         enhanceRows();
-        if(!viewport || !media.matches || tab!=='items')return;
+        if(!viewport || tab!=='items')return;
         const anchor=rows().find(row=>row.dataset.receivingKey===viewport.key);
-        const top=anchor ? scrollY+anchor.getBoundingClientRect().top-viewport.top : viewport.scroll;
+        const top=anchor && Number.isFinite(viewport.top) ? scrollY+anchor.getBoundingClientRect().top-viewport.top : viewport.scroll;
         window.scrollTo({left:viewport.left,top,behavior:'instant'});
     }
     function currentInput(){return rows().find(row=>row.dataset.receivingKey===quantityKey)?.querySelector(inputSelector);}
@@ -188,7 +191,9 @@
         document.addEventListener('receiving:save',event=>{
             scheduleRefresh();
             if(media.matches && event.detail?.state==='saved' && event.detail.feedback){
-                chooseTab('items',false);scrollPositions.items=0;window.scrollTo({top:0,behavior:'instant'});
+                // A successful scan may switch back to the items tab, but it
+                // must not reset the employee's current position in a long list.
+                chooseTab('items',false);
             }
         });
         document.addEventListener('receipt-quantity:idle',scheduleRefresh);

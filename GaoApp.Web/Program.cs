@@ -163,6 +163,8 @@ try
     // 5) WEB-SPECIFIC SERVICES
     // =========================================================
     builder.Services.AddScoped<IPOSRuntimeContextAccessor, POSRuntimeContextAccessor>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Kiosk.KioskAccess>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Kiosk.KioskService>();
     builder.Services.AddScoped<ICurrentPOSContext, CurrentPOSContext>();
 
     // =========================================================

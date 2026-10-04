@@ -13,6 +13,7 @@ public class ProductListItemDto
     public string? BaseUnitName { get; set; }
 
     public decimal BasePrice { get; set; }
+    public List<ProductSaleUnitDto> SaleUnits { get; set; } = new();
     public bool IsActive { get; set; }
     public bool IsSellable { get; set; }
     public bool HasVariants { get; set; }

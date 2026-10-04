@@ -655,6 +655,32 @@ BEGIN
     THROW 51016, N'Có CHECK constraint mới trên Product pricing/catalog tables. Re-preflight required.', 1;
 END;
 
+-- Approved source exception: keep supplier IDs and all references unchanged.
+-- Inherit the target Name collation so PREVIEW checks the same equality as its unique index.
+SELECT TOP(0) CONVERT(int,Id) Id,Name,Note INTO #SupplierNames FROM dbo.Suppliers;
+INSERT #SupplierNames(Id,Name,Note)
+SELECT CONVERT(int,s.ID),LTRIM(RTRIM(CONVERT(nvarchar(400),s.Name))),NULL
+FROM [__SOURCE__].dbo.Supplier s;
+CREATE UNIQUE CLUSTERED INDEX IX_SupplierNames ON #SupplierNames(Id);
+DECLARE @SupplierSuffix nvarchar(40)=N' [GaoStore ID 110276]';
+IF EXISTS(SELECT 1 FROM #SupplierNames a JOIN #SupplierNames b ON b.Id=90173 AND b.Name=a.Name
+          JOIN [__SOURCE__].dbo.Supplier sa ON sa.ID=a.Id
+          JOIN [__SOURCE__].dbo.Supplier sb ON sb.ID=b.Id
+          WHERE a.Id=110276 AND LTRIM(RTRIM(sa.TaxCode))=N'3801130408' AND LTRIM(RTRIM(sb.TaxCode))=N'3801130408')
+BEGIN
+ IF EXISTS(SELECT 1 FROM #SupplierNames WHERE Id=110276 AND
+   (DATALENGTH(Name+@SupplierSuffix)>COL_LENGTH(N'dbo.Suppliers',N'Name') OR
+    DATALENGTH(N'GaoStore SupplierID=110276; Tên gốc: '+Name)>COL_LENGTH(N'dbo.Suppliers',N'Note')))
+  THROW 51030,N'Tên/ghi chú nhà cung cấp sau thêm hậu tố vượt độ dài; không tự cắt tên.',1;
+ UPDATE #SupplierNames SET Note=N'GaoStore SupplierID=110276; Tên gốc: '+Name,
+                          Name=Name+@SupplierSuffix WHERE Id=110276;
+END;
+IF EXISTS(SELECT Name FROM #SupplierNames GROUP BY Name HAVING COUNT_BIG(*)>1)
+ THROW 51031,N'Nhà cung cấp còn trùng tên ngoài cặp đã duyệt 90173/110276. Dừng đối chiếu, không gộp hoặc tự đổi ID.',1;
+SELECT N'SUPPLIER_NAME_ADJUSTMENTS' Report,Id SupplierId,
+       LEFT(Name,LEN(Name)-LEN(@SupplierSuffix)) OriginalName,Name TargetName,Note
+FROM #SupplierNames WHERE Id=110276 AND Note IS NOT NULL;
+
 IF @Mode='PREVIEW'
 BEGIN
  SELECT N'PRODUCT_PLAN' Report,(SELECT COUNT_BIG(*) FROM #FinalProduct) Products,(SELECT COUNT_BIG(*) FROM #AltConv) AlternateConversions,(SELECT COUNT_BIG(*) FROM #UnitManifest) Units;
@@ -693,7 +719,7 @@ END;
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(600),s.Address))),N''),
         NULL,
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(100),s.TaxCode))),N''),
-        NULL,
+        sn.Note,
         COALESCE(DATEADD(hour,-7,s.CreatedDate),DATEADD(hour,-7,s.ModifiedDate),SYSUTCDATETIME()),
         NULL,
         CASE WHEN s.ModifiedDate IS NULL OR s.ModifiedDate < CONVERT(datetime2,'1900-01-01')
@@ -702,15 +728,18 @@ END;
         0,NULL,NULL,
         @StoreId,
         N'SUP' + RIGHT(N'000000' + CONVERT(nvarchar(20),s.ID),6),
-        LTRIM(RTRIM(CONVERT(nvarchar(400),s.Name))),
+        sn.Name,
         CONVERT(bit,s.Status),
         0,
         /* NormalizedTaxCode là persisted computed column của GaoAppDb; SQL Server tự sinh từ TaxCode. */
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(100),s.BankAccountNumber))),N''),
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(500),s.BankAccountName))),N''),
         NULLIF(LTRIM(RTRIM(CONVERT(nvarchar(500),s.BankName))),N'')
-    FROM [__SOURCE__].dbo.Supplier s;
+    FROM [__SOURCE__].dbo.Supplier s JOIN #SupplierNames sn ON sn.Id=s.ID;
     SET IDENTITY_INSERT dbo.Suppliers OFF;
+    IF EXISTS(SELECT Id,Name,Note FROM #SupplierNames EXCEPT SELECT Id,Name,Note FROM dbo.Suppliers WHERE StoreId=@StoreId)
+       OR EXISTS(SELECT Id,Name,Note FROM dbo.Suppliers WHERE StoreId=@StoreId EXCEPT SELECT Id,Name,Note FROM #SupplierNames)
+        THROW 51032,N'Supplier ID/name/note differs from the reviewed staging plan.',1;
 
     /* ---------- Unit ---------- */
     SET IDENTITY_INSERT dbo.Unit ON;

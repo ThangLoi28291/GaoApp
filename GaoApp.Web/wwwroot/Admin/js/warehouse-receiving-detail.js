@@ -12,6 +12,10 @@ let receivingAddCommand = null;
 let receivingAddBusy = false;
 let receivingLookupSequence = 0;
 let receivingLookupTerm = '';
+let deleteReceivingLineModalInstance = null;
+let receivingDeleteTarget = null;
+let receivingDeleteBusy = false;
+const receivingDeletedLineIds = new Set();
 const receivingSavingMessage = 'Đang lưu hàng nhập. Vui lòng chờ trước khi gửi duyệt.';
 const receivingSaveFailedMessage = 'Chưa lưu được thay đổi. Vui lòng kiểm tra lại hàng nhập và lưu lại trước khi gửi duyệt.';
 document.addEventListener('DOMContentLoaded', function () {
@@ -43,6 +47,22 @@ document.addEventListener('DOMContentLoaded', function () {
     bindPopupQtyAutoSelect();
     bindReceivingQtyInputs();
     bindDeleteReceivingLine();
+    const deleteModalEl = document.getElementById('deleteReceivingLineModal');
+    if (deleteModalEl) {
+        deleteReceivingLineModalInstance = new bootstrap.Modal(deleteModalEl);
+        deleteModalEl.addEventListener('hide.bs.modal', event => { if (receivingDeleteBusy) event.preventDefault(); });
+        deleteModalEl.addEventListener('shown.bs.modal', () => deleteModalEl.querySelector('.modal-footer [data-bs-dismiss]')?.focus());
+        deleteModalEl.addEventListener('hidden.bs.modal', () => {
+            const button = document.querySelector(`.btn-delete-receiving-line[data-line-id="${Number(receivingDeleteTarget?.id)}"]`);
+            if (button) button.focus({preventScroll:true}); else focusQuickLookup();
+            if (document.getElementById('deleteReceivingLineError').hidden) receivingDeleteTarget = null;
+        });
+        document.getElementById('btnConfirmDeleteReceivingLine').addEventListener('click', confirmDeleteReceivingLine);
+        document.getElementById('deleteReceivingLineImage').addEventListener('error', () => {
+            document.getElementById('deleteReceivingLineImage').hidden = true;
+            document.getElementById('deleteReceivingLineImageFallback').hidden = false;
+        });
+    }
     bindSubmitReceiving();
     bindRequestRevision();
     bindBarcodeVerification();
@@ -403,6 +423,9 @@ function receivingSaveEvent(state, message, item, feedback) {
     document.dispatchEvent(new CustomEvent('receiving:save', {detail:{state,message,item,feedback}}));
 }
 function receivingRetryChanges() {
+    if (receivingDeleteTarget && !document.getElementById('deleteReceivingLineError')?.hidden) {
+        deleteReceivingLineModalInstance?.show(); return;
+    }
     if (receivingAddCommand || $('#quickLookupInput').data('selected-item')) { quickAddProductModalInstance?.show(); return; }
     if (window.ReceiptIntake?.retryPending?.()) return;
     const dirty = [...document.querySelectorAll('.js-receiving-qty')].find(x => parseDecimalInput(x.value) !== parseDecimalInput(x.defaultValue));
@@ -500,7 +523,9 @@ async function addReceivingLineCore() {
         const feedback = receivingAddCommand.feedback ? {...receivingAddCommand.feedback, next:api.data} : null;
         receivingAddCommand = null;
         receivingSaveEvent('saved',null,`${selected.productName || selected.text} · ${formatDecimal(qty)} ${selected.unitName || ''}`,feedback);
-        setTimeout(focusQuickLookup, 150);
+        // Keep the newly added line in view; opening the scanner must not
+        // move the employee back to the top of a long receipt.
+        setTimeout(() => focusQuickLookup({ preserveScroll: true }), 150);
         return true;
     } catch (error) {
         if(receivingAddCommand)receivingAddCommand.uncertain=true;
@@ -576,7 +601,9 @@ function bindReceivingQtyInputs() {
 
             if (focusLookupAfterSave) {
                 focusLookupAfterSave = false;
-                focusQuickLookup();
+                // Keep barcode entry ready after Enter, but do not pull the
+                // page away from the line the employee has just edited.
+                focusQuickLookup({ preserveScroll: true });
             }
         });
     });
@@ -634,29 +661,77 @@ function bindDeleteReceivingLine() {
         btn.dataset.bound = '1';
 
         btn.addEventListener('click', async function () {
-            const lineId = this.dataset.lineId;
-            const productName = this.dataset.productName || '';
-
-            if (!confirm(`Xóa dòng "${productName}" khỏi phiếu nhập?`)) {
-                return;
-            }
-
-            await withReceivingLineSave(async () => {
-                const documentId = window.warehouseReceivingDetail?.documentId || 0;
-                const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
-                    method: 'DELETE'
-                });
-                const api = await readApiResponse(response);
-                if (!api.ok) {
-                    alert(api.data?.message || 'Xóa dòng thất bại.');
-                    return false;
-                }
-                await refreshReceivingLines();
-                focusQuickLookup();
-                return true;
-            });
+            if (receivingDeleteBusy || receivingSubmissionInProgress || receivingPendingSaves > 0) return;
+            if (window.WarehouseReceivingQuantity?.hasPending() && !await window.WarehouseReceivingQuantity.flush()) return;
+            if (window.ReceiptIntake?.isSaving()) return;
+            const lineId = Number(this.dataset.lineId);
+            const current = document.querySelector(`.btn-delete-receiving-line[data-line-id="${lineId}"]`);
+            if (!current) return;
+            const row = current.closest('tr');
+            receivingDeleteTarget = {id:lineId, saved:receivingDeletedLineIds.has(lineId)};
+            setText('deleteReceivingLineName', current.dataset.productName || 'Sản phẩm');
+            setText('deleteReceivingLineCode', current.dataset.productCode ? `Mã: ${current.dataset.productCode}` : 'Chưa có mã sản phẩm');
+            setText('deleteReceivingLineQuantity', `${new Intl.NumberFormat('vi-VN', {maximumFractionDigits:3}).format(Number(row.dataset.receivingQuantity) || 0)} ${current.dataset.unitName || ''}`);
+            const image = document.getElementById('deleteReceivingLineImage');
+            const source = row.querySelector('.wrd-line-img')?.getAttribute('src');
+            image.hidden = !source;
+            if (source) image.src = source; else image.removeAttribute('src');
+            document.getElementById('deleteReceivingLineImageFallback').hidden = !!source;
+            document.getElementById('deleteReceivingLineError').hidden = !receivingDeleteTarget.saved;
+            if (receivingDeleteTarget.saved) setText('deleteReceivingLineError', 'Đã xóa dòng hàng. Bấm Tải lại danh sách để cập nhật.');
+            setText('deleteReceivingLineAction', receivingDeleteTarget.saved ? 'Tải lại danh sách' : 'Xóa khỏi phiếu');
+            setText('btnCancelDeleteReceivingLine', receivingDeleteTarget.saved ? 'Đóng' : 'Giữ lại');
+            deleteReceivingLineModalInstance?.show();
         });
     });
+}
+
+async function confirmDeleteReceivingLine() {
+    if (!receivingDeleteTarget || receivingDeleteBusy || receivingSubmissionInProgress || receivingPendingSaves > 0) return;
+    const target = receivingDeleteTarget;
+    const modal = document.getElementById('deleteReceivingLineModal');
+    const error = document.getElementById('deleteReceivingLineError');
+    receivingDeleteBusy = true; error.hidden = true;
+    modal.setAttribute('aria-busy', 'true');
+    modal.querySelectorAll('button').forEach(button => button.disabled = true);
+    document.getElementById('deleteReceivingLineSpinner').hidden = false;
+    setText('deleteReceivingLineAction', target.saved ? 'Đang tải lại…' : 'Đang xóa…');
+    try {
+        const saved = await withReceivingLineSave(async () => {
+            try {
+                if (!target.saved) {
+                    const documentId = window.warehouseReceivingDetail?.documentId || 0;
+                    const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${target.id}`, {
+                        method:'DELETE', credentials:'same-origin',
+                        headers:{RequestVerificationToken:document.querySelector('[name="__RequestVerificationToken"]')?.value || ''}
+                    });
+                    const api = await readApiResponse(response);
+                    if (!api.ok) throw new Error(api.data?.message || 'Chưa xóa được dòng hàng. Vui lòng thử lại.');
+                    target.saved = true;
+                    receivingDeletedLineIds.add(target.id);
+                }
+                await refreshReceivingLines();
+                await window.ReceiptIntake?.reload();
+                return true;
+            } catch (failure) {
+                error.textContent = target.saved ? 'Đã xóa dòng hàng. Chưa tải lại được danh sách; bấm Tải lại danh sách để cập nhật.'
+                    : failure.message || 'Không kết nối được máy chủ. Vui lòng thử lại.';
+                error.hidden = false;
+                return false;
+            }
+        });
+        if (saved) {
+            receivingDeleteBusy = false;
+            deleteReceivingLineModalInstance.hide();
+        }
+    } finally {
+        receivingDeleteBusy = false;
+        modal.removeAttribute('aria-busy');
+        modal.querySelectorAll('button').forEach(button => button.disabled = false);
+        document.getElementById('deleteReceivingLineSpinner').hidden = true;
+        setText('deleteReceivingLineAction', target.saved ? 'Tải lại danh sách' : 'Thử xóa lại');
+        setText('btnCancelDeleteReceivingLine', target.saved ? 'Đóng' : 'Giữ lại');
+    }
 }
 
 function bindSubmitReceiving() {
@@ -899,14 +974,27 @@ async function createReceivingPendingProduct() {
     }
 }
 
-function focusQuickLookup() {
+function focusQuickLookup(options = {}) {
     if (window.matchMedia('(max-width: 768px)').matches || document.querySelector('.modal.show, .offcanvas.show')) return;
     const el = $('#quickLookupInput');
     if (!el.length) return;
+    const preserveScroll = options.preserveScroll === true;
 
     setTimeout(function () {
         if (document.querySelector('.modal.show, .offcanvas.show')) return;
+        const viewport = preserveScroll ? { left: window.scrollX, top: window.scrollY } : null;
         el.select2('open');
+        if (preserveScroll) {
+            // Select2 focuses its search input when opening, which can scroll
+            // the document to the scanner. Restore the employee's viewport
+            // after that focus and once more on the next paint.
+            document.querySelector('.select2-container--open .select2-search__field')?.focus({ preventScroll: true });
+            const restore = () => window.scrollTo({ left: viewport.left, top: viewport.top, behavior: 'instant' });
+            restore();
+            requestAnimationFrame(restore);
+            setTimeout(restore, 0);
+            setTimeout(restore, 120);
+        }
     }, 80);
 }
 

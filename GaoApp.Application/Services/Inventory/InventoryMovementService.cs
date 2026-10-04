@@ -165,6 +165,166 @@ public class InventoryMovementService : IInventoryMovementService
             ct);
     }
 
+    public async Task<InventoryMovementResultDto> CreateRevaluationAsync(
+        int warehouseId,
+        int productVariantId,
+        decimal quantityBase,
+        decimal correctedUnitCost,
+        string referenceId,
+        int referenceLineId,
+        string? note,
+        DateTime? occurredAtUtc = null,
+        CancellationToken ct = default)
+    {
+        if (warehouseId <= 0 || productVariantId <= 0 || referenceLineId <= 0)
+            throw new BusinessRuleException("Thông tin điều chỉnh giá vốn không hợp lệ.");
+        if (quantityBase <= 0 || correctedUnitCost <= 0)
+            throw new BusinessRuleException("Số lượng và giá vốn điều chỉnh phải lớn hơn 0.");
+        if (string.IsNullOrWhiteSpace(referenceId))
+            throw new BusinessRuleException("Thiếu chứng từ nguồn của điều chỉnh giá vốn.");
+
+        var warehouse = await _warehouseRepository.GetByIdAsync(warehouseId, ct)
+            ?? throw new BusinessRuleException("Kho không tồn tại.");
+
+        return await _postingCoordinator.ExecuteAsync(
+            operationCt => CreateRevaluationWithinTransactionAsync(
+                warehouse, productVariantId, quantityBase, correctedUnitCost,
+                referenceId, referenceLineId, note, occurredAtUtc ?? DateTime.UtcNow,
+                operationCt),
+            ct);
+    }
+
+    private async Task<InventoryMovementResultDto> CreateRevaluationWithinTransactionAsync(
+        Warehouse warehouse,
+        int productVariantId,
+        decimal quantityBase,
+        decimal correctedUnitCost,
+        string referenceId,
+        int referenceLineId,
+        string? note,
+        DateTime occurredAtUtc,
+        CancellationToken ct)
+    {
+        var balance = await _balanceRepository.LockAndGetOrCreateAsync(
+            warehouse.StoreId, warehouse.Id, productVariantId, ct);
+        var beforeQty = RoundQty(balance.OnHandQty);
+        if (beforeQty <= 0)
+            throw new BusinessRuleException(
+                "Không còn tồn dương để điều chỉnh giá vốn. Nếu hàng đã bán, cần lập nghiệp vụ revaluation theo phần giá vốn đã xuất.");
+
+        var qty = RoundQty(quantityBase);
+        if (qty > beforeQty)
+            throw new BusinessRuleException(
+                $"Số lượng điều chỉnh giá vốn ({qty:0.###}) không được vượt tồn hiện tại ({beforeQty:0.###}).");
+
+        var oldAverageCost = ResolveBeforeAverageCost(balance, beforeQty, balance.InventoryValue);
+        var targetCost = RoundCost(correctedUnitCost);
+        var amount = RoundValue(qty * (targetCost - oldAverageCost));
+        var referenceSubKey = "COST-REVALUATION";
+
+        var existing = await _transactionRepository.GetByLegacyIdentityAsync(
+            warehouse.StoreId, warehouse.Id, productVariantId,
+            InventoryTransactionType.Revaluation, InventoryReferenceType.Adjustment,
+            referenceId, referenceLineId, referenceSubKey, ct);
+        if (existing is not null)
+            return new InventoryMovementResultDto
+            {
+                WarehouseId = warehouse.Id,
+                ProductVariantId = productVariantId,
+                BeforeQty = existing.BeforeQty,
+                QuantityChange = 0m,
+                AfterQty = existing.AfterQty,
+                BeforeValue = existing.BeforeInventoryValue,
+                ValueChange = existing.TotalCost,
+                AfterValue = existing.AfterInventoryValue,
+                BeforeAverageCost = oldAverageCost,
+                AfterAverageCost = existing.RunningAverageUnitCostAfter,
+                InventoryTransactionId = existing.Id,
+                IsCreated = false,
+                IsSkipped = true
+            };
+
+        var beforeValue = RoundValue(balance.InventoryValue);
+        var afterValue = RoundValue(beforeValue + amount);
+        var afterAverageCost = CalculateAverageCost(beforeQty, afterValue);
+        var transaction = new InventoryTransaction
+        {
+            StoreId = warehouse.StoreId,
+            WarehouseId = warehouse.Id,
+            ProductVariantId = productVariantId,
+            TransactionType = InventoryTransactionType.Revaluation,
+            ReferenceType = InventoryReferenceType.Adjustment,
+            ReferenceId = referenceId,
+            ReferenceLineId = referenceLineId,
+            ReferenceSubKey = referenceSubKey,
+            QuantityChange = 0m,
+            BeforeQty = beforeQty,
+            AfterQty = beforeQty,
+            UnitCostSnapshot = targetCost,
+            TotalCost = amount,
+            BeforeInventoryValue = beforeValue,
+            AfterInventoryValue = afterValue,
+            RunningAverageUnitCostAfter = afterAverageCost,
+            CostSourceType = InventoryCostSourceType.RevaluationAdjustment,
+            IsProvisionalCost = false,
+            CostFinalizedAtUtc = occurredAtUtc,
+            OccurredAtUtc = occurredAtUtc,
+            Note = string.IsNullOrWhiteSpace(note)
+                ? $"Điều chỉnh giá vốn {qty:0.###} đơn vị gốc"
+                : note.Trim()
+        };
+        await _transactionRepository.AddAsync(transaction, ct);
+        await _transactionRepository.SaveChangesAsync(ct);
+
+        var entry = new InventoryValuationEntry
+        {
+            StoreId = warehouse.StoreId,
+            InventoryTransactionId = transaction.Id,
+            WarehouseId = warehouse.Id,
+            ProductVariantId = productVariantId,
+            EntryType = InventoryValuationEntryType.Revaluation,
+            ReferenceType = InventoryReferenceType.Adjustment,
+            ReferenceId = referenceId,
+            ReferenceLineId = referenceLineId,
+            ReferenceSubKey = referenceSubKey,
+            Quantity = 0m,
+            UnitCost = targetCost,
+            Amount = amount,
+            RunningQtyAfter = beforeQty,
+            RunningValueAfter = afterValue,
+            RunningAverageUnitCostAfter = afterAverageCost,
+            CostSourceType = InventoryCostSourceType.RevaluationAdjustment,
+            IsProvisional = false,
+            CostFinalizedAtUtc = occurredAtUtc,
+            Note = transaction.Note,
+            OccurredAtUtc = occurredAtUtc
+        };
+        await _valuationRepository.AddRangeAsync([entry], ct);
+        balance.InventoryValue = afterValue;
+        balance.AverageUnitCost = afterAverageCost;
+        balance.LastValuationAtUtc = occurredAtUtc;
+        await _transactionRepository.SaveChangesAsync(ct);
+        await _balanceRepository.SaveChangesAsync(ct);
+
+        return new InventoryMovementResultDto
+        {
+            WarehouseId = warehouse.Id,
+            ProductVariantId = productVariantId,
+            BeforeQty = beforeQty,
+            QuantityChange = 0m,
+            AfterQty = beforeQty,
+            BeforeValue = beforeValue,
+            ValueChange = amount,
+            AfterValue = afterValue,
+            BeforeAverageCost = oldAverageCost,
+            AfterAverageCost = afterAverageCost,
+            InventoryTransactionId = transaction.Id,
+            InventoryValuationEntryIds = [entry.Id],
+            ActualValueChange = amount,
+            IsCreated = true
+        };
+    }
+
     private async Task<InventoryMovementResultDto> CreateWithinTransactionAsync(
         CreateInventoryMovementRequest request,
         Warehouse warehouse,

@@ -13,9 +13,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Products;
 
-public sealed class ReceiptIntakeCatalog(AppDbContext db, IProcurementCatalogService catalog,
+public sealed partial class ReceiptIntakeCatalog(AppDbContext db, IProcurementCatalogService catalog,
     IUnitService unitService, IProductUnitConversionService conversions, ICurrentUser user,
-    IReceiptBarcodeProposalService barcodeProposals) : IReceiptIntakeCatalog
+    IReceiptBarcodeProposalService barcodeProposals,
+    GaoApp.Application.Interfaces.Services.Media.ITempUploadService tempUploads,
+    GaoApp.Application.Interfaces.Services.Media.IProductImageService productImages) : IReceiptIntakeCatalog
 {
     public async Task<ProductUnitConversion> PrepareKnownAsync(StockDocument document, RecordKnownReceiptItemRequest request, CancellationToken ct)
     {
@@ -125,6 +127,7 @@ public sealed class ReceiptIntakeCatalog(AppDbContext db, IProcurementCatalogSer
                 throw new BusinessRuleException("Hãy chọn nhà cung cấp của phiếu trước khi duyệt sản phẩm mới.");
             var created = await catalog.CreateProductWithinTransactionAsync(new()
             {
+                GenerateDefaultBarcode = string.IsNullOrWhiteSpace(item.RawBarcodeSnapshot),
                 Name = item.NameSnapshot, CategoryId = categoryId ?? item.ProposedCategoryId ?? 0,
                 SupplierId = document.SupplierId.Value, UnitId = item.ProposedBaseUnitId,
                 NewUnitName = item.ProposedBaseUnitId.HasValue ? null : item.ProposedBaseUnitName
@@ -159,7 +162,7 @@ public sealed class ReceiptIntakeCatalog(AppDbContext db, IProcurementCatalogSer
             {
                 StoreId = storeId, ProductVariantId = variantId, UnitId = receiving!.Id,
                 Factor = item.ProposedFactor.Value, IsActive = true, IsBaseUnit = false,
-                IsDefaultForSale = false, AutoGeneratePrimaryBarcode = true,
+                IsDefaultForSale = false, AutoGeneratePrimaryBarcode = string.IsNullOrWhiteSpace(item.RawBarcodeSnapshot),
                 BarcodeNote = "Tạo quy cách sau khi duyệt khai báo nhận hàng."
             }, ct);
         }

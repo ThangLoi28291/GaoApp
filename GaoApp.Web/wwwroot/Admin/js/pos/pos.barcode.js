@@ -93,6 +93,7 @@ window.PosBarcode = (function () {
 
         const actionLocker = createActionLocker();
         let productEnterPending = false;
+        let inputRevision = 0;
         barcodeSearchState.mode = 'product';
         barcodeSearchState.customerItems = [];
         barcodeSearchState.voucherItems = [];
@@ -971,11 +972,9 @@ window.PosBarcode = (function () {
                     selected = getCurrentProductSelection();
                 }
 
-                // A complete barcode must retain its exact selling unit (for example a pack).
-                const exactBarcode = numericInput && selected?.kind === 'parent'
-                    && (selected.barcode === keyword || (selected.unitOptions || []).some(unit =>
-                        (unit.barcode || unit.Barcode) === keyword));
-                if (selected && !exactBarcode) {
+                // Numeric scans resolve the exact barcode, never a fuzzy first suggestion.
+                // An explicitly highlighted unit row still supports keyboard selection.
+                if (selected && (!numericInput || selected.kind === 'child')) {
                     await selectAutocompleteItem(selected);
                     return;
                 }
@@ -1322,6 +1321,7 @@ window.PosBarcode = (function () {
         }
 
         async function searchBarcodeAutocomplete(keyword) {
+            if (window.PosScanGuard?.isOpen()) return;
             const parsed = parseQtyPrefixedInput(keyword);
 
             const actualKeyword = (parsed.keyword || '').trim();
@@ -1427,23 +1427,38 @@ window.PosBarcode = (function () {
         }
 
         async function runScanAction(state, actionKey, handler, options) {
+            if (window.PosScanGuard?.isOpen()) return { ok: false, status: 'blocked' };
+            const submittedInput = txtBarcode?.value;
+            const submittedRevision = inputRevision;
+            hideBarcodeAutocomplete();
             let attempt;
             const feedback = window.PosScanFeedback;
-            const result = await runPosAction(state, actionKey, async () => {
-                attempt = feedback?.begin(state.business?.currentDraft || state.currentDraft);
-                return await handler();
-            }, { ...options,
-                onSuccess: draft => {
-                    options.onSuccess(draft);
-                    // Rendering feedback cannot turn an accepted sale into a failed command.
-                    try { feedback?.confirmed(attempt, draft); } catch (error) { console.error('POS scan presentation:', error); }
+            try {
+                const result = await runPosAction(state, actionKey, async () => {
+                    attempt = feedback?.begin(state.business?.currentDraft || state.currentDraft);
+                    return await handler();
+                }, { ...options,
+                    onSuccess: draft => {
+                        options.onSuccess(draft);
+                        // Rendering feedback cannot turn an accepted sale into a failed command.
+                        try { feedback?.confirmed(attempt, draft); } catch (error) { console.error('POS scan presentation:', error); }
+                    }
+                });
+                if (!result.ok && attempt) feedback?.failed(attempt, result.error, options.retryScan);
+                return result;
+            } finally {
+                // Clear the completed attempt even on failure, without erasing the next scan.
+                if (txtBarcode && inputRevision === submittedRevision && txtBarcode.value === submittedInput) {
+                    txtBarcode.value = '';
+                    resetRequestedQty();
+                    hideBarcodeAutocomplete();
+                    if (!window.PosScanGuard?.isOpen()) focusBarcodeInput();
                 }
-            });
-            if (!result.ok && attempt) feedback?.failed(attempt, result.error, options.retryScan);
-            return result;
+            }
         }
 
         async function scanCurrentCart() {
+            if (window.PosScanGuard?.isOpen()) return { ok: false, status: 'blocked' };
             const parsed = parseQtyPrefixedInput(txtBarcode?.value || '');
             const barcode = (parsed.keyword || parsed.raw || '').trim();
             const qty = getCurrentRequestedQty();
@@ -1485,17 +1500,25 @@ window.PosBarcode = (function () {
                                 successMessage: safeQty > 1
                                     ? `Đã thêm ${safeQty} sản phẩm vào giỏ`
                                     : 'Đã thêm sản phẩm vào giỏ',
-                                focusBarcode: true,
-                                afterSync: function () {
-                                    if (txtBarcode) {
-                                        txtBarcode.value = '';
-                                    }
-                                    resetRequestedQty();
-                                    hideBarcodeAutocomplete();
-                                }
+                                focusBarcode: false
                             });
                         },
                         onError: function (normalized) {
+                            const message = normalized.message || '';
+                            if (window.PosScanGuard && (
+                                message.includes('Không tìm thấy sản phẩm theo barcode') ||
+                                message.includes('Sản phẩm hoặc đơn vị chưa có trong dữ liệu offline'))) {
+                                // Discard any buffered next scan and its pending autocomplete reply.
+                                const clearScan = () => {
+                                    txtBarcode.value = '';
+                                    inputRevision++;
+                                    resetRequestedQty();
+                                    hideBarcodeAutocomplete();
+                                };
+                                clearScan();
+                                window.PosScanGuard.show(barcode, message, () => { clearScan(); focusBarcodeInput(); });
+                                return;
+                            }
                             if (!barcodeSearchState.flatItems || !barcodeSearchState.flatItems.length) {
                                 showError(normalized.message || 'Không thể quét barcode.');
                             }
@@ -1568,14 +1591,7 @@ window.PosBarcode = (function () {
                                 successMessage: safeQty > 1
                                     ? `Đã thêm ${safeQty} sản phẩm vào giỏ`
                                     : 'Đã thêm sản phẩm vào giỏ',
-                                focusBarcode: true,
-                                afterSync: function () {
-                                    if (txtBarcode) {
-                                        txtBarcode.value = '';
-                                    }
-                                    resetRequestedQty();
-                                    hideBarcodeAutocomplete();
-                                }
+                                focusBarcode: false
                             });
                         }
                     }
@@ -1645,14 +1661,7 @@ window.PosBarcode = (function () {
                                 successMessage: safeQty > 1
                                     ? `Đã thêm ${safeQty} sản phẩm vào giỏ`
                                     : 'Đã thêm sản phẩm vào giỏ',
-                                focusBarcode: true,
-                                afterSync: function () {
-                                    if (txtBarcode) {
-                                        txtBarcode.value = '';
-                                    }
-                                    resetRequestedQty();
-                                    hideBarcodeAutocomplete();
-                                }
+                                focusBarcode: false
                             });
                         }
                     }
@@ -1881,6 +1890,7 @@ window.PosBarcode = (function () {
             });
 
             txtBarcode?.addEventListener('input', function () {
+                inputRevision++;
                 const rawInput = (txtBarcode.value || '').trim();
                 // Invalidate the previous query immediately, before the 300 ms debounce.
                 hideBarcodeAutocomplete();

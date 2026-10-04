@@ -5,6 +5,10 @@ namespace GaoApp.Web.Areas.Admin.ViewModels.Products;
 
 public sealed class ProductIndexVM
 {
+    public ProductListFilters Filters { get; set; } = new();
+    public ProductFilterOptionDto? SupplierOption { get; set; }
+    public ProductFilterOptionDto? BrandOption { get; set; }
+    public ProductFilterOptionDto? UnitOption { get; set; }
     public string? SearchString { get; set; }
     public int? CategoryId { get; set; }
     public string? Lifecycle { get; set; }

@@ -82,6 +82,42 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     private static readonly byte[] CurrentVersion = [1, 2, 3, 4];
 
     [Fact]
+    public async Task Pending_supplier_autosave_accepts_current_version_without_posting_inventory()
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        var fixture = CreateFixture(document);
+        var request = PendingHeaderRequest(document, supplierId: 52);
+        request.RowVersion = Convert.ToBase64String(CurrentVersion);
+
+        await fixture.Service.UpdateHeaderAsync(request);
+
+        document.SupplierId.Should().Be(52);
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        fixture.Repository.SaveCalls.Should().Be(1);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid")]
+    [InlineData("AQIDBQ==")]
+    public async Task Pending_supplier_autosave_rejects_invalid_or_stale_version_without_mutation(string version)
+    {
+        var document = CreateDocument(StockDocumentStatus.PendingApproval);
+        document.SupplierId = 51;
+        var fixture = CreateFixture(document);
+        var request = PendingHeaderRequest(document, supplierId: 52);
+        request.RowVersion = version;
+
+        var action = () => fixture.Service.UpdateHeaderAsync(request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>();
+        document.SupplierId.Should().Be(51);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.AssertNoPostingCalls();
+    }
+
+    [Fact]
     public async Task PendingApproval_physical_add_fails_before_save_or_mutation()
     {
         var document = CreateDocument(StockDocumentStatus.PendingApproval);
@@ -1014,8 +1050,14 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             => throw new NotSupportedException();
         public Task AddInventoryTransactionAsync(InventoryTransaction entity, CancellationToken ct = default)
             => throw new NotSupportedException();
-        public Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default)
-            => Task.FromResult(new List<StockDocument> { Document });
+        public Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
+            => Task.FromResult(new List<StockDocumentListItemDto> { new()
+            {
+                Id = Document.Id,
+                PurchaseOrderId = Document.PurchaseOrderId,
+                PurchaseOrderNumber = Document.PurchaseOrder?.OrderNumber,
+                PurchaseOrderTitle = Document.PurchaseOrder?.Title
+            } });
         public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
         {
             RemoveCalls++;

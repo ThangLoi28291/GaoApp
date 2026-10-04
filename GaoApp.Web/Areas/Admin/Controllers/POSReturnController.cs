@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Returns;
+using GaoApp.Application.DTOs.Returns;
+using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Common.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -12,10 +13,12 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class POSReturnController : Controller
 {
     private readonly ISalesReturnService _salesReturnService;
+    private readonly IPendingReturnRestockService _pendingRestock;
 
-    public POSReturnController(ISalesReturnService salesReturnService)
+    public POSReturnController(ISalesReturnService salesReturnService, IPendingReturnRestockService pendingRestock)
     {
         _salesReturnService = salesReturnService;
+        _pendingRestock = pendingRestock;
     }
 
     [HttpGet("order/{orderId:int}/eligibility")]
@@ -48,13 +51,40 @@ public class POSReturnController : Controller
                 data = result
             });
         }
-        catch (InvalidOperationException ex)
+        catch (BusinessRuleException ex)
         {
             return BadRequest(new
             {
                 success = false,
-                message = ex.Message
+                message = ex.SafeMessage,
+                errorCode = "POS_RETURN_INVALID",
+                errorType = "business_rule"
             });
         }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new
+            {
+                success = false,
+                message = ex.Message,
+                errorCode = "POS_RETURN_STATE_CHANGED",
+                errorType = "state_conflict",
+                actionHint = "Dữ liệu đơn hoặc tồn kho đã thay đổi. Hãy đóng popup, tải lại chi tiết đơn rồi thực hiện lại."
+            });
+        }
+    }
+
+    [HttpGet("pending-restock")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> PendingRestock(CancellationToken ct)
+        => View(await _pendingRestock.GetPendingAsync(ct));
+
+    [HttpPost("{returnId:int}/complete-restock")]
+    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CompleteRestock(int returnId, CancellationToken ct)
+    {
+        await _pendingRestock.CompleteAsync(returnId, ct);
+        return Ok(new {success = true, message = "Đã hoàn tất nhập kho hàng trả. Không phát sinh thêm tiền hoàn."});
     }
 }

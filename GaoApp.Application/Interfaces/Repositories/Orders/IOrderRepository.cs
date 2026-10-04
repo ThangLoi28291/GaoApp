@@ -20,16 +20,19 @@ public interface IOrderRepository
     // Call inside the issuance store lock; refresh tracked scalar values and concurrency token.
     Task<Order?> GetForInvoiceRouteChangeAsync(int storeId, int orderId, CancellationToken ct = default);
 
-    Task<(List<Order> Items, int Total)> QueryOrdersAsync(
+    Task<(List<GaoApp.Application.DTOs.POS.OrderListItemDto> Items, int Total)> QueryOrdersAsync(
         DateTime? fromUtc,
         DateTime? toUtcExclusive,
         OrderStatus? status,
         string? keyword,
         int page,
         int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        GaoApp.Application.DTOs.POS.OrderListQueryDto? filters = null);
 
     Task<HashSet<int>> GetBankTransferOrderIdsAsync(IReadOnlyCollection<int> orderIds, CancellationToken ct = default);
+
+    Task<List<GaoApp.Application.DTOs.POS.OrderFilterOptionDto>> GetListFilterOptionsAsync(bool employees, string? term, CancellationToken ct = default);
 
     Task<bool> ExistsDraftByShiftAsync(int shiftId, CancellationToken ct = default);
 

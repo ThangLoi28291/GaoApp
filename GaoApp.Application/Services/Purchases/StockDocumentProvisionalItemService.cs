@@ -300,6 +300,7 @@ public sealed partial class StockDocumentProvisionalItemService
 
             var created = await _catalog.CreateProductWithinTransactionAsync(new()
             {
+                GenerateDefaultBarcode = !request.RememberRawBarcode || string.IsNullOrWhiteSpace(item.RawBarcodeSnapshot),
                 Name = NormalizeOptional(request.ProductName, 200) ?? item.NameSnapshot,
                 CategoryId = request.CategoryId,
                 SupplierId = supplierId.Value,
@@ -619,7 +620,8 @@ public sealed partial class StockDocumentProvisionalItemService
                 item.NameSnapshot, item.Quantity, item.Status,
                 item.ResolvedStockDocumentLineId, item.ProposedProductVariantId,
                 item.ProposedBaseUnitId, item.ProposedBaseUnitName, item.ProposedFactor,
-                item.UnitNameSnapshot, item.ProposedCategoryId
+                item.UnitNameSnapshot, item.ProposedCategoryId, item.ReviewDraftJson, item.OriginalDeclarationJson,
+                ReviewPhotoHash = PhotoHash(item.ReviewPhoto)
             }),
             IsSuccess = true
         }, ct);
@@ -659,6 +661,8 @@ public sealed partial class StockDocumentProvisionalItemService
                     ProposedCategoryId = x.ProposedCategoryId,
                     Note = x.Note,
                     HasPhoto = x.PackagingPhoto != null,
+                    HasReviewPhoto = x.ReviewPhoto != null,
+                    ReviewDraft = x.ReviewDraftJson is null ? null : JsonSerializer.Deserialize<ReceiptIntakeCompletionDto>(x.ReviewDraftJson),
                     Status = x.Status,
                     ResolvedStockDocumentLineId = x.ResolvedStockDocumentLineId,
                     ResolutionAllocationKind = line?.ReceiptAllocationKind,
@@ -782,7 +786,7 @@ public sealed partial class StockDocumentProvisionalItemService
             item.NormalizedUnitNameSnapshot,
             item.Quantity,
             item.Note,
-            status ?? item.Status));
+            status ?? item.Status, item.ReviewDraftJson, PhotoHash(item.ReviewPhoto)));
 
     private void RestoreSnapshot(
         StockDocumentProvisionalItem item,
@@ -793,6 +797,8 @@ public sealed partial class StockDocumentProvisionalItemService
         if (!string.IsNullOrWhiteSpace(json))
             snapshot = JsonSerializer.Deserialize<ProvisionalStateSnapshot>(json);
 
+        if (snapshot?.ReviewPhotoHash != PhotoHash(item.ReviewPhoto))
+            throw new BusinessRuleException("Ảnh bản nháp đã thay đổi. Hãy mở phần hoàn thiện sản phẩm để đổi hoặc bỏ ảnh.");
         item.NameSnapshot = snapshot?.Name ?? item.NameSnapshot;
         item.UnitId = snapshot?.UnitId ?? (snapshot is null ? item.UnitId : null);
         item.UnitNameSnapshot = snapshot?.UnitName;
@@ -800,6 +806,7 @@ public sealed partial class StockDocumentProvisionalItemService
         item.Quantity = snapshot?.Quantity ??
             (target.BeforeQuantity > 0m ? target.BeforeQuantity : item.Quantity);
         item.Note = snapshot?.Note;
+        item.ReviewDraftJson = snapshot?.ReviewDraftJson;
         item.Status = snapshot?.Status ?? (target.BeforeIsDeleted
             ? StockDocumentProvisionalItemStatus.Removed
             : StockDocumentProvisionalItemStatus.Unresolved);
@@ -816,7 +823,10 @@ public sealed partial class StockDocumentProvisionalItemService
         string? NormalizedUnitName,
         decimal Quantity,
         string? Note,
-        StockDocumentProvisionalItemStatus Status);
+        StockDocumentProvisionalItemStatus Status, string? ReviewDraftJson = null, string? ReviewPhotoHash = null);
+
+    private static string? PhotoHash(byte[]? photo) => photo is null ? null :
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(photo));
 
     private int RequireStore() => _tenant.StoreId is > 0 and var id
         ? id : throw new InvalidOperationException("Current store context is unavailable.");

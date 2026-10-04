@@ -207,7 +207,7 @@ public sealed class InventoryNonPosPostingContractTests
         result.DocumentReferenceInitializerIsInvariant.Should().BeTrue();
         result.DocumentReferenceConversionCount.Should().Be(1);
         result.DocumentReferenceWriteCount.Should().Be(0);
-        result.DocumentReferenceReadCount.Should().Be(2);
+        result.DocumentReferenceReadCount.Should().Be(3);
         result.IncreaseOverloadCount.Should().Be(1);
         result.DecreaseOverloadCount.Should().Be(1);
         result.IncreaseReferenceIndex.Should().Be(4);
@@ -216,6 +216,18 @@ public sealed class InventoryNonPosPostingContractTests
         result.DecreaseCallCount.Should().Be(1);
         result.IncreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
         result.DecreaseReferenceArgumentIsDocumentReference.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Revaluation_cannot_read_an_alternate_adjustment_document_reference()
+    {
+        var source = ReadAdjustmentServiceSource();
+        var root = ParseRequiredCompilationUnit(source);
+        var call = root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Single(x => GetInvokedMethodName(x) == "CreateRevaluationAsync");
+        var changed = ReplaceSourceSpan(source, call.ArgumentList.Arguments[4].Expression.Span, "alternateReferenceId");
+        AnalyzeAdjustmentReferenceAstContract(source, ReadInventoryMovementFactoryInterfaceSource()).Violations.Should().BeEmpty();
+        AnalyzeAdjustmentReferenceAstContract(changed, ReadInventoryMovementFactoryInterfaceSource()).Violations.Should().Contain("DocumentReferenceUseCount");
     }
 
     [Theory]
@@ -2734,6 +2746,26 @@ public sealed class InventoryNonPosPostingContractTests
                 "DecreaseReferenceArgument",
                 validatedReferenceArguments);
 
+            // Revaluation shares the same invariant persisted document identity.
+            // Validate its additional read rather than treating it as an arbitrary use.
+            var revaluationCalls = approveMethod.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(call => GetInvokedMethodName(call) == "CreateRevaluationAsync").ToList();
+            if (revaluationCalls.Count > 1)
+                AddViolation(violations, "DocumentReferenceUseCount");
+            foreach (var call in revaluationCalls)
+            {
+                if (call.Expression is MemberAccessExpressionSyntax
+                    { Expression: IdentifierNameSyntax { Identifier.ValueText: "_inventoryMovementService" } }
+                    && call.ArgumentList.Arguments.Count == 9
+                    && call.ArgumentList.Arguments[4].Expression is IdentifierNameSyntax
+                        { Identifier.ValueText: "documentReferenceId" } reference
+                    && IsInRootApproveExecutableScope(reference, approveMethod))
+                    validatedReferenceArguments.Add(reference);
+                else
+                    AddViolation(violations, "DocumentReferenceUseCount");
+            }
+
             var readSpans = readIdentifiers
                 .Where(x => IsInRootApproveExecutableScope(
                     x,
@@ -2746,8 +2778,8 @@ public sealed class InventoryNonPosPostingContractTests
                 .OrderBy(x => x.Start)
                 .ToList();
             if (referenceStatement is null
-                || readSpans.Count != 2
-                || validatedSpans.Count != 2
+                || readSpans.Count != 2 + revaluationCalls.Count
+                || validatedSpans.Count != 2 + revaluationCalls.Count
                 || !readSpans.SequenceEqual(validatedSpans))
             {
                 AddViolation(
@@ -3370,7 +3402,9 @@ public sealed class InventoryNonPosPostingContractTests
             .DescendantNodes()
             .OfType<ForEachStatementSyntax>()
             .Single(x => x.Identifier.ValueText == "line"
-                && IsDocumentLinesExpression(x.Expression));
+                && IsDocumentLinesExpression(x.Expression)
+                && x.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                    .Any(call => GetInvokedMethodName(call) == "CreateAdjustmentIncrease"));
         return constructionLoop
             .DescendantNodes()
             .OfType<IfStatementSyntax>()

@@ -505,6 +505,7 @@
     function renderType(type, text) {
         if (type === 30) return `<span class="adj-type-in">+ ${escapeHtml(text || "Điều chỉnh tăng")}</span>`;
         if (type === 31) return `<span class="adj-type-out">- ${escapeHtml(text || "Điều chỉnh giảm")}</span>`;
+        if (type === 70) return `<span class="adj-type-revaluation">↺ ${escapeHtml(text || "Điều chỉnh giá vốn")}</span>`;
         return escapeHtml(text || "-");
     }
 

@@ -48,9 +48,10 @@ public class AccountController : Controller
 
     [HttpGet("login")]
     [AllowAnonymous]
-    public async Task<IActionResult> Login(string? returnUrl = null, CancellationToken ct = default)
+    public async Task<IActionResult> Login(string? returnUrl = null, CancellationToken ct = default, bool manageTerminals = false)
     {
         var vm = await BuildLoginVmAsync(returnUrl, ct);
+        vm.ManageTerminals = manageTerminals || returnUrl?.StartsWith("/admin/pos-terminals", StringComparison.OrdinalIgnoreCase) == true;
         return View("~/Areas/Admin/Views/Account/Login.cshtml", vm);
     }
 
@@ -73,6 +74,8 @@ public class AccountController : Controller
         var loginResult = await _authService.LoginAsync(new LoginRequest
         {
             UserName = vm.UserName,
+            ManageTerminals = vm.ManageTerminals,
+            PairingKey = vm.PairingKey,
             Password = vm.Password,
             ReturnUrl = vm.ReturnUrl,
             DeviceKey = cookieDeviceKey,
@@ -148,6 +151,9 @@ public class AccountController : Controller
             Summary = "Đăng nhập thành công.",
             IsSuccess = true
         }, "LoginSuccess", ct);
+
+        if (vm.ManageTerminals)
+            return Redirect("/admin/pos-terminals");
 
         if (!string.IsNullOrWhiteSpace(vm.ReturnUrl) &&
             Url.IsLocalUrl(vm.ReturnUrl))

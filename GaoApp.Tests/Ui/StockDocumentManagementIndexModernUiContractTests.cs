@@ -48,7 +48,8 @@ public sealed class StockDocumentManagementIndexModernUiContractTests
         Assert.Contains("ViewData[\"container\"] = \"container-fluid\"", view, StringComparison.Ordinal);
         Assert.Contains("data-gao-ui=\"modern\"", view, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("data-stock-document-index", view, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("row-cols-xl-4", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("row-cols-xl-5", view, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id=\"sdWaitingInvoiceKpi\"", view, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tra cứu phiếu nhập", view, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("id=\"sdSearchKeyword\"", view, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("id=\"sdStatusFilter\"", view, StringComparison.OrdinalIgnoreCase);
@@ -69,7 +70,9 @@ public sealed class StockDocumentManagementIndexModernUiContractTests
         Assert.Contains("js-stock-document-quick-view", script, StringComparison.Ordinal);
         Assert.Contains("dblclick", script, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Tiến độ", File.ReadAllText(IndexPath), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Kho / HKD", File.ReadAllText(IndexPath), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("HKD nhập hàng", File.ReadAllText(IndexPath), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("createLegalEntityId", File.ReadAllText(IndexPath), StringComparison.Ordinal);
+        Assert.Contains("createWarehouseId", File.ReadAllText(IndexPath), StringComparison.Ordinal);
         Assert.Contains("Cập nhật", File.ReadAllText(IndexPath), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("#${x.id}", script, StringComparison.Ordinal);
     }

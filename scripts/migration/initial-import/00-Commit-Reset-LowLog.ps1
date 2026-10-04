@@ -8,6 +8,7 @@ param(
     [string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$SuccessfulDryRunDirectory,
     [switch]$AllowCommit,
+    [switch]$SkipTargetBackup,
     [switch]$CheckSetup
 )
 # TEST target preparation: explicit COMMIT, backed by a successful matching DRYRUN.
@@ -44,12 +45,15 @@ $approval=Get-Content -LiteralPath (Join-Path $SuccessfulDryRunDirectory 'manife
 $allowImportedTestReset=($preview.PSObject.Properties.Name -contains 'AllowImportedTestReset' -and [bool]$preview.AllowImportedTestReset)
 if ($approval.ExpectedServer -ne $ExpectedServer -or [bool]$approval.AllowImportedTestReset -ne $allowImportedTestReset) { throw 'Expected server or reviewed TEST reset scope differs from DRYRUN.' }
 $dryRunPath=Join-Path $root '00-DryRun-Reset-LowLog.ps1'
+$approvedWaiver=($approval.PSObject.Properties.Name -contains 'TargetBackupWaivedByUser' -and [bool]$approval.TargetBackupWaivedByUser)
+if($approvedWaiver -ne [bool]$SkipTargetBackup){throw 'Target backup policy differs from the reviewed DRYRUN.'}
+$expectedBackupStatus=if($SkipTargetBackup){'WAIVED_BY_USER'}else{'PASS'}
 if($approval.Status -ne 'DRYRUN_PASS_ROLLED_BACK' -or $approval.Mode -ne 'DRYRUN_ALWAYS_ROLLBACK' -or
    $approval.Strategy -ne 'TRUNCATE_WITH_TRANSACTIONAL_FK_RESTORE' -or
    $approval.Server -ne $Server -or $approval.TargetDatabase -ne $TargetDatabase -or
    $approval.AllTargetRowsRestored -ne 'PASS' -or $approval.IdentityStateRestored -ne 'PASS' -or
    $approval.ForeignKeyDefinitionsRestored -ne 'PASS' -or $approval.EmptyAndPreservedChecks -ne 'PASS' -or
-   $approval.BackupVerifyOnly -ne 'PASS' -or -not $approval.RollbackCompleted){throw 'A successful matching low-log DRYRUN is required.'}
+   $approval.BackupVerifyOnly -ne $expectedBackupStatus -or -not $approval.RollbackCompleted){throw 'A successful matching low-log DRYRUN is required.'}
 if($approval.ScriptSha256 -ne (Get-FileHash -LiteralPath $dryRunPath -Algorithm SHA256).Hash -or
    $approval.PlannerSha256 -ne (Get-FileHash -LiteralPath (Join-Path $root 'Reset-Truncate-Plan.ps1') -Algorithm SHA256).Hash -or
    $approval.HasherSha256 -ne (Get-FileHash -LiteralPath (Join-Path $root 'Reset-Hash.ps1') -Algorithm SHA256).Hash -or
@@ -76,7 +80,7 @@ if ($CheckSetup) {
     Write-Output "Reports: $OutputDirectory"
     return
 }
-if ([string]::IsNullOrWhiteSpace($BackupFile) -or $BackupFile -notmatch '^[A-Za-z]:\\.+\.bak$') {
+if (-not $SkipTargetBackup -and ([string]::IsNullOrWhiteSpace($BackupFile) -or $BackupFile -notmatch '^[A-Za-z]:\\.+\.bak$')) {
     throw 'Specify the full server-local .bak filename, not just its directory.'
 }
 if (Test-Path -LiteralPath $OutputDirectory) { throw 'Output directory already exists. Use a new directory.' }
@@ -100,6 +104,7 @@ $manifest = [ordered]@{
     HasherSha256=(Get-FileHash -LiteralPath (Join-Path $root 'Reset-Hash.ps1') -Algorithm SHA256).Hash
     PreviewManifestSha256=(Get-FileHash -LiteralPath (Join-Path $PreviewDirectory 'manifest.json') -Algorithm SHA256).Hash
     BackupFile=$BackupFile; PhysicalFilesDeleted=$false; SourceDatabaseAccessed=$false
+    TargetBackupWaivedByUser=[bool]$SkipTargetBackup
     ApprovedDryRunScriptSha256=$approval.ScriptSha256
     ApprovedDryRunManifestSha256=(Get-FileHash -LiteralPath (Join-Path $SuccessfulDryRunDirectory 'manifest.json') -Algorithm SHA256).Hash
     ApprovedBaselineSha256=(Get-FileHash -LiteralPath (Join-Path $SuccessfulDryRunDirectory 'before-hashes.json') -Algorithm SHA256).Hash
@@ -183,6 +188,7 @@ function Record-LogUsage([string]$stage){
 }
 try {
     $connection.Open()
+    Execute ([IO.File]::ReadAllText((Join-Path $root 'Target-Contract.sql')))
     $actualServer=[string](Scalar 'SELECT CONVERT(nvarchar(128),SERVERPROPERTY(''ServerName''));')
     if ($actualServer -ne $previewEnvironment[0].ServerName -or $preview.Server -ne $Server -or ($ExpectedServer -and $actualServer -ne $ExpectedServer)) {
         throw 'SQL Server does not match the reviewed preview/expected instance.'
@@ -194,6 +200,10 @@ try {
     if($volumeFree -lt 8GB){throw 'A database volume has less than 8 GiB headroom. Inspect disk space before starting.'}
     $manifest['LogCapacityPreflight']='PASS'
     Record-LogUsage 'before'
+    if($SkipTargetBackup){
+        $manifest['BackupVerifyOnly']='WAIVED_BY_USER'
+        Write-Output 'TARGET_BACKUP_WAIVED_BY_USER. No target backup was verified; preserved-data and FK checks remain required.'
+    }else{
     Write-Output 'Checking backup header and VERIFYONLY; no deletions have started.'
     $headers=@(Read-Rows 'RESTORE HEADERONLY FROM DISK=@p WITH FILE=1;' @{'@p'=$BackupFile})
     $header=@($headers | Where-Object Position -eq 1)
@@ -215,7 +225,8 @@ try {
     $manifest['BackupVerifyOnly']='PASS'
     $manifest['BackupFinishDate']=([datetime]$h.BackupFinishDate).ToString('o')
     $manifest['BackupSetGuid']=[string]$h.BackupSetGUID
-    Write-Output 'Backup verified. Starting transaction; stop GaoApp and keep it stopped until all checks finish.'
+    }
+    Write-Output 'Starting transaction; stop GaoApp and keep it stopped until all checks finish.'
     $transaction=$connection.BeginTransaction([System.Data.IsolationLevel]::Serializable)
     Execute @'
 SET XACT_ABORT ON; SET LOCK_TIMEOUT 15000;

@@ -23,22 +23,18 @@ public sealed class InputInvoicePickerUiContractTests
     }
 
     [Fact]
-    public void Pending_approval_workbench_exposes_compact_mapping_actions_and_summary()
+    public void Pending_approval_workbench_moves_xml_mapping_into_bill_pricing()
     {
         var root = FindRepositoryRoot();
         var workbench = File.ReadAllText(Path.Combine(root, "GaoApp.Web", "Areas", "Admin",
             "Views", "StockDocumentManagement", "_CommercialApprovalWorkbench.cshtml"));
-        var script = File.ReadAllText(Path.Combine(root, "GaoApp.Web", "wwwroot", "Admin",
-            "js", "stock-document-management.js"));
-
-        Assert.Contains("inputInvoiceMappingSummary", workbench, StringComparison.Ordinal);
-        Assert.Contains("js-commercial-item-map-status", workbench, StringComparison.Ordinal);
-        Assert.Contains("btn-map-input-invoice-line", workbench, StringComparison.Ordinal);
-        Assert.Contains("Đối chiếu XML — tùy chọn", workbench, StringComparison.Ordinal);
-        Assert.Contains("Ghép với XML", workbench, StringComparison.Ordinal);
-        Assert.Contains("Chưa đối chiếu", script, StringComparison.Ordinal);
-        Assert.Contains("refreshInputInvoiceMappingWorkspace", script,
-            StringComparison.Ordinal);
+        Assert.Contains("pricingXmlImport", workbench, StringComparison.Ordinal);
+        Assert.Contains("pricingXmlPanel", workbench, StringComparison.Ordinal);
+        Assert.Contains("pricingXmlAddAll", workbench, StringComparison.Ordinal);
+        Assert.Contains("Nhập nhanh từ hóa đơn XML", workbench, StringComparison.Ordinal);
+        Assert.Contains("bill nhập tay và chương trình đang có được giữ", workbench, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-workbench-tab=\"xml\"", workbench, StringComparison.Ordinal);
+        Assert.DoesNotContain("btn-map-input-invoice-line", workbench, StringComparison.Ordinal);
     }
 
     [Fact]

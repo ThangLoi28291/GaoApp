@@ -46,5 +46,12 @@ public enum PurchaseReceiptAuditEventType
     ProvisionalConfirmBlocked = 42,
     ProvisionalBarcodeRemembered = 43,
     ProvisionalBarcodeDeclined = 44,
-    ProvisionalItemRestored = 45
+    ProvisionalItemRestored = 45,
+    ReceiptTitleChanged = 46,
+    ReceiptTitleChangeRequested = 47,
+    ReceiptTitleChangeApproved = 48,
+    ReceiptTitleChangeDeclined = 49,
+    ReceiptDraftDeleted = 50,
+    InputInvoiceWaitingEnded = 51,
+    InputInvoiceFollowUpReviewed = 52
 }

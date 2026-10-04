@@ -37,6 +37,7 @@ public class POSOrderDetailController : BasePOSPageController
         await BindPOSHeaderContextAsync(ct);
 
         var receipt = await _pos.GetReceiptAsync(orderId, ct);
+        ViewBag.CanCompleteReturnRestock = (await _authorization.AuthorizeAsync(User, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded;
         var canReconcile = await _authorization.AuthorizeAsync(
             User,
             PermissionCodes.System.LegalEntity.Reconcile);

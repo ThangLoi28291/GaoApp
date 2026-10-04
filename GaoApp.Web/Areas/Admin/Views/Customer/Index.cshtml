@@ -1,5 +1,8 @@
 @using GaoApp.Web.Areas.Admin.ViewModels.Customers
 @model CustomerIndexVM
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService DebtAuthorization
 
 @{
     ViewData["Title"] = "Khách hàng";
@@ -22,6 +25,10 @@
                 <p class="gds-page-header__subtitle mb-0">Quản lý hồ sơ, nhóm giá và quyền công nợ tại cửa hàng hiện tại.</p>
             </div>
             <div class="gds-page-header__actions">
+                @if ((await DebtAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.View)).Succeeded)
+                {
+                    <a href="/admin/customer-debt" class="btn btn-outline-primary gds-action-button"><i class="bx bx-wallet"></i><span>Quản lý công nợ</span></a>
+                }
                 <a href="/admin/reward-vouchers"
                    data-customer-reward-vouchers-link
                    class="btn btn-label-primary gds-action-button"

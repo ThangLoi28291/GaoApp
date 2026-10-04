@@ -175,7 +175,7 @@
             });
             wrapper.querySelectorAll("[data-customer-quick-view]").forEach(function (row) {
                 row.addEventListener("dblclick", function (event) { if (!event.target.closest("a,button")) showQuickView(row.dataset.id); });
-                row.addEventListener("keydown", function (event) { if (event.key === "Enter") showQuickView(row.dataset.id); });
+                row.addEventListener("keydown", function (event) { if (event.key === "Enter" && !event.target.closest("a,button")) showQuickView(row.dataset.id); });
                 if (row.classList.contains("customer-mobile-card")) {
                     row.addEventListener("click", function (event) { if (!event.target.closest("a,button")) showQuickView(row.dataset.id); });
                 }

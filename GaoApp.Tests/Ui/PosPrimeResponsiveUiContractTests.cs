@@ -28,7 +28,7 @@ public sealed class PosPrimeResponsiveUiContractTests
         var prime = BracedBlock(section, "@if (isPrime)", out var endOfPrime);
         var legacy = BracedBlock(section[endOfPrime..], "else", out _);
 
-        Assert.Equal(new[] { "~/Admin/css/pos/pos.scan-feedback.css", "~/Admin/css/pos/pos.qr-history.css", SharedStyle }, StyleLinks(common));
+        Assert.Equal(new[] { "~/Admin/css/pos/pos.checkout-feedback.css", "~/Admin/css/pos/pos.scan-feedback.css", "~/Admin/css/pos/pos.qr-history.css", SharedStyle }, StyleLinks(common));
         Assert.Equal(new[] { PrimeStyle }, StyleLinks(prime));
         Assert.Equal(new[] { LegacyStyle }, StyleLinks(legacy));
         Assert.Equal(1, StyleLinks(section).Count(path => path == PrimeStyle));
@@ -58,8 +58,8 @@ public sealed class PosPrimeResponsiveUiContractTests
             .Cast<Match>().Select(x => x.Groups[1].Value).ToArray();
         Assert.Equal(new[] {
             "qrcodegen.js", "pos.offline.core.js", "pos.offline.js",
-            "pos.state.js", "pos.dom.js", "pos.common.js", "pos.error.js", "pos.render.js", "pos.scan-feedback.js", "pos.customer.js",
-            "pos.acb.js", "pos.qr-history.js", "pos.payment.js", "pos.barcode.js", "pos.order.js",
+            "pos.state.js", "pos.dom.js", "pos.common.js", "pos.error.js", "pos.render.js", "pos.scan-feedback.js", "pos.scan-guard.js", "pos.customer.js",
+            "pos.acb.js", "pos.qr-history.js", "pos.payment.js", "pos.checkout-feedback.js", "pos.barcode.js", "pos.order.js",
             "pos.keyboard.js", "pos.cockpit.js", "pos.app.js", "pos.prime.js"
         }, scripts);
         foreach (var id in new[] { "paymentQrHistory", "btnRefreshPaymentQrHistory", "btnReopenLatestPaymentQr",

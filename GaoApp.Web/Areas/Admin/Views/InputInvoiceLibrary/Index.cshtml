@@ -1,0 +1,53 @@
+@{
+    ViewData["Title"] = "Hóa đơn đầu vào XML";
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+}
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/input-invoice-library.css" asp-append-version="true" /> }
+<main class="il" id="invoiceLibrary" data-review="@(((bool)ViewBag.CanReview).ToString().ToLowerInvariant())">
+    @Html.AntiForgeryToken()
+    <header class="il-heading"><div><span class="il-kicker">MUA HÀNG / THƯ VIỆN HÓA ĐƠN</span><h1>Hóa đơn đầu vào</h1><p>Tập trung chứng từ, kiểm tra nguồn mua và theo dõi liên kết phiếu nhập.</p></div>
+        @if (ViewBag.CanImport) { <div class="il-actions"><button class="btn btn-outline-primary" id="ilSync"><i class="bx bx-refresh"></i> Cập nhật từ thư viện</button><button class="btn btn-primary" id="ilUpload"><i class="bx bx-upload"></i> Thêm XML / PDF</button></div> }
+    </header>
+    <div id="ilMessage" class="alert alert-info" role="status" hidden></div>
+    <section class="il-stats" aria-label="Tổng hợp theo bộ lọc">
+        <div><span>Tổng hóa đơn</span><strong id="ilTotal">—</strong><small>Theo bộ lọc hiện tại</small></div>
+        <div class="il-amber"><span>Chưa kiểm tra</span><strong id="ilUnchecked">—</strong><small>Cần xác nhận nguồn mua</small></div>
+        <div><span>Chưa liên kết</span><strong id="ilUnlinked">—</strong><small>Gồm cả hóa đơn chi phí</small></div>
+        <div class="il-types" id="ilTypes"><span>Phân loại theo XML</span></div>
+    </section>
+    <form class="il-filters" id="ilFilters">
+        <label class="il-search">Tìm hóa đơn<input name="search" placeholder="Số, ký hiệu, nhà cung cấp, MST hoặc người mua…" maxlength="200" /></label>
+        <label>Năm<input name="year" type="number" min="2000" max="9999" value="@DateTime.Now.Year" placeholder="Tất cả" /></label>
+        <label>Tháng<select name="month"><option value="">Cả năm</option>@for (var m = 1; m <= 12; m++) { <option value="@m">Tháng @m</option> }</select></label>
+        <label>Loại hóa đơn<select name="kind"><option value="">Tất cả loại</option><option value="0">Hóa đơn gốc</option><option value="1">Thay thế</option><option value="2">Điều chỉnh</option><option value="3">Chưa xác định</option></select></label>
+        <label>Liên kết phiếu nhập<select name="linked"><option value="">Tất cả</option><option value="false">Chưa liên kết</option><option value="true">Đã liên kết</option></select></label>
+        <label>Xác nhận nội bộ<select name="review"><option value="">Tất cả</option><option value="0">Chưa kiểm tra</option><option value="1">Đã xác nhận hợp lệ</option><option value="2">Chi phí cửa hàng</option><option value="3">Không ghi nhận / cần làm rõ</option></select></label>
+        <div class="il-actions"><button class="btn btn-primary" type="submit">Tra cứu</button><button class="btn btn-outline-secondary" type="button" id="ilClear">Xóa lọc</button></div>
+    </form>
+    <section class="il-list"><div class="il-list-heading"><h2>Danh sách hóa đơn</h2><span id="ilCount">Đang tải…</span></div>
+        <div class="il-table-wrap"><table><thead><tr><th>Hóa đơn / Ngày lập</th><th>Nhà cung cấp / Người mua</th><th>Loại</th><th class="il-money">Tổng tiền</th><th>Phiếu nhập</th><th>Xác nhận</th><th></th></tr></thead><tbody id="ilRows"></tbody></table></div>
+        <div class="il-pagination"><span id="ilPageText"></span><button class="btn btn-outline-secondary" id="ilPrev">← Trước</button><button class="btn btn-outline-secondary" id="ilNext">Sau →</button></div>
+    </section>
+    <p class="il-footnote">Thay thế và điều chỉnh được phân loại theo nội dung XML. Tổng tiền từng loại là tổng chứng từ, chưa bù trừ hóa đơn bị thay thế. Xác nhận tại đây chỉ phục vụ kiểm tra nội bộ.</p>
+</main>
+<dialog class="il-dialog" id="ilDetail" aria-labelledby="ilDetailTitle">
+    <header><div><span class="il-kicker">KIỂM TRA CHỨNG TỪ</span><h2 id="ilDetailTitle">Hóa đơn</h2></div><button type="button" class="il-close" data-close aria-label="Đóng">×</button></header>
+    <div class="il-detail-body">
+        <section class="il-preview"><nav><button class="btn btn-outline-primary" id="ilShowPdf">PDF gốc</button><button class="btn btn-outline-primary" id="ilShowXml">Xem từ XML</button><a class="btn btn-outline-secondary" id="ilDownload">Tải XML</a></nav><div id="ilPreviewContent"></div></section>
+        <aside class="il-review"><h3>Thông tin & xác nhận</h3><div id="ilDetailMeta"></div><h4>Liên kết phiếu nhập</h4><div id="ilReceipts"></div>
+            <form id="ilReviewForm"><label>Kết quả kiểm tra<select id="ilReviewStatus"><option value="0">Chưa kiểm tra</option><option value="1">Đã xác nhận hợp lệ</option><option value="2">Chi phí cửa hàng</option><option value="3">Không ghi nhận / cần làm rõ</option></select></label><label>Ghi chú / lý do<textarea id="ilReviewNote" rows="3" maxlength="1000" placeholder="Ví dụ: tiền điện cửa hàng, không có phiếu nhập…"></textarea></label></form>
+            <div class="il-review-hint">Không ghi nhận / cần làm rõ bắt buộc ghi lý do. Thao tác không thay đổi tồn kho, công nợ hoặc gửi từ chối đến nhà cung cấp.</div>
+            <h4>Lịch sử kiểm tra</h4><div id="ilHistory"></div>
+        </aside>
+    </div>
+    <footer><span id="ilDetailMessage" role="status"></span><button class="btn btn-outline-secondary" data-close>Đóng</button><button class="btn btn-primary" id="ilSave">Lưu xác nhận</button></footer>
+</dialog>
+<dialog class="il-upload-dialog" id="ilUploadDialog" aria-labelledby="ilUploadTitle"><form id="ilUploadForm">
+    <header><h2 id="ilUploadTitle">Thêm hóa đơn vào thư viện</h2><button type="button" class="il-close" data-close aria-label="Đóng">×</button></header>
+    <p>XML là chứng từ nguồn. PDF đính kèm cùng hóa đơn dùng để xem trước.</p>
+    <label>File XML <input type="file" name="xml" accept=".xml" required /></label><small>Tối đa 10 MB</small>
+    <label>PDF cùng hóa đơn (nếu có)<input type="file" name="pdf" accept=".pdf" /></label><small>Tối đa 50 MB. Hãy kiểm tra PDF khớp với XML.</small>
+    <div id="ilUploadMessage" role="status"></div><footer><button type="button" class="btn btn-outline-secondary" data-close>Đóng</button><button type="submit" class="btn btn-primary">Nhập hóa đơn</button></footer>
+</form></dialog>
+@section PageScripts { <script src="~/Admin/js/input-invoice-library.js" asp-append-version="true"></script> }

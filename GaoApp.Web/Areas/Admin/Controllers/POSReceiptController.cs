@@ -44,6 +44,7 @@ public class POSReceiptController : BasePOSPageController
     IPOSRuntimeContextAccessor runtime,
       [FromServices]
     LinkGenerator links,
+      [FromServices] GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess receiptAdmin,
       CancellationToken ct)
     {
         await BindPOSHeaderContextAsync(ct);
@@ -111,7 +112,7 @@ public class POSReceiptController : BasePOSPageController
             "~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
             new GaoApp.Web.Services.Printing.ReceiptPrintModel(
                 receipt,
-                await templates.ListAsync(ct),
+                [],
                 CurrentStoreId,
                 runtime.TerminalId,
                 true,
@@ -119,6 +120,8 @@ public class POSReceiptController : BasePOSPageController
                 InvoiceBuyerSelfServiceUrl:
                     selfServiceUrl,
                 InvoiceBuyerSelfServiceExpiresAtUtc:
-                    selfServiceExpiresAtUtc));
+                    selfServiceExpiresAtUtc,
+                ReceiptDefault: await templates.GetDefaultAsync(ct),
+                CanManageTemplates: await receiptAdmin.IsAdminAsync(ct)));
     }
 }

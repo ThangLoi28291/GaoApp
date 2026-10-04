@@ -72,6 +72,7 @@
         }
 
         function handleGlobalKeydown(e) {
+            if (posState.ui?.modals?.invoiceIntent) return;
             const target = e.target;
             const code = e.code || e.key || '';
 

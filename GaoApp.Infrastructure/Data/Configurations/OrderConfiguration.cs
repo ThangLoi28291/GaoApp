@@ -77,6 +77,20 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         // Index phục vụ query theo ca
         b.HasIndex(x => new { x.StoreId, x.POSShiftId, x.Status });
         b.HasIndex(x => new { x.StoreId, x.CompletedAtUtc });
+        // Narrow index for exact history counts and locating the few drafts.
+        b.HasIndex(x => new { x.StoreId, x.Status })
+            .HasDatabaseName("IX_Orders_ListCount")
+            .HasFilter("[IsDeleted] = 0")
+            .IncludeProperties(x => new { x.CreatedAtUtc, x.CompletedAtUtc });
+        // Same mixed-status order, backed by an index instead of sorting store history for each page.
+        b.Property<DateTime>("ListSortAtUtc")
+            .HasComputedColumnSql("COALESCE([CompletedAtUtc], [CreatedAtUtc])", stored: true);
+        b.HasIndex("StoreId", "ListSortAtUtc", "Id")
+            .IsDescending(false, true, true)
+            .HasDatabaseName("IX_Orders_ListTimeline")
+            .HasFilter("[IsDeleted] = 0")
+            .IncludeProperties("Status", "PaymentStatus", "OrderNumber", "GrandTotal", "PaidTotal", "BalanceDue",
+                "VoucherDiscountTotal", "CreatedAtUtc", "CompletedAtUtc", "Note");
         b.HasIndex(x => new
         {
             x.StoreId,

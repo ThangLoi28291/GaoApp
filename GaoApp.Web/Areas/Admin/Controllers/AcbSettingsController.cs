@@ -127,9 +127,15 @@ public sealed class AcbSettingsController(AppDbContext db, AcbProtocol protocol,
                 return await InvalidSettingsAsync(form, entity, ct);
             }
             _ = AcbProtocol.ValidateEnvironment(form.TokenEndpoint, form.ApiBaseUrl, form.QrEndpoint);
-            if (entity != null && await db.Set<AcbQrSession>().AnyAsync(x => x.StoreId == CurrentStoreId &&
+            // Credentials must remain recoverable when a lost key ring prevents checking pending QRs.
+            // Keep the bank account and every non-secret setting fixed until those QRs are resolved.
+            var changesConnection = entity != null && (entity.Enabled != form.Enabled ||
+                entity.BankAccountId != form.BankAccountId || AcbSettingsForm.TextFields.Any(name =>
+                    !string.Equals((string?)typeof(StoreAcbSettings).GetProperty(name)!.GetValue(entity) ?? "",
+                        ((string?)typeof(AcbSettingsForm).GetProperty(name)!.GetValue(form) ?? "").Trim(), StringComparison.Ordinal)));
+            if (changesConnection && await db.Set<AcbQrSession>().AnyAsync(x => x.StoreId == CurrentStoreId &&
                 x.Status != AcbSessionStatus.Completed && x.Status != AcbSessionStatus.Cancelled, ct))
-                throw new InvalidOperationException("Cần xử lý các QR đang chờ hoặc cần kiểm tra trước khi đổi cấu hình ACB.");
+                throw new InvalidOperationException("Cần xử lý các QR đang chờ hoặc cần kiểm tra trước khi đổi cấu hình ACB. Bạn vẫn có thể nhập lại Client secret hoặc khóa callback nếu giữ nguyên tài khoản và các thông số khác.");
             if (form.Enabled && (string.IsNullOrWhiteSpace(form.ClientId) || string.IsNullOrWhiteSpace(form.MerchantId) ||
                 string.IsNullOrWhiteSpace(form.XProviderId) || string.IsNullOrWhiteSpace(form.XOwnerNumber) ||
                 string.IsNullOrWhiteSpace(form.XService) || string.IsNullOrWhiteSpace(form.XOwnerType) ||

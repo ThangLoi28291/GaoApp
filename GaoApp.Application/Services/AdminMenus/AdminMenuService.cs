@@ -14,17 +14,20 @@ public class AdminMenuService : IAdminMenuService
     private readonly IAdminMenuPermissionRepository _menuPermissionRepository;
     private readonly IAppUnitOfWork _uow;
     private readonly ICurrentStorePermissionService _permissionService;
+    private readonly IAdminMenuVisibilityService? _visibilityService;
 
     public AdminMenuService(
         IAdminMenuRepository adminMenuRepository,
         IAdminMenuPermissionRepository menuPermissionRepository,
         IAppUnitOfWork uow,
-        ICurrentStorePermissionService permissionService)
+        ICurrentStorePermissionService permissionService,
+        IAdminMenuVisibilityService? visibilityService = null)
     {
         _adminMenuRepository = adminMenuRepository;
         _menuPermissionRepository = menuPermissionRepository;
         _uow = uow;
         _permissionService = permissionService;
+        _visibilityService = visibilityService;
     }
 
     public async Task<List<AdminMenuItemDto>> GetForRenderAsync(
@@ -43,10 +46,11 @@ public class AdminMenuService : IAdminMenuService
                 || permissions.Contains(x.PermissionCode, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
-        // The canonical Reports container has no permission of its own; leaves retain theirs.
-        visible.RemoveAll(x => x.IsSystem && x.ParentId == null && x.Title == "Báo cáo" &&
-            string.IsNullOrWhiteSpace(x.Controller) &&
-            !visible.Any(child => child.ParentId == x.Id));
+        var hidden = _visibilityService == null ? new HashSet<int>() : await _visibilityService.GetHiddenIdsAsync(storeId, userId, ct);
+        var visibleIds = MenuVisibilityRules.VisibleIds(visible.Select(x => new MenuVisibilityNode(
+            x.Id, x.ParentId, x.Title, x.Icon ?? "", true, null,
+            string.IsNullOrWhiteSpace(x.Controller) && string.IsNullOrWhiteSpace(x.Url))), hidden);
+        visible.RemoveAll(x => !visibleIds.Contains(x.Id));
 
         return BuildTree(visible);
     }

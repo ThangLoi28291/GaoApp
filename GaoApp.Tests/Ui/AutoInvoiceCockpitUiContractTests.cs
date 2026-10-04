@@ -402,7 +402,8 @@ public sealed class AutoInvoiceCockpitUiContractTests
             {
                 Id = id, StoreId = 1, OrderId = id, InvoiceDate = sale ?? Now.AddHours(-1),
                 Order = new Order { Id = id, StoreId = 1, Status = OrderStatus.Completed, CompletedAtUtc = sale ?? Now.AddHours(-1),
-                    InvoiceIssuanceRoute = InvoiceIssuanceRoute.Automatic },
+                    InvoiceIssuanceRoute = InvoiceIssuanceRoute.Automatic, GrandTotal = 100,
+                    Payments = [new OrderPayment { StoreId = 1, OrderId = id, Method = PaymentMethod.Cash, Amount = 100 }] },
                 GrandTotal = 100, ProviderStatus = InvoiceProviderStatus.LocalDraft, InvoiceProviderSettingId = 10,
                 InvoiceProviderSetting = new InvoiceProviderSetting { Id = 10, StoreId = 1, ProviderCode = "VIETTEL", IsActive = true },
                 Details = new List<InvoiceDetail> { new() { Id = id, StoreId = 1, ItemName = "Item", UnitName = "Unit", Quantity = 1, TotalAmount = 100 } }

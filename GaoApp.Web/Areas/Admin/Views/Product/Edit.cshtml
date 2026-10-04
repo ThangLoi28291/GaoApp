@@ -349,11 +349,12 @@
 
                             <div class="col-md-4">
                                 <label class="form-label req">Đơn vị cơ bản</label>
-                                <select asp-for="BaseUnitId" class="form-select select2" id="ddlUnit" data-placeholder="Chọn đơn vị...">
+                                <select asp-for="BaseUnitId" class="form-select select2" id="ddlUnit" data-saved-unit-id="@Model.BaseUnitId" data-placeholder="Chọn đơn vị...">
                                     <option value=""></option>
                                     @foreach (var x in units) { <option value="@x.Value">@x.Text</option> }
                                 </select>
                                 <span asp-validation-for="BaseUnitId" class="text-danger"></span>
+                                <div class="help">Khi lưu, đơn vị này sẽ đồng bộ thành đơn vị gốc (×1) của tất cả biến thể. Sản phẩm đã có chứng từ hoặc tồn kho cần giữ đơn vị gốc và thêm quy đổi.</div>
                             </div>
                         </div>
 

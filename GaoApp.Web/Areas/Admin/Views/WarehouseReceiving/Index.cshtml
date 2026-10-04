@@ -147,7 +147,7 @@
                         Nguồn nhập <span class="text-danger">*</span>
                     </label>
                     <select class="form-select" id="wrDirectReceiptSource">
-                        <option value="">-- Chọn nguồn nhập --</option>
+                        <option value="Nhà phân phối giao" selected>Nhà phân phối giao</option>
                         <option value="NCC chào hàng">NCC chào hàng</option>
                         <option value="Mua gấp">Mua gấp</option>
                         <option value="Hàng đổi/trả">Hàng đổi/trả</option>
@@ -202,5 +202,7 @@
 </div>
 
 @section PageScripts {
+    @await Html.PartialAsync("_ReceiptDocumentActions")
+    <script src="~/Admin/js/receipt-document-actions.js" asp-append-version="true"></script>
     <script src="~/admin/js/warehouse-receiving.js" asp-append-version="true"></script>
 }

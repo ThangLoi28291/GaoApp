@@ -27,10 +27,12 @@
     }
     function isClosed(item) { return String(item.status).toLowerCase() === 'closed' || Number(item.status) === 2; }
     function receiptBadge(item) {
-        if (!isClosed(item)) return '<span class="text-muted">Chưa chốt ca</span>';
-        return item.cashReceivedAtUtc
+        const negative = Number(item.closingCashExpected) < 0 ? `<a class="badge bg-label-danger d-block mb-1" href="/admin/pos-shift/requests?tab=cash&shiftId=${Number(item.id)}&status=Approved">Tiền dự kiến âm ${money(item.closingCashExpected)} · Kiểm tra đối soát</a>` : '';
+        if (item.needsCashReconciliation) return negative + `<a class="badge bg-label-warning" href="/admin/pos-shift/requests?tab=cash&shiftId=${Number(item.id)}&status=NeedsReconciliation">Cần đối soát lại</a>`;
+        if (!isClosed(item)) return negative + '<span class="text-muted">Chưa chốt ca</span>';
+        return negative + (item.cashReceivedAtUtc
             ? '<span class="badge bg-label-success">Đã nhận tiền / Đã duyệt</span>'
-            : '<span class="badge bg-label-warning">Chờ admin nhận tiền</span>';
+            : '<span class="badge bg-label-warning">Chờ admin nhận tiền</span>');
     }
 
     function money(value) {

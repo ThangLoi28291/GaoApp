@@ -1,11 +1,17 @@
 @using GaoApp.Web.Areas.Admin.ViewModels.Products
 @model ProductIndexVM
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService ProductAuthorization
 
 @{
+    var canViewSupplier = (await ProductAuthorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.Catalog.Supplier.View)).Succeeded;
     ViewData["Title"] = "Sản phẩm";
     ViewData["container"] = "container-fluid";
     ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/products.index.css" asp-append-version="true" />
 }
 
 @section header {
@@ -46,7 +52,8 @@
     <section aria-label="Tổng quan mức độ sẵn sàng của sản phẩm">
         <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
             <div class="col">
-                <article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100">
+                <button type="button" class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100 product-kpi-filter"
+                        data-product-lifecycle="all" aria-pressed="@((Model.Lifecycle == "all").ToString().ToLowerInvariant())" aria-controls="productTableWrapper">
                     <div class="gds-kpi-card__icon is-primary" aria-hidden="true">
                         <i class="bx bx-package"></i>
                     </div>
@@ -54,11 +61,12 @@
                         <div class="gds-kpi-card__label fw-semibold text-dark">Tổng sản phẩm</div>
                         <div id="productTotalCount" class="gds-kpi-card__value fw-bold text-primary">@Model.TotalProductCount</div>
                     </div>
-                </article>
+                </button>
             </div>
 
             <div class="col">
-                <article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100">
+                <button type="button" class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100 w-100 product-kpi-filter"
+                        data-product-lifecycle="pos-allowed" aria-pressed="@((Model.Lifecycle == "pos-allowed").ToString().ToLowerInvariant())" aria-controls="productTableWrapper">
                     <div class="gds-kpi-card__icon is-success" aria-hidden="true">
                         <i class="bx bx-check-circle"></i>
                     </div>
@@ -66,11 +74,12 @@
                         <div class="gds-kpi-card__label fw-semibold text-dark">Được phép bán POS</div>
                         <div id="productPosAllowedCount" class="gds-kpi-card__value fw-bold text-success">@Model.PosAllowedProductCount</div>
                     </div>
-                </article>
+                </button>
             </div>
 
             <div class="col">
-                <article class="card shadow-sm border-0 gds-kpi-card h-100">
+                <button type="button" class="card shadow-sm border-0 gds-kpi-card h-100 w-100 product-kpi-filter"
+                        data-product-lifecycle="not-for-pos" aria-pressed="@((Model.Lifecycle == "not-for-pos").ToString().ToLowerInvariant())" aria-controls="productTableWrapper">
                     <div class="gds-kpi-card__icon bg-label-warning text-warning" aria-hidden="true">
                         <i class="bx bx-time-five"></i>
                     </div>
@@ -78,11 +87,12 @@
                         <div class="gds-kpi-card__label fw-semibold text-dark">Chưa bán tại POS</div>
                         <div id="productNotForPosCount" class="gds-kpi-card__value fw-bold text-warning">@Model.NotForPosProductCount</div>
                     </div>
-                </article>
+                </button>
             </div>
 
             <div class="col">
-                <article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--neutral h-100">
+                <button type="button" class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--neutral h-100 w-100 product-kpi-filter"
+                        data-product-lifecycle="inactive" aria-pressed="@((Model.Lifecycle == "inactive").ToString().ToLowerInvariant())" aria-controls="productTableWrapper">
                     <div class="gds-kpi-card__icon is-neutral" aria-hidden="true">
                         <i class="bx bx-pause-circle"></i>
                     </div>
@@ -90,7 +100,7 @@
                         <div class="gds-kpi-card__label fw-semibold text-dark">Ngừng hoạt động</div>
                         <div id="productInactiveCount" class="gds-kpi-card__value fw-bold text-secondary">@Model.InactiveProductCount</div>
                     </div>
-                </article>
+                </button>
             </div>
         </div>
     </section>
@@ -103,7 +113,7 @@
                 </span>
                 <div>
                     <h5 class="mb-0 text-dark">Tra cứu sản phẩm</h5>
-                    <small class="text-muted">Tìm nhanh theo tên, alias, SKU hoặc barcode và thu hẹp bằng bộ lọc.</small>
+                    <small class="text-muted">Tìm không dấu theo tên, alias, SKU hoặc barcode. Kết hợp nhà cung cấp, thương hiệu và các bộ lọc bên dưới.</small>
                 </div>
             </div>
         </div>
@@ -117,7 +127,7 @@
                     <input id="txtSearch"
                            class="form-control"
                            placeholder="Tên, alias, SKU hoặc barcode..."
-                           autocomplete="off"
+                           autocomplete="off" maxlength="200"
                            value="@Model.SearchString" />
 
                     <button type="button"
@@ -146,7 +156,7 @@
             <div class="gds-filter-control">
                 <label for="ddlLifecycle" class="form-label fw-semibold text-dark">Sẵn sàng bán</label>
                 <select id="ddlLifecycle" class="form-select">
-                    <option value="" selected="@(string.IsNullOrWhiteSpace(Model.Lifecycle))">Tất cả trạng thái</option>
+                    <option value="all" selected="@(Model.Lifecycle == "all")">Tất cả trạng thái</option>
                     <option value="pos-allowed" selected="@(Model.Lifecycle == "pos-allowed")">Được phép bán POS</option>
                     <option value="not-for-pos" selected="@(Model.Lifecycle == "not-for-pos")">Chưa bán tại POS</option>
                     <option value="inactive" selected="@(Model.Lifecycle == "inactive")">Ngừng hoạt động</option>
@@ -164,6 +174,40 @@
                 </select>
             </div>
           </div>
+          <div class="product-extra-filters" data-filter-options-url="@Url.Action("FilterOptions", "Product", new { area = "Admin" })">
+            @foreach (var filter in new[] {
+                new { Kind = "supplier", Key = "supplierId", Label = "Nhà cung cấp", Id = Model.Filters.SupplierId, Option = Model.SupplierOption },
+                new { Kind = "brand", Key = "brandId", Label = "Thương hiệu", Id = Model.Filters.BrandId, Option = Model.BrandOption },
+                new { Kind = "unit", Key = "baseUnitId", Label = "Đơn vị gốc", Id = Model.Filters.BaseUnitId, Option = Model.UnitOption }
+            })
+            {
+                if (filter.Kind == "supplier" && !canViewSupplier) { continue; }
+                <div class="product-filter-lookup" data-product-lookup="@filter.Kind" data-filter-key="@filter.Key" data-filter-label="@filter.Label">
+                    <label for="filter-@filter.Kind" class="form-label fw-semibold text-dark">@filter.Label</label>
+                    <input type="hidden" name="@filter.Key" value="@filter.Id" />
+                    <div class="product-lookup-input">
+                        <input id="filter-@filter.Kind" class="form-control" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="options-@filter.Kind" autocomplete="off" maxlength="100"
+                               placeholder="Gõ tên hoặc mã để chọn…" value="@(filter.Option == null ? (filter.Id.HasValue ? "Không còn khả dụng" : "") : filter.Option.Name + (filter.Option.IsActive ? "" : " (ngừng hoạt động)"))" />
+                        <button type="button" data-clear-lookup aria-label="Xóa bộ lọc @filter.Label" title="Xóa lựa chọn">×</button>
+                    </div>
+                    <div class="product-lookup-panel" hidden>
+                        <div role="listbox" id="options-@filter.Kind" aria-label="@filter.Label"></div>
+                        <small role="status"></small>
+                    </div>
+                </div>
+            }
+            <div>
+                <label for="ddlDataIssue" class="form-label fw-semibold text-dark">Hoàn thiện thông tin</label>
+                <select id="ddlDataIssue" class="form-select">
+                    <option value="">Tất cả sản phẩm</option>
+                    <option value="no-brand" selected="@(Model.Filters.DataIssue == "no-brand")">Chưa có thương hiệu</option>
+                    <option value="no-image" selected="@(Model.Filters.DataIssue == "no-image")">Chưa có hình ảnh</option>
+                    <option value="no-barcode" selected="@(Model.Filters.DataIssue == "no-barcode")">Chưa có barcode hoạt động</option>
+                </select>
+            </div>
+          </div>
+          <p class="product-filter-hint">Nhà cung cấp theo hồ sơ sản phẩm · Có thể tra cứu cả tên đã ngừng hoạt động · Các bộ lọc được kết hợp đồng thời.</p>
+          <div class="product-filter-summary"><div id="productFilterChips" aria-label="Bộ lọc đang áp dụng"></div><button type="button" id="btnResetProductFilters" class="btn btn-sm btn-outline-secondary">Xóa tất cả bộ lọc</button></div>
         </div>
     </section>
 
@@ -226,10 +270,13 @@
                                     <div class="text-muted small">Thương hiệu</div>
                                     <div id="productQuickViewBrand" class="fw-semibold text-dark">—</div>
                                 </div>
-                                <div class="col-sm-6">
-                                    <div class="text-muted small">Nhà cung cấp</div>
-                                    <div id="productQuickViewSupplier" class="fw-semibold text-dark">—</div>
-                                </div>
+                                @if (canViewSupplier)
+                                {
+                                    <div class="col-sm-6">
+                                        <div class="text-muted small">Nhà cung cấp</div>
+                                        <div id="productQuickViewSupplier" class="fw-semibold text-dark">—</div>
+                                    </div>
+                                }
                                 <div class="col-sm-6">
                                     <div class="text-muted small">Thuế</div>
                                     <div id="productQuickViewTax" class="fw-semibold text-dark">—</div>
@@ -251,6 +298,10 @@
                             </div>
                         </div>
                     </div>
+                    <section class="product-unit-prices mt-4" aria-labelledby="productUnitPricesTitle">
+                        <h6 id="productUnitPricesTitle" class="fw-semibold">Giá bán theo đơn vị</h6>
+                        <div id="productQuickViewUnits"></div>
+                    </section>
                 </div>
 
                 <div class="modal-footer">
@@ -268,5 +319,6 @@
 </div>
 
 @section PageScripts {
+    <script src="~/admin/js/products.filters.js" asp-append-version="true"></script>
     <script src="~/admin/js/products.index.js" asp-append-version="true"></script>
 }

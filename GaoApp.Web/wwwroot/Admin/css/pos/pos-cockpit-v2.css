@@ -1626,7 +1626,7 @@
 
 .pos-cockpit-v2 .pos-cockpit-secondary-actions {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr 1fr auto;
     gap: 6px;
     margin-top: 6px;
 }

@@ -46,6 +46,28 @@ public sealed class CustomerDepositSqlServerTests
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("PCOC-", await page.Content.ReadAsStringAsync());
     }
+
+    [Fact]
+    public async Task Full_refund_restores_stock_and_records_cash_refund_once()
+    {
+        await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
+        using var client = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        var (orderId, _) = await Start(app, client, store);
+
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/payments", new { clientRequestId = Guid.NewGuid(), amount = 60, method = 0 });
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/finalize");
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/orders/{orderId}/refund", new { reason = "Khách trả toàn bộ", refundMethod = 0 });
+
+        await using var verify = app.Database.CreateTenantContext(store.StoreId);
+        var order = await verify.Orders.SingleAsync(x => x.Id == orderId);
+        Assert.Equal(OrderStatus.Refunded, order.Status);
+        Assert.Equal(100m, (await verify.InventoryBalances.SingleAsync(x => x.ProductVariantId == store.VariantId)).OnHandQty);
+        Assert.Equal(60m, (await verify.POSShifts.SingleAsync()).CashRefundTotal);
+        var returnRecord = await verify.SalesReturns.SingleAsync(x => x.OrderId == orderId);
+        Assert.Equal(SalesReturnStatus.Completed, returnRecord.Status);
+        Assert.Equal(60m, returnRecord.RefundTotal);
+    }
+
     [Fact]
     public async Task Bank_deposit_uses_manual_default_and_refund_is_idempotent()
     {

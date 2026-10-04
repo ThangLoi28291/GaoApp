@@ -15,7 +15,7 @@ public class POSShiftConfiguration : IEntityTypeConfiguration<POSShift>
             tb.HasCheckConstraint("CK_POSShifts_NonCashSalesTotal_NonNegative", "[NonCashSalesTotal] >= 0");
             tb.HasCheckConstraint("CK_POSShifts_CashInTotal_NonNegative", "[CashInTotal] >= 0");
             tb.HasCheckConstraint("CK_POSShifts_CashOutTotal_NonNegative", "[CashOutTotal] >= 0");
-            tb.HasCheckConstraint("CK_POSShifts_ClosingCashExpected_NonNegative", "[ClosingCashExpected] >= 0");
+            // Expected cash is a signed calculation; an approved correction can expose a deficit.
             tb.HasCheckConstraint("CK_POSShifts_ClosingCashActual_NonNegative", "[ClosingCashActual] IS NULL OR [ClosingCashActual] >= 0");
         });
 

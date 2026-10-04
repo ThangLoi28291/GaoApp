@@ -14,6 +14,7 @@ public static class AuditSensitiveData
         return normalized.Contains("password") || normalized.Contains("secret") ||
             normalized.Contains("token") || normalized.Contains("credential") ||
             normalized.Contains("privatekey") || normalized.Contains("apikey") ||
+            normalized.Contains("devicekey") || normalized.Contains("pairingkey") ||
             normalized.Contains("connectionstring") || normalized.Contains("sessionstamp") ||
             normalized.Contains("securitystamp") || normalized is "authorization" or "cookie";
     }

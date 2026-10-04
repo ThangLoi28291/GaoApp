@@ -55,7 +55,7 @@
                         <label asp-for="Code" class="form-label fw-semibold">Mã vai trò</label>
                         <input asp-for="Code"
                                class="form-control"
-                               placeholder="Ví dụ: manager, cashier, warehouse_staff" />
+                               placeholder="Ví dụ: quan_ly, thu_ngan, nhan_vien_kho" />
                         <span asp-validation-for="Code" class="text-danger small"></span>
                         <div class="form-text">
                             Mã vai trò nên ngắn gọn, ổn định và không bị đổi thường xuyên.
@@ -75,7 +75,7 @@
 
         <div class="mt-4 d-flex flex-wrap gap-2">
             <button type="submit" class="btn btn-primary">
-                <i class="bi bi-save me-1"></i> Lưu
+                <i class="bi bi-save me-1"></i> @((bool?)ViewBag.CanPermissions == true ? "Tạo vai trò & chọn quyền" : "Tạo vai trò")
             </button>
 
             <a asp-area="Admin"

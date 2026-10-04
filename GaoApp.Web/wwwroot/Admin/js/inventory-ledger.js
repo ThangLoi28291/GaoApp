@@ -65,6 +65,7 @@
 
     const elements = {
         keyword: document.getElementById("ledgerKeyword"),
+        searchScope: document.getElementById("ledgerSearchScope"),
         clearSearch: document.getElementById("ledgerClearSearch"),
         warehouse: document.getElementById("ledgerWarehouseFilter"),
         transactionType: document.getElementById("ledgerTransactionTypeFilter"),
@@ -135,9 +136,18 @@
         elements.keyword?.addEventListener("input", function () {
             elements.clearSearch?.classList.toggle("d-none", !elements.keyword.value);
             clearTimeout(searchDebounceTimer);
+            state.requestController?.abort();
+            ++state.requestSequence;
             searchDebounceTimer = setTimeout(function () {
                 loadLedgerPage(1);
             }, 350);
+        });
+
+        elements.keyword?.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" && !event.isComposing) {
+                event.preventDefault();
+                loadLedgerPage(1);
+            }
         });
 
         elements.clearSearch?.addEventListener("click", function () {
@@ -148,6 +158,7 @@
         });
 
         [
+            elements.searchScope,
             elements.warehouse,
             elements.transactionType,
             elements.referenceType,
@@ -170,6 +181,8 @@
 
         elements.referenceCode?.addEventListener("input", function () {
             clearTimeout(searchDebounceTimer);
+            state.requestController?.abort();
+            ++state.requestSequence;
             searchDebounceTimer = setTimeout(function () {
                 syncDesktopToMobile();
                 loadLedgerPage(1);
@@ -261,11 +274,18 @@
     }
 
     async function loadLedgerPage(page) {
+        clearTimeout(searchDebounceTimer);
         if (!validateDateRange()) return;
 
         state.requestController?.abort();
-        state.requestController = new AbortController();
+        const controller = new AbortController();
+        state.requestController = controller;
         const sequence = ++state.requestSequence;
+        let timedOut = false;
+        const timeout = setTimeout(function () {
+            timedOut = true;
+            controller.abort();
+        }, 20000);
         renderLoadingState();
 
         try {
@@ -274,7 +294,7 @@
             const response = await fetch(`${urls.data}?${buildQuery(page, includeSummary)}`, {
                 headers: { Accept: "application/json" },
                 cache: "no-store",
-                signal: state.requestController.signal
+                signal: controller.signal
             });
             if (!response.ok) throw new Error("Không tải được lịch sử giao dịch kho.");
 
@@ -300,9 +320,14 @@
             updateActiveFilterCount();
             elements.resultsPanel?.setAttribute("aria-busy", "false");
         } catch (error) {
-            if (error.name === "AbortError") return;
+            if (sequence !== state.requestSequence) return;
+            if (error.name === "AbortError" && !timedOut) return;
             console.error(error);
-            renderErrorState(error.message || "Không tải được dữ liệu.");
+            renderErrorState(timedOut
+                ? "Tìm kiếm mất nhiều thời gian. Hãy chọn khoảng ngày hoặc từ khóa cụ thể hơn, rồi bấm Tải lại."
+                : error.message || "Không tải được dữ liệu.");
+        } finally {
+            clearTimeout(timeout);
         }
     }
 
@@ -317,6 +342,7 @@
 
         appendIfValue(params, "warehouseId", elements.warehouse?.value);
         appendIfValue(params, "keyword", elements.keyword?.value.trim());
+        appendIfValue(params, "searchScope", elements.searchScope?.value || "product");
         appendIfValue(params, "transactionType", elements.transactionType?.value);
         appendIfValue(params, "referenceType", elements.referenceType?.value);
         appendIfValue(params, "fromDate", elements.fromDate?.value);
@@ -330,6 +356,7 @@
         return JSON.stringify([
             elements.warehouse?.value || "",
             elements.keyword?.value.trim() || "",
+            elements.searchScope?.value || "product",
             elements.transactionType?.value || "",
             elements.referenceType?.value || "",
             elements.fromDate?.value || "",
@@ -353,7 +380,7 @@
 
     function renderLedgerDesktopRows(items) {
         if (!items.length) {
-            elements.desktopBody.innerHTML = `<tr><td colspan="${state.canViewCost ? 8 : 7}">` + renderEmptyState("Không có giao dịch phù hợp.") + "</td></tr>";
+            elements.desktopBody.innerHTML = `<tr><td colspan="${state.canViewCost ? 7 : 6}">` + renderEmptyState("Không có giao dịch phù hợp.") + "</td></tr>";
             return;
         }
 
@@ -363,7 +390,6 @@
                 <tr class="ledger-row" tabindex="0" data-transaction-id="${Number(item.transactionId || 0)}">
                     <td><span class="ledger-date">${formatDateOnly(item.occurredAtUtc)}</span></td>
                     <td class="ledger-product-cell">${renderProduct(item, false)}</td>
-                    <td><span class="ledger-warehouse">${escapeHtml(item.warehouseName || "—")}</span></td>
                     <td>
                         <div class="ledger-change ${quantityClass(change)}">${formatSignedNumber(change)}</div>
                         <div class="ledger-transaction-label">${escapeHtml(resolveTransactionLabel(item))}</div>
@@ -409,11 +435,10 @@
                         </div>
                     </div>
                     <div class="ledger-mobile-card__facts">
-                        <span><i class="bx bx-buildings"></i>${escapeHtml(item.warehouseName || "—")}</span>
                         <span><i class="bx bx-transfer"></i>${escapeHtml(resolveTransactionLabel(item))}</span>
                         <span><i class="bx bx-file"></i>${escapeHtml(resolveReferenceLabel(item))}${item.referenceCode ? ` · ${escapeHtml(item.referenceCode)}` : ""}</span>
                     </div>
-                    ${state.canViewCost && change > 0 ? `<div class="ledger-mobile-cost"><span>Giá nhập lô</span><div class="text-end">${renderInboundCost(item)}</div></div>` : ""}
+                    ${state.canViewCost && (change > 0 || isRevaluation(item)) ? `<div class="ledger-mobile-cost"><span>${isRevaluation(item) ? "Điều chỉnh giá vốn" : "Giá nhập lô"}</span><div class="text-end">${renderInboundCost(item)}</div></div>` : ""}
                     <button type="button" class="btn btn-label-primary ledger-mobile-card__action js-ledger-quick" data-transaction-id="${Number(item.transactionId || 0)}">
                         <i class="bx bx-show me-1" aria-hidden="true"></i>Xem nhanh
                     </button>
@@ -581,7 +606,7 @@
                         ${renderQuickFact("Nguồn / chứng từ", resolveReferenceLabel(item))}
                         ${renderQuickFact("Mã chứng từ", item.referenceCode || "Không có")}
                     </div>
-                    ${item.inboundCost ? renderInboundCostDetails(item.inboundCost) : ""}
+                    ${renderCostDetails(item)}
                     <div class="ledger-quick-note">
                         <div class="ledger-quick-note__label">Ghi chú</div>
                         <div>${escapeHtml(item.note || "Không có ghi chú")}</div>
@@ -611,11 +636,41 @@
         return `${Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 0 })} ₫`;
     }
 
+    function formatSignedMoney(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number)) return "Chưa có";
+        return `${number > 0 ? "+" : ""}${formatMoney(number)}`;
+    }
+
+    function isRevaluation(item) {
+        return Number(item.transactionType) === 70;
+    }
+
     function renderInboundCost(item) {
+        if (isRevaluation(item)) {
+            return `<strong>${formatMoney(item.unitCostSnapshot)}</strong><small class="d-block text-muted">/ ${escapeHtml(item.baseUnitName || "đơn vị gốc")}</small><small class="d-block ${Number(item.totalCost || 0) < 0 ? "text-danger" : "text-primary"}">Chênh lệch: ${formatSignedMoney(item.totalCost)}</small>`;
+        }
         if (Number(item.quantityChange || 0) <= 0) return '<span class="text-muted">—</span>';
         const cost = item.inboundCost;
         if (!cost) return '<span class="text-muted small">Chưa có giá nhập</span>';
         return `<strong>${formatMoney(cost.unitCost)}</strong><small class="d-block text-muted">/ ${escapeHtml(cost.baseUnitName || "đơn vị gốc")}</small>${cost.isMixedCost ? '<small class="d-block text-muted">Bình quân các lô nhập</small>' : ""}${cost.isProvisional ? '<small class="d-block text-warning">Giá tạm tính</small>' : ""}`;
+    }
+
+    function renderCostDetails(item) {
+        if (isRevaluation(item)) {
+            const adjustmentClass = Number(item.totalCost || 0) < 0 ? "text-danger" : "text-primary";
+            return `<section class="ledger-inbound-cost mb-3" aria-label="Điều chỉnh giá vốn">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-2"><h5 class="mb-0">Điều chỉnh giá vốn</h5><span class="badge bg-label-primary">ADMIN</span></div>
+                <div class="ledger-cost-grid">
+                    <div><span>Giá vốn sau điều chỉnh / ${escapeHtml(item.baseUnitName || "đơn vị gốc")}</span><strong>${formatMoney(item.unitCostSnapshot)}</strong></div>
+                    <div><span>Chênh lệch giá trị tồn</span><strong class="${adjustmentClass}">${formatSignedMoney(item.totalCost)}</strong></div>
+                    <div><span>Giá trị tồn trước</span><strong>${formatMoney(item.beforeInventoryValue)}</strong></div>
+                    <div><span>Giá trị tồn sau</span><strong>${formatMoney(item.afterInventoryValue)}</strong></div>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Số lượng không đổi; bút toán này chỉ cập nhật giá vốn của lượng hàng đang còn tồn và giữ nguyên lịch sử phiếu nhập ban đầu.</p>
+            </section>`;
+        }
+        return item.inboundCost ? renderInboundCostDetails(item.inboundCost) : "";
     }
 
     function renderInboundCostDetails(cost) {
@@ -744,6 +799,7 @@
 
         if (!mobileOnly) {
             elements.keyword.value = "";
+            elements.searchScope.value = "product";
             elements.clearSearch?.classList.add("d-none");
             elements.sortBy.value = "date";
             elements.sortDirection.value = "desc";
@@ -813,14 +869,14 @@
     function renderLoadingState() {
         setCostVisibility(false);
         elements.resultsPanel?.setAttribute("aria-busy", "true");
-        elements.desktopBody.innerHTML = '<tr><td colspan="7"><div class="gds-empty"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải dữ liệu...</div></td></tr>';
+        elements.desktopBody.innerHTML = '<tr><td colspan="6"><div class="gds-empty"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải dữ liệu...</div></td></tr>';
         elements.mobileList.innerHTML = '<div class="gds-empty"><span class="spinner-border spinner-border-sm me-2"></span>Đang tải dữ liệu...</div>';
     }
 
     function renderErrorState(message) {
         setCostVisibility(false);
         const content = renderEmptyState(message, true);
-        elements.desktopBody.innerHTML = `<tr><td colspan="7">${content}</td></tr>`;
+        elements.desktopBody.innerHTML = `<tr><td colspan="6">${content}</td></tr>`;
         elements.mobileList.innerHTML = content;
         elements.resultSummary.textContent = "Không tải được dữ liệu.";
         elements.pagination.innerHTML = "";

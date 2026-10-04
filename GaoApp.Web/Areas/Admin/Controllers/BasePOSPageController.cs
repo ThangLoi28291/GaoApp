@@ -44,6 +44,7 @@ public abstract class BasePOSPageController : BaseAdminController
 
             if (shift != null)
             {
+                if (!string.IsNullOrWhiteSpace(shift.OpenedByUserName)) vm.UserName = shift.OpenedByUserName;
                 vm.ShiftId = shift.Id;
                 vm.ShiftCode = !string.IsNullOrWhiteSpace(shift.ShiftCode)
                     ? shift.ShiftCode

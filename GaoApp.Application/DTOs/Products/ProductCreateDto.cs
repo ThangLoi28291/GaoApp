@@ -1,7 +1,11 @@
-﻿namespace GaoApp.Application.DTOs.Products;
+namespace GaoApp.Application.DTOs.Products;
 
 public class ProductCreateDto
 {
+    // Internal workflow option, never bound from a public product form.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool GenerateDefaultBarcode { get; set; } = true;
+
     public string? Name { get; set; }
 
     public string? Alias { get; set; }

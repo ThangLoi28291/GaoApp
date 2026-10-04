@@ -236,6 +236,7 @@ window.GaoVariantUnitConversion = (() => {
     }
 
     function resetConversionForm(clearSelected = false) {
+        ['uc_UnitId', 'uc_Factor', 'uc_IsActive'].forEach(id => { if (byId(id)) byId(id).disabled = false; });
         setValue('uc_Id', '');
         setValue('uc_UnitId', '');
         setValue('uc_Factor', '');
@@ -271,6 +272,7 @@ window.GaoVariantUnitConversion = (() => {
     }
 
     function fillConversionForm(item) {
+        ['uc_UnitId', 'uc_Factor', 'uc_IsActive'].forEach(id => { if (byId(id)) byId(id).disabled = !!item.isBaseUnit; });
         setValue('uc_Id', item.id || '');
         setValue('uc_ProductVariantId', item.productVariantId || state.currentVariantId || '');
         setValue('uc_UnitId', item.unitId || '');
@@ -791,6 +793,11 @@ window.GaoVariantUnitConversion = (() => {
     }
 
     function open(variant) {
+        const productUnit = byId('ddlUnit');
+        if (productUnit?.dataset.savedUnitId && productUnit.value !== productUnit.dataset.savedUnitId) {
+            window.toastr?.warning('Đơn vị cơ bản vừa thay đổi. Hãy lưu sản phẩm để đồng bộ đơn vị gốc của các biến thể trước khi mở Đơn vị/Barcode.');
+            return;
+        }
         state.currentVariantId = Number(variant.id || 0);
         state.currentVariantSku = variant.sku || '';
         state.currentVariantName = variant.name || '';

@@ -125,7 +125,8 @@ public sealed class InventoryLedgerIndexModernUiContractTests
         Assert.Contains("PrimaryProductImage", repository, StringComparison.Ordinal);
         Assert.Contains("ProductImages", repository, StringComparison.Ordinal);
         Assert.Contains("StoreId == storeId", repository, StringComparison.Ordinal);
-        Assert.DoesNotContain("UnitCostSnapshot", repository, StringComparison.Ordinal);
+        foreach (var field in new[] { "UnitCostSnapshot", "TotalCost", "BeforeInventoryValue", "AfterInventoryValue", "RunningAverageUnitCostAfter" })
+            Assert.Contains($"{field} = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.{field} : (decimal?)null", repository, StringComparison.Ordinal);
         Assert.DoesNotContain("SaveChanges", repository, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ExecuteSql", repository, StringComparison.OrdinalIgnoreCase);
     }

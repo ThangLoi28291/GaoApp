@@ -39,6 +39,8 @@
 
 <div class="wrd-page">
     @await Html.PartialAsync("_ReceivingApp", Model)
+    @{ ViewData["ReceiptDocumentActionsId"] = Model.Id; }
+    @await Html.PartialAsync("_ReceiptDocumentActions")
     <input type="hidden" id="StockDocumentId" value="@Model.Id" />
     @await Html.PartialAsync("_ReceiptIntake", Model.Id)
     <input type="hidden" id="CanEditReceiving" value="@canEdit.ToString().ToLower()" />
@@ -296,6 +298,34 @@
         </div>
     </div>
 </div>
+@if (canEdit)
+{
+    <div class="modal fade" id="deleteReceivingLineModal" tabindex="-1" aria-labelledby="deleteReceivingLineTitle" aria-describedby="deleteReceivingLineDescription" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content wrd-modal wrd-delete-modal">
+                <div class="modal-header border-0 align-items-start">
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="wrd-delete-icon" aria-hidden="true"><i class="bx bx-trash"></i></span>
+                        <div><div class="small text-danger fw-semibold mb-1">ĐIỀU CHỈNH HÀNG NHẬP</div><h5 class="modal-title fw-bold" id="deleteReceivingLineTitle">Xóa hàng khỏi phiếu?</h5></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+                <div class="modal-body pt-1">
+                    <div class="wrd-delete-product">
+                        <div class="wrd-delete-image"><img id="deleteReceivingLineImage" alt="" hidden /><i id="deleteReceivingLineImageFallback" class="bx bx-package" aria-hidden="true"></i></div>
+                        <div class="wrd-delete-details"><strong id="deleteReceivingLineName"></strong><div id="deleteReceivingLineCode" class="small text-muted mt-1"></div><span id="deleteReceivingLineQuantity" class="wrd-delete-quantity"></span></div>
+                    </div>
+                    <p id="deleteReceivingLineDescription" class="text-muted small mt-3 mb-0">Chỉ bỏ dòng hàng khỏi phiếu nhập này. Sản phẩm trong danh mục và lịch sử nhận hàng vẫn được giữ.</p>
+                    <div id="deleteReceivingLineError" class="alert alert-danger mt-3 mb-0" role="alert" hidden></div>
+                </div>
+                <div class="modal-footer border-0 pt-2">
+                    <button type="button" class="btn btn-label-secondary" id="btnCancelDeleteReceivingLine" data-bs-dismiss="modal">Giữ lại</button>
+                    <button type="button" class="btn btn-danger" id="btnConfirmDeleteReceivingLine"><span class="spinner-border spinner-border-sm me-2" id="deleteReceivingLineSpinner" aria-hidden="true" hidden></span><span id="deleteReceivingLineAction">Xóa khỏi phiếu</span></button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 @if (canQuickCreateProduct && canEdit)
 {
     <div class="modal fade" id="receivingQuickCreateProductModal" tabindex="-1" aria-hidden="true">
@@ -500,6 +530,7 @@
     </div>
 </div>
 @section PageScripts {
+    <script src="~/Admin/js/receipt-document-actions.js" asp-append-version="true"></script>
     <script src="~/Admin/js/receipt-barcode-proposals.js" asp-append-version="true"></script>
     <script src="~/Admin/js/receipt-intake.js" asp-append-version="true"></script>
     <script src="~/Admin/js/receipt-quantity-controls.js" asp-append-version="true"></script>

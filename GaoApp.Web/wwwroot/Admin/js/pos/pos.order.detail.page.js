@@ -41,6 +41,7 @@
         returnOrderId: 0,
         returnEligibility: null,
         eligibilitySequence: 0,
+        orderActionEligibilitySequence: 0,
         historySequence: 0,
         eligibilityController: null,
         historyController: null
@@ -236,9 +237,40 @@
         }
 
         if (!response.ok) {
-            throw new Error(
+            const primaryMessage =
                 extractMessage(payload) ||
-                `Yêu cầu thất bại (${response.status})`
+                `Yêu cầu thất bại (${response.status})`;
+
+            const extra = [];
+            if (
+                payload &&
+                typeof payload === 'object'
+            ) {
+                if (
+                    typeof payload.actionHint === 'string' &&
+                    payload.actionHint.trim() &&
+                    payload.actionHint.trim() !== primaryMessage
+                ) {
+                    extra.push(payload.actionHint.trim());
+                }
+
+                if (
+                    typeof payload.errorCode === 'string' &&
+                    payload.errorCode.trim()
+                ) {
+                    extra.push(`Mã lỗi: ${payload.errorCode.trim()}`);
+                }
+
+                if (
+                    typeof payload.traceId === 'string' &&
+                    payload.traceId.trim()
+                ) {
+                    extra.push(`Mã truy vết: ${payload.traceId.trim()}`);
+                }
+            }
+
+            throw new Error(
+                [primaryMessage, ...extra].join(' ')
             );
         }
 
@@ -455,7 +487,7 @@
         modal.paymentHistory.show();
     }
 
-    function openOrderActionModal(
+    async function openOrderActionModal(
         type,
         orderId
     ) {
@@ -563,15 +595,47 @@
         }
         else {
             dom.orderActionSubtitle.textContent =
-                'Refund toàn phần theo flow cũ';
+                'Hoàn tiền và trả toàn bộ hàng';
 
             dom.orderActionCallout.textContent =
-                'Refund toàn phần sẽ hoàn lại toàn bộ số tiền đã thanh toán. ' +
-                'Hãy chọn phương thức hoàn tiền thực tế: tiền mặt, ' +
-                'chuyển khoản hoặc thẻ.';
+                'Hoàn lại toàn bộ số tiền đã thu. ' +
+                'Chọn phương thức thực tế đã hoàn cho khách.';
         }
 
+        const sequence = ++state.orderActionEligibilitySequence;
+        const warning = optionalElement('orderActionCostWarning');
+        if (warning) { warning.hidden = true; warning.textContent = ''; }
+        const pendingBox = optionalElement('orderActionPendingRestockBox');
+        const pendingChoice = optionalElement('orderActionPendingRestock');
+        if (pendingBox) pendingBox.hidden = true;
+        if (pendingChoice) { pendingChoice.checked = false; pendingChoice.onchange = null; }
+        dom.btnConfirmOrderAction.disabled = normalizedType === 'refund';
         modal.orderAction.show();
+        if (normalizedType === 'refund') {
+            try {
+                const data = await fetchJson(`/admin/pos/returns/order/${safeOrderId}/eligibility`);
+                if (sequence !== state.orderActionEligibilitySequence) return;
+                const returned = safeArray(data?.lines).some(line => Number(line.returnedQuantity) > 0) || Number(data?.refundedTotal) > 0;
+                const blocked = safeArray(data?.lines).filter(line => Number(line.returnableQuantity) > 0 && line.canRestock === false);
+                if (returned || blocked.length || !(Number(data?.refundableRemaining) > 0)) {
+                    if (warning) {
+                        warning.hidden = false;
+                        warning.textContent = returned ? 'Đơn đã có trả hàng hoặc hoàn tiền. Hãy dùng Trả hàng / hoàn tiền để xử lý phần còn lại.'
+                            : blocked.length ? blocked.map(line => `${line.itemName}: ${line.restockBlockReason}`).join('\n') + '\n' + (blocked[0].restockActionHint || '')
+                            : 'Đơn không còn tiền để hoàn.';
+                    }
+                    if (!returned && blocked.length && Number(data?.refundableRemaining) > 0 && pendingBox && pendingChoice) {
+                        pendingBox.hidden = false;
+                        pendingChoice.onchange = () => { dom.btnConfirmOrderAction.disabled = !pendingChoice.checked; };
+                    }
+                    return;
+                }
+                dom.btnConfirmOrderAction.disabled = false;
+            } catch (error) {
+                if (sequence !== state.orderActionEligibilitySequence) return;
+                if (warning) { warning.hidden = false; warning.textContent = error?.message || 'Chưa kiểm tra được điều kiện trả hàng. Hãy đóng popup và thử lại.'; }
+            }
+        }
     }
 
     function buildOrderActionPayload(type) {
@@ -583,6 +647,7 @@
         };
 
         if (type === 'refund') {
+            payload.allowPendingRestock = optionalElement('orderActionPendingRestockBox')?.hidden === false && optionalElement('orderActionPendingRestock')?.checked === true;
             payload.refundMethod =
                 Number.parseInt(
                     dom
@@ -958,7 +1023,7 @@
 
                             const defaultRefundUnit =
                                 toNonNegativeNumber(
-                                    line?.refundUnitAmount ??
+                                    line?.suggestedRefundUnitAmount ?? line?.refundUnitAmount ??
                                     unitPrice,
                                     unitPrice
                                 );
@@ -971,7 +1036,8 @@
                             return `
                                 <tr
                                     class="align-middle"
-                                    data-order-line-id="${orderLineId}">
+                                    data-order-line-id="${orderLineId}"
+                                    data-restock-block-reason="${escapeHtml(line?.canRestock === false ? line.restockBlockReason || 'Chưa đủ dữ liệu giá vốn để nhập lại hàng.' : '')}">
 
                                     <td class="text-center">
                                         ${index + 1}
@@ -1002,6 +1068,7 @@
                                     : ''
                                 }
                                         </div>
+                                        ${line?.canRestock === false && maxQty > 0 ? `<div class="small text-warning mt-2">${escapeHtml(line.restockBlockReason)} ${escapeHtml(line.restockActionHint)}</div>` : ''}
                                     </td>
 
                                     <td class="text-end">
@@ -1040,23 +1107,12 @@
 
                                     <td
                                         class="text-center"
-                                        style="width: 110px;">
-
-                                        <div
-                                            class="form-check d-inline-flex align-items-center gap-2 m-0">
-
-                                            <input
-                                                type="checkbox"
-                                                class="form-check-input js-restock"
-                                                data-order-line-id="${orderLineId}"
-                                                checked${disabled}>
-
-                                            <label
-                                                class="form-check-label small text-muted">
-                                                Nhập kho
-                                            </label>
-
-                                        </div>
+                                        style="min-width: 170px;">
+                                        <select class="form-select js-restock" aria-label="Xử lý hàng trả" data-order-line-id="${orderLineId}"${disabled}>
+                                            <option value="1" ${line?.canRestock === false ? '' : 'selected'}>Nhập lại kho</option>
+                                            <option value="2" ${line?.canRestock === false ? 'selected' : ''}>Chờ nhập kho</option>
+                                            <option value="0">Không nhập kho</option>
+                                        </select>
                                     </td>
 
                                     <td>
@@ -1085,14 +1141,9 @@
             <div class="return-refund-form">
 
                 <div class="ord-popup-callout">
-                    Mặc định
-                    <strong>Nhập kho</strong>
-                    đang bật.
-
-                    Nếu hàng lỗi / không muốn nhập lại kho,
-                    hãy
-                    <strong>bỏ chọn</strong>
-                    ở đúng dòng hàng.
+                    Chọn cách xử lý ở từng món. <strong>Chờ nhập kho</strong> vẫn ghi nhận hàng đã trả và tiền hoàn,
+                    hàng chưa cộng vào tồn có thể bán. Quản lý hoàn tất nhập kho sau khi xác định giá vốn.
+                    Hàng lỗi không bán lại được có thể chọn <strong>Không nhập kho</strong>.
                 </div>
 
                 <div class="ret-summary">
@@ -1173,7 +1224,7 @@
                                 Chỉ trả hàng
                             </option>
 
-                            <option value="1">
+                            <option value="1" ${data?.isCreditSale || Number(data?.depositAmount) > 0 ? 'disabled' : ''}>
                                 Chỉ hoàn tiền
                             </option>
 
@@ -1426,9 +1477,6 @@
 
             restockInputs.forEach(
                 input => {
-                    input.checked =
-                        false;
-
                     input.disabled =
                         true;
                 }
@@ -1595,7 +1643,7 @@
         if (state.returnEligibility?.isCreditSale) {
             const reduction = Math.min(subtotal, Number(state.returnEligibility.balanceDue) || 0);
             const refund = optionalElement('refundAmount');
-            if (refund) { refund.value = formatInputNumber(Math.max(0, subtotal - reduction)); refund.readOnly = true; }
+            if (refund && optionalElement('returnType')?.value !== '2') { refund.value = formatInputNumber(Math.max(0, subtotal - reduction)); refund.readOnly = true; }
         }
         const subtotalDisplay =
             optionalElement(
@@ -1806,6 +1854,11 @@
                                 '.js-restock'
                             );
 
+                        const returnAction = Number(restockInput?.value);
+                        if (![0, 1, 2].includes(returnAction)) throw new Error('Chọn cách xử lý hàng trả.');
+                        if (returnAction === 1 && row.dataset.restockBlockReason)
+                            throw new Error(row.dataset.restockBlockReason + ' Có thể chọn Chờ nhập kho để nhận trả và hoàn tiền ngay.');
+
                         const lineReasonInput =
                             row.querySelector(
                                 '.js-line-reason'
@@ -1823,11 +1876,7 @@
 
                             refundUnitAmount,
 
-                            action:
-                                restockInput
-                                    ?.checked
-                                    ? 1
-                                    : 0,
+                            action: returnAction,
 
                             reason:
                                 lineReasonInput
@@ -2207,6 +2256,7 @@
                         )
                             }
                                         </div>
+                                        ${item?.hasPendingRestock ? '<div class="badge bg-warning text-dark mt-1">Đã nhận hàng · Chờ nhập kho</div>' : ''}
 
                                         <div class="ret-meta-line">
 
@@ -2812,6 +2862,9 @@
             case '0':
             case 'NoRestock':
                 return 'Không';
+            case '2':
+            case 'PendingRestock':
+                return 'Chờ nhập kho';
 
             default:
                 return '-';
@@ -2967,9 +3020,11 @@
                 }
             );
 
+        dom.orderActionModalElement.addEventListener('hide.bs.modal', () => { ++state.orderActionEligibilitySequence; });
+
         dom.returnRefundModalElement
             .addEventListener(
-                'hidden.bs.modal',
+                'hide.bs.modal',
                 () => {
                     abortEligibilityRequest();
 

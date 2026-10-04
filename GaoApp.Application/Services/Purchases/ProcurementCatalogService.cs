@@ -279,6 +279,7 @@ public sealed class ProcurementCatalogService : IProcurementCatalogService
             storeId,
             new ProductCreateDto
             {
+                GenerateDefaultBarcode = request.GenerateDefaultBarcode,
                 Name = name,
                 Alias = null,
                 CategoryId = category.Id,

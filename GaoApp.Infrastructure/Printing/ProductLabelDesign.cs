@@ -14,7 +14,10 @@ public sealed record ProductLabelDesign
     [Range(0, 10)] public decimal RowGapMm { get; init; } = 2;
     [Range(0, 10)] public decimal LeftMarginMm { get; init; } = 1;
     [Range(0, 10)] public decimal RightMarginMm { get; init; } = 1;
-    [RegularExpression("^(one|received)$")] public string QuantityMode { get; init; } = "one";
+    [RegularExpression("^(one|received|custom)$")] public string QuantityMode { get; init; } = "received";
+    // Stored with the template; old job snapshots remain readable without this assignment.
+    public int? PrinterId { get; init; }
+    public bool ShowPrintButton { get; init; } = true;
     // Explicit formats remain readable for immutable jobs created before automatic detection.
     [RegularExpression("^(AUTO|CODE128|EAN13|EAN8|CODE39)$")] public string BarcodeFormat { get; init; } = "AUTO";
     [Required] public string Layout { get; init; } = "standard";
@@ -30,7 +33,7 @@ public sealed record ProductLabelDesign
     {
         var errors = new List<ValidationResult>();
         if (!Validator.TryValidateObject(this, new ValidationContext(this), errors, true)
-            || string.IsNullOrWhiteSpace(Name) || QuantityMode is not ("one" or "received")
+            || string.IsNullOrWhiteSpace(Name) || QuantityMode is not ("one" or "received" or "custom")
             || BarcodeFormat is not ("AUTO" or "CODE128" or "EAN13" or "EAN8" or "CODE39")
             || !ProductLabelLayouts.All.Any(x => x.Key == Layout))
             throw new ValidationAppException("Cấu hình mẫu tem không hợp lệ. " + string.Join(" ", errors.Select(x => x.ErrorMessage)));
@@ -49,16 +52,44 @@ public static class ProductLabelLayouts
         new ProductLabelLayout("standard", "Cân đối", "Tên phía trên, giá phía dưới."),
         new ProductLabelLayout("price-first", "Giá nổi bật", "Giá lớn ở đầu, mã vạch phía dưới."),
         new ProductLabelLayout("price-tag", "Giá nền đen", "Ô giá tương phản, đơn vị bên cạnh."),
-        new ProductLabelLayout("framed", "Khung thanh lịch", "Viền mảnh, tên và giá căn trái.")
+        new ProductLabelLayout("framed", "Khung thanh lịch", "Viền mảnh, tên và giá căn trái."),
+        new ProductLabelLayout("retail-large", "Siêu thị · 50 × 30", "Tên đậm, giá lớn, đơn vị riêng và mã vạch phía dưới.")
     });
+
+    public static ProductLabelDesign DefaultDesign(string key) => key == "retail-large"
+        ? new ProductLabelDesign { Name = "Tem siêu thị 50 × 30", Layout = key, WidthMm = 50, HeightMm = 30, Columns = 1, FontSize = 9 }
+        : new ProductLabelDesign { Layout = key, Columns = 1 };
 }
 
-public sealed record LabelProduct(int VariantId, string Name, string Barcode, string Unit, decimal Price, decimal ReceivedQuantity, string? Problem = null);
-public sealed record LabelTaskLine(LabelProduct Product, int Required, int Printed = 0, bool Removed = false);
-public sealed record LabelQuantity(int VariantId, int Quantity);
-public sealed record LabelPrintItem(LabelProduct Product, int Quantity);
+public sealed record LabelProduct(int VariantId, string Name, string Barcode, string Unit, decimal Price, decimal ReceivedQuantity, string? Problem = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ImageUrl { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? UnitId { get; init; }
+}
+public sealed record LabelTaskLine(LabelProduct Product, int Required, int Printed = 0, bool Removed = false)
+{
+    public bool Handled { get; init; }
+    public bool Skipped { get; init; }
+    public int Sent { get; init; }
+    public List<LabelLineAction> Actions { get; init; } = [];
+    public bool Done => Handled || Printed > 0;
+}
+public sealed record LabelLineAction(Guid RequestId, string Action, string Reason, int? UserId, string UserName, DateTime AtUtc, string ProductName);
+public sealed record LabelQuantity(int VariantId, int Quantity,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? UnitId = null);
+public sealed record LabelPrintItem(LabelProduct Product, int Quantity)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CountsForProgress { get; init; }
+}
 public sealed record LabelPrinterSnapshot(string Name, string WindowsPrinterName, int Dpi, decimal PrintableWidthMm, decimal OffsetXmm, decimal OffsetYmm);
-public sealed record LabelPrintPayload(ProductLabelDesign Design, LabelPrinterSnapshot Printer, List<LabelPrintItem> Items);
+public sealed record LabelPrintPayload(ProductLabelDesign Design, LabelPrinterSnapshot Printer, List<LabelPrintItem> Items)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ProductProgress { get; init; }
+}
 public static class LabelJson
 {
     public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);

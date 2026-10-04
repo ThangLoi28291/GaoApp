@@ -3,6 +3,7 @@
 @using GaoApp.Domain.Enums
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService Authorization
+@inject GaoApp.Application.Common.Interfaces.ICurrentUser CurrentUser
 @{
     ViewData["Title"] = "Đặt cọc khách hàng";
     ViewData["container"] = "container-fluid";
@@ -10,6 +11,7 @@
     Layout = "_ContentNavbarLayout";
     var canReceive = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Receive)).Succeeded;
     var canRefund = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Refund)).Succeeded;
+    var canCorrect = (await Authorization.AuthorizeAsync(User, PermissionCodes.Pos.Shift.Reconcile)).Succeeded && (await Authorization.AuthorizeAsync(User, PermissionCodes.Pos.Shift.View)).Succeeded;
     var totalBalance = Model.Deposits.Sum(x => x.Balance);
     var receiveTotal = Model.Journal.Where(x => x.Kind == "Receive").Sum(x => x.Amount);
     var usedTotal = Math.Abs(Model.Journal.Where(x => x.Kind is "Apply" or "Refund").Sum(x => x.Amount));
@@ -182,7 +184,7 @@
                                 <td><strong>@entry.At.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong><small>NV #@entry.Employee · Ca #@entry.ShiftId</small></td>
                                 <td><span class="deposit-kind deposit-kind--@entry.Kind.ToLowerInvariant()">@kindLabel</span></td>
                                 <td class="is-number @(positive ? "is-positive" : "is-negative")">@entry.Amount.ToString("+#,##0;-#,##0;0") đ</td>
-                                <td><span>@(entry.Method == PaymentMethod.Cash ? "Tiền mặt" : entry.Method == PaymentMethod.BankTransfer ? "Chuyển khoản" : "Điều chỉnh hệ thống")</span><small>@entry.Bank @entry.Reference @entry.Note</small>@if(entry.OrderId.HasValue){<a href="/admin/pos/order-detail/@entry.OrderId">Xem đơn #@entry.OrderId <i class="bx bx-link-external"></i></a>}</td>
+                                <td><span>@(entry.Method == PaymentMethod.Cash ? "Tiền mặt" : entry.Method == PaymentMethod.BankTransfer ? "Chuyển khoản" : "Điều chỉnh hệ thống")</span><small>@entry.Bank @entry.Reference @entry.Note</small>@if(entry.OrderId.HasValue){<a href="/admin/pos/order-detail/@entry.OrderId">Xem đơn #@entry.OrderId <i class="bx bx-link-external"></i></a>}@if(canCorrect && entry.Kind == "Receive" && entry.Employee == CurrentUser.UserId){<a href="/admin/pos-shift/requests?tab=payment&amp;entryId=@entry.Id&amp;shiftId=@entry.ShiftId">Đổi phương thức nhận cọc</a>}</td>
                             </tr>
                         }
                         </tbody>

@@ -78,8 +78,9 @@ public static class AcbPaymentPolicy
         if (!MatchesFingerprint(order, session.CartFingerprint)) return CartChangedReason;
         if (session.PaymentId.HasValue && !order.Payments.Any(x => x.Id == session.PaymentId && !x.IsDeleted && x.Amount == session.Amount && x.ReferenceCode == session.ProviderOrderId))
             return "Khoản thanh toán ACB đã thay đổi; cần kiểm tra.";
-        if (!session.PaymentId.HasValue && (order.Status != OrderStatus.Draft || Balance(order) < session.Amount))
-            return "Đơn hoặc số tiền còn thiếu đã thay đổi; cần kiểm tra.";
+        // A matching transfer may exceed the remaining balance; retain the full bank amount.
+        if (!session.PaymentId.HasValue && order.Status != OrderStatus.Draft)
+            return "Đơn không còn đang thanh toán; cần kiểm tra.";
         return null;
     }
 }

@@ -30,6 +30,12 @@ public static class LoginRateLimiting
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            foreach (var rule in new[] { ("kiosk-activation", 10), ("kiosk-customer", 15), ("kiosk-commands", 240) })
+                options.AddPolicy(rule.Item1, context => RateLimitPartition.GetSlidingWindowLimiter(
+                    rule.Item1 + ":" + (rule.Item1 != "kiosk-activation" && context.Request.Cookies[GaoApp.Web.Services.Kiosk.KioskAccess.Cookie] is { Length: 64 } device
+                        ? GaoApp.Web.Services.Kiosk.KioskAccess.Hash(device)
+                        : context.Connection.RemoteIpAddress?.ToString() ?? "unknown"), _ => Window(rule.Item2)));
+
             options.OnRejected = (context, _) =>
             {
                 context.HttpContext.Response.Headers.RetryAfter = "60";

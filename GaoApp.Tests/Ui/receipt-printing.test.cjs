@@ -17,6 +17,26 @@ function harness() {
         getElementById: () => null, createElement: () => ({}), head: { appendChild() {} } }, focus() {}, print: () => browserPrints.push(true) };
     return { api: window.PosPrinting, jobs, qz, printWindow, browserPrints, storage };
 }
+
+test('deposit receipts separate applied deposit from extra tender without discounting the order twice', () => {
+    for (const option of templates.builtIns()) {
+        const receipt = { ...order, grandTotal: 228000, subtotal: 228000, discountTotal: 0,
+            depositAmount: 200000, paidTotal: 228000, payments: [{ method: 0, amount: 28000 }] };
+        const body = templates.render(receipt, option.design).body;
+        assert.match(body, /Trừ tiền cọc/);
+        assert.match(body, /Cần trả sau cọc/);
+        assert.match(body, /200\.000/);
+        assert.match(body, /28\.000/);
+        assert.match(body, /Đã thanh toán \(gồm cọc\)/);
+        assert.match(body, /Tiền cọc đã dùng/);
+        assert.match(body, /228\.000/);
+        const fullDeposit = templates.render({ ...receipt, depositAmount: 228000, payments: [] }, option.design).body;
+        assert.match(fullDeposit, /<section class="payment">/);
+        assert.match(fullDeposit, /Tiền cọc đã dùng/);
+        assert.doesNotMatch(templates.render(order, option.design).body, /Trừ tiền cọc|Cần trả sau cọc|gồm cọc|Tiền cọc đã dùng/);
+        assert.match(templates.render(receipt, { ...option.design, showPayments: false }).body, /Trừ tiền cọc/);
+    }
+});
 test('all 16 preset designs use the requested physical width and retain authoritative receipt totals', () => {
     const options = templates.builtIns(); assert.equal(options.length, 16);
     for (const option of options) {
@@ -32,6 +52,7 @@ test('full-width product preset is exclusively 80 mm and remains available for o
     for (const paperSize of ['45', '80', 'A4']) assert.equal(templates.normalize({layout:'itemwide',paperSize}).paperSize, '80');
     const h = harness(), context = {storeId:1,terminalId:1};
     h.api.savePreferences(context, {mode:'qz',printer:'EPSON TM-T82',templateKey:'itemwide-80',template:options[0].design});
+    context.receiptDefault = { template: options[0] };
     const selected = h.api.selected(context, []);
     assert.equal(selected.layout, 'itemwide');
     const result = templates.render({...order,lines:[{productVariantName:'Gạo <đặc biệt>',quantity:1.25,sellingUnitName:'Kg',unitPrice:40000,lineTotal:49000,lineDiscount:1000,sku:'G<01>'}]}, {...selected,showSku:true}, {offline:true});
@@ -70,7 +91,8 @@ test('old client color preferences and offline templates are rendered and sent i
     assert.equal(h.api.preferences(context).color, false);
     const rendered = templates.render(order, h.api.selected(context), {offline:true});
     assert.equal(rendered.design.accentColor, '#000000');
-    assert.match(rendered.body, /Giữ nguyên nội dung/);
+    assert.doesNotMatch(rendered.body, /Giữ nguyên nội dung/);
+    assert.equal(rendered.design.paperSize, '80');
     await h.api.send(rendered, context, h.printWindow);
     assert.equal(h.jobs[0].config.options.colorType, 'grayscale');
     assert.equal(h.jobs[0].config.printer, 'EPSON TM-T82');
@@ -88,12 +110,19 @@ test('drafts and cancelled/refunded receipts retain their status and payment ref
         assert.ok(result.body.includes(label)); assert.match(result.body, /ACB-001/);
     }
 });
-test('printer and saved template selections are isolated by store and terminal and survive catalog changes', () => {
+test('printer preferences remain local while the shared store default overrides stale client templates', () => {
     const h = harness(), a = { storeId: 1, terminalId: 1 }, b = { storeId: 1, terminalId: 2 }, c = { storeId: 2, terminalId: 1 };
     h.api.savePreferences(a, { mode: 'qz', printer: 'Linux_CUPS_HP', templateKey: 'custom-5', template: { paperSize: 'A5', footerText: 'Mẫu đã chọn' } });
     assert.equal(h.api.preferences(b).printer, ''); assert.equal(h.api.preferences(c).printer, '');
-    assert.equal(h.api.selected(a, []).paperSize, 'A5');
-    assert.equal(h.api.selected(a, [{ key: 'custom-5', design: { paperSize: '80' } }]).paperSize, 'A5');
+    assert.equal(h.api.selected(a, []).paperSize, '80');
+    a.receiptDefault = { template: { design: { paperSize: '45', footerText: 'Mẫu admin' } } };
+    b.receiptDefault = structuredClone(a.receiptDefault);
+    assert.equal(h.api.selected(b).paperSize, '45');
+    assert.equal(h.api.selected(c).paperSize, '80');
+    assert.equal(h.api.selected(a, [{ key: 'custom-5', design: { paperSize: '80' } }]).paperSize, '45');
+    a.receiptDefault.template.design.paperSize = 'A6';
+    assert.equal(h.api.selected(a).paperSize, 'A6');
+    assert.equal(h.api.selected(b).paperSize, '45'); // Offline cache keeps the last synchronized design.
 });
 test('QZ receives the exact installed printer, paper dimensions and copy count without browser printing', async () => {
     const h = harness(), context = { storeId: 1, terminalId: 1 };

@@ -79,6 +79,9 @@ public static class AdminMenuSeeder
             controller: "InventoryIssueManagement", url: "/admin/inventory-issues"),
 
         Root("purchase", "Mua hàng", "bx bx-purchase-tag", 40),
+        Child("purchase.input-invoices", "purchase", "Hóa đơn đầu vào XML", 44,
+            controller: "InputInvoiceLibrary", url: "/admin/input-invoices",
+            permission: PermissionCodes.Inventory.StockDocument.View),
         Child("purchase.request", "purchase", "Yêu cầu mua hàng", 41,
             controller: "PurchaseRequests",
             url: "/admin/purchase-requests",

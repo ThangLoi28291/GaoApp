@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Audit;
@@ -76,7 +76,9 @@ public class POSShiftService : IPOSShiftService
 
         EnsureShiftOwner(shift);
 
-        return Map(shift);
+        var result = Map(shift);
+        result.OpenedByUserName = await ResolveUserDisplayNameAsync(shift.OpenedByUserId, ct);
+        return result;
     }
 
     public async Task<POSShiftDto> OpenAsync(OpenShiftRequest req, CancellationToken ct = default)
@@ -279,6 +281,12 @@ public class POSShiftService : IPOSShiftService
         var terminalId = RequireTerminalId();
         var userId = RequireUserId();
 
+        if (req.ClosingCashActual < 0)
+            throw PosAppException.Validation(
+                errorCode: PosErrorCodes.CashAmountInvalid,
+                message: "Tiền thực đếm không được âm.",
+                actionHint: "Nhập số tiền thực tế có trong két; không sao chép số tiền dự kiến âm vào tiền thực đếm.");
+
         var shift = await _shiftRepo.GetOpenShiftAsync(storeId, terminalId, ct);
         if (shift == null)
         {
@@ -426,6 +434,14 @@ public class POSShiftService : IPOSShiftService
                     dto.Type
                 });
         }
+
+        // Ordinary new disbursements still require enough expected cash. Admin corrections
+        // have their own approval workflow and may reveal a negative historical balance.
+        if (dto.Type == POSShiftCashTransactionType.CashOut && dto.Amount > shift.ClosingCashExpected)
+            throw PosAppException.Validation(
+                errorCode: PosErrorCodes.CashAmountInvalid,
+                message: "Tiền dự kiến trong ca không đủ để tạo khoản chi này.",
+                actionHint: "Kiểm tra tiền đầu ca và thu/chi. Nếu cần sửa phiếu cũ, hãy gửi yêu cầu điều chỉnh để Admin duyệt.");
 
         var transaction = new POSShiftCashTransaction
         {
@@ -665,6 +681,8 @@ public class POSShiftService : IPOSShiftService
         Status = x.Status,
         OpenedByUserId = x.OpenedByUserId,
         OpenedAtUtc = x.OpenedAtUtc,
+        TerminalName = x.Terminal?.Name,
+        TerminalCode = x.Terminal?.Code,
 
         OpeningCash = x.OpeningCash,
         CashSalesTotal = x.CashSalesTotal,
@@ -1402,6 +1420,7 @@ public class POSShiftService : IPOSShiftService
                 ClosedByUserId = x.ClosedByUserId,
                 ClosedByUserName = users.FirstOrDefault(u => u.Id == x.ClosedByUserId)?.UserName,
                 CashReceivedAmount = x.CashReceivedAmount,
+                NeedsCashReconciliation = x.NeedsCashReconciliation,
                 CashReceivedByUserId = x.CashReceivedByUserId,
                 CashReceivedByUserName = users.FirstOrDefault(u => u.Id == x.CashReceivedByUserId)?.UserName,
                 CashReceivedAtUtc = x.CashReceivedAtUtc,

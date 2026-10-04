@@ -167,7 +167,8 @@ public sealed class InputInvoiceReconciliationService(
             ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
         var existing = await repository.GetReconciliationsAsync(
             storeId, stockDocumentId, tracking: true, ct);
-        if (receipt.Status == StockDocumentStatus.Confirmed && existing.Count == 1)
+        if (receipt.Status == StockDocumentStatus.Confirmed && existing.Count == 1 &&
+            !string.IsNullOrWhiteSpace(existing[0].EvidenceFingerprint))
         {
             var frozen = ToDto(existing[0], receipt);
             var itemMappings = await itemCatalogMapping.ResolveForReceiptAsync(
@@ -296,10 +297,10 @@ public sealed class InputInvoiceReconciliationService(
                     StringComparison.Ordinal))
                 throw new BusinessRuleException(
                     "Dữ liệu đối chiếu đã thay đổi. Vui lòng tải lại trước khi chấp nhận.");
-            if (current.State != InputInvoiceReconciliationState.Mismatch)
-                throw new BusinessRuleException(current.State == InputInvoiceReconciliationState.Incomplete
-                    ? "Đối chiếu chưa đầy đủ nên không thể chấp nhận chênh lệch."
-                    : "Chỉ trạng thái có chênh lệch mới cần chấp nhận.");
+            if (current.State is not (InputInvoiceReconciliationState.Incomplete
+                or InputInvoiceReconciliationState.Mismatch))
+                throw new BusinessRuleException(
+                    "Chỉ trạng thái chưa đầy đủ hoặc có chênh lệch mới cần quản lý xác nhận.");
 
             var row = (await repository.GetReconciliationsAsync(
                 storeId, stockDocumentId, tracking: true, ct)).Single();
@@ -311,7 +312,7 @@ public sealed class InputInvoiceReconciliationService(
             await AddAuditAsync(receipt,
                 PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted,
                 reason, null, null, current, ct,
-                InputInvoiceReconciliationState.Mismatch.ToString(),
+                current.State.ToString(),
                 InputInvoiceReconciliationState.AcceptedMismatch.ToString());
             await repository.SaveChangesAsync(ct);
             current.State = InputInvoiceReconciliationState.AcceptedMismatch;
@@ -393,7 +394,8 @@ public sealed class InputInvoiceReconciliationService(
         var calculated = await BuildAsync(receipt, old, ct);
         var baseState = calculated.State;
         calculated.EvidenceFingerprint = InputInvoiceReconciliationPolicy.Fingerprint(calculated);
-        var acceptanceStillValid = baseState == InputInvoiceReconciliationState.Mismatch &&
+        var acceptanceStillValid = (baseState is InputInvoiceReconciliationState.Incomplete
+                or InputInvoiceReconciliationState.Mismatch) &&
             old?.AcceptedEvidenceFingerprint is not null &&
             string.Equals(old.AcceptedEvidenceFingerprint,
                 calculated.EvidenceFingerprint, StringComparison.Ordinal);

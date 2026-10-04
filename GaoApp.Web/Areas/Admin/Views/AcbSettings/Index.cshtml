@@ -99,6 +99,15 @@
             </div>
             <p class="form-text mt-3 mb-0">Dịch vụ đăng ký: <strong>Thông báo trạng thái giao dịch QR Code</strong> và <strong>Thông báo danh sách giao dịch QR Code</strong> (tức thời / cuối ngày), xác thực <strong>API key</strong>. Việc lưu ở đây không tự đăng ký hoặc đổi URL, khóa bên ACB. Mỗi cửa hàng dùng cấu hình riêng.</p>
         </fieldset>
+        @if (!ViewData.ModelState.IsValid)
+        {
+            <div class="alert alert-danger" role="alert">
+                <strong>Chưa lưu được cài đặt ACB.</strong>
+                <div asp-validation-summary="All"></div>
+                <div>Hãy kiểm tra lỗi phía trên và nhập lại các ô khóa trước khi lưu lại.</div>
+            </div>
+        }
+        <p class="form-text">Nếu cần khôi phục kết nối khi còn QR đang chờ, chỉ nhập lại Client secret hoặc khóa callback; giữ nguyên tài khoản và các thông số khác.</p>
         <button class="btn btn-primary" type="submit">Lưu cài đặt</button>
         <a href="/Admin/StoreBankAccounts" class="btn btn-outline-secondary">Tài khoản ngân hàng</a>
     </form>

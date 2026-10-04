@@ -12,11 +12,73 @@ using GaoApp.Tests.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using GaoApp.Infrastructure.Storage;
+using GaoApp.Web.Areas.Admin.Controllers;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.FileProviders;
 
 namespace GaoApp.Tests.Media;
 
 public sealed class MediaLibraryTests
 {
+    [Theory]
+    [InlineData("uploads/legacy-data/images/imported.jpg", "image/jpeg")]
+    [InlineData("uploads/legacy-data/files/imported.png", "image/png")]
+    [InlineData("uploads/products/current.webp", "image/webp")]
+    [InlineData("uploads/_temp/upload.gif", "image/gif")]
+    [InlineData("uploads/legacy-data/images/imported.svg", null)]
+    [InlineData("uploads/legacy-data/private/photo.jpg", null)]
+    [InlineData("uploads/legacy-data/images/../private/photo.jpg", null)]
+    public async Task Preview_serves_supported_images_but_rejects_other_stores_and_unsafe_paths(string path, string? mime)
+    {
+        await using var f = new Fixture();
+        var asset = await f.Add(path: path);
+        var otherStoreAsset = await f.Add(store: 2, path: path);
+        var root = Path.Combine(Path.GetTempPath(), "gao-media-preview-" + Guid.NewGuid().ToString("N"));
+        var uploadRoot = Path.Combine(root, "uploads");
+        var env = new PreviewEnvironment { ContentRootPath = root, WebRootPath = Path.Combine(root, "wwwroot") };
+        var paths = new UploadPathResolver(env, Options.Create(new StorageOptions { UploadRoot = uploadRoot }));
+        var tenant = new TenantContext();
+        tenant.SetStore(1, "one");
+        var controller = new MediaLibraryController(f.Service, tenant, null!, Options.Create(new MediaCleanupOptions()), null!)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        // Even rejected paths point to an existing file; a missing file must not mask the guard.
+        var physicalPath = Path.GetFullPath(Path.Combine(uploadRoot, path[8..]));
+        Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
+        await File.WriteAllBytesAsync(physicalPath, [1, 2, 3]);
+        try
+        {
+            var result = await controller.Preview(asset.Id, paths, default);
+            if (mime == null)
+                Assert.IsType<NotFoundResult>(result);
+            else
+            {
+                var file = Assert.IsType<PhysicalFileResult>(result);
+                Assert.Equal(physicalPath, file.FileName);
+                Assert.Equal(mime, file.ContentType);
+                Assert.Equal("nosniff", controller.Response.Headers.XContentTypeOptions.ToString());
+            }
+            Assert.IsType<NotFoundResult>(await controller.Preview(otherStoreAsset.Id, paths, default));
+            File.Delete(physicalPath);
+            Assert.IsType<NotFoundResult>(await controller.Preview(asset.Id, paths, default));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private sealed class PreviewEnvironment : IWebHostEnvironment
+    {
+        public string ApplicationName { get; set; } = "MediaPreviewTests";
+        public string EnvironmentName { get; set; } = "Testing";
+        public string ContentRootPath { get; set; } = "";
+        public string WebRootPath { get; set; } = "";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
     [Fact]
     public async Task Expired_temp_is_deleted_once_and_recent_upload_survives()
     {

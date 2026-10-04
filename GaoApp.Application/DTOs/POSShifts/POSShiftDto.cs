@@ -9,6 +9,9 @@ public class POSShiftDto
     public POSShiftStatus Status { get; set; }
 
     public int OpenedByUserId { get; set; }
+    public string? OpenedByUserName { get; set; }
+    public string? TerminalName { get; set; }
+    public string? TerminalCode { get; set; }
     public DateTime OpenedAtUtc { get; set; }
 
     public decimal OpeningCash { get; set; }

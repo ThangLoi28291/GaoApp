@@ -4,7 +4,7 @@
 @{
     ViewData["Title"] = "Mẫu hóa đơn & máy in";
     var setup = new { storeId = (int)ViewBag.StoreId, terminalId = (int?)ViewBag.TerminalId,
-        canManage = (bool)ViewBag.CanManage, templates = Model, storeInfo = (ReceiptStoreInfo)ViewBag.StoreInfo };
+        canManage = (bool)ViewBag.CanManage, templates = Model, storeInfo = (ReceiptStoreInfo)ViewBag.StoreInfo, receiptDefault = (ReceiptDefault)ViewBag.ReceiptDefault };
 }
 @section VendorStyles { <link rel="stylesheet" href="~/Admin/css/receipt-templates.css" asp-append-version="true" /> }
 <main class="receipt-studio" id="receiptStudio">
@@ -27,6 +27,13 @@
         </div>
         @if (!setup.canManage) { <p>Liên hệ quản lý cửa hàng để thay đổi thông tin tiệm.</p> }
     </section>
+    <section class="store-identity-panel" aria-labelledby="storeDefaultTitle">
+        <div class="studio-eyebrow">ÁP DỤNG CHO TẤT CẢ NHÂN VIÊN</div>
+        <h2 id="storeDefaultTitle">Mẫu hóa đơn mặc định của cửa hàng</h2>
+        <p id="storeDefaultName"></p>
+        <p>Chọn mẫu trong thư viện rồi đặt làm mặc định. Nhân viên tính tiền sẽ tự dùng mẫu này, không cần chọn lại. Quầy mất mạng dùng bản đã đồng bộ gần nhất.</p>
+        @if (setup.canManage) { <button id="setStoreDefault" type="button" class="btn btn-primary mt-3">Đặt mẫu đang chọn làm mặc định</button> }
+    </section>
     <div class="studio-layout">
         <section class="studio-library">
             <div class="studio-section-heading"><div><h2>Thư viện mẫu</h2><p id="templateCount"></p></div><button id="newTemplate" class="btn btn-primary" hidden="@(!setup.canManage)">+ Tạo mẫu</button></div>
@@ -36,17 +43,18 @@
             </nav>
             <div id="templateGallery" class="template-gallery"></div>
             <section class="printer-panel">
-                <div class="studio-eyebrow">THIẾT LẬP TRÊN CLIENT NÀY</div><h2>Máy in của quầy</h2>
-                <p>Máy in và mẫu đang dùng được lưu riêng trên trình duyệt của máy này.</p>
-                <label for="printMode">Cách in</label><select id="printMode" class="form-select"><option value="qz">Máy in đã cài trên client · QZ Tray</option><option value="browser">Hộp thoại in của trình duyệt</option></select>
+                <div class="studio-eyebrow">THIẾT LẬP MÁY IN TẠI QUẦY</div><h2>Máy in của quầy</h2>
+                <p>Máy in được lưu riêng trên trình duyệt của quầy này. Mẫu hóa đơn dùng theo mặc định chung của cửa hàng.</p>
+                <label for="printMode">Cách in</label><select id="printMode" class="form-select"><option value="qz">Máy in đã cài trên client · QZ Tray</option><option value="browser">Hộp thoại in của trình duyệt</option><option value="helper">Linux Print Helper</option></select>
                 <div id="qzSettings"><div class="printer-connect"><label for="clientPrinter">Máy in Windows / Linux</label><button type="button" id="connectPrinters" class="btn btn-sm btn-outline-primary">Kết nối máy in</button></div>
                     <select id="clientPrinter" class="form-select"><option value="">Chưa chọn máy in</option></select>
                     <p class="printer-help">Cài và mở <a href="https://qz.io/download/" target="_blank" rel="noopener">QZ Tray</a> trên máy client. QZ có thể yêu cầu xác nhận kết nối và lệnh in. Không cần kết nối tới server để in phiếu offline đã lưu.</p>
-                    <div class="printer-options"><div><label for="printCopies">Số bản</label><input id="printCopies" type="number" min="1" max="5" value="1" class="form-control" /></div>
-                        <p class="printer-help">In đen trắng · chữ đen trên nền trắng.</p></div>
                 </div>
+                <div id="helperSettings" hidden><p class="printer-help">Print Helper trên máy Linux · XP-A160H · mẫu giấy 80 mm. Cho phép trang truy cập mạng cục bộ khi trình duyệt yêu cầu.</p><button id="checkHelper" type="button" class="btn btn-sm btn-outline-primary">Kiểm tra Print Helper</button></div>
+                    <div id="printCopySettings" class="printer-options"><div><label for="printCopies">Số bản</label><input id="printCopies" type="number" min="1" max="5" value="1" class="form-control" /></div>
+                        <p class="printer-help">In đen trắng · chữ đen trên nền trắng.</p></div>
                 <p id="activePrintProfile" class="active-profile"></p>
-                <div class="studio-actions"><button id="applyTemplate" class="btn btn-primary">Dùng mẫu & máy in này</button><button id="testPrint" class="btn btn-outline-secondary">In thử</button></div>
+                <div class="studio-actions"><button id="applyTemplate" class="btn btn-primary">Lưu máy in tại quầy</button><button id="testPrint" class="btn btn-outline-secondary">In thử</button></div>
                 <p class="printer-help">Chọn đúng khổ giấy trong driver. Khổ 45 mm dành cho giấy rộng 45 mm; nếu máy dùng giấy 58 mm với vùng in 45 mm, cần kiểm tra lại cấu hình máy in.</p>
             </section>
         </section>

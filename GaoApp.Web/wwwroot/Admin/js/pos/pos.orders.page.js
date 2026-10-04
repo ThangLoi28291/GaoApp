@@ -4,16 +4,19 @@
     if (!root) return;
     const $ = id => root.querySelector('#' + id);
     const endpoint = '/admin/pos/orders';
-    const state = { page: 1, pageSize: 20, total: 0, items: [], loaded: false, busy: false, applied: null };
+    const state = { page: 1, pageSize: 20, total: 0, items: [], loaded: false, busy: false, applied: null, displayedPage: 1, displayedSize: 20 };
     let listSequence = 0, listController, previewSequence = 0, previewController, previewId = 0, previewTrigger, menuTrigger;
     const body = $('ordersBody'), table = body.closest('table'), dialog = $('orderPreview');
-    const fields = ['keyword', 'fromDate', 'toDate', 'status'];
+    const fields = ['keyword', 'fromDate', 'toDate', 'status', 'employee', 'employeeId', 'customer', 'terminal', 'terminalId', 'settlement'];
+    const settlementLabels = { Cash: 'Tiền mặt', BankTransfer: 'Chuyển khoản', Credit: 'Đơn bán công nợ',
+        OutstandingCredit: 'Công nợ — còn nợ', Mixed: 'Nhiều hình thức thanh toán', Card: 'Thẻ', EWallet: 'Ví điện tử', Other: 'Khác' };
     const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
     const positiveInt = (value, fallback = 1) => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
     const money = value => num(value).toLocaleString('vi-VN');
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const token = value => String(value ?? '').trim().toLowerCase().replace(/[\s_-]/g, '');
     const list = value => Array.isArray(value) ? value : [];
+    const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
     const detailUrl = id => '/admin/pos/order-detail/' + id;
     const icon = name => '<i class="bx bx-' + name + '" aria-hidden="true"></i>';
     const statuses = {
@@ -31,18 +34,45 @@
     }
     function dateTime(value) {
         if (!value) return '—';
-        const date = new Date(value);
+        const date = parseUtcDate(value);
         if (Number.isNaN(date.getTime())) return '—';
-        return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
-            ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+        return new Intl.DateTimeFormat('vi-VN', {
+            timeZone: VIETNAM_TIME_ZONE,
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        }).format(date).replace(', ', ' · ');
+    }
+    function parseUtcDate(value) {
+        if (value instanceof Date) return value;
+        const raw = String(value ?? '').trim();
+        if (!raw) return new Date(NaN);
+        return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(raw) ? raw : raw + 'Z');
+    }
+    function vietnamDateParts(value = new Date()) {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: VIETNAM_TIME_ZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(value).reduce((result, part) => {
+            if (part.type !== 'literal') result[part.type] = Number(part.value);
+            return result;
+        }, {});
+        return parts;
     }
     function dateInput(date) {
-        return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+        return date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0') + '-' + String(date.getUTCDate()).padStart(2, '0');
     }
     function period(type) {
         if (type === 'clear') return { fromDate: '', toDate: '' };
-        const end = new Date(), start = new Date(end);
-        start.setDate(start.getDate() - (type === '7days' ? 6 : type === '30days' ? 29 : 0));
+        const today = vietnamDateParts();
+        const end = new Date(Date.UTC(today.year, today.month - 1, today.day));
+        const start = new Date(end);
+        start.setUTCDate(start.getUTCDate() - (type === '7days' ? 6 : type === '30days' ? 29 : 0));
         return { fromDate: dateInput(start), toDate: dateInput(end) };
     }
     function syncPeriods() {
@@ -50,7 +80,7 @@
             const range = period(button.dataset.range);
             button.setAttribute('aria-pressed', String($('fromDate').value === range.fromDate && $('toDate').value === range.toDate));
         });
-        const active = ['fromDate', 'toDate', 'status'].filter(id => $(id).value).length;
+        const active = fields.filter(id => id !== 'keyword' && !id.endsWith('Id') && $(id).value).length;
         $('btnToggleFilters').innerHTML = icon('filter-alt') + ' Bộ lọc' + (active ? ' · ' + active : '');
     }
     function readFilters() {
@@ -68,6 +98,7 @@
     function restoreUrl() {
         const query = new URLSearchParams(location.search);
         fields.forEach(name => { $(name).value = query.get(name) || ''; });
+        root.dispatchEvent(new Event('orders:filters-reset'));
         if (!$('status').value) $('status').value = '';
         state.page = positiveInt(query.get('page'), 1);
         state.pageSize = [10, 20, 50].includes(Number(query.get('pageSize'))) ? Number(query.get('pageSize')) : 20;
@@ -85,7 +116,13 @@
         const range = filters.fromDate && filters.toDate ? day(filters.fromDate) + ' – ' + day(filters.toDate)
             : filters.fromDate ? 'Từ ' + day(filters.fromDate) : filters.toDate ? 'Đến ' + day(filters.toDate) : 'Tất cả thời gian';
         const status = statuses[token(filters.status)]?.[0] || 'Tất cả trạng thái';
-        $('filterSummary').textContent = range + ' · ' + status + (filters.keyword ? ' · “' + filters.keyword + '”' : '');
+        const parts = [range, status];
+        if (filters.keyword) parts.push('“' + filters.keyword + '”');
+        [['employee', 'Nhân viên'], ['customer', 'Khách hàng'], ['terminal', 'Máy tính tiền']].forEach(([key, label]) => {
+            if (filters[key]) parts.push(label + ': ' + filters[key]);
+        });
+        if (settlementLabels[filters.settlement]) parts.push(settlementLabels[filters.settlement]);
+        $('filterSummary').textContent = parts.join(' · ');
     }
     function updateMetrics() {
         $('metricCount').textContent = state.loaded ? money(state.total) : '—';
@@ -95,12 +132,14 @@
         $('metricDue').classList.toggle('po-text-warning', state.loaded && state.items.some(order => num(order.balanceDue) > 0));
     }
     function updatePaging() {
-        const pages = Math.max(1, Math.ceil(state.total / state.pageSize));
-        const start = state.total && state.items.length ? (state.page - 1) * state.pageSize + 1 : 0;
+        const page = state.loaded ? state.displayedPage : state.page;
+        const size = state.loaded ? state.displayedSize : state.pageSize;
+        const pages = Math.max(1, Math.ceil(state.total / size));
+        const start = state.total && state.items.length ? (page - 1) * size + 1 : 0;
         const end = Math.min(state.total, start ? start + state.items.length - 1 : 0);
         $('totalOrdersText').textContent = state.loaded ? money(state.total) + ' đơn' : 'Chưa tải được';
         $('pagingInfo').textContent = state.loaded ? 'Hiển thị ' + start + '–' + end + ' trong ' + money(state.total) + ' đơn' : 'Chưa có dữ liệu';
-        $('pageIndicator').textContent = 'Trang ' + state.page + ' / ' + pages;
+        $('pageIndicator').textContent = 'Trang ' + page + ' / ' + pages;
         $('btnPrevPage').disabled = state.busy || !state.loaded || state.page <= 1;
         $('btnNextPage').disabled = state.busy || !state.loaded || state.page >= pages;
     }
@@ -126,6 +165,8 @@
     }
     function extras(order, full = false) {
         const parts = [], vouchers = list(order.rewardVouchers ?? order.RewardVouchers);
+        if (num(order.depositAmount) > 0) parts.push('<span class="po-extra">' + icon('wallet') +
+            'Dùng cọc ' + money(order.depositAmount) + ' đ</span>');
         const refunded = num(order.refundedTotal), returns = num(order.returnCount);
         if (refunded > 0 || returns > 0) parts.push('<span class="po-extra po-extra-return" title="' +
             esc('Đã hoàn: ' + money(refunded) + ' đ · ' + returns + ' phiếu trả') + '">' + icon('undo') +
@@ -140,6 +181,15 @@
     function orderName(order) {
         return order.orderNumber || (token(order.status) === 'draft' ? 'Đơn nháp #' : 'Đơn #') + positiveInt(order.orderId);
     }
+    function settlementBadges(order) {
+        const tags = list(order.paymentMethods).map(method => '<span class="po-badge po-badge-' +
+            (method === 'Cash' ? 'success' : 'info') + '">' + esc(settlementLabels[method] || 'Khác') + '</span>');
+        if (num(order.depositAmount) > 0) tags.push('<span class="po-badge po-badge-info">Tiền đặt cọc</span>');
+        if (order.isCreditSale) tags.push('<span class="po-badge po-badge-warning">' +
+            (token(order.status) === 'completed' ? (num(order.balanceDue) > 0 ? 'Công nợ · còn nợ' : 'Công nợ · đã trả hết') : 'Đơn bán công nợ') + '</span>');
+        if (!tags.length) tags.push('<span class="po-payment-unknown">' + (num(order.paidTotal) > 0 ? 'Chưa rõ hình thức' : 'Chưa ghi nhận thanh toán') + '</span>');
+        return '<div class="po-settlement-tags">' + tags.join('') + '</div>';
+    }
     function renderOrders() {
         if (!state.items.length) { body.innerHTML = '<tr><td colspan="6">' + stateMarkup('empty') + '</td></tr>'; return; }
         body.innerHTML = state.items.map(order => {
@@ -147,12 +197,16 @@
             const payToken = token(order.paymentStatus);
             return '<tr class="po-order-row" data-order-id="' + id + '" title="Nhấp đúp để xem nhanh đơn hàng">' +
                 '<td><button type="button" class="po-order-link" data-preview-id="' + id + '" aria-label="Xem nhanh ' + name + '"' + (!id ? ' disabled' : '') + '><span class="po-order-number">' + name + '</span></button>' +
-                '<span class="po-order-meta">' + icon('time-five') + esc(dateTime(order.createdAtUtc)) + '</span></td>' +
-                '<td><div class="po-statuses">' + badge(order.status, statuses) + '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span></div></td>' +
+                '<span class="po-order-meta">' + icon('time-five') + esc(dateTime(order.createdAtUtc)) + '</span>' +
+                '<span class="po-order-meta po-customer">' + icon('user') + esc(order.customerName || 'Khách lẻ') + '</span>' +
+                (order.customerPhone ? '<span class="po-order-meta">' + icon('phone') + esc(order.customerPhone) + '</span>' : '') + '</td>' +
+                '<td><span class="po-order-meta po-cashier">' + icon('user-circle') + esc(order.cashierName || 'Chưa rõ nhân viên') + '</span>' +
+                '<span class="po-order-meta po-terminal">' + icon('desktop') + esc(order.terminalName || order.terminalCode || 'Chưa rõ máy') + '</span>' +
+                '<div class="po-statuses">' + badge(order.status, statuses) + '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span></div></td>' +
                 '<td class="po-align-right"><span class="po-mobile-label">Tổng tiền đơn</span><span class="po-amount">' + money(order.grandTotal) + ' <small>đ</small></span></td>' +
                 '<td><div class="po-paid-line"><span>Đã trả</span><strong>' + money(order.paidTotal) + ' đ</strong></div>' +
                 (due > 0 ? '<div class="po-due-line"><span>Còn thiếu</span><strong>' + money(due) + ' đ</strong></div>'
-                    : '<span class="po-settled">' + icon('check') + (payToken === 'paid' ? 'Đã thanh toán đủ' : 'Không còn thiếu') + '</span>') + '</td>' +
+                    : '<span class="po-settled">' + icon('check') + (payToken === 'paid' ? 'Đã thanh toán đủ' : 'Không còn thiếu') + '</span>') + settlementBadges(order) + '</td>' +
                 '<td>' + extras(order) + '</td>' +
                 '<td><div class="po-actions"><button type="button" class="po-icon-button" data-print-order-id="' + id + '" aria-label="In lại ' + name + '" title="In lại hóa đơn"' + (!id ? ' disabled' : '') + '>' + icon('printer') + '</button>' +
                 '<button type="button" class="po-icon-button po-action-trigger" data-menu-id="' + id + '" aria-label="Thao tác ' + name + '" aria-expanded="false" aria-controls="orderActions" title="Thao tác khác"' + (!id ? ' disabled' : '') + '>' + icon('dots-horizontal-rounded') + '</button></div></td></tr>';
@@ -175,9 +229,10 @@
         const timeout = window.setTimeout(() => controller.abort(), 15000);
         closeMenu();
         setBusy(true);
-        $('ordersNotice').hidden = true;
-        state.loaded = false;
-        updateMetrics(); skeleton();
+        // Keep the previous page readable until the replacement arrives; do not flash an empty table/KPIs.
+        $('ordersNotice').hidden = !state.loaded;
+        $('ordersNotice').textContent = 'Đang tải dữ liệu mới…';
+        if (!state.loaded) { updateMetrics(); skeleton(); }
         try {
             const response = await fetch(endpoint + '?' + queryFor(filters), { headers: { Accept: 'application/json' }, signal: controller.signal, cache: 'no-store' });
             const data = await readJson(response);
@@ -192,6 +247,7 @@
                 await loadOrders({ useApplied: true, recoverPage: false }); return;
             }
             state.items = data.items; state.loaded = true; state.applied = filters;
+            state.displayedPage = state.page; state.displayedSize = state.pageSize;
             $('pageSize').value = String(state.pageSize);
             renderOrders(); updateMetrics(); updateSummary(filters);
             history.replaceState(null, '', location.pathname + '?' + queryFor(filters) + location.hash);
@@ -203,7 +259,7 @@
             updateMetrics();
         } finally {
             window.clearTimeout(timeout);
-            if (seq === listSequence) { listController = null; setBusy(false); }
+            if (seq === listSequence) { listController = null; $('ordersNotice').hidden = true; setBusy(false); }
         }
     }
 
@@ -219,7 +275,10 @@
         if (menuTrigger === trigger && menu.matches(':popover-open')) { closeMenu(); return; }
         closeMenu(); menuTrigger = trigger;
         const id = positiveInt(order.orderId), completed = token(order.status) === 'completed';
-        const elapsed = Date.now() - new Date(order.completedAtUtc).getTime();
+        const completedAt = parseUtcDate(order.completedAtUtc);
+        const elapsed = completedAt.getTime() === completedAt.getTime()
+            ? Date.now() - completedAt.getTime()
+            : Number.POSITIVE_INFINITY;
         const canVoid = completed && elapsed >= 0 && elapsed <= 15 * 60 * 1000;
         menu.innerHTML = '<button type="button" data-preview-id="' + id + '">' + icon('show') + 'Xem nhanh đơn hàng</button>' +
             '<a href="' + detailUrl(id) + '">' + icon('file') + 'Chi tiết đầy đủ</a>' +
@@ -282,8 +341,9 @@
         $('previewTitle').textContent = orderName(order);
         $('previewBody').innerHTML = '<div class="po-preview-status">' + badge(order.status, statuses) + badge(order.paymentStatus, payments) + '</div>' +
             '<dl class="po-preview-meta">' + meta('Khách hàng', order.customerName || 'Khách lẻ') + meta('Thu ngân', order.cashierName) +
-            (order.customerPhone ? meta('Điện thoại', order.customerPhone) : '') + meta('Ca bán hàng', order.shiftCode) +
+            (order.customerPhone ? meta('Điện thoại', order.customerPhone) : '') + meta('Máy tính tiền', order.terminalName || order.terminalCode) +
             meta('Tạo lúc', dateTime(order.createdAtUtc)) + meta('Hoàn tất', dateTime(order.finalizedAtUtc)) + '</dl>' +
+            (order.shiftCode ? '<details class="po-preview-section"><summary>Mã ca để tra cứu</summary><p class="po-preview-note">' + esc(order.shiftCode) + '</p></details>' : '') +
             '<section class="po-preview-section"><h3>Sản phẩm <span>' + order.lines.length + ' dòng hàng</span></h3><ul class="po-preview-lines">' +
             (order.lines.map(line => '<li><div><strong class="po-product-name">' + esc(line.itemName) + '</strong>' +
                 '<small class="po-product-code">Mã: ' + esc(productCode(line)) + '</small>' +
@@ -292,14 +352,16 @@
                 '<li><span class="po-text-muted">Đơn chưa có sản phẩm.</span></li>') + '</ul></section>' +
             '<section class="po-preview-section"><h3>Thanh toán</h3><dl class="po-preview-totals">' +
             total('Tạm tính', order.subtotal) + (num(order.discountTotal) ? total('Giảm giá', order.discountTotal) : '') +
-            total('Tổng tiền', order.grandTotal, 'po-preview-grand') + total('Đã thanh toán', order.paidTotal, 'po-text-success') +
+            total('Tổng tiền', order.grandTotal, 'po-preview-grand') +
+            (num(order.depositAmount) > 0 ? total('Trừ tiền cọc', order.depositAmount) + total('Cần trả sau cọc', Math.max(0, num(order.grandTotal) - num(order.depositAmount))) : '') +
+            total(num(order.depositAmount) > 0 ? 'Đã thanh toán (gồm cọc)' : 'Đã thanh toán', order.paidTotal, 'po-text-success') +
             total('Còn thiếu', order.balanceDue, num(order.balanceDue) > 0 ? 'po-text-warning' : '') +
             (num(order.changeDue) > 0 ? total('Tiền thừa', order.changeDue) : '') +
             (num(order.refundedTotal) > 0 ? total('Đã hoàn tiền', order.refundedTotal, 'po-text-warning') : '') + '</dl></section>' +
             (list(order.payments).length ? '<section class="po-preview-section"><h3>Các khoản thanh toán</h3><ul class="po-preview-lines">' +
                 order.payments.map(payment => '<li><div><strong>' + esc(paymentMethod(payment.method)) + '</strong><small>' + esc(dateTime(payment.createdAt)) +
                     (payment.reference ? ' · ' + esc(payment.reference) : '') + '</small></div><strong class="po-amount">' + money(payment.amount) + ' đ</strong></li>').join('') + '</ul></section>' : '') +
-            (num(order.voucherDiscountTotal) > 0 || list(order.rewardVouchers).length ? '<section class="po-preview-section"><h3>Voucher</h3>' + extras(order, true) + '</section>' : '') +
+            (num(order.depositAmount) > 0 || num(order.voucherDiscountTotal) > 0 || list(order.rewardVouchers).length ? '<section class="po-preview-section"><h3>Cọc / Voucher</h3>' + extras(order, true) + '</section>' : '') +
             (order.note ? '<section class="po-preview-section"><h3>Ghi chú</h3><p class="po-preview-note">' + esc(order.note) + '</p></section>' : '');
     }
     dialog.addEventListener('close', () => {
@@ -320,6 +382,8 @@
     }
     function resetFilters() {
         $('ordersFilters').reset(); $('toDate').setCustomValidity('');
+        fields.forEach(name => { $(name).value = ''; });
+        root.dispatchEvent(new Event('orders:filters-reset'));
         state.page = 1; syncPeriods(); void loadOrders();
     }
     body.addEventListener('dblclick', event => {
@@ -369,7 +433,7 @@
         const expanded = $('ordersFilters').classList.toggle('po-filters-expanded');
         $('btnToggleFilters').setAttribute('aria-expanded', String(expanded));
     });
-    $('status').addEventListener('change', syncPeriods);
+    fields.forEach(id => $(id).addEventListener('change', syncPeriods));
     $('btnRefresh').addEventListener('click', () => void loadOrders({ useApplied: true }));
     $('pageSize').addEventListener('change', () => { state.pageSize = Number($('pageSize').value); state.page = 1; void loadOrders({ useApplied: true }); });
     $('btnPrevPage').addEventListener('click', () => { if (!state.busy && state.page > 1) { state.page--; void loadOrders({ useApplied: true }); } });

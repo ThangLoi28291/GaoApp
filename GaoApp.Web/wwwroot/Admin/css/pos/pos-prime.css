@@ -1607,7 +1607,7 @@
 
 .pos-prime .pos-cockpit-secondary-actions {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr 1fr auto;
     gap: 8px;
     margin-top: 8px;
 }

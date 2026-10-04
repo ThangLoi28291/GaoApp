@@ -314,6 +314,84 @@ window.PosCommon = (function () {
         return tokenInput ? tokenInput.value : '';
     }
 
+    function parseMoneyInput(value) {
+        const text = String(value ?? '').trim();
+        if (/^-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d*)?$/.test(text)) {
+            return Number(text.replace(/\./g, '').replace(',', '.'));
+        }
+        return Number(text);
+    }
+
+    function setMoneyInput(input, value) {
+        if (input) input.value = formatMoney(value);
+    }
+
+    function formatMoneyInput(input) {
+        const value = input.value;
+        const parts = value.replace(/\./g, '').match(/^(-?)(\d*)(,\d*)?$/);
+        if (!parts) return;
+        const caret = input.selectionStart;
+        const charactersBeforeCaret = value.slice(0, caret).replace(/\./g, '').length;
+        const formatted = parts[1] + parts[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (parts[3] || '');
+        if (formatted === value) return;
+        input.value = formatted;
+        if (caret !== null) {
+            let position = 0;
+            let characters = 0;
+            while (position < formatted.length && characters < charactersBeforeCaret) {
+                if (formatted[position] !== '.') characters++;
+                position++;
+            }
+            input.setSelectionRange(position, position);
+        }
+    }
+
+    function normalizePastedMoney(text) {
+        const value = text.trim().replace(/\s/g, '').replace(/(?:₫|đ|vnd)$/i, '');
+        if (/^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(value)) {
+            return value.replace(/,/g, '').replace('.', ',');
+        }
+        if (/^-?\d+\.\d+$/.test(value) && !/^-?\d{1,3}\.\d{3}$/.test(value)) {
+            return value.replace('.', ',');
+        }
+        return value;
+    }
+
+    function bindMoneyInput(input) {
+        if (!input || input.dataset.moneyInputBound === 'true') return;
+        input.dataset.moneyInputBound = 'true';
+        input.addEventListener('input', function (event) {
+            if (event.inputType === 'insertText' && event.data === '.') {
+                const caret = this.selectionStart;
+                this.setRangeText(',', caret - 1, caret, 'end');
+            } else if (event.data?.length > 1 && this.value === event.data) {
+                this.value = normalizePastedMoney(event.data);
+            }
+            formatMoneyInput(this);
+        });
+        input.addEventListener('beforeinput', function (event) {
+            const start = this.selectionStart;
+            if (start !== this.selectionEnd) return;
+            if (event.inputType === 'deleteContentBackward' && this.value[start - 1] === '.') {
+                event.preventDefault();
+                this.setRangeText('', start - 2, start, 'end');
+            } else if (event.inputType === 'deleteContentForward' && this.value[start] === '.') {
+                event.preventDefault();
+                this.setRangeText('', start, start + 2, 'end');
+            } else return;
+            formatMoneyInput(this);
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        input.addEventListener('paste', function (event) {
+            const text = event.clipboardData?.getData('text');
+            if (!text) return;
+            event.preventDefault();
+            this.setRangeText(normalizePastedMoney(text), this.selectionStart, this.selectionEnd, 'end');
+            formatMoneyInput(this);
+            this.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
     function formatMoney(value) {
         const number = Number(value || 0);
         return number.toLocaleString('vi-VN', {
@@ -1714,6 +1792,9 @@ window.PosCommon = (function () {
     return {
         getAntiForgeryToken,
         formatMoney,
+        parseMoneyInput,
+        setMoneyInput,
+        bindMoneyInput,
         escapeHtml,
 
         showSuccess,

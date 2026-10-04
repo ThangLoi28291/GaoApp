@@ -1,5 +1,6 @@
 {
   "PackageId": "GSTORE-03-SALES-V1",
-  "SourceTables": ["Order", "OrderDetail", "Product", "ManagementJob", "ChiTietThuChi", "LoaiThuChi", "KetTien", "User"],
-  "TargetTables": ["POSShifts", "Orders", "OrderLines", "OrderPayments", "POSShiftCashTransactions", "SalesReturns", "SalesReturnLines", "SalesReturnPayments"]
+  "SourceTables": ["Order", "OrderDetail", "InvoiceHead", "Product", "ManagementJob", "ChiTietThuChi", "LoaiThuChi", "KetTien", "User"],
+  "TargetTables": ["POSShifts", "Orders", "OrderLines", "OrderPayments", "POSShiftCashTransactions", "SalesReturns", "SalesReturnLines", "SalesReturnPayments"],
+  "RetainedTargetTables": ["Users", "UserInStores"]
 }

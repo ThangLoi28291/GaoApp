@@ -7,6 +7,8 @@ H = {
 "InvoiceNumber":"NULLIF(LTRIM(RTRIM(h.InvoiceNumber)),N'')", "InvoiceDate":"CASE WHEN NULLIF(LTRIM(RTRIM(h.InvoiceNumber)),N'') IS NOT NULL THEN h.IssuedDate ELSE h.CreatedAt END",
 "BuyerType":"CASE WHEN NULLIF(LTRIM(RTRIM(h.BuyerTaxCode)),N'') IS NOT NULL OR NULLIF(LTRIM(RTRIM(h.BuyerLegalName)),N'') IS NOT NULL THEN N'Business' WHEN h.LayHD=1 THEN N'Individual' ELSE N'NoInvoice' END",
 "BuyerName":"h.buyerName", "BuyerLegalName":"h.BuyerLegalName", "BuyerTaxCode":"h.BuyerTaxCode", "BuyerAddress":"h.BuyerAddressLine", "BuyerEmail":"h.BuyerEmail", "BuyerPhone":"h.BuyerPhoneNumber",
+"IsAutoInvoiceGroup":"CONVERT(bit,0)", "BuyerCitizenId":"NULL",
+"LastIssuanceRelevantChangeAtUtc":"(SELECT MAX(v.ChangedAt) FROM (VALUES (DATEADD(hour,-7,h.CreatedAt)),(o.CompletedAtUtc),(ret.LastReturnAtUtc)) v(ChangedAt))",
 "TotalQuantity":"COALESCE(t.Quantity,0)", "SubTotal":"COALESCE(h.Amount,0)", "VatAmount":"0", "GrandTotal":"COALESCE(h.Amount,0)", "Note":"h.Note",
 "IsLocked":"CONVERT(bit,CASE WHEN NULLIF(LTRIM(RTRIM(h.InvoiceNumber)),N'') IS NOT NULL OR h.OrderCategoryID IN(8,13) OR o.Id IS NULL THEN 1 ELSE 0 END)",
 "LockedAtUtc":"CASE WHEN NULLIF(LTRIM(RTRIM(h.InvoiceNumber)),N'') IS NOT NULL THEN DATEADD(hour,-7,h.IssuedDate) WHEN h.OrderCategoryID IN(8,13) OR o.Id IS NULL THEN DATEADD(hour,-7,h.CreatedAt) END",
@@ -23,7 +25,7 @@ H = {
 D = {"StoreId":"@StoreId", "InvoiceHeadId":"hm.TargetId", "OrderLineId":"NULL", "OrderLegalEntityAllocationId":"NULL", "ProductVariantId":"m.VariantId", "SourceType":"CONVERT(tinyint,2)",
 "LegacySourceId":"d.ID", "LegacyUnitFactor":"m.Factor", "LegacySnapshotJson":"r.SourceJson", "ItemName":"COALESCE(d.ItemName,N'[Chưa có tên]')", "UnitName":"d.Unit", "Quantity":"d.Quantity",
 "UnitPrice":"COALESCE(d.UnitPrice,CASE WHEN d.Quantity=0 THEN 0 ELSE ROUND(d.Amount/d.Quantity,2) END)", "Amount":"d.Amount", "VatRate":"0", "VatAmount":"0", "TotalAmount":"d.Amount", "Note":"d.Note", "IsDeleted":"CONVERT(bit,0)"}
-head_schema = "Id bigint, InvoiceNumber nvarchar(50), InvoiceType nvarchar(20), TemplateCode nvarchar(20), InvoiceSeries nvarchar(20), IssuedDate datetime, Amount decimal(18,2), SellerCode nvarchar(20), CreatedAt datetime, buyerName nvarchar(100), BuyerAddressLine nvarchar(250), BuyerLegalName nvarchar(250), BuyerTaxCode nvarchar(20), BuyerPhoneNumber nvarchar(15), BuyerEmail nvarchar(100), OrderCategoryID bigint, LayHD bit, MaBiMat nvarchar(50), MaCQT nvarchar(50), Note nvarchar(2000), IdGop nvarchar(15)"
+head_schema = "Id bigint, InvoiceNumber nvarchar(50), InvoiceType nvarchar(20), TemplateCode nvarchar(20), InvoiceSeries nvarchar(20), IssuedDate datetime, Amount decimal(18,2), SellerCode nvarchar(20), CreatedAt datetime, buyerName nvarchar(100), BuyerAddressLine nvarchar(250), BuyerLegalName nvarchar(250), BuyerTaxCode nvarchar(20), BuyerPhoneNumber nvarchar(15), BuyerEmail nvarchar(100), OrderCategoryID bigint, LayHD bit, MaBiMat nvarchar(50), MaCQT nvarchar(50), Note nvarchar(max), IdGop nvarchar(15)"
 detail_schema = "ID bigint, OrderID bigint, ProductCode nvarchar(200), ItemName nvarchar(250), Unit nvarchar(100), Quantity decimal(18,3), UnitPrice decimal(18,2), Amount decimal(18,2), Note nvarchar(500)"
 def cols(mapping, alias=None): return ','.join((alias+'.' if alias else '')+'['+c+']' for c in mapping)
 def digest(mapping,alias): return "HASHBYTES('SHA2_256',CONVERT(nvarchar(max),(SELECT "+cols(mapping,alias)+" FOR JSON PATH,INCLUDE_NULL_VALUES,WITHOUT_ARRAY_WRAPPER)))"
@@ -64,6 +66,29 @@ sql+=f"SELECT h.* INTO #H FROM #SourceHead r CROSS APPLY OPENJSON(r.SourceJson) 
 sql+=r"""
  CREATE UNIQUE CLUSTERED INDEX IX_H ON #H(Id); CREATE UNIQUE CLUSTERED INDEX IX_D ON #D(ID); CREATE INDEX IX_D_Order ON #D(OrderID);
  IF EXISTS(SELECT 1 FROM #D d LEFT JOIN #H h ON h.Id=d.OrderID WHERE h.Id IS NULL) THROW 51000,N'Orphan source detail requires review.',1;
+ -- BEGIN REVIEWED 20260929 LONG NOTES
+ -- Two explicitly approved display-only shortenings. Raw source JSON is never modified.
+ DECLARE @ReviewedLongNotes TABLE(Id bigint PRIMARY KEY);
+ INSERT @ReviewedLongNotes VALUES(1828849),(1828927);
+ IF EXISTS(SELECT 1 FROM @ReviewedLongNotes a LEFT JOIN #H h ON h.Id=a.Id
+   WHERE h.Id IS NULL OR h.OrderCategoryID IS NULL OR h.OrderCategoryID<>12
+     OR h.CreatedAt IS NULL OR CONVERT(date,h.CreatedAt)<>'20260912'
+     OR h.InvoiceNumber IS NOT NULL OR h.IssuedDate IS NOT NULL
+     OR h.Note IS NULL OR LEN(h.Note)<>519 OR DATALENGTH(h.Note)>1038)
+   THROW 51000,N'REVIEWED_LONG_NOTE_CHANGED: the two approved draft invoices no longer match review.',1;
+ DECLARE @NoteSuffix nvarchar(50)=N'… [Xem ghi chú gốc]';
+ SELECT h.Id LegacySourceId,h.Note OriginalNote,CONVERT(nvarchar(500),NULL) DisplayNote
+ INTO #ReviewedLongNoteReport FROM #H h JOIN @ReviewedLongNotes a ON a.Id=h.Id;
+ -- Use UTF-16 storage units so nvarchar(500) never overflows; avoid a split surrogate pair.
+ UPDATE r SET DisplayNote=
+   CASE WHEN UNICODE(RIGHT(p.Prefix,1)) BETWEEN 55296 AND 56319
+        THEN LEFT(p.Prefix,LEN(p.Prefix+N'#')-2) ELSE p.Prefix END+@NoteSuffix
+ FROM #ReviewedLongNoteReport r
+ CROSS APPLY(SELECT LEFT(r.OriginalNote COLLATE Latin1_General_100_BIN2,500-DATALENGTH(@NoteSuffix)/2) Prefix)p;
+ UPDATE h SET Note=r.DisplayNote FROM #H h JOIN #ReviewedLongNoteReport r ON r.LegacySourceId=h.Id;
+ IF EXISTS(SELECT 1 FROM #ReviewedLongNoteReport WHERE DisplayNote IS NULL OR DATALENGTH(DisplayNote)>1000)
+   THROW 51000,N'REVIEWED_LONG_NOTE_DISPLAY_INVALID: reviewed note exceeds target storage.',1;
+ -- END REVIEWED 20260929 LONG NOTES
  IF EXISTS(SELECT 1 FROM #H WHERE CreatedAt IS NULL OR LEN(Note)>500 OR LEN(InvoiceNumber)>35 OR (NULLIF(LTRIM(RTRIM(InvoiceNumber)),N'') IS NOT NULL AND (IssuedDate IS NULL OR IssuedDate<'20000101'))) THROW 51000,N'Header date/length invalid; no silent truncation.',1;
  IF EXISTS(SELECT 1 FROM #D WHERE Quantity IS NULL OR Amount IS NULL OR (UnitPrice IS NULL AND Quantity=0 AND Amount<>0)) THROW 51000,N'Detail quantity/amount invalid.',1;
  SELECT LTRIM(RTRIM(REPLACE(v.Sku,NCHAR(160),N' '))) COLLATE SQL_Latin1_General_CP1_CI_AS Code,v.Id VariantId,CONVERT(decimal(18,4),1) Factor INTO #Paths
@@ -85,6 +110,7 @@ sql+=f" SELECT TOP(0) CONVERT(int,Id) Id,{cols(H)},LegacyImportedHash INTO #Expe
  FROM #H h JOIN #SourceHead r ON r.LegacyId=h.Id JOIN #HeadMap hm ON hm.LegacyId=h.Id
  LEFT JOIN #Totals t ON t.OrderID=h.Id
  LEFT JOIN dbo.Orders o ON o.StoreId=@StoreId AND o.Id=h.Id AND o.OrderNumber=CONCAT(N'LEGACY-',h.Id) AND o.IsDeleted=0
+ OUTER APPLY(SELECT MAX(sr.CompletedAtUtc) LastReturnAtUtc FROM dbo.SalesReturns sr WHERE sr.OrderId=o.Id AND sr.StoreId=@StoreId AND sr.IsDeleted=0 AND sr.Status=1)ret
  OUTER APPLY(SELECT MIN(s.Id) Id FROM dbo.InvoiceProviderSettings s WHERE s.StoreId=@StoreId AND s.IsDeleted=0 AND s.IsActive=1 AND s.ProviderCode=N'VIETTEL' AND s.SupplierTaxCode=h.SellerCode AND s.InvoiceType=h.InvoiceType AND s.TemplateCode=h.TemplateCode AND s.InvoiceSeries=h.InvoiceSeries HAVING COUNT_BIG(*)=1)ps;
 """
 sql+=f" SELECT TOP(0) CONVERT(int,Id) Id,{cols(D)},LegacyImportedHash INTO #ExpectedDetail FROM dbo.InvoiceDetails;\n INSERT #ExpectedDetail(Id,{cols(D)})\n SELECT dm.TargetId,"+',\n'.join(D.values())+r"""
@@ -111,6 +137,19 @@ sql+=r"""
  SELECT N'AMOUNT_DIFFERENCES' Report,h.Id LegacySourceId,h.Amount HeaderAmount,t.Amount DetailAmount FROM #H h LEFT JOIN #Totals t ON t.OrderID=h.Id WHERE h.Amount<>COALESCE(t.Amount,0) ORDER BY h.Id;
  SELECT N'CATEGORY_COUNTS' Report,LegacyOrderCategoryId,ProviderStatus,COUNT_BIG(*) Heads FROM #ExpectedHead GROUP BY LegacyOrderCategoryId,ProviderStatus ORDER BY LegacyOrderCategoryId,ProviderStatus;
  SELECT N'UNMAPPED_PRODUCTS' Report,d.ProductCode,COUNT_BIG(*) Lines FROM #D d JOIN #ExpectedDetail e ON e.LegacySourceId=d.ID WHERE e.ProductVariantId IS NULL GROUP BY d.ProductCode;
+ -- BEGIN REVIEWED 20260929 ORIGINAL NOTE VERIFICATION
+ IF EXISTS(SELECT 1 FROM #ReviewedLongNoteReport r LEFT JOIN #ExpectedHead e ON e.LegacySourceId=r.LegacySourceId
+   OUTER APPLY OPENJSON(e.LegacySnapshotJson) WITH(Note nvarchar(max)) raw
+   WHERE e.Id IS NULL OR raw.Note IS NULL
+     OR DATALENGTH(raw.Note)<>DATALENGTH(r.OriginalNote)
+     OR raw.Note COLLATE Latin1_General_100_BIN2<>r.OriginalNote COLLATE Latin1_General_100_BIN2
+     OR e.Note IS NULL OR DATALENGTH(e.Note)<>DATALENGTH(r.DisplayNote)
+     OR e.Note COLLATE Latin1_General_100_BIN2<>r.DisplayNote COLLATE Latin1_General_100_BIN2)
+   THROW 51000,N'REVIEWED_ORIGINAL_NOTE_NOT_PRESERVED: full source note or display note differs.',1;
+ SELECT N'LONG_NOTE_ADJUSTMENTS' Report,LegacySourceId,LEN(OriginalNote) OriginalLength,
+   LEN(DisplayNote) DisplayLength,CONVERT(bit,1) OriginalNotePreserved,OriginalNote,DisplayNote
+ FROM #ReviewedLongNoteReport ORDER BY LegacySourceId;
+ -- END REVIEWED 20260929 ORIGINAL NOTE VERIFICATION
  -- Assert the already imported stock source matches each linked issued invoice line exactly.
  IF EXISTS(SELECT 1 FROM #ExpectedDetail d JOIN #ExpectedHead h ON h.Id=d.InvoiceHeadId
  JOIN dbo.InvoiceInputStockSupplementalMovements s ON s.StoreId=@StoreId AND s.LegacySourceKey=CONCAT(N'GSTORE-IIS-V1|X|',d.LegacySourceId) AND s.IsDeleted=0

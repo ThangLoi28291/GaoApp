@@ -13,6 +13,7 @@
 - Hoàn cọc chưa sử dụng là phiếu chi riêng; cần quyền hoàn cọc, ca mở và số dư đủ. Chuyển khoản là ghi nhận giao dịch đã thực hiện, không tự chuyển tiền.
 - Các giao dịch nhận/hoàn có mã idempotency, kiểm tra payload cũ. Khóa giao dịch ngăn dùng/hoàn vượt số dư.
 - Sổ cọc lưu nhận, dùng, hoàn, khôi phục do hủy; tham chiếu đơn, ca, nhân viên, ngân hàng. Giao diện hiển thị 500 giao dịch gần nhất. Dư nợ khách độc lập với số dư cọc.
+- Khoản nhận cọc có nút **Đổi phương thức nhận cọc** trong sổ cọc và màn hình đối soát. Nhân viên đề nghị đổi tiền mặt/chuyển khoản và ghi lý do; không bắt buộc mã giao dịch. Quản lý duyệt mới cập nhật phương thức và phiếu thu cọc liên quan. Số tiền nhận và số dư cọc được giữ nguyên, kể cả khi cọc đã dùng/hoàn một phần. Ca đã đóng cần đối soát lại. Chi tiết: [POS payment adjustments](development/POS-PAYMENT-ADJUSTMENTS-20261004.md).
 
 ## Triển khai
 Chưa áp dụng lên database bán hàng thật. Migration AddCustomerDeposits và AddDepositReturnRestoration thêm CustomerDeposits, CustomerDepositEntries và Orders.CustomerDepositId/DepositAmount, không đổi dữ liệu thanh toán cũ.

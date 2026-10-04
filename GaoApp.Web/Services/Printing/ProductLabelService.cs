@@ -27,10 +27,18 @@ public sealed record SaveLabelPrinter
 public sealed record LabelVersion(string RowVersion);
 public sealed record LabelPlanRequest(int TemplateId, List<LabelQuantity> Lines, string RowVersion);
 public sealed record LabelJobRequest(int? TaskId, int TemplateId, int PrinterId, List<LabelQuantity> Lines,
-    Guid RequestId, string? RowVersion, string? TemplateVersion, bool IsReprint = false, string? Reason = null);
+    Guid RequestId, string? RowVersion, string? TemplateVersion, bool IsReprint = false, string? Reason = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ProductProgress { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<QuickLabelSelection>? QuickLines { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<LabelQuantity>? PlanLines { get; init; }
+}
 public sealed record LabelConfirmRequest(string RowVersion, List<LabelQuantity> Lines, string? Note);
 
-public sealed class ProductLabelService(AppDbContext db)
+public sealed partial class ProductLabelService(AppDbContext db)
 {
     private int StoreId => db.CurrentStoreId is > 0 ? db.CurrentStoreId.Value : throw new ConflictAppException("Chưa xác định cửa hàng.");
     private static string Version(BaseEntity x) => Convert.ToBase64String(x.RowVersion);
@@ -72,6 +80,9 @@ public sealed class ProductLabelService(AppDbContext db)
         request.Design.Validate();
         var entity = id.HasValue ? await Template(id.Value, ct) : new ProductLabelTemplate { StoreId = StoreId };
         if (id.HasValue) CheckVersion(entity, request.RowVersion); else db.Add(entity);
+        if (request.Design.PrinterId is not > 0) throw new ValidationAppException("Chọn máy in gắn với mẫu tem trước khi lưu.");
+        var printer = await Printer(request.Design.PrinterId.Value, ct);
+        request.Design.Validate(printer.PrintableWidthMm);
         entity.Name = request.Design.Name.Trim();
         entity.DefinitionJson = LabelJson.Write(request.Design with { Name = entity.Name, BarcodeFormat = "AUTO" });
         await Save(ct); return TemplateDto(entity);
@@ -146,8 +157,12 @@ public sealed class ProductLabelService(AppDbContext db)
         await tx.CommitAsync(ct); return new { task.Id };
     }
     public async Task<object> Tasks(CancellationToken ct) => (await db.Set<ProductLabelTask>().AsNoTracking().Where(x => x.StoreId == StoreId)
-        .OrderByDescending(x => x.Id).Take(500).ToListAsync(ct)).Select(x => new { x.Id, x.StockDocumentId, x.DocumentNo, x.Completed, x.CreatedAtUtc,
-            required = LabelJson.Read<List<LabelTaskLine>>(x.LinesJson).Sum(l => l.Required), printed = LabelJson.Read<List<LabelTaskLine>>(x.LinesJson).Sum(l => l.Printed) }).ToArray();
+        .OrderByDescending(x => x.Id).Take(500).ToListAsync(ct)).Select(x =>
+        {
+            var lines = LabelJson.Read<List<LabelTaskLine>>(x.LinesJson); var progress = Progress(lines);
+            return new { x.Id, x.StockDocumentId, x.DocumentNo, completed = progress.Total > 0 && progress.Pending == 0, x.CreatedAtUtc, progress,
+                required = lines.Sum(l => l.Required), printed = lines.Sum(l => l.Printed) };
+        }).ToArray();
     private async Task<ProductLabelTask> TaskEntity(int id, CancellationToken ct) =>
         await db.Set<ProductLabelTask>().SingleOrDefaultAsync(x => x.StoreId == StoreId && x.Id == id, ct) ?? throw new NotFoundAppException("Không tìm thấy phiếu in tem.");
     public async Task<object> Detail(int id, CancellationToken ct)
@@ -157,11 +172,26 @@ public sealed class ProductLabelService(AppDbContext db)
         try { var source = await Source(task.StockDocumentId, ct); changed = source.Hash != task.SourceHash; provisionalCount = source.ProvisionalCount; }
         catch (ConflictAppException ex) { changed = true; sourceError = ex.Message; }
         catch (NotFoundAppException ex) { changed = true; sourceError = ex.Message; }
-        return new { task.Id, task.DocumentNo, task.StockDocumentId, task.TemplateId, task.Completed, task.CompletedAtUtc, task.CompletedByUserId,
-            rowVersion = Version(task), sourceChanged = changed, sourceError, provisionalCount, lines = LabelJson.Read<List<LabelTaskLine>>(task.LinesJson), jobs = await Jobs(id, ct) };
+        var lines = LabelJson.Read<List<LabelTaskLine>>(task.LinesJson);
+        var metadata = await ReceiptMetadata(task.StockDocumentId, ct);
+        lines = await WithImages(lines, ct);
+        return new { task.Id, task.DocumentNo, task.StockDocumentId, task.TemplateId, completed = Progress(lines).Pending == 0 && lines.Any(x => !x.Removed), task.CompletedAtUtc, task.CompletedByUserId,
+            metadata.DocumentTitle, metadata.SupplierName, progress = Progress(lines),
+            rowVersion = Version(task), sourceChanged = changed, sourceError, provisionalCount, lines, jobs = await Jobs(id, ct) };
     }
     private Task<bool> Active(int taskId, CancellationToken ct) => db.Set<ProductLabelJob>().AnyAsync(x => x.StoreId == StoreId && x.TaskId == taskId &&
         (x.Status == ProductLabelJobStatus.Queued || x.Status == ProductLabelJobStatus.Sending || x.Status == ProductLabelJobStatus.AwaitingConfirmation || x.Status == ProductLabelJobStatus.NeedsAttention), ct);
+    public async Task<object> ReceiptPreview(int receiptId, CancellationToken ct)
+    {
+        var existing = await db.Set<ProductLabelTask>().AsNoTracking()
+            .SingleOrDefaultAsync(x => x.StoreId == StoreId && x.StockDocumentId == receiptId, ct);
+        if (existing is not null) return await Detail(existing.Id, ct);
+        var source = await Source(receiptId, ct);
+        return new { id = (int?)null, stockDocumentId = receiptId, documentNo = source.Document.DocumentNo,
+            documentTitle = source.Document.DocumentTitle,
+            templateId = (int?)null, completed = false, sourceChanged = false, source.ProvisionalCount,
+            lines = await WithImages(source.Products.Select(p => new LabelTaskLine(p, 0)).ToList(), ct), jobs = Array.Empty<object>() };
+    }
     private async Task Editable(ProductLabelTask task, string version, CancellationToken ct)
     {
         CheckVersion(task, version);
@@ -172,10 +202,11 @@ public sealed class ProductLabelService(AppDbContext db)
         await using var tx = await db.Database.BeginTransactionAsync(ct); await Lock($"task:{id}", ct);
         var task = await TaskEntity(id, ct); await Editable(task, version, ct);
         var source = await Source(task.StockDocumentId, ct); var old = LabelJson.Read<List<LabelTaskLine>>(task.LinesJson);
-        var lines = source.Products.Select(p => new LabelTaskLine(p, old.FirstOrDefault(x => x.Product.VariantId == p.VariantId)?.Required ?? 0,
-            old.FirstOrDefault(x => x.Product.VariantId == p.VariantId)?.Printed ?? 0)).ToList();
+        var lines = source.Products.Select(p => old.FirstOrDefault(x => x.Product.VariantId == p.VariantId) is { } existing
+            ? existing with { Product = p, Removed = false } : new LabelTaskLine(p, 0)).ToList();
         lines.AddRange(old.Where(x => source.Products.All(p => p.VariantId != x.Product.VariantId)).Select(x => x with { Removed = true, Required = x.Printed }));
-        task.LinesJson = LabelJson.Write(lines); task.SourceHash = source.Hash; task.Completed = false; task.CompletedAtUtc = null; task.CompletedByUserId = null;
+        task.LinesJson = LabelJson.Write(lines); task.SourceHash = source.Hash;
+        LabelTaskProgress.CompleteIfHandled(task, db.CurrentUserId);
         // Review the template defaults again after receipt edits; preserve printed history and explicit quantities.
         await Save(ct); await tx.CommitAsync(ct); return await Detail(id, ct);
     }
@@ -222,45 +253,79 @@ public sealed class ProductLabelService(AppDbContext db)
         }
         var template = await Template(request.TemplateId, ct); CheckVersion(template, request.TemplateVersion);
         var design = CurrentDesign(template);
+        if (design.PrinterId is null) throw new ConflictAppException("Mẫu chưa gắn máy in. Nhờ admin mở cấu hình mẫu và chọn máy in.");
+        if (design.PrinterId != request.PrinterId) throw new ConflictAppException("Máy in không khớp mẫu. Tải lại mẫu tem trước khi in.");
+        if (!design.ShowPrintButton) throw new ConflictAppException("Mẫu tem đã được ẩn khỏi danh sách in.");
+        if (request.PlanLines is not null && (!request.TaskId.HasValue || request.IsReprint || request.QuickLines is not null))
+            throw new ValidationAppException("Chỉ lưu số lượng cùng lệnh in theo phiếu nhập.");
         var printer = await Printer(request.PrinterId, ct);
         if (!printer.Enabled) throw new ConflictAppException("Máy in đang tắt trong cấu hình.");
         var items = new List<LabelPrintItem>();
-        if (request.TaskId.HasValue)
+        if (request.QuickLines is not null)
+        {
+            if (request.TaskId.HasValue || request.IsReprint || request.Lines is not { Count: 0 })
+                throw new ValidationAppException("Lệnh in nhanh không dùng phiếu nhập hoặc danh sách in theo phiếu.");
+            items.AddRange(await QuickItems(request.QuickLines, ct));
+        }
+        else if (request.TaskId.HasValue)
         {
             var task = await TaskEntity(request.TaskId.Value, ct); await Editable(task, request.RowVersion ?? "", ct);
-            if (task.Completed && !request.IsReprint) throw new ConflictAppException("Phiếu đã hoàn thành. Dùng In lại nếu cần.");
-            if ((await Source(task.StockDocumentId, ct)).Hash != task.SourceHash)
+            if (task.Completed && !request.IsReprint && !request.ProductProgress) throw new ConflictAppException("Phiếu đã hoàn thành. Dùng In lại nếu cần.");
+            var source = await Source(task.StockDocumentId, ct);
+            if (request.ProductProgress && source.ProvisionalCount > 0) throw new ConflictAppException("Ghép các dòng hàng tạm vào danh mục rồi cập nhật phiếu in trước.");
+            if (source.Hash != task.SourceHash)
                 throw new ConflictAppException("Phiếu, sản phẩm hoặc giá bán đã thay đổi. Cập nhật lại trước khi in.");
-            if (task.TemplateId != request.TemplateId) throw new ConflictAppException("Lưu mẫu và số lượng cần in cho phiếu trước.");
             ValidateQuantities(request.Lines, false);
             var lines = LabelJson.Read<List<LabelTaskLine>>(task.LinesJson);
+            if (request.PlanLines is not null)
+            {
+                ValidateQuantities(request.PlanLines, true);
+                if (request.PlanLines.Count != lines.Count || request.PlanLines.Any(x => lines.All(l => l.Product.VariantId != x.VariantId)))
+                    throw new ValidationAppException("Danh sách sản phẩm không khớp phiếu.");
+                lines = lines.Select(l =>
+                {
+                    var qty = request.PlanLines.Single(x => x.VariantId == l.Product.VariantId).Quantity;
+                    if (qty < l.Printed || l.Removed && qty != l.Printed)
+                        throw new ValidationAppException("Số cần in không được nhỏ hơn số đã nhận hoặc tăng dòng đã xóa.");
+                    return l with { Required = qty };
+                }).ToList();
+                task.TemplateId = template.Id; task.LinesJson = LabelJson.Write(lines);
+            }
+            else if (!request.ProductProgress && !request.IsReprint && task.TemplateId != request.TemplateId)
+                throw new ConflictAppException("Lưu mẫu và số lượng cần in cho phiếu trước.");
             foreach (var requested in request.Lines)
             {
                 var line = lines.SingleOrDefault(x => x.Product.VariantId == requested.VariantId && !x.Removed)
                     ?? throw new ValidationAppException("Sản phẩm không thuộc phiếu in.");
-                if (!request.IsReprint && requested.Quantity > line.Required - line.Printed)
+                if (!request.ProductProgress && !request.IsReprint && requested.Quantity > line.Required - line.Printed)
                     throw new ValidationAppException("Số tem vượt phần còn lại. Chỉnh số cần in hoặc dùng In lại.");
-                items.Add(new LabelPrintItem(line.Product, requested.Quantity));
+                items.Add(new LabelPrintItem(line.Product, requested.Quantity) { CountsForProgress = request.ProductProgress && !request.IsReprint && !line.Done && !line.Skipped });
             }
+            if (request.ProductProgress) task.TemplateId = template.Id;
         }
         else
         {
-            if (request.IsReprint) throw new ValidationAppException("In thử không phải in lại phiếu.");
+            if (request.IsReprint || request.Lines is not { Count: 0 }) throw new ValidationAppException("Yêu cầu in thử không hợp lệ.");
             items.Add(new LabelPrintItem(ProductLabelRenderer.SampleFor(design), design.Columns));
         }
-        if ((request.Reason?.Length ?? 0) > 300 || request.IsReprint && string.IsNullOrWhiteSpace(request.Reason))
+        if ((request.Reason?.Length ?? 0) > 300 || !request.ProductProgress && request.IsReprint && string.IsNullOrWhiteSpace(request.Reason))
             throw new ValidationAppException("Nhập lý do in lại, tối đa 300 ký tự.");
-        var payload = new LabelPrintPayload(design, new(printer.Name, printer.WindowsPrinterName, printer.Dpi, printer.PrintableWidthMm, printer.OffsetXmm, printer.OffsetYmm), items);
+        var payload = new LabelPrintPayload(design, new(printer.Name, printer.WindowsPrinterName, printer.Dpi, printer.PrintableWidthMm, printer.OffsetXmm, printer.OffsetYmm), items) { ProductProgress = request.ProductProgress && request.TaskId.HasValue };
         ProductLabelRenderer.ValidatePayload(payload);
         var job = new ProductLabelJob { StoreId = StoreId, TaskId = request.TaskId, PrinterId = printer.Id, RequestId = request.RequestId, RequestHash = requestHash,
-            PayloadJson = LabelJson.Write(payload), Quantity = items.Sum(x => x.Quantity), IsReprint = request.IsReprint, Reason = request.Reason?.Trim() ?? "",
+            PayloadJson = LabelJson.Write(payload), Quantity = items.Sum(x => x.Quantity), IsReprint = payload.ProductProgress ? items.All(x => !x.CountsForProgress) : request.IsReprint, Reason = request.Reason?.Trim() ?? "",
             RequestedByName = db.CurrentUserName ?? $"NV {db.CurrentUserId}" };
         db.Add(job); await Save(ct); await tx.CommitAsync(ct); return new { job.Id, duplicate = false };
     }
-    public async Task<object> Jobs(int? taskId, CancellationToken ct) => (await db.Set<ProductLabelJob>().AsNoTracking()
-        .Where(x => x.StoreId == StoreId && (!taskId.HasValue || x.TaskId == taskId)).OrderByDescending(x => x.Id).Take(200).ToListAsync(ct))
-        .Select(x => new { x.Id, x.TaskId, x.Status, x.Quantity, x.IsReprint, x.Reason, x.RequestedByName, x.CreatedAtUtc, x.SentAtUtc, x.ConfirmedAtUtc,
-            x.ConfirmedByName, x.SpoolJobId, x.Error, rowVersion = Version(x), payload = LabelJson.Read<LabelPrintPayload>(x.PayloadJson), result = LabelJson.Read<List<LabelQuantity>>(x.ResultJson) }).ToArray();
+    public async Task<object> Jobs(int? taskId, CancellationToken ct)
+    {
+        var query = db.Set<ProductLabelJob>().AsNoTracking()
+            .Where(x => x.StoreId == StoreId && (!taskId.HasValue || x.TaskId == taskId)).OrderByDescending(x => x.Id).AsQueryable();
+        if (!taskId.HasValue) query = query.Take(200);
+        return (await query.ToListAsync(ct))
+            .Select(x => new { x.Id, x.TaskId, x.Status, x.Quantity, x.IsReprint, x.Reason, x.RequestedByName, x.CreatedAtUtc, x.SentAtUtc, x.ConfirmedAtUtc,
+                x.ConfirmedByName, x.SpoolJobId, x.Error, rowVersion = Version(x), payload = LabelJson.Read<LabelPrintPayload>(x.PayloadJson), result = LabelJson.Read<List<LabelQuantity>>(x.ResultJson) }).ToArray();
+    }
 
     public async Task Confirm(int id, LabelConfirmRequest request, bool cancel, CancellationToken ct)
     {
@@ -281,16 +346,23 @@ public sealed class ProductLabelService(AppDbContext db)
                 job.Status = ProductLabelJobStatus.NeedsAttention;
             if (job.Status is not (ProductLabelJobStatus.AwaitingConfirmation or ProductLabelJobStatus.NeedsAttention))
                 throw new ConflictAppException("Lệnh chưa sẵn sàng xác nhận. Nếu dịch vụ bị dừng khi gửi, đợi 10 phút và kiểm tra máy in trước.");
-            ValidateQuantities(request.Lines, true);
             var printed = LabelJson.Read<LabelPrintPayload>(job.PayloadJson).Items;
-            if (request.Lines.Count != printed.Count || request.Lines.Any(l => !printed.Any(p => p.Product.VariantId == l.VariantId && l.Quantity <= p.Quantity)))
+            if (request.Lines is null || request.Lines.Count != printed.Count ||
+                request.Lines.Select(l => (l.VariantId, l.UnitId)).Distinct().Count() != request.Lines.Count ||
+                request.Lines.Any(l => l.Quantity < 0 || !printed.Any(p => p.Product.VariantId == l.VariantId && p.Product.UnitId == l.UnitId && l.Quantity <= p.Quantity)))
                 throw new ValidationAppException("Số tem nhận phải khớp sản phẩm và không vượt số đã gửi.");
             if (request.Lines.Sum(x => x.Quantity) < job.Quantity && string.IsNullOrWhiteSpace(request.Note))
                 throw new ValidationAppException("Ghi lý do khi nhận thiếu tem (hết giấy, tem lỗi…).");
             if ((request.Note?.Length ?? 0) > 500) throw new ValidationAppException("Ghi chú tối đa 500 ký tự.");
             job.ResultJson = LabelJson.Write(request.Lines); job.Status = ProductLabelJobStatus.Confirmed;
             job.Error = request.Note?.Trim();
-            if (job.TaskId.HasValue && !job.IsReprint)
+            var payload = LabelJson.Read<LabelPrintPayload>(job.PayloadJson);
+            if (job.TaskId.HasValue && payload.ProductProgress)
+            {
+                var task = await TaskEntity(job.TaskId.Value, ct);
+                LabelTaskProgress.Apply(task, payload, request.Lines, db.CurrentUserId);
+            }
+            else if (job.TaskId.HasValue && !job.IsReprint)
             {
                 var task = await TaskEntity(job.TaskId.Value, ct);
                 var lines = LabelJson.Read<List<LabelTaskLine>>(task.LinesJson);

@@ -1,126 +1,21 @@
-﻿@model GaoApp.Application.DTOs.Security.Permissions.RolePermissionGroupDto
-
-@{
-    var index = (int)(ViewData["Index"] ?? 0);
-    var collapseId = $"permissionGroup_{index}";
-    var headingId = $"permissionHeading_{index}";
-    var safeGroupKey = $"group_{index}";
-}
-
-<div class="accordion-item">
-    <h2 class="accordion-header" id="@headingId">
-        <button class="accordion-button @(index == 0 ? "" : "collapsed")"
-                type="button"
-                data-bs-toggle="collapse"
-                data-bs-target="#@collapseId"
-                aria-expanded="@(index == 0 ? "true" : "false")"
-                aria-controls="@collapseId">
-            <div class="d-flex flex-wrap justify-content-between align-items-center w-100 me-3 gap-2">
-                <div>
-                    <div class="fw-bold">@Model.GroupName</div>
-                    <div class="permission-group-meta">
-                        Đã chọn
-                        <span class="fw-bold group-selected-count" data-group="@safeGroupKey">@Model.SelectedCount</span>
-                        / @Model.TotalCount quyền
-                    </div>
-                </div>
-
-                <div class="d-flex flex-wrap gap-2">
-                    <span class="summary-chip">@Model.Rows.Count dòng quyền</span>
-                    <span class="summary-chip">@Model.TotalCount permission</span>
-                </div>
+@model GaoApp.Application.DTOs.Security.Permissions.RolePermissionGroupDto
+@{ var index = (int)(ViewData["Index"] ?? 0); }
+<section class="rp-group" data-group="@index" aria-labelledby="groupTitle_@index">
+    <header class="rp-group-heading"><h2 id="groupTitle_@index">@Model.GroupName</h2><span data-group-count="@index">@Model.SelectedCount / @Model.TotalCount</span></header>
+    @foreach (var row in Model.Rows)
+    {
+        <section class="rp-feature" data-feature="@row.DisplayName">
+            <header><h3>@row.DisplayName</h3><label class="rp-select-feature"><input type="checkbox" class="rp-feature-check" aria-label="Chọn các quyền đang hiển thị của @row.DisplayName" /> Chọn mục này</label></header>
+            <div class="rp-permission-grid">
+            @foreach (var cell in row.Cells.Where(c => c.IsAvailable && c.PermissionId.HasValue))
+            {
+                <label class="rp-permission" data-search="@Model.GroupName @row.DisplayName @cell.ActionDisplayName @cell.PermissionCode" data-title="@cell.ActionDisplayName" data-group-label="@Model.GroupName">
+                    <input class="permission-checkbox" type="checkbox" name="SelectedPermissionIds" value="@cell.PermissionId" checked="@cell.IsChecked" data-initial="@(cell.IsChecked ? "true" : "false")" />
+                    <span class="rp-permission-text"><span>@cell.ActionDisplayName</span><code class="rp-permission-code">@cell.PermissionCode</code></span>
+                    <small class="rp-change-mark" aria-hidden="true"></small>
+                </label>
+            }
             </div>
-        </button>
-    </h2>
-
-    <div id="@collapseId"
-         class="accordion-collapse collapse @(index == 0 ? "show" : "")"
-         aria-labelledby="@headingId">
-        <div class="accordion-body">
-            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2 group-toolbar">
-                <div class="text-muted small">
-                    Chọn nhanh toàn bộ quyền trong nhóm <strong>@Model.GroupName</strong>.
-                </div>
-
-                <div class="d-flex flex-wrap gap-2">
-                    <button type="button"
-                            class="btn btn-sm btn-outline-primary btn-check-group"
-                            data-group="@safeGroupKey">
-                        Chọn nhóm
-                    </button>
-
-                    <button type="button"
-                            class="btn btn-sm btn-outline-secondary btn-uncheck-group"
-                            data-group="@safeGroupKey">
-                        Bỏ chọn nhóm
-                    </button>
-                </div>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-hover align-middle permission-table mb-0">
-                    <thead>
-                        <tr>
-                            <th class="row-title">Chức năng / đối tượng</th>
-                            <th class="text-center">Quyền</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (Model.Rows == null || !Model.Rows.Any())
-                        {
-                            <tr>
-                                <td colspan="2" class="text-center py-4 text-muted">
-                                    Không có dữ liệu trong nhóm này.
-                                </td>
-                            </tr>
-                        }
-                        else
-                        {
-                            foreach (var row in Model.Rows)
-                            {
-                                <tr>
-                                    <th class="row-title">
-                                        <div class="d-flex flex-column gap-1">
-                                            <div class="fw-semibold">@row.DisplayName</div>
-                                            <div class="d-flex flex-wrap gap-2">
-                                                <span class="entity-badge">@row.Module</span>
-                                                <span class="text-muted small">@row.Entity</span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <td>
-                                        <div class="d-flex flex-wrap gap-3">
-                                            @foreach (var cell in row.Cells)
-                                            {
-                                                if (cell.IsAvailable && cell.PermissionId.HasValue)
-                                                {
-                                                    <label class="form-check d-inline-flex align-items-center gap-2 me-2">
-                                                        <input class="form-check-input permission-checkbox"
-                                                               type="checkbox"
-                                                               name="SelectedPermissionIds"
-                                                               value="@cell.PermissionId"
-                                                               data-group="@safeGroupKey"
-                                                               data-available="true"
-                                                        @(cell.IsChecked ? "checked" : null) />
-                                                        <span class="form-check-label">
-                                                            <span class="fw-semibold">@cell.ActionDisplayName</span>
-                                                            <span class="text-muted small d-block">@cell.PermissionCode</span>
-                                                        </span>
-                                                    </label>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-light text-muted border">—</span>
-                                                }
-                                            }
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
+        </section>
+    }
+</section>

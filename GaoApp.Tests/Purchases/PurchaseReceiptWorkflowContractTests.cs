@@ -133,7 +133,7 @@ public sealed class PurchaseReceiptWorkflowContractTests
         var save = Slice(
             source,
             "async function saveEditHeader()",
-            "/* =========================================================\n * EDIT - LINKED INPUT INVOICES");
+            "function renderInputInvoiceList(");
 
         save.Should().Contain("showEditHeaderMessage(");
         save.Should().Contain("restoreEditHeaderOwnershipControls()");
@@ -303,10 +303,9 @@ public sealed class PurchaseReceiptWorkflowContractTests
         detailDto.Should().Contain("PurchaseOrderTitle");
         var receiptListQuery = Slice(
             repository,
-            "public async Task<List<StockDocument>> GetReceiptListAsync(",
+            "public async Task<List<StockDocumentListItemDto>> GetReceiptListAsync(",
             "public Task RemoveLineAsync(");
-        receiptListQuery.Should().Contain(".Include(x => x.PurchaseOrder)");
-        service.Should().Contain("PurchaseOrderTitle = x.PurchaseOrder?.Title");
+        receiptListQuery.Should().Contain("PurchaseOrderTitle = x.PurchaseOrder != null ? x.PurchaseOrder.Title : null");
         service.Should().Contain("PurchaseOrderTitle = document.PurchaseOrder?.Title");
 
         script.Should().Contain("x.purchaseOrderTitle");

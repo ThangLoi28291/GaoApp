@@ -1,4 +1,5 @@
-﻿@model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
+@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess ReceiptAdminAccess
+@model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
 
 @{
     var shiftText = Model.HasOpenShift
@@ -91,7 +92,7 @@
             </button>
 
             <ul class="dropdown-menu dropdown-menu-end pos-cockpit-menu">
-                <li><a class="dropdown-item" href="/admin/receipt-templates" target="_blank" rel="noopener"><i class="bx bx-printer me-2" aria-hidden="true"></i>Mẫu hóa đơn & máy in</a></li>
+                @if (await ReceiptAdminAccess.IsAdminAsync(Context.RequestAborted)) { <li><a class="dropdown-item" href="/admin/receipt-templates" target="_blank" rel="noopener"><i class="bx bx-printer me-2" aria-hidden="true"></i>Mẫu hóa đơn & máy in</a></li> }
                 <li>
                     <a class="dropdown-item"
                        href="/admin/pos-shift">

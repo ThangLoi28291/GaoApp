@@ -4,6 +4,15 @@ public sealed class OrderListItemDto
 {
     public int OrderId { get; set; }
     public bool HasBankTransfer { get; set; }
+    // HasBankTransfer also includes QR attempts for reconciliation. These are actual posted payments.
+    public List<string> PaymentMethods { get; set; } = new();
+    public bool IsCreditSale { get; set; }
+    public decimal DepositAmount { get; set; }
+    public string? CustomerName { get; set; }
+    public string? CustomerPhone { get; set; }
+    public string? CashierName { get; set; }
+    public string? TerminalName { get; set; }
+    public string? TerminalCode { get; set; }
     public string? OrderNumber { get; set; }
 
     public string Status { get; set; } = default!;

@@ -151,7 +151,8 @@ public class InvoiceProviderSettingController : Controller
         if (result.Value.IsSuccess)
         {
             TempData["Success"] =
-                $"{result.Value.Message} Thời gian: {result.Value.DurationMs}ms.";
+                $"Cấu hình #{id}: {result.Value.Message} Thời gian: {result.Value.DurationMs}ms.";
+            TempData["InvoiceConnectionWarning"] = result.Value.WarningMessage;
         }
         else
         {

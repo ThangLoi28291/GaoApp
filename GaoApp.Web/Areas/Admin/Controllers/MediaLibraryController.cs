@@ -74,7 +74,12 @@ public sealed class MediaLibraryController(MediaLibraryService library, ITenantC
         {
             ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", _ => null
         };
-        if (mime == null || !(path.StartsWith("uploads/products/", StringComparison.Ordinal) || path.StartsWith("uploads/_temp/", StringComparison.Ordinal))) return NotFound();
+        // Imported product images remain in the legacy folders after deployment.
+        // Keep preview access tenant-scoped and resolve every path through UploadPathResolver.
+        if (mime == null || !(path.StartsWith("uploads/products/", StringComparison.Ordinal) ||
+            path.StartsWith("uploads/_temp/", StringComparison.Ordinal) ||
+            path.StartsWith("uploads/legacy-data/images/", StringComparison.Ordinal) ||
+            path.StartsWith("uploads/legacy-data/files/", StringComparison.Ordinal))) return NotFound();
         try
         {
             var fullPath = paths.Resolve(path);

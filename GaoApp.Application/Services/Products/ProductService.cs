@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Products;
@@ -35,6 +35,12 @@ public sealed class ProductService : IProductService
         _variantRepo = variantRepo;
         _uow = uow;
     }
+
+    public Task<PagedResult<ProductListItemDto>> SearchCatalogAsync(int storeId, string? search, int? categoryId,
+        bool? isActive, bool? isSellable, int page, int pageSize, ProductListFilters filters, CancellationToken ct = default)
+        => _repo.SearchCatalogAsync(storeId, search, categoryId, isActive, isSellable, page, pageSize, filters, ct);
+    public Task<List<ProductFilterOptionDto>> FilterOptionsAsync(int storeId, string kind, string? term, int? selectedId, CancellationToken ct = default)
+        => _repo.FilterOptionsAsync(storeId, kind, term, selectedId, ct);
 
     public Task<PagedResult<ProductListItemDto>> GetPagedAsync(
         int storeId,
@@ -221,29 +227,33 @@ public sealed class ProductService : IProductService
             // =========================================================
             // 4) Tạo barcode nội bộ cho base unit
             // =========================================================
-            var internalBarcode =
-                await GenerateAvailableInternalBarcodeAsync(
-                    storeId,
-                    defaultVariant.Id,
+            if (dto.GenerateDefaultBarcode)
+            {
+                var internalBarcode =
+                    await GenerateAvailableInternalBarcodeAsync(
+                        storeId,
+                        defaultVariant.Id,
+                        ct);
+
+                var defaultUnitBarcode =
+                    new ProductVariantUnitBarcode
+                    {
+                        StoreId = storeId,
+                        ProductUnitConversionId = baseConversion.Id,
+                        Barcode = internalBarcode,
+                        BarcodeType = BarcodeType.Internal,
+                        IsPrimary = true,
+                        IsActive = true,
+                        Note = "Tự sinh khi tạo sản phẩm mặc định"
+                    };
+
+                await _repo.AddProductVariantUnitBarcodeAsync(
+                    defaultUnitBarcode,
                     ct);
 
-            var defaultUnitBarcode =
-                new ProductVariantUnitBarcode
-                {
-                    StoreId = storeId,
-                    ProductUnitConversionId = baseConversion.Id,
-                    Barcode = internalBarcode,
-                    BarcodeType = BarcodeType.Internal,
-                    IsPrimary = true,
-                    IsActive = true,
-                    Note = "Tự sinh khi tạo sản phẩm mặc định"
-                };
+                await _repo.SaveChangesAsync(ct);
 
-            await _repo.AddProductVariantUnitBarcodeAsync(
-                defaultUnitBarcode,
-                ct);
-
-            await _repo.SaveChangesAsync(ct);
+            }
 
             // =========================================================
             // 5) Commit ảnh temp
@@ -364,6 +374,9 @@ public sealed class ProductService : IProductService
             // =========================================================
             // A) Update product fields
             // =========================================================
+            // Validate all variants before changing the product; the enclosing transaction
+            // commits the product and its base conversions together.
+            await _repo.SynchronizeBaseUnitAsync(storeId, entity.Id, dto.BaseUnitId!.Value, ct);
             entity.Name = normalizedName;
 
             entity.Alias = await GetUniqueAliasAsync(

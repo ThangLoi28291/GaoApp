@@ -15,7 +15,18 @@ foreach($file in Get-ChildItem -LiteralPath $package -Recurse -Filter '*.ps1'){
 & (Join-Path $package 'Verify-Package.ps1') -PackageRoot $package
 $initial=Join-Path $package 'scripts/migration/initial-import'
 $plan=Get-Content -LiteralPath (Join-Path $initial 'TABLE-PLAN.json') -Raw|ConvertFrom-Json
-Check (@($plan.Tables|Where-Object Action -eq 'KEEP').Count -eq 26) '26 retained tables'
+Check (@($plan.Tables|Where-Object Action -eq 'KEEP').Count -eq 27) '27 retained tables'
+Check ($plan.Tables.Count -eq 128) '128 classified tables'
+Check (@($plan.Tables|Where-Object Action -eq 'CLEAR').Count -eq 100) '100 CLEAR tables'
+Check (@($plan.Tables|Where-Object Action -eq 'SELECTIVE').Count -eq 1) 'One SELECTIVE media table'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $package 'Invoke-DatabaseOperation.ps1') -Operation Inspect -Server dummy -ExpectedServer dummy -OutputDirectory dummy -CheckSetup
+Check ($LASTEXITCODE -eq 0) 'Backup progress helper compiles on PS5 without SQL'
+. (Join-Path $package 'Backup-Progress.ps1')
+$closed=[System.Data.SqlClient.SqlConnection]::new()
+$command=$closed.CreateCommand();$command.CommandText='SELECT 1'
+$failed=$false
+try{Invoke-GaoBackupCommand -Command $command -Stage 'OFFLINE_CLOSED_CONNECTION'}catch{$failed=$true}finally{$command.Dispose();$closed.Dispose()}
+Check $failed 'Backup task propagates execution errors without reporting success (connection never opened)'
 foreach($name in @('GaoStoreMigrationRunsV2','GaoStoreProductImageRunsV1','LegacyReturnArchives')){
  Check (@($plan.Tables|Where-Object { $_.Table -eq $name -and $_.Action -eq 'CLEAR' }).Count -eq 1) ('Fresh TEST reset includes '+$name)
 }
@@ -24,10 +35,16 @@ $preview=Join-Path $fixture 'preview';[void][IO.Directory]::CreateDirectory($pre
 $old=Join-Path $repo 'scripts/migration/initial-import/evidence/reset-preview-20260923-145830-707'
 foreach($name in @('tables.json','foreign-keys.json','schema.json','environment.json','manifest.json')){Copy-Item -LiteralPath (Join-Path $old $name) -Destination (Join-Path $preview $name)}
 $tables=[object[]](Get-Content -LiteralPath (Join-Path $preview 'tables.json') -Raw|ConvertFrom-Json)
-foreach($name in @('LegacyReturnArchives','GaoStoreMigrationRunsV2','GaoStoreProductImageRunsV1')){
+foreach($name in @('LegacyReturnArchives','GaoStoreMigrationRunsV2','GaoStoreProductImageRunsV1','AutoInvoiceOperations','AutoInvoiceOperationSources','AutoInvoiceWorkerStates','InvoiceBuyerSelfServiceRequests')){
  if($name -notin $tables.Table){$tables+=[pscustomobject]@{Schema='dbo';Table=$name;Action='CLEAR';ApproximateRows=1}}
 }
+$tables+=[pscustomobject]@{Schema='dbo';Table='AutoInvoiceSettings';Action='KEEP';ApproximateRows=1}
 $tables|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $preview 'tables.json') -Encoding UTF8
+$newFks=[object[]](Get-Content -LiteralPath (Join-Path $preview 'foreign-keys.json') -Raw|ConvertFrom-Json)
+foreach($edge in @(@('AutoInvoiceOperations','InvoiceHeads','InvoiceHeadId','NO_ACTION'),@('AutoInvoiceOperationSources','AutoInvoiceOperations','AutoInvoiceOperationId','CASCADE'),@('AutoInvoiceOperationSources','InvoiceHeads','InvoiceHeadId','NO_ACTION'),@('InvoiceBuyerSelfServiceRequests','Orders','OrderId','NO_ACTION'))){
+ $newFks+=[pscustomobject]@{ChildSchema='dbo';ParentSchema='dbo';ChildTable=$edge[0];ParentTable=$edge[1];ConstraintName=('FK_Offline_'+$edge[0]+'_'+$edge[1]);ChildColumn=$edge[2];ParentColumn='Id';ColumnOrdinal=1;DeleteAction=$edge[3];IsDisabled=$false;IsNotTrusted=$false}
+}
+$newFks|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $preview 'foreign-keys.json') -Encoding UTF8
 $m=Get-Content -LiteralPath (Join-Path $preview 'manifest.json') -Raw|ConvertFrom-Json
 $m.PlanSha256=(Get-FileHash -LiteralPath (Join-Path $initial 'TABLE-PLAN.json')).Hash
 $m|Add-Member NoteProperty AllowImportedTestReset $true -Force
@@ -65,12 +82,14 @@ foreach($name in @('Test-Image-Paths-Offline.ps1','Test-Image-Receipt-Offline.ps
 $fake=Join-Path $fixture 'wrapper';[void][IO.Directory]::CreateDirectory($fake)
 foreach($name in @('Run-Step.ps1','Verify-Package.ps1','config.json')){Copy-Item -LiteralPath (Join-Path $package $name) -Destination (Join-Path $fake $name)}
 $stub=@'
-param([string]$Operation,[string]$Server,[string]$ExpectedServer,[string]$SourceDatabase,[string]$TargetDatabase,[string]$OutputDirectory,[string]$BackupDirectory,[string]$Package,[string]$Mode,[string]$PreviewDirectory,[string]$BackupFile,[string]$SuccessfulDryRunDirectory,[string]$LegacyImageRoot,[int]$StoreId,[int]$WarehouseId,[int]$LegalEntityId,[switch]$AllowCommit,[switch]$AllowImportedTestReset,[switch]$DryRun)
+param([string]$Operation,[string]$Server,[string]$ExpectedServer,[string]$SourceDatabase,[string]$TargetDatabase,[string]$OutputDirectory,[string]$BackupDirectory,[string]$Package,[string]$Mode,[string]$PreviewDirectory,[string]$BackupFile,[string]$NotBeforeUtc,[string]$SuccessfulDryRunDirectory,[string]$LegacyImageRoot,[int]$StoreId,[int]$WarehouseId,[int]$LegalEntityId,[switch]$AllowCommit,[switch]$AllowImportedTestReset,[switch]$DryRun)
 $ErrorActionPreference='Stop'
 if($OutputDirectory){
  [void][IO.Directory]::CreateDirectory($OutputDirectory)
  $status=switch([IO.Path]::GetFileName($PSCommandPath)){'00-Preview-Reset.ps1'{'PREVIEW_READY_FOR_REVIEW'}'Preview-Images.ps1'{'IMAGE_PREVIEW_READY_FOR_REVIEW'}default{'OFFLINE_FAKE_ONLY'}}
- [pscustomobject]@{OfflineFixture=$true;Status=$status;BackupFile='C:\Backup With Spaces\fixture.bak';Arguments=$PSBoundParameters}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $OutputDirectory 'manifest.json') -Encoding UTF8
+ if($Operation -in @('BackupSource','BackupTarget')){$status='BACKUP_CREATED_UNVERIFIED'}
+ if($Operation -in @('VerifySourceBackup','VerifyTargetBackup')){$status='BACKUP_VERIFYONLY_PASS'}
+ [pscustomobject]@{OfflineFixture=$true;StartedAtUtc=[datetime]::UtcNow.ToString('o');Status=$status;BackupFile='C:\Backup With Spaces\fixture.bak';Arguments=$PSBoundParameters}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $OutputDirectory 'manifest.json') -Encoding UTF8
 }
 Write-Output 'OFFLINE_FAKE_ENDPOINT_NO_SQL'
 '@
@@ -85,19 +104,37 @@ function Fake-Step([string]$step,[string]$mode='PREVIEW',[switch]$Commit){
  & powershell.exe @argList|Out-Null
  Check ($LASTEXITCODE -eq 0) ('Wrapper fake '+$step+'/'+$mode)
 }
+function Fake-Blocked([string]$step,[string]$mode='PREVIEW'){
+ $blocked=$false
+ try{& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fake 'Run-Step.ps1') -Step $step -Mode $mode -AllowCommit 2>&1|Out-Null;$blocked=$LASTEXITCODE -ne 0}catch{$blocked=$true}
+ Check $blocked ('Wrapper blocks invalid sequence '+$step+'/'+$mode)
+}
 Fake-Step Inspect
-Fake-Step BackupSource
+Fake-Blocked ResetCommit COMMIT
+Fake-Blocked BackupSource
 Fake-Step ResetPreview
+Fake-Blocked ResetDryRun
+Fake-Step BackupSource
+Fake-Blocked ResetDryRun
+Fake-Step VerifySourceBackup
 Fake-Step BackupTarget
-Fake-Step ArchiveSchema DRYRUN
-Fake-Step ArchiveSchema COMMIT -Commit
+Fake-Step VerifyTargetBackup
+Fake-Step ResetDryRun
+Fake-Step ResetPreview
+Fake-Blocked ResetCommit COMMIT
+Fake-Step VerifySourceBackup
+Fake-Step VerifyTargetBackup
 Fake-Step ResetDryRun
 Fake-Step ResetCommit COMMIT -Commit
 $state=Get-Content -LiteralPath (Join-Path $fake 'runs/real-01/state.json') -Raw|ConvertFrom-Json
 $call=Get-Content -LiteralPath (Join-Path $state.ResetDryRunDirectory 'manifest.json') -Raw|ConvertFrom-Json
 Check ($call.Arguments.BackupFile -eq 'C:\Backup With Spaces\fixture.bak') 'Backup path with spaces survives nested PS5 invocation'
 Check ($call.Arguments.ExpectedServer -eq 'WIN-HU6RO2EMIJF\SQLEXPRESS') 'Expected instance passed to reset'
+Fake-Blocked 02-customers PREVIEW
+Fake-Blocked 01-products COMMIT
+Fake-Blocked 01-products DRYRUN
 foreach($pkg in @('01-products','02-customers','03-sales','03-return-archive','04-inventory','05-invoice-stock','06-invoices')){
+ Fake-Step $pkg PREVIEW
  Fake-Step $pkg DRYRUN
  Fake-Step $pkg COMMIT -Commit
  Fake-Step $pkg VERIFY

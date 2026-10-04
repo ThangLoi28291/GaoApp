@@ -8,12 +8,13 @@
     const money = value => new Intl.NumberFormat('vi-VN').format(value || 0);
     const date = value => value ? new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString('vi-VN') : '—';
     const defaults = () => ({ name: 'Tem sản phẩm 35 × 22', widthMm: 35, heightMm: 22, columns: 2, columnGapMm: 2, rowGapMm: 2,
-        leftMarginMm: 1, rightMarginMm: 1, quantityMode: 'one', barcodeFormat: 'AUTO', layout: 'standard', fontSize: 8, showName: true, showBarcode: true, showBarcodeText: true, showUnit: true, showPrice: true });
+        leftMarginMm: 1, rightMarginMm: 1, quantityMode: 'received', printerId: null, showPrintButton: true, barcodeFormat: 'AUTO', layout: 'standard', fontSize: 8, showName: true, showBarcode: true, showBarcodeText: true, showUnit: true, showPrice: true });
     const layouts = [...root.querySelectorAll('[data-layout]')];
     const layoutName = key => layouts.find(x => x.dataset.layout === key)?.dataset.layoutName || 'Cân đối';
     let templates = [], printers = [], tasks = [], task = null, editingTemplate = null, editingPrinter = null;
-    let templateDirty = false, planDirty = false, previewUrl = null, previewSequence = 0, dialogAction = null, pendingJob = null;
-    const statuses = ['Chờ server in', 'Đang gửi máy in', 'Chờ xác nhận tem', 'Cần xử lý', 'Đã xác nhận', 'Đã hủy'];
+    let receiptEditor = null;
+    let templateDirty = false, previewUrl = null, previewSequence = 0, dialogAction = null;
+    const statuses = ['Chờ server in', 'Đang gửi máy in', 'Chờ xác nhận tem', 'Cần xử lý', 'Đã xác nhận', 'Đã hủy', 'Đã gửi in'];
     function notice(message, error = false) { $('labelMessage').textContent = message; $('labelMessage').classList.toggle('error', error); $('labelMessage').hidden = false; }
     async function api(path, method = 'GET', body, binary = false) {
         const response = await fetch('/admin/label-printing/' + path, { method, credentials: 'same-origin', headers: {
@@ -21,7 +22,8 @@
         }, body: body === undefined ? undefined : JSON.stringify(body) });
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
-            throw new Error(data.message || data.detail || Object.values(data.errors || {}).flat().join(' ') || `Không thực hiện được (${response.status}).`);
+            const error = new Error(data.message || data.detail || Object.values(data.errors || {}).flat().join(' ') || `Không thực hiện được (${response.status}).`);
+            error.status = response.status; throw error;
         }
         return binary ? response.blob() : response.status === 204 ? null : response.text().then(t => t ? JSON.parse(t) : null);
     }
@@ -46,23 +48,23 @@
         if (items.some(x => String(x.id) === value)) select.value = value;
     }
     function fillSelects() {
-        for (const id of ['taskTemplate', 'testTemplate']) options($(id), templates, x => `${x.design.name} · ${x.layoutName || layoutName(x.design.layout)} · ${x.design.widthMm}×${x.design.heightMm} · ${x.design.columns} cột`, 'Chọn mẫu đã lưu');
-        for (const id of ['taskPrinter', 'testPrinter']) options($(id), printers.filter(x => x.enabled), x => x.name, 'Chọn máy in tại server');
+        options($('testTemplate'), templates, x => `${x.design.name} · ${x.layoutName || layoutName(x.design.layout)} · ${x.design.widthMm}×${x.design.heightMm} · ${x.design.columns} cột`, 'Chọn mẫu đã lưu');
+        options($('templatePrinter'), printers, x => x.name + (x.enabled ? '' : ' · Đã tắt'), 'Chọn máy in gắn với mẫu');
     }
     async function loadTemplates() {
         templates = await api('templates'); fillSelects();
         if (!$('templateList')) return;
-        $('templateList').innerHTML = templates.length ? templates.map(x => `<button class="label-template-card ${editingTemplate?.id === x.id ? 'active' : ''}" data-template="${x.id}"><strong>${escape(x.design.name)}</strong><small>${escape(layoutName(x.design.layout))} · ${x.design.widthMm} × ${x.design.heightMm} mm · ${x.design.columns} cột</small><small>${x.design.quantityMode === 'one' ? 'Mặc định 1 tem / sản phẩm' : 'Theo số lượng nhập quy đổi'}</small></button>`).join('') : '<div class="label-empty">Chưa có mẫu. Chọn kiểu trình bày bên cạnh và lưu mẫu đầu tiên.</div>';
+        $('templateList').innerHTML = templates.length ? templates.map(x => `<button class="label-template-card ${editingTemplate?.id === x.id ? 'active' : ''}" data-template="${x.id}"><strong>${escape(x.design.name)}</strong><small>${escape(layoutName(x.design.layout))} · ${x.design.widthMm} × ${x.design.heightMm} mm · ${x.design.columns} cột</small><small>${x.design.quantityMode === 'one' ? 'Mặc định 1 tem / sản phẩm' : x.design.quantityMode === 'custom' ? 'Nhân viên tự nhập' : 'Theo số lượng nhập quy đổi'}</small><small>${escape(printers.find(p => p.id === x.design.printerId)?.name || 'Chưa gắn máy in')}${x.design.showPrintButton === false ? ' · Đã ẩn nút in' : ''}</small></button>`).join('') : '<div class="label-empty">Chưa có mẫu. Chọn kiểu trình bày bên cạnh và lưu mẫu đầu tiên.</div>';
     }
     function readDesign() {
         const design = {};
-        $('templateFields').querySelectorAll('[name]').forEach(x => design[x.name] = x.type === 'checkbox' ? x.checked : x.type === 'number' ? Number(x.value) : x.value);
+        $('templateFields').querySelectorAll('[name]').forEach(x => design[x.name] = x.type === 'checkbox' ? x.checked : x.name === 'printerId' ? (Number(x.value) || null) : x.type === 'number' ? Number(x.value) : x.value);
         return design;
     }
-    function showTemplate(item) {
+    function showTemplate(item, preset) {
         editingTemplate = item || null;
-        const design = { ...defaults(), ...item?.design, barcodeFormat: 'AUTO' };
-        $('templateFields').querySelectorAll('[name]').forEach(x => { if (x.type === 'checkbox') x.checked = design[x.name]; else x.value = design[x.name]; });
+        const design = { ...defaults(), ...preset, ...item?.design, barcodeFormat: 'AUTO' };
+        $('templateFields').querySelectorAll('[name]').forEach(x => { if (x.type === 'checkbox') x.checked = design[x.name]; else x.value = design[x.name] ?? '';  });
         templateDirty = false; $('templateSaveState').textContent = item ? 'Đã lưu' : 'Mẫu mới';
         $('templateHeading').textContent = item ? item.design.name : 'Tạo mẫu tem';
         root.querySelectorAll('[data-template]').forEach(x => x.classList.toggle('active', Number(x.dataset.template) === item?.id));
@@ -77,6 +79,12 @@
         const button = event.target.closest('[data-layout]');
         if (!button || !canManage) return;
         selectLayout(button.dataset.layout);
+        if (button.dataset.layout === 'retail-large') {
+            const preset = JSON.parse($('newLargeTemplate').dataset.design);
+            for (const key of ['widthMm', 'heightMm', 'fontSize']) $('templateFields').querySelector(`[name="${key}"]`).value = preset[key];
+            const name = $('templateFields').querySelector('[name="name"]');
+            if (!editingTemplate && name.value === defaults().name) name.value = preset.name;
+        }
         markTemplateDirty();
         clearTimeout(previewTimer); previewTemplate();
     });
@@ -111,6 +119,11 @@
         editingTemplate = saved; await loadTemplates(); showTemplate(saved); notice('Đã lưu kiểu trình bày, cấu hình tem và số lượng mặc định.');
     }
     bind('newTemplate', () => { if (templateDirty) return dialog('Tạo mẫu mới?', '<p>Bỏ nội dung chưa lưu và mở mẫu mới.</p>', () => showTemplate(null)); showTemplate(null); });
+    bind('newLargeTemplate', () => {
+        const open = () => showTemplate(null, JSON.parse($('newLargeTemplate').dataset.design));
+        if (templateDirty) return dialog('Tạo mẫu lớn 50 × 30?', '<p>Bỏ thay đổi chưa lưu và tạo mẫu lớn riêng. Các mẫu đã lưu được giữ nguyên.</p>', open);
+        open();
+    });
     bind('saveTemplate', () => saveTemplate(false)); bind('copyTemplate', () => saveTemplate(true)); bind('previewTemplate', previewTemplate);
     bind('deleteTemplate', () => {
         if (!editingTemplate) return;
@@ -150,63 +163,69 @@
     });
     bind('newPrinter', () => showPrinter(null)); bind('reloadInstalled', installedPrinters);
 
-    function renderTasks() {
-        const query = $('taskSearch').value.trim().toLowerCase(), rows = tasks.filter(x => x.documentNo.toLowerCase().includes(query));
-        $('labelTaskList').innerHTML = rows.length ? `<div class="label-table-scroll"><table class="table"><thead><tr><th>Phiếu nhập</th><th>Tiến độ</th><th>Trạng thái</th><th>Đưa vào lúc</th><th></th></tr></thead><tbody>${rows.map(x => `<tr><td><strong>${escape(x.documentNo)}</strong></td><td>${x.printed} / ${x.required} tem</td><td><span class="badge-label">${x.completed ? 'Hoàn thành' : x.required ? 'Đang xử lý' : 'Chưa chọn mẫu / SL'}</span></td><td>${date(x.createdAtUtc)}</td><td><button class="btn btn-sm btn-outline-primary" data-task="${x.id}">Mở phiếu in</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="label-empty">Chưa có phiếu chờ in. Mở phiếu nhập và chọn “Đưa vào in tem”.</div>';
+    let taskPage = 1, taskListVersion = 0, taskSearchTimer;
+    const stateText = { pending: 'Cần xử lý', sending: 'Đang gửi in', completed: 'Hoàn tất', attention: 'Cần kiểm tra' };
+    function progressBar(p) {
+        const handled = p.total ? p.handled / p.total * 100 : 0, skipped = p.total ? p.skipped / p.total * 100 : 0;
+        return `<div class="label-progress" role="progressbar" aria-label="Sản phẩm đã xử lý hoặc bỏ qua" aria-valuemin="0" aria-valuemax="${p.total}" aria-valuenow="${p.handled + p.skipped}"><span style="width:${handled}%"></span><i style="width:${skipped}%"></i></div><small>${p.handled} đã xử lý · ${p.skipped} bỏ qua · <b>${p.pending} còn lại</b></small>`;
     }
-    async function loadTasks() { if (!$('labelTaskList')) return; tasks = await api('tasks'); renderTasks(); }
-    $('taskSearch')?.addEventListener('input', renderTasks);
+    function renderTasks(data) {
+        const stats = data.stats;
+        $('labelTaskStats').innerHTML = [['total','Tổng phiếu','all'],['pending','Cần xử lý','pending'],['completed','Đã hoàn tất','completed'],['attention','Cần kiểm tra','attention']].map(([key, title, state]) => `<button type="button" class="label-stat ${state === $('taskState').value ? 'active' : ''}" data-state="${state}"><small>${title}</small><strong>${money(stats[key])}</strong><span>${state === 'completed' ? 'Có thể vào in lại' : state === 'attention' ? 'Kiểm tra lịch sử gửi in' : 'Xem danh sách →'}</span></button>`).join('');
+        $('labelTaskList').innerHTML = `<div class="label-toolbar"><h3>${stateText[$('taskState').value] || 'Tất cả phiếu'} <span class="badge-label">${money(data.total)}</span></h3><small>Tiến độ tính theo sản phẩm</small></div>` + (tasks.length ? `<div class="label-table-scroll"><table class="table label-tasks-table"><thead><tr><th>Tên phiếu / Nhà cung cấp</th><th>Tiến độ sản phẩm</th><th>Trạng thái</th><th>Đưa vào lúc</th><th></th></tr></thead><tbody>${tasks.map(x => `<tr class="${task?.id === x.id ? 'label-current-task' : ''}"><td><strong>${escape(x.documentTitle || x.documentNo)}</strong><small>${escape(x.documentNo)}</small><small>${escape(x.supplierName || 'Chưa có nhà cung cấp')}</small></td><td><b>${x.progress.handled + x.progress.skipped} / ${x.progress.total}</b>${progressBar(x.progress)}</td><td><span class="label-state is-${x.state}">${stateText[x.state]}</span></td><td>${date(x.createdAtUtc)}</td><td><button class="btn btn-sm btn-outline-primary" data-task="${x.id}">${x.state === 'completed' ? 'Xem / In lại' : 'Mở phiếu in'}</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="label-empty">Không có phiếu phù hợp. Đổi bộ lọc hoặc đưa phiếu nhập vào danh sách in tem.</div>') + `<div class="label-pagination"><span>Trang ${data.page} / ${Math.max(1, Math.ceil(data.total / data.pageSize))}</span><div><button class="btn btn-sm btn-outline-secondary" data-page="${data.page - 1}" ${data.page <= 1 ? 'disabled' : ''}>Trước</button> <button class="btn btn-sm btn-outline-secondary" data-page="${data.page + 1}" ${data.page * data.pageSize >= data.total ? 'disabled' : ''}>Sau</button></div></div>`;
+    }
+    async function loadTasks() {
+        if (!$('labelTaskList')) return;
+        const version = ++taskListVersion;
+        const data = await api('workspace?' + new URLSearchParams({ q: $('taskSearch').value.trim(), state: $('taskState').value, page: taskPage }));
+        if (version !== taskListVersion) return;
+        tasks = data.items; taskPage = data.page; renderTasks(data);
+    }
+    const reloadFiltered = () => { taskPage = 1; loadTasks().catch(e => notice(e.message, true)); };
+    $('taskSearch')?.addEventListener('input', () => { ++taskListVersion; clearTimeout(taskSearchTimer); taskSearchTimer = setTimeout(reloadFiltered, 300); });
+    $('taskState')?.addEventListener('change', reloadFiltered);
+    $('labelTaskStats')?.addEventListener('click', e => { const b = e.target.closest('[data-state]'); if (b) { $('taskState').value = b.dataset.state; reloadFiltered(); } });
+    $('labelTaskList')?.addEventListener('click', e => { const b = e.target.closest('[data-page]'); if (b && !b.disabled) { taskPage = Number(b.dataset.page); loadTasks().catch(e => notice(e.message, true)); } });
     $('labelTaskList')?.addEventListener('click', event => {
         const button = event.target.closest('[data-task]'); if (!button) return;
         const run = () => loadTask(Number(button.dataset.task)).catch(e => notice(e.message, true));
-        if (planDirty) dialog('Mở phiếu khác?', '<p>Thay đổi số lượng chưa lưu sẽ được bỏ.</p>', run); else run();
+        run();
     });
-    function renderTask() {
-        $('labelTaskDetail').hidden = false; $('taskTitle').textContent = task.documentNo + (task.completed ? ' · Hoàn thành' : '');
-        $('sourceReceipt').href = '/admin/stock-documents/' + task.stockDocumentId; $('taskTemplate').value = task.templateId || '';
+    function renderTask(preserveSelection = false) {
+        $('labelTaskDetail').hidden = false; $('taskTitle').textContent = task.documentTitle || task.documentNo;
+        $('taskSubtitle').textContent = task.documentNo + ' · ' + (task.supplierName || 'Chưa có nhà cung cấp');
+        $('sourceReceipt').href = '/admin/stock-documents/' + task.stockDocumentId;
         $('sourceChanged').hidden = !task.sourceChanged && !task.provisionalCount;
-        $('sourceChanged').textContent = task.sourceError || 'Phiếu nhập, thông tin sản phẩm hoặc giá bán đã thay đổi. Bấm “Cập nhật từ phiếu nhập”, kiểm tra số lượng rồi lưu lại trước khi in.';
-        if (task.provisionalCount) $('sourceChanged').textContent = `Phiếu còn ${task.provisionalCount} dòng hàng tạm chưa ghép danh mục. Có thể in các sản phẩm đã hoàn thiện; cần xử lý hàng tạm và cập nhật phiếu in trước khi chốt.`;
-        $('taskLines').innerHTML = task.lines.map(l => `<tr data-variant="${l.product.variantId}"><td><input class="line-selected" type="checkbox" ${l.removed ? 'disabled' : 'checked'} aria-label="Chọn ${escape(l.product.name)}" /></td><td><strong>${escape(l.product.name)}</strong><br><small>${escape(l.product.barcode || 'Chưa có mã vạch ĐVT gốc')}</small>${l.removed ? '<div class="text-error">Đã bỏ khỏi phiếu nhập</div>' : ''}${l.product.problem ? `<div class="text-error">${escape(l.product.problem)}</div>` : ''}</td><td>${escape(l.product.unit)}</td><td>${money(l.product.price)} đ</td><td>${money(l.product.receivedQuantity)}</td><td><input class="form-control qty-input required-qty" type="number" min="${l.printed}" max="10000" step="1" value="${l.required}" aria-label="Số cần in ${escape(l.product.name)}" ${l.removed || task.completed ? 'disabled' : ''} /></td><td>${l.printed}</td><td><input class="form-control qty-input print-qty" type="number" min="0" max="10000" step="1" value="${Math.max(0, l.required - l.printed)}" aria-label="Số in lần này ${escape(l.product.name)}" ${l.removed ? 'disabled' : ''} /></td></tr>`).join('');
-        $('taskTotals').textContent = `Đã nhận ${task.lines.reduce((s, x) => s + x.printed, 0)} / ${task.lines.reduce((s, x) => s + x.required, 0)} tem`;
-        renderHistory($('taskHistory'), task.jobs); planDirty = false;
-    }
-    async function loadTask(id) { task = await api('tasks/' + id); renderTask(); history.replaceState(null, '', '?task=' + id); }
-    function quantities(selector, selectedOnly = false) {
-        return [...$('taskLines').rows].filter(row => !selectedOnly || row.querySelector('.line-selected').checked)
-            .map(row => ({ variantId: Number(row.dataset.variant), quantity: Number(row.querySelector(selector).value) }));
-    }
-    $('taskLines')?.addEventListener('input', event => { if (event.target.matches('.required-qty')) planDirty = true; });
-    $('taskTemplate')?.addEventListener('change', () => {
-        if (task && !task.templateId && quantities('.required-qty').every(x => x.quantity === 0)) applyTemplateDefaults();
-        planDirty = true; notice('Mẫu đã đổi. Kiểm tra số lượng mặc định rồi lưu số lượng cho phiếu.');
-    });
-    $('selectAllLines')?.addEventListener('change', event => $('taskLines').querySelectorAll('.line-selected:not(:disabled)').forEach(x => x.checked = event.target.checked));
-    function applyTemplateDefaults() {
-        const template = templates.find(x => x.id === Number($('taskTemplate').value)); if (!task || !template) throw new Error('Chọn mẫu đã lưu trước.');
-        if (task.completed) throw new Error('Phiếu đã hoàn thành.');
-        for (const row of $('taskLines').rows) {
-            const line = task.lines.find(x => x.product.variantId === Number(row.dataset.variant)); if (line.removed) continue;
-            let qty = template.design.quantityMode === 'one' ? 1 : line.product.receivedQuantity;
-            if (!Number.isInteger(qty)) { qty = 0; notice('Dòng có số lượng nhập lẻ không tự quy đổi ra số tem. Chức năng này để nâng cấp sau.', true); }
-            qty = Math.max(line.printed, qty); row.querySelector('.required-qty').value = qty; row.querySelector('.print-qty').value = qty - line.printed;
+        $('sourceChanged').textContent = task.sourceError || (task.provisionalCount ? `Phiếu còn ${task.provisionalCount} dòng hàng tạm chưa ghép danh mục.` : 'Phiếu hoặc giá bán đã đổi. Cập nhật từ phiếu nhập trước khi in.');
+        if (preserveSelection && receiptEditor) receiptEditor.sync(task);
+        else {
+            receiptEditor?.dispose();
+            const editor = document.createElement('div'); editor.id = 'taskPrintEditor'; $('taskPrintEditor').replaceWith(editor);
+            receiptEditor = window.GaoLabelControls.receiptEditor(editor, task, templates, printers, { notice,
+                onPrinted: async id => { await loadTask(id); await loadTasks(); await loadHistory(); },
+                onChanged: async id => { await loadTask(id); await loadTasks(); } });
         }
-        planDirty = true;
+        const p = task.progress;
+        $('taskTotals').innerHTML = `<div><strong>${p.handled + p.skipped} / ${p.total} sản phẩm đã xử lý</strong><span class="label-state ${task.completed ? 'is-done' : 'is-pending'}">${task.completed ? 'Hoàn tất · vẫn có thể in lại' : 'Đang xử lý'}</span></div>${progressBar(p)}<p class="label-help">In lại chỉ ghi lịch sử, không cộng tiến độ. “Đã gửi in” là máy chủ đã chuyển lệnh tới máy in.</p>`;
+        const actions = task.lines.flatMap(l => (l.actions || []).map(a => ({ ...a, variantId: l.product.variantId }))).sort((a, b) => b.atUtc.localeCompare(a.atUtc));
+        $('taskResolutionHistory').innerHTML = actions.length ? actions.map(a => `<div class="label-audit-event"><span class="label-state ${a.action === 'skip' ? 'is-skipped' : 'is-pending'}">${a.action === 'skip' ? 'Bỏ qua' : 'Khôi phục'}</span><div><strong>${escape(a.productName)}</strong><p>${escape(a.reason)}</p><small>${escape(a.userName)} · ${date(a.atUtc)}</small></div></div>`).join('') : '<p class="label-empty">Chưa có thao tác bỏ qua hoặc khôi phục.</p>';
+        renderHistory($('taskHistory'), task.jobs);
     }
-    bind('applyDefaults', applyTemplateDefaults);
-    bind('savePlan', async () => {
-        if (!task) return;
-        task = await api(`tasks/${task.id}/plan`, 'PUT', { templateId: Number($('taskTemplate').value), rowVersion: task.rowVersion, lines: quantities('.required-qty') });
-        renderTask(); await loadTasks(); notice('Đã lưu mẫu và số lượng cần in của phiếu.');
+    async function loadTask(id) {
+        if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
+        task = await api('tasks/' + id); renderTask(); history.replaceState(null, '', '?task=' + id);
+    }
+    bind('refreshSource', () => {
+        if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
+        if (task) dialog('Cập nhật từ phiếu nhập?', '<p>Lấy lại sản phẩm, mã vạch và giá bán hiện tại. Giữ trạng thái xử lý và toàn bộ lịch sử đã ghi nhận.</p>', async () => {
+            task = await api(`tasks/${task.id}/refresh`, 'POST', { rowVersion: task.rowVersion }); renderTask(); await loadTasks();
+        });
     });
-    bind('refreshSource', () => task && dialog('Cập nhật từ phiếu nhập?', '<p>Lấy lại sản phẩm, đơn vị gốc và giá bán lẻ hiện tại. Giữ số tem đã nhận và số cần in đã lưu; bạn kiểm tra hoặc áp dụng lại SL mặc định của mẫu sau khi cập nhật.</p>', async () => {
-        task = await api(`tasks/${task.id}/refresh`, 'POST', { rowVersion: task.rowVersion }); renderTask(); await loadTasks();
-    }));
-    bind('reloadTasks', loadTasks); bind('closeTask', () => { if (planDirty) return dialog('Đóng phiếu?', '<p>Bỏ thay đổi số lượng chưa lưu.</p>', () => { task = null; planDirty = false; $('labelTaskDetail').hidden = true; }); task = null; $('labelTaskDetail').hidden = true; });
-    bind('completeTask', () => task && dialog('Chốt hoàn thành in tem?', '<p>Xác nhận đã nhận đủ số tem cần in của phiếu. Trạng thái duyệt nhập kho được giữ nguyên.</p>', async () => {
-        if (planDirty) throw new Error('Lưu số lượng trước khi chốt.');
-        await api(`tasks/${task.id}/complete`, 'POST', { rowVersion: task.rowVersion }); await loadTask(task.id); await loadTasks(); notice('Đã chốt hoàn thành in tem.');
-    }));
+    bind('reloadTasks', loadTasks);
+    bind('closeTask', () => {
+        if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
+        receiptEditor?.dispose(); receiptEditor = null; task = null; $('labelTaskDetail').hidden = true;
+    });
 
     function dialog(title, content, action, accept = 'Xác nhận') {
         $('labelDialogContent').innerHTML = `<h2>${escape(title)}</h2>${content}`; dialogAction = action;
@@ -215,40 +234,12 @@
     }
     bind('dialogAccept', async () => { await dialogAction?.(); $('labelDialog').close(); });
     bind('dialogClose', () => $('labelDialog').close());
-    bind('previewTask', async () => {
-        if (!task) return;
-        const template = templates.find(x => x.id === Number($('taskTemplate').value)), row = [...$('taskLines').rows].find(x => x.querySelector('.line-selected').checked);
-        if (!template || !row) throw new Error('Chọn mẫu và ít nhất một sản phẩm.');
-        const product = task.lines.find(x => x.product.variantId === Number(row.dataset.variant)).product;
-        const blob = await api('preview', 'POST', { design: template.design, product, dpi: printers.find(x => x.id === Number($('taskPrinter').value))?.dpi }, true);
-        const url = URL.createObjectURL(blob); dialog('Xem trước · ' + product.name, `<img src="${url}" alt="Tem sản phẩm đã chọn" /><p>${escape(template.design.name)} · ${template.design.columns} cột</p>`, null);
-        $('labelDialog').addEventListener('close', () => URL.revokeObjectURL(url), { once: true });
-    });
     async function sendJob(body) {
-        // Retrying an uncertain submission reuses its exact request, never a new print ID.
-        if (pendingJob) throw new Error('Yêu cầu trước chưa có phản hồi. Tải lại lịch sử để kiểm tra trước khi gửi thêm.');
-        pendingJob = body;
-        try { const result = await api('jobs', 'POST', body); pendingJob = null; notice(`Đã đưa lệnh #${result.id} vào hàng đợi server.`); }
-        catch (e) {
-            pendingJob = null;
-            notice(e.message + ' Nếu mất kết nối, hãy tải lại lịch sử để kiểm tra lệnh đã được nhận chưa.', true); throw e;
-        }
-        if (task) await loadTask(task.id); await loadHistory();
+        const result = await api('jobs', 'POST', body);
+        notice(`Đã đưa lệnh #${result.id} vào hàng đợi server.`);
     }
-    function preparePrint(reprint = false) {
-        if (!task) return;
-        if (planDirty) throw new Error('Lưu mẫu và số lượng trước khi in.');
-        if (task.sourceChanged) throw new Error('Cập nhật từ phiếu nhập trước khi in.');
-        const template = templates.find(x => x.id === Number($('taskTemplate').value)), printer = printers.find(x => x.id === Number($('taskPrinter').value));
-        if (!template || !printer) throw new Error('Chọn mẫu và máy in.');
-        const lines = quantities('.print-qty', true).filter(x => x.quantity > 0);
-        if (!lines.length) throw new Error('Chọn sản phẩm và nhập số tem cần in lần này.');
-        const body = { taskId: task.id, templateId: template.id, printerId: printer.id, lines, requestId: crypto.randomUUID(), rowVersion: task.rowVersion, templateVersion: template.rowVersion, isReprint: reprint };
-        dialog(reprint ? 'In lại tem' : 'Gửi lệnh in', `<p><strong>${lines.reduce((s, x) => s + x.quantity, 0)} tem</strong> · ${escape(template.design.name)}<br>Máy in: <strong>${escape(printer.name)}</strong><br>${template.design.widthMm}×${template.design.heightMm} mm · ${template.design.columns} cột</p>${reprint ? '<label>Lý do in lại<textarea id="reprintReason" class="form-control" maxlength="300" required></textarea></label><p>In lại không tăng tiến độ của lần in gốc.</p>' : '<p>Kiểm tra đúng cuộn giấy trên máy trước khi in.</p>'}`, async () => { if (reprint) body.reason = $('reprintReason').value; await sendJob(body); }, 'Gửi server in');
-    }
-    bind('printTask', () => preparePrint(false)); bind('reprintTask', () => preparePrint(true));
     bind('printTest', () => {
-        const template = templates.find(x => x.id === Number($('testTemplate').value)), printer = printers.find(x => x.id === Number($('testPrinter').value));
+        const template = templates.find(x => x.id === Number($('testTemplate').value)), printer = printers.find(x => x.id === template?.design.printerId);
         if (!template || !printer) throw new Error('Chọn mẫu đã lưu và máy in.');
         dialog('In thử một hàng tem?', `<p>${escape(template.design.name)} · ${template.design.columns} tem thử<br>Máy: ${escape(printer.name)}</p>`, async () => {
             await sendJob({ taskId: null, templateId: template.id, printerId: printer.id, lines: [], requestId: crypto.randomUUID(), rowVersion: null, templateVersion: template.rowVersion });
@@ -256,7 +247,10 @@
         }, 'In thử');
     });
     function renderHistory(container, jobs) {
-        container.innerHTML = jobs.length ? jobs.map(j => `<div class="label-job"><div class="label-toolbar"><div><strong>#${j.id} · ${j.quantity} tem ${j.isReprint ? '· In lại' : !j.taskId ? '· In thử' : ''}</strong> <span class="badge-label">${statuses[j.status]}</span><br><small>${escape(j.requestedByName)} · ${date(j.createdAtUtc)} · ${escape(j.payload.printer.name)}</small></div><div class="label-inline">${j.status === 0 ? `<button class="btn btn-sm btn-outline-danger" data-cancel-job="${j.id}">Hủy lệnh chờ</button>` : ''}${[2, 3].includes(j.status) || j.status === 1 ? `<button class="btn btn-sm btn-outline-primary" data-confirm-job="${j.id}">Xác nhận tem nhận được</button>` : ''}</div></div>${j.error ? `<p class="text-error mt-2">${escape(j.error)}</p>` : ''}<details><summary class="mt-2">Chi tiết mẫu, sản phẩm và kết quả</summary><p>${escape(j.payload.design.name)} · ${j.payload.design.widthMm}×${j.payload.design.heightMm} mm · ${j.payload.design.columns} cột<br>${escape(j.reason)}</p><ul>${j.payload.items.map(x => `<li>${escape(x.product.name)} · ${escape(x.product.unit)} · ${money(x.product.price)} đ · Gửi ${x.quantity}${j.status === 4 ? ' / Nhận ' + (j.result.find(r => r.variantId === x.product.variantId)?.quantity ?? 0) : ''}</li>`).join('')}</ul><small>Gửi máy in: ${date(j.sentAtUtc)} · Mã spool: ${j.spoolJobId ?? '—'}<br>Xác nhận: ${escape(j.confirmedByName || '—')} · ${date(j.confirmedAtUtc)}</small></details></div>`).join('') : '<p class="label-empty">Chưa có lần in nào.</p>';
+        const signature = JSON.stringify(jobs);
+        if (container._signature === signature) return;
+        container._signature = signature;
+        container.innerHTML = jobs.length ? jobs.map(j => `<div class="label-job"><div class="label-toolbar"><div><strong>#${j.id} · ${j.quantity} tem ${j.isReprint ? '· In lại' : !j.taskId ? (j.payload.items.some(x => x.product.unitId != null) ? '· In nhanh sản phẩm' : '· In thử') : ''}</strong> <span class="badge-label">${statuses[j.status]}</span><br><small>${escape(j.requestedByName)} · ${date(j.createdAtUtc)} · ${escape(j.payload.printer.name)}</small></div><div class="label-inline">${j.status === 0 ? `<button class="btn btn-sm btn-outline-danger" data-cancel-job="${j.id}">Hủy lệnh chờ</button>` : ''}${[2, 3].includes(j.status) || j.status === 1 ? `<button class="btn btn-sm btn-outline-primary" data-confirm-job="${j.id}">Xác nhận tem nhận được</button>` : ''}</div></div>${j.error ? `<p class="text-error mt-2">${escape(j.error)}</p>` : ''}<details><summary class="mt-2">Chi tiết mẫu, sản phẩm và kết quả</summary><p>${escape(j.payload.design.name)} · ${j.payload.design.widthMm}×${j.payload.design.heightMm} mm · ${j.payload.design.columns} cột<br>${escape(j.reason)}</p><ul>${j.payload.items.map(x => `<li>${escape(x.product.name)} · ${escape(x.product.unit)} · ${money(x.product.price)} đ · Gửi ${x.quantity}${j.payload.productProgress ? x.countsForProgress ? ' · Xử lý lần đầu' : ' · In lại (không cộng tiến độ)' : ''}${j.status === 4 ? ' / Nhận ' + (j.result.find(r => r.variantId === x.product.variantId && (r.unitId ?? null) === (x.product.unitId ?? null))?.quantity ?? 0) : ''}</li>`).join('')}</ul><small>Gửi máy in: ${date(j.sentAtUtc)} · Mã spool: ${j.spoolJobId ?? '—'}<br>Xác nhận: ${escape(j.confirmedByName || '—')} · ${date(j.confirmedAtUtc)}</small></details></div>`).join('') : '<p class="label-empty">Chưa có lần in nào.</p>';
         container._jobs = jobs;
     }
     async function loadHistory() { if ($('allHistory')) renderHistory($('allHistory'), await api('jobs')); }
@@ -265,11 +259,11 @@
         const confirm = event.target.closest('[data-confirm-job]'), cancel = event.target.closest('[data-cancel-job]');
         const job = container._jobs?.find(x => x.id === Number(confirm?.dataset.confirmJob || cancel?.dataset.cancelJob)); if (!job) return;
         if (cancel) return dialog('Hủy lệnh đang chờ?', '<p>Chỉ hủy khi server chưa bắt đầu gửi lệnh.</p>', async () => {
-            await api(`jobs/${job.id}/cancel`, 'POST', { rowVersion: job.rowVersion }); if (task) await loadTask(task.id); await loadHistory();
+            await api(`jobs/${job.id}/cancel`, 'POST', { rowVersion: job.rowVersion }); if (task) await loadTask(task.id); await loadHistory(); await loadTasks();
         });
         const initial = job.status === 2;
-        dialog('Xác nhận số tem thực nhận', `<p>Kiểm tra tem đã ra đủ. Nếu lệnh chưa rõ kết quả, kiểm tra hàng đợi Windows và máy in trước khi ghi nhận; chỉ nhập số tem dùng được.</p>${job.payload.items.map(x => `<label class="d-block mb-2">${escape(x.product.name)} · đã gửi ${x.quantity}<input class="form-control received-qty" data-variant="${x.product.variantId}" type="number" min="0" max="${x.quantity}" step="1" value="${initial ? x.quantity : 0}" /></label>`).join('')}<label>Ghi chú nếu thiếu / lỗi<textarea id="confirmationNote" class="form-control" maxlength="500"></textarea></label>`, async () => {
-            const lines = [...$('labelDialogContent').querySelectorAll('.received-qty')].map(x => ({ variantId: Number(x.dataset.variant), quantity: Number(x.value) }));
+        dialog('Xác nhận số tem thực nhận', `<p>Kiểm tra tem đã ra đủ. Nếu lệnh chưa rõ kết quả, kiểm tra hàng đợi Windows và máy in trước khi ghi nhận; chỉ nhập số tem dùng được.</p>${job.payload.items.map(x => `<label class="d-block mb-2">${escape(x.product.name)} · ${escape(x.product.unit)} · đã gửi ${x.quantity}<input class="form-control received-qty" data-variant="${x.product.variantId}" data-unit="${x.product.unitId ?? ''}" type="number" min="0" max="${x.quantity}" step="1" value="${initial ? x.quantity : 0}" /></label>`).join('')}<label>Ghi chú nếu thiếu / lỗi<textarea id="confirmationNote" class="form-control" maxlength="500"></textarea></label>`, async () => {
+            const lines = [...$('labelDialogContent').querySelectorAll('.received-qty')].map(x => ({ variantId: Number(x.dataset.variant), unitId: x.dataset.unit ? Number(x.dataset.unit) : null, quantity: Number(x.value) }));
             await api(`jobs/${job.id}/confirm`, 'POST', { rowVersion: job.rowVersion, lines, note: $('confirmationNote').value });
             if (task) await loadTask(task.id); await loadHistory(); await loadTasks(); notice('Đã ghi nhận số tem thực nhận.');
         }, 'Lưu kết quả');
@@ -278,20 +272,29 @@
         const id = Number(new URLSearchParams(location.search).get('receipt'));
         const result = await api('receipts/' + id, 'POST'); $('receiptEntry').hidden = true; await loadTasks(); await loadTask(result.id);
     });
-    window.addEventListener('beforeunload', event => { if (templateDirty || planDirty) { event.preventDefault(); event.returnValue = ''; } });
+    window.addEventListener('beforeunload', event => { if (templateDirty) { event.preventDefault(); event.returnValue = ''; } });
     async function start() {
-        await Promise.all([loadTemplates(), loadPrinters(), loadTasks()]);
+        await loadPrinters(); await loadTemplates();
+        if (!isSettings) await window.initQuickLabelPrinting?.({ api, templates, printers, dialog, notice, loadHistory, tab });
+        await loadTasks();
         if (isSettings) { showTemplate(templates[0]); await installedPrinters(); }
         const params = new URLSearchParams(location.search);
-        if (!isSettings && params.get('task')) await loadTask(Number(params.get('task')));
-        if (!isSettings && params.get('receipt')) { $('receiptEntry').hidden = false; $('receiptEntryText').textContent = 'Đưa phiếu nhập #' + Number(params.get('receipt')) + ' vào danh sách in tem. Nếu đã có, hệ thống mở lại phiếu in hiện tại.'; }
+        if (!isSettings && params.get('task')) { tab('tasks'); await loadTask(Number(params.get('task'))); }
+        if (!isSettings && params.get('receipt')) { tab('tasks'); $('receiptEntry').hidden = false; $('receiptEntryText').textContent = 'Đưa phiếu nhập #' + Number(params.get('receipt')) + ' vào danh sách in tem. Nếu đã có, hệ thống mở lại phiếu in hiện tại.'; }
         if (params.get('tab')) tab(params.get('tab'));
     }
     start().catch(e => notice(e.message, true));
     setInterval(async () => {
-        if (document.hidden || $('labelDialog').open) return;
+        if (document.hidden || document.querySelector('dialog[open]') || receiptEditor?.locked) return;
         try {
-            if (task) { const jobs = await api('jobs?taskId=' + task.id); renderHistory($('taskHistory'), jobs); }
+            if (task) {
+                const id = task.id, state = await api(`tasks/${id}/state`);
+                const stamp = jobs => JSON.stringify(jobs.map(j => [j.id, j.status, j.rowVersion]));
+                if (task?.id === id && (state.rowVersion !== task.rowVersion || stamp(state.jobs) !== stamp(task.jobs))) {
+                    const fresh = await api('tasks/' + id);
+                    if (task?.id === id && !receiptEditor?.locked && !document.querySelector('dialog[open]')) { task = fresh; renderTask(true); await loadTasks(); }
+                }
+            }
             if (root.querySelector('[data-panel="history"]')?.hidden === false) await loadHistory();
         } catch { /* Manual actions surface connectivity errors; polling does not flash banners. */ }
     }, 5000);

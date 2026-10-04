@@ -7,8 +7,9 @@
 <style>
     body{margin:0;background:#edf1ee;font-family:Arial,sans-serif}.receipt-print-toolbar{padding:14px 20px;background:white;border-bottom:1px solid #dce5df;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px}.receipt-print-toolbar button,.receipt-print-toolbar a{padding:9px 14px;border:1px solid #ccd7cf;border-radius:7px;cursor:pointer;text-decoration:none;color:#234b38;background:white}.receipt-print-toolbar button{background:#234b38;color:white}.receipt-print-toolbar select{padding:8px;max-width:300px}.receipt-print-toolbar label{font-size:12px}#receiptCanvas{padding:24px;overflow:auto}#receiptPaper{display:block;border:0;background:white;margin:auto;box-shadow:0 8px 30px #173e2a16}#printFeedback{padding:10px 20px;font-size:13px;color:#52685b;white-space:pre-line}
 </style></head><body>
-<div class="receipt-print-toolbar"><button type="button" id="printReceipt">In hóa đơn</button><label>Mẫu in <select id="printTemplateChoice"></select></label>
-<a href="/admin/receipt-templates" target="_blank" rel="noopener">Mẫu hóa đơn & máy in</a><button type="button" id="closeReceipt">Đóng</button></div>
+<div class="receipt-print-toolbar"><button type="button" id="printReceipt">In hóa đơn</button><span>Mẫu cửa hàng: <strong id="printTemplateName"></strong></span>
+@if (Model.CanManageTemplates) { <a href="/admin/receipt-templates" target="_blank" rel="noopener">Cấu hình mẫu & máy in</a> }
+<button type="button" id="closeReceipt">Đóng</button></div>
 <div id="printFeedback" role="status"></div><div id="receiptCanvas"><iframe id="receiptPaper" title="Hóa đơn bán hàng" sandbox="allow-same-origin allow-modals"></iframe></div>
 <script id="receiptPrintData" type="application/json">@Html.Raw(JsonSerializer.Serialize(Model, ReceiptTemplateService.Json))</script>
 <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>

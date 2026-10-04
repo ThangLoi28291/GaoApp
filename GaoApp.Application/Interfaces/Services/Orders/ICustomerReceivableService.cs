@@ -13,7 +13,9 @@ public interface ICustomerReceivableService
     Task PostSaleAsync(Order order, CancellationToken ct);
     Task PostReturnAsync(Order order, SalesReturn salesReturn, CancellationToken ct);
     Task VoidAsync(Order order, CancellationToken ct);
-    Task<ReceivablePageDto> GetAsync(int? customerId, string? search, CancellationToken ct);
+    Task<ReceivablePageDto> GetAsync(int? customerId, string? search, CancellationToken ct, int pageNumber = 1, string? status = null);
+    Task<DebtCollectionReportDto> GetCollectionReportAsync(DebtCollectionQuery query, CancellationToken ct, bool export = false);
+    Task<DebtReceiptDetailDto> GetReceiptAsync(int receiptId, CancellationToken ct);
     Task<int> CollectAsync(CollectCustomerDebtRequest request, CancellationToken ct);
 }
 
@@ -31,6 +33,13 @@ public sealed class CollectCustomerDebtRequest
 
 public sealed class ReceivablePageDto
 {
+    public int Page { get; set; }
+    public int PageSize { get; set; } = 50;
+    public int TotalCustomers { get; set; }
+    public int OpenCustomers { get; set; }
+    public int SettledCustomers { get; set; }
+    public decimal TotalBalance { get; set; }
+    public decimal TotalOverdue { get; set; }
     public int? CustomerId { get; set; }
     public string? CustomerName { get; set; }
     public List<ReceivableCustomerDto> Customers { get; set; } = new();

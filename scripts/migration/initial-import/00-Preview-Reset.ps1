@@ -139,10 +139,12 @@ FROM sys.triggers tr WHERE tr.is_ms_shipped=0 ORDER BY tr.name;
     if (@($tables | Where-Object { $_.TableName -eq '__EFMigrationsHistory' -and $_.SchemaName -eq 'dbo' }).Count) {
         $schema = @(Read-Rows 'SELECT MigrationId, ProductVersion FROM dbo.__EFMigrationsHistory ORDER BY MigrationId DESC;')
         Save-Report 'schema' $schema
-        if ($schema.Count -eq 0 -or $schema[0].MigrationId -notin @('20260923160000_AddLegacyInvoiceImport','20260923180000_AddLegacyReturnArchive')) {
+        if ($schema.Count -eq 0 -or $schema[0].MigrationId -ne $plan.SupportedLatestMigration) {
             $blockers.Add('Unexpected schema version.')
         }
     }
+    try { $null = @(Read-Rows ([IO.File]::ReadAllText((Join-Path $scriptDirectory 'Target-Contract.sql')))) }
+    catch { $blockers.Add('Target contract: ' + $_.Exception.Message) }
     if (@($tables | Where-Object { $_.TableName -eq 'GaoStoreMigrationRunsV2' -and $_.SchemaName -eq 'dbo' }).Count) {
         $journal = @(Read-Rows 'SELECT PackageId, SourceDatabase, SqlSha256, CommittedAtUtc FROM dbo.GaoStoreMigrationRunsV2 ORDER BY CommittedAtUtc;')
         Save-Report 'journal' $journal

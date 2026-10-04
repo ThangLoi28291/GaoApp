@@ -1,0 +1,14 @@
+.pa-workflows{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}.pa-method{font-weight:750;font-size:1.15rem;line-height:1.7}
+#paymentAdjustments td small{max-width:260px;overflow-wrap:anywhere}#paDialog .ca-position{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pa-impact{margin:18px 0;padding:16px;border:1px solid #c9d8fa;border-radius:14px;background:#f6f9ff}.pa-impact h3{margin-bottom:10px}
+.pa-impact .ca-position{margin-bottom:0}.pa-count-note{padding:12px;background:#fff9eb;border-radius:10px;color:#805b1b;line-height:1.6}
+#paDialog{width:min(720px,calc(100% - 28px))}#paDialog .ca-actions{position:sticky;bottom:-28px;z-index:1;background:#fff;padding-bottom:18px}
+#paDialog .ca-position strong{overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.pa-status{display:inline-block;padding:5px 9px;border-radius:7px;font-size:.8rem;font-weight:700;background:#eef1f6;color:#475467}
+.pa-status.is-pending{background:#fff0d1;color:#925d0a}.pa-status.is-approved{background:#e8f8ee;color:#167342}
+@media(max-width:640px){#paDialog .ca-position{grid-template-columns:1fr 1fr}.ca-heading{flex-wrap:wrap}.ca-heading p{line-height:1.6}}
+.pa-receipt{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px;background:#f5f7fc;border-radius:12px;margin-bottom:16px}
+.pa-receipt strong{font-size:1.6rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.pa-receipt span{color:#667085}.pa-simple-impact{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:14px;align-items:center;margin-bottom:10px}
+.pa-simple-impact strong{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums;color:#203965;overflow-wrap:anywhere}.pa-extra{margin:16px 0}.pa-extra summary{cursor:pointer;color:#526079;font-weight:650}.pa-extra[open]>summary{margin-bottom:12px}
+#paDialog .ca-box{padding:16px}#paDialog .ca-box .ca-amount{font-size:1.5rem}#paDialog .ca-box h3{font-size:.85rem}#paDialog .pa-impact{padding:14px}
+#paymentAdjustments .ca-table-wrap table{min-width:620px}
+@media(max-width:640px){.pa-receipt{align-items:flex-start;flex-direction:column}.pa-simple-impact{gap:8px}.pa-simple-impact strong{font-size:1.1rem}.pa-simple-impact div{font-size:.85rem}}

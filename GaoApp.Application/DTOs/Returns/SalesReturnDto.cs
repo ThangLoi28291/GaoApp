@@ -16,6 +16,7 @@ public sealed class SalesReturnDto
     public decimal RefundTotal { get; set; }
     public decimal DepositRestoredTotal { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public bool HasPendingRestock { get; set; }
 
     public List<SalesReturnLineDto> Lines { get; set; } = new();
     public List<SalesReturnPaymentDto> Payments { get; set; } = new();

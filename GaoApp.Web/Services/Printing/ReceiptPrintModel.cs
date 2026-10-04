@@ -10,4 +10,6 @@ public sealed record ReceiptPrintModel(
     bool AutoPrint,
     string? Size = null,
     string? InvoiceBuyerSelfServiceUrl = null,
-    DateTime? InvoiceBuyerSelfServiceExpiresAtUtc = null);
+    DateTime? InvoiceBuyerSelfServiceExpiresAtUtc = null,
+    ReceiptDefault? ReceiptDefault = null,
+    bool CanManageTemplates = false);

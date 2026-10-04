@@ -60,7 +60,9 @@ public sealed class SaleCostReversalSqlServerTests
         var beforeEntries = await db.InventoryValuationEntries.CountAsync();
         var beforeShift = await db.POSShifts.AsNoTracking().SingleAsync();
         Func<Task> attempt = () => fixture.Pos(db).VoidCompletedOrderAsync(fixture.Seed.OrderId, "must rollback");
-        await attempt.Should().ThrowAsync<InvalidOperationException>();
+        var failure = await attempt.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>();
+        failure.Which.ErrorCode.Should().Be("POS_VOID_FAILED");
+        failure.Which.InnerException.Should().BeAssignableTo<InvalidOperationException>();
         await using var verify = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
         (await verify.InventoryValuationEntries.CountAsync()).Should().Be(beforeEntries);
         var order = await verify.Orders.SingleAsync(x => x.Id == fixture.Seed.OrderId);

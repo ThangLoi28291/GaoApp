@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GaoApp.Infrastructure.Data.Migrations;
 
@@ -186,6 +187,7 @@ public sealed class SqlServerDatabaseObjectInventoryReader
             .CreateCommand();
         command.CommandText = sql;
         command.CommandType = CommandType.Text;
+        command.Transaction = _db.Database.CurrentTransaction?.GetDbTransaction();
 
         await using var reader = await command.ExecuteReaderAsync(ct);
 

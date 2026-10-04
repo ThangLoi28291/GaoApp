@@ -29,6 +29,7 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
             BuildBaseQuery(storeId),
             storeId,
             request);
+        query = await ApplyKeywordAsync(query, storeId, request.Keyword, request.SearchScope, ct);
         var aggregateQuery = string.IsNullOrWhiteSpace(request.Keyword)
             ? ApplyBaseFilters(
                 BuildAggregateQuery(storeId),
@@ -61,13 +62,17 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
             (int)Math.Ceiling((double)totalItems / request.PageSize));
         var page = Math.Min(request.Page, totalPages);
 
-        var items = await ProjectRows(query, storeId)
-            .Skip((page - 1) * request.PageSize)
-            .Take(request.PageSize)
-            .ToListAsync(ct);
+        // Page narrow IDs before loading images/barcodes. Correlated display subqueries must
+        // not change the search plan into a timeline scan when the result set is sparse.
+        var pageIds = await query.Select(t => t.Id)
+            .Skip((page - 1) * request.PageSize).Take(request.PageSize).ToArrayAsync(ct);
+        var canViewCost = await InventoryCostReadAccess.CanViewAsync(_db, storeId, costViewerUserId, ct);
+        var items = pageIds.Length == 0 ? new List<InventoryLedgerIndexItemDto>()
+            : await ProjectRows(BuildBaseQuery(storeId).Where(t => pageIds.Contains(t.Id)), storeId, canViewCost).ToListAsync(ct);
+        var positions = pageIds.Select((id, index) => (id, index)).ToDictionary(x => x.id, x => x.index);
+        items.Sort((left, right) => positions[left.TransactionId].CompareTo(positions[right.TransactionId]));
 
         NormalizeImageUrls(items);
-        var canViewCost = await InventoryCostReadAccess.CanViewAsync(_db, storeId, costViewerUserId, ct);
         if (canViewCost)
             await PopulateInboundCostsAsync(storeId, items, ct);
 
@@ -89,17 +94,18 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
         int? costViewerUserId,
         CancellationToken ct = default)
     {
+        var canViewCost = await InventoryCostReadAccess.CanViewAsync(_db, storeId, costViewerUserId, ct);
         var item = await ProjectRows(
                 BuildBaseQuery(storeId)
                     .Where(transaction => transaction.Id == transactionId),
-                storeId)
+                storeId, canViewCost)
             .FirstOrDefaultAsync(ct);
 
         if (item is null)
             return null;
 
         item.ImageUrl = NormalizeImageUrl(item.ImageUrl);
-        if (await InventoryCostReadAccess.CanViewAsync(_db, storeId, costViewerUserId, ct))
+        if (canViewCost)
             await PopulateInboundCostsAsync(storeId, [item], ct);
 
         return new InventoryLedgerIndexQuickViewDto
@@ -203,69 +209,62 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
                 && x.ReferenceId.Contains(referenceCode));
         }
 
-        return ApplyKeyword(query, storeId, request.Keyword);
+        return query;
     }
 
-    private IQueryable<InventoryTransaction> ApplyKeyword(
-        IQueryable<InventoryTransaction> query,
-        int storeId,
-        string? keyword)
+    private async Task<IQueryable<InventoryTransaction>> ApplyKeywordAsync(
+        IQueryable<InventoryTransaction> query, int storeId, string? keyword, string? scope, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(keyword))
-            return query;
-
+        if (string.IsNullOrWhiteSpace(keyword)) return query;
         var search = keyword.Trim();
+        var normalized = search.Replace('Đ', 'D').Replace('đ', 'd');
+        if (scope == "reference")
+            return query.Where(t => t.ReferenceId != null && t.ReferenceId.Contains(search));
+        var notes = _db.Database.IsRelational()
+            ? query.Where(t => t.Note != null && EF.Functions.Collate(
+                t.Note.Replace("Đ", "D").Replace("đ", "d"), AccentInsensitiveSearchCollation).Contains(normalized))
+            : query.Where(t => t.Note != null && t.Note.Contains(search));
+        if (scope == "note") return notes;
+        var variants = _db.ProductVariants.AsNoTracking().Where(v =>
+            v.StoreId == storeId && !v.IsDeleted &&
+            v.Product.StoreId == storeId && !v.Product.IsDeleted);
 
-        if (_db.Database.IsRelational())
-        {
-            var accentInsensitiveSearch = search
-                .Replace('Đ', 'D')
-                .Replace('đ', 'd');
+        // Resolve the catalog once, not the same barcode/name joins for every historical movement.
+        // Keep inactive products searchable: this is a historical ledger, not a POS catalog.
+        var names = _db.Database.IsRelational()
+            ? variants.Where(v => EF.Functions.Collate(
+                v.Product.Name.Replace("Đ", "D").Replace("đ", "d"),
+                AccentInsensitiveSearchCollation).Contains(normalized))
+            : variants.Where(v => v.Product.Name.Contains(search));
+        var codes = variants.Where(v => v.Sku.Contains(search) || v.UnitConversions.Any(c =>
+            c.StoreId == storeId && !c.IsDeleted && c.IsActive && c.Barcodes.Any(b =>
+                b.StoreId == storeId && !b.IsDeleted && b.IsActive && b.Barcode.Contains(search))));
+        var variantIds = await names.Select(v => v.Id).Union(codes.Select(v => v.Id)).ToArrayAsync(ct);
+        // Equality gives SQL Server the actual product selectivity instead of OPENJSON's
+        // fixed collection estimate, especially for rare products on later pages.
+        var productMatches = variantIds.Length == 1
+            ? query.Where(t => t.ProductVariantId == variantIds[0])
+            : variantIds.Length is > 0 and <= 128 && _db.Database.IsRelational()
+                ? query.Where(t => EF.Constant(variantIds).Contains(t.ProductVariantId))
+                : query.Where(t => variantIds.Contains(t.ProductVariantId));
+        if (scope == "product")
+            return variantIds.Length == 0 ? query.Where(t => false)
+                : productMatches;
 
-            return query.Where(transaction =>
-                EF.Functions.Collate(
-                    transaction.ProductVariant.Product.Name
-                        .Replace("Đ", "D")
-                        .Replace("đ", "d"),
-                    AccentInsensitiveSearchCollation)
-                    .Contains(accentInsensitiveSearch)
-                || transaction.ProductVariant.Sku.Contains(search)
-                || transaction.ProductVariant.UnitConversions.Any(conversion =>
-                    conversion.StoreId == storeId
-                    && !conversion.IsDeleted
-                    && conversion.IsActive
-                    && conversion.Barcodes.Any(barcode =>
-                        barcode.StoreId == storeId
-                        && !barcode.IsDeleted
-                        && barcode.IsActive
-                        && barcode.Barcode.Contains(search)))
-                || (transaction.ReferenceId != null
-                    && transaction.ReferenceId.Contains(search))
-                || (transaction.Note != null
-                    && EF.Functions.Collate(
-                        transaction.Note
-                            .Replace("Đ", "D")
-                            .Replace("đ", "d"),
-                        AccentInsensitiveSearchCollation)
-                        .Contains(accentInsensitiveSearch)));
-        }
+        var textMatches = _db.Database.IsRelational()
+            ? query.Where(t => (t.ReferenceId != null && t.ReferenceId.Contains(search)) ||
+                (t.Note != null && EF.Functions.Collate(
+                    t.Note.Replace("Đ", "D").Replace("đ", "d"),
+                    AccentInsensitiveSearchCollation).Contains(normalized)))
+            : query.Where(t => (t.ReferenceId != null && t.ReferenceId.Contains(search)) ||
+                (t.Note != null && t.Note.Contains(search)));
+        if (variantIds.Length == 0) return textMatches;
 
-        return query.Where(transaction =>
-            transaction.ProductVariant.Product.Name.Contains(search)
-            || transaction.ProductVariant.Sku.Contains(search)
-            || transaction.ProductVariant.UnitConversions.Any(conversion =>
-                conversion.StoreId == storeId
-                && !conversion.IsDeleted
-                && conversion.IsActive
-                && conversion.Barcodes.Any(barcode =>
-                    barcode.StoreId == storeId
-                    && !barcode.IsDeleted
-                    && barcode.IsActive
-                    && barcode.Barcode.Contains(search)))
-            || (transaction.ReferenceId != null
-                && transaction.ReferenceId.Contains(search))
-            || (transaction.Note != null
-                && transaction.Note.Contains(search)));
+        // Separate seekable product history from free-text notes. Union IDs only, so a movement
+        // matching both branches is counted once and wide ledger rows are not sorted/deduplicated.
+        var matchingIds = productMatches.Select(t => t.Id)
+            .Union(textMatches.Select(t => t.Id));
+        return query.Where(t => matchingIds.Contains(t.Id));
     }
 
     private static IQueryable<InventoryTransaction> ApplyState(
@@ -343,7 +342,7 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
 
     private static IQueryable<InventoryLedgerIndexItemDto> ProjectRows(
         IQueryable<InventoryTransaction> query,
-        int storeId)
+        int storeId, bool canViewCost)
         => query.Select(transaction => new InventoryLedgerIndexItemDto
         {
             TransactionId = transaction.Id,
@@ -388,6 +387,12 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
             BeforeQty = transaction.BeforeQty,
             QuantityChange = transaction.QuantityChange,
             AfterQty = transaction.AfterQty,
+            UnitCostSnapshot = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.UnitCostSnapshot : (decimal?)null,
+            TotalCost = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.TotalCost : (decimal?)null,
+            BeforeInventoryValue = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.BeforeInventoryValue : (decimal?)null,
+            AfterInventoryValue = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.AfterInventoryValue : (decimal?)null,
+            RunningAverageUnitCostAfter = canViewCost && transaction.TransactionType == InventoryTransactionType.Revaluation ? transaction.RunningAverageUnitCostAfter : (decimal?)null,
+            BaseUnitName = transaction.ProductVariant.Product.BaseUnit.Name,
             IsNegativeAfterTransaction = transaction.AfterQty < 0,
             OccurredAtUtc = transaction.OccurredAtUtc,
             Note = transaction.Note

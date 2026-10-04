@@ -14,6 +14,23 @@ namespace GaoApp.Application.Interfaces.Services.Inventory;
 public interface IInventoryMovementService
 {
     /// <summary>
+    /// Ghi một bút toán điều chỉnh giá trị tồn kho, không thay đổi số lượng.
+    /// correctedUnitCost là giá vốn đúng trên một đơn vị gốc của phần tồn được chọn.
+    /// </summary>
+    Task<InventoryMovementResultDto> CreateRevaluationAsync(
+        int warehouseId,
+        int productVariantId,
+        decimal quantityBase,
+        decimal correctedUnitCost,
+        string referenceId,
+        int referenceLineId,
+        string? note,
+        DateTime? occurredAtUtc = null,
+        CancellationToken ct = default)
+        => throw new NotSupportedException(
+            "Inventory movement implementation does not support revaluation posting.");
+
+    /// <summary>
     /// Acquires all balance locks for a multi-movement posting in canonical
     /// Store/Warehouse/Variant order. A non-empty batch must run inside the
     /// caller's active database transaction.

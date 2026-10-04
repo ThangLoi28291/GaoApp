@@ -1,6 +1,7 @@
 ﻿public sealed class UpdateStockDocumentHeaderRequest
 {
     public int StockDocumentId { get; set; }
+    public string? RowVersion { get; set; }
 
     public int? LegalEntityId { get; set; }
     public int? WarehouseId { get; set; }

@@ -1,0 +1,20 @@
+@model List<GaoApp.Domain.Entities.KioskStation>
+@using GaoApp.Domain.Entities
+@{ ViewData["Title"] = "Quầy tự phục vụ"; Layout = "_ContentNavbarLayout"; }
+<div class="d-flex justify-content-between align-items-center mb-4"><div><h3>Quầy tự phục vụ</h3><p class="text-muted">Kích hoạt thiết bị, theo dõi giao dịch và hỗ trợ khách tại cửa hàng.</p></div><a class="btn btn-outline-primary" href="/kiosk" target="_blank" rel="noopener">Mở màn hình khách ↗</a></div>
+<div id="kioskActionMessage" role="status" class="alert" hidden></div>
+<div class="card mb-4"><div class="card-body"><h5>Thêm máy tự phục vụ</h5><p>Chọn quầy riêng và kho xuất bán. Doanh thu và đối soát ghi theo quầy; khách không đăng nhập tài khoản nhân viên.</p>
+<form method="post" action="/admin/kiosks/create" class="row g-3">@Html.AntiForgeryToken()
+<div class="col-md-4"><label class="form-label">Quầy tự phục vụ</label><select name="TerminalId" class="form-select" required><option value="">Chọn quầy</option>@foreach(var x in (List<POSTerminal>)ViewBag.Terminals){<option value="@x.Id">@x.Code · @x.Name</option>}</select></div>
+<div class="col-md-4"><label class="form-label">Kho xuất bán</label><select name="WarehouseId" class="form-select" required>@foreach(var x in (List<Warehouse>)ViewBag.Warehouses){<option value="@x.Id">@x.Name</option>}</select></div>
+<div class="col-md-4 d-flex align-items-end"><button class="btn btn-primary">Tạo và cấp khóa kích hoạt</button></div></form>
+<a href="/admin/pos-terminals/create" class="d-inline-block mt-3">+ Tạo quầy mới</a></div></div>
+<div class="d-flex justify-content-between mb-3"><span class="text-muted" id="kioskMonitorState">Tự cập nhật trạng thái mỗi 5 giây</span><a href="/admin/acb/settings">Cấu hình QR tự động →</a></div>
+<div class="row g-4">@foreach(var s in Model){<div class="col-xl-6"><div class="card h-100" data-kiosk-id="@s.Id"><div class="card-body"><div class="d-flex justify-content-between align-items-center gap-2 flex-wrap"><h5>@s.Terminal.Name <small class="text-muted">@s.Terminal.Code</small></h5><span data-status class="badge bg-label-@(s.IsActive && !s.IsPaused && s.DeviceHash != null ? "success" : "warning")">@(!s.IsActive?"Đã thu hồi":s.IsPaused?"Tạm dừng":s.DeviceHash==null?"Chờ kích hoạt":"Đang phục vụ")</span></div>
+<p data-seen>Truy cập gần nhất: @(s.LastSeenAtUtc?.AddHours(7).ToString("HH:mm:ss dd/MM/yyyy") ?? "Chưa kết nối")</p>
+<div data-help class="alert alert-warning" hidden="@(s.HelpRequestedAtUtc==null)">Khách cần hỗ trợ</div>
+<p data-order hidden="@(s.OrderId==null)">Đơn đang xử lý: <a href="/admin/pos/order-detail/@s.OrderId">#@s.OrderId</a> · <a href="/admin/acb/payments/orders/@s.OrderId">Tra cứu thanh toán ACB</a></p>
+<div class="d-flex gap-2 flex-wrap">@foreach(var a in new[]{("pause",s.IsPaused?"Tiếp tục phục vụ":"Tạm dừng"),("check","Kiểm tra thanh toán"),("help-done","Đã hỗ trợ"),("key","Cấp khóa mới"),("revoke","Thu hồi thiết bị"),("cancel-payment","Hủy phiên / QR chưa trả"),("close-shift","Chốt phiên quầy")}){<form method="post" action="/admin/kiosks/@s.Id/@a.Item1">@Html.AntiForgeryToken()<button class="btn btn-sm btn-outline-secondary">@a.Item2</button></form>}</div></div></div></div>}</div>
+<p class="mt-4 text-muted">Máy chỉ nhận thanh toán ACB tự động. Khóa kích hoạt dùng một lần, hết hạn sau 30 phút. Giữ lại lịch sử ngân hàng khi thu hồi máy hoặc có thanh toán cần kiểm tra.</p>
+
+@section PageScripts {<script src="~/kiosk/management.js" asp-append-version="true"></script>}

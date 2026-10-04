@@ -155,6 +155,8 @@ public sealed class GaoAppDesignSystemSourceContractTests
            "Category/Index.cshtml",
 "Customer/Edit.cshtml",
 "Customer/Index.cshtml",
+"CustomerDebt/Collections.cshtml",
+"CustomerDebt/Receipt.cshtml",
 "CustomerDebt/Index.cshtml",
 "CustomerDeposit/Index.cshtml",
 "InventoryAdjustmentDocuments/Index.cshtml",

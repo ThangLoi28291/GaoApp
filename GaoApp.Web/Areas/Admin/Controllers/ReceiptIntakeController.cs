@@ -6,6 +6,8 @@ using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Interfaces.Services.Purchases;
 using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using GaoApp.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -14,7 +16,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Route("admin/api/stock-documents/{documentId:int}/intake")]
 public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
     IStockDocumentProvisionalItemService provisional, IReceiptBarcodeProposalService barcodes,
-    IProcurementCatalogService catalog, ITenantContext tenant, IAuthorizationService authorization) : ControllerBase
+    IProcurementCatalogService catalog, ITenantContext tenant, IAuthorizationService authorization, AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public Task<IActionResult> Get(int documentId, CancellationToken ct) => Call(async () =>
@@ -26,12 +28,41 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         var permissions = await CatalogPermissions();
         return Ok(new
         {
+            brands = await db.Brands.Where(x => x.StoreId == tenant.StoreId && x.IsActive && !x.IsDeleted).OrderBy(x => x.Name).Select(x => new { id = x.Id, text = x.Name }).ToListAsync(ct),
             state, permissions, recentReceipts = await intake.GetRecentAsync(documentId, ct),
             canCapture = update && state.PermittedActions.Contains("Capture"),
             canReview = approve && (context.Status == StockDocumentStatus.PendingApproval ||
                 (update && state.PermittedActions.Contains("Capture"))),
             options = update || approve ? await catalog.GetQuickCreateOptionsAsync(ct) : new ProcurementQuickCreateOptionsDto()
         });
+    });
+
+    [HttpGet("review-products")]
+    public Task<IActionResult> ReviewProducts(int documentId, string? term, CancellationToken ct) => Call(async () =>
+    {
+        if (!await Has(await Context(documentId, ct), "approve")) return Forbid();
+        term = term?.Trim();
+        if (string.IsNullOrWhiteSpace(term)) return Ok(new { results = Array.Empty<object>() });
+        if (term.Length > 200) term = term[..200];
+        var normalizedTerm = GaoApp.Application.Common.Helpers.ProductVariantNameHelper.NormalizeForSearch(term);
+        var units = await db.ProductUnitConversions.AsNoTracking().Where(x => x.StoreId == tenant.StoreId && !x.IsDeleted &&
+            x.ProductVariant.StoreId == tenant.StoreId && x.ProductVariant.Product.StoreId == tenant.StoreId && x.Unit.StoreId == tenant.StoreId &&
+            x.ProductVariant.Product.BaseUnit.StoreId == tenant.StoreId && !x.ProductVariant.IsDeleted && !x.ProductVariant.Product.IsDeleted && !x.Unit.IsDeleted &&
+            (EF.Functions.Collate(x.ProductVariant.Product.Name.Replace("Đ", "D").Replace("đ", "d"), "Latin1_General_100_CI_AI").Contains(normalizedTerm) ||
+             EF.Functions.Collate(x.ProductVariant.ProductVariantName!.Replace("Đ", "D").Replace("đ", "d"), "Latin1_General_100_CI_AI").Contains(normalizedTerm) ||
+             x.ProductVariant.Sku.Contains(term) || x.Barcodes.Any(b => b.Barcode == term && !b.IsDeleted)))
+            .OrderBy(x => x.ProductVariant.Product.Name).ThenBy(x => x.Factor).Take(30)
+            .Select(x => new { id = x.Id, productVariantId = x.ProductVariantId,
+                name = x.ProductVariant.ProductVariantName ?? x.ProductVariant.Product.Name,
+                sku = x.ProductVariant.Sku, unitId = x.UnitId, unitName = x.Unit.Name, factor = x.Factor,
+                baseUnitId = x.ProductVariant.Product.BaseUnitId, baseUnitName = x.ProductVariant.Product.BaseUnit.Name,
+                active = x.IsActive && x.Unit.IsActive && x.ProductVariant.IsActive && x.ProductVariant.Product.IsActive,
+                sellable = x.ProductVariant.Product.IsSellable }).ToListAsync(ct);
+        return Ok(new { results = units.Select(x => new {
+            x.id, x.productVariantId, x.name, x.unitId, x.unitName, x.factor, x.baseUnitId, x.baseUnitName,
+            disabled = !x.active, text = $"{x.name} · {x.sku} · {x.unitName} ×{x.factor}" +
+                (!x.active ? " · Ngừng hoạt động – cần kích hoạt trong danh mục" : !x.sellable ? " · Chưa bán POS" : "")
+        }) });
     });
 
     [HttpPost]
@@ -56,6 +87,7 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
     });
 
     [HttpPost("{itemId:int}/review")]
+    [RequestSizeLimit(400000)]
     public Task<IActionResult> Review(int documentId, int itemId, ReviewReceiptIntakeRequest request, CancellationToken ct) => Call(async () =>
     {
         var context = await Context(documentId, ct);
@@ -86,6 +118,20 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         var context = await Context(documentId, ct);
         if (!await Has(context, "update") && !await Has(context, "approve") && !await Has(context, "view")) return Forbid();
         var photo = await intake.GetPhotoAsync(documentId, itemId, ct);
+        if (photo is null) return NotFound();
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(photo, "image/jpeg");
+    });
+
+    [HttpGet("{itemId:int}/review-photo")]
+    public Task<IActionResult> ReviewPhoto(int documentId, int itemId, CancellationToken ct) => Call(async () =>
+    {
+        var context = await Context(documentId, ct);
+        if (!await Has(context, "approve") && !await Has(context, "view")) return Forbid();
+        var photo = await db.StockDocumentProvisionalItems.AsNoTracking()
+            .Where(x => x.StoreId == tenant.StoreId && x.StockDocumentId == documentId && x.Id == itemId && !x.IsDeleted)
+            .Select(x => x.ReviewPhoto).SingleOrDefaultAsync(ct);
         if (photo is null) return NotFound();
         Response.Headers.CacheControl = "private, no-store";
         Response.Headers.XContentTypeOptions = "nosniff";

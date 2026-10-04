@@ -16,6 +16,12 @@ namespace GaoApp.Application.Interfaces.Repositories.Products;
 /// </summary>
 public interface IProductRepository
 {
+    Task SynchronizeBaseUnitAsync(int storeId, int productId, int unitId, CancellationToken ct = default);
+    Task<PagedResult<ProductListItemDto>> SearchCatalogAsync(int storeId, string? search, int? categoryId,
+        bool? isActive, bool? isSellable, int page, int pageSize, ProductListFilters filters, CancellationToken ct = default);
+    Task<List<ProductFilterOptionDto>> FilterOptionsAsync(int storeId, string kind, string? term, int? selectedId, CancellationToken ct = default);
+
+
     Task<PagedResult<ProductListItemDto>> GetPagedAsync(
         int storeId,
         string? search,

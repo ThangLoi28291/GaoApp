@@ -1,6 +1,8 @@
 using System.Globalization;
 using GaoApp.Application.Common;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
+using Microsoft.AspNetCore.DataProtection;
 using GaoApp.Web.Areas.Admin.Controllers;
 using GaoApp.Web.Services.Acb;
 using Microsoft.AspNetCore.Builder;
@@ -18,6 +20,78 @@ namespace GaoApp.Tests.Payments;
 
 public sealed partial class AcbPaymentTests
 {
+    [Theory]
+    [InlineData(AcbSessionStatus.Creating)]
+    [InlineData(AcbSessionStatus.Pending)]
+    [InlineData(AcbSessionStatus.ReviewRequired)]
+    public async Task Lost_key_credentials_can_be_restored_without_changing_unresolved_QRs(AcbSessionStatus status)
+    {
+        await using var f = await Fixture.Create();
+        await f.Service.TryCreateAsync(100, default);
+        var session = await f.Db.Set<AcbQrSession>().SingleAsync();
+        session.Status = status;
+        var saved = (await f.Service.SettingsAsync(default))!;
+        var oldProtocol = new AcbProtocol(new HttpClient(), new EphemeralDataProtectionProvider());
+        saved.ClientSecretProtected = oldProtocol.Protect(1, "test-secret");
+        saved.CallbackApiKeyProtected = oldProtocol.Protect(1, "test-key");
+        await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<System.Security.Cryptography.CryptographicException>(
+            () => f.Protocol.CheckConnectionAsync(saved, default));
+        await using var app = SettingsTestHost(f);
+        using var scope = app.Services.CreateScope();
+        var controller = SettingsController(f, scope.ServiceProvider);
+        var form = Assert.IsType<AcbSettingsForm>(Assert.IsType<ViewResult>(await controller.Index(default(CancellationToken))).Model);
+        form.ClientSecret = "test-secret";
+        form.CallbackApiKey = "test-key";
+        Assert.IsType<RedirectToActionResult>(await controller.Index(form, default));
+        f.Db.ChangeTracker.Clear();
+        var restored = (await f.Service.SettingsAsync(default))!;
+        Assert.True((await f.Protocol.CheckConnectionAsync(restored, default)).AuthenticationSucceeded);
+        Assert.True(f.Protocol.VerifyKey(restored, "test-key"));
+        Assert.Equal(status, (await f.Db.Set<AcbQrSession>().SingleAsync()).Status);
+        Assert.Equal(70000m, (await f.Db.PosPaymentQrRequests.SingleAsync()).Amount);
+        Assert.Equal(30000m, Assert.Single(f.Order.Payments).Amount);
+        Assert.Single(f.Bank.Orders);
+        Assert.Equal(0, f.Bank.CancelCalls);
+        Assert.Equal(0, f.FinalizeCount);
+    }
+
+    public static IEnumerable<object[]> AcbNonSecretSettingNames() =>
+        AcbSettingsForm.TextFields.Concat([nameof(AcbSettingsForm.Enabled), nameof(AcbSettingsForm.BankAccountId)])
+            .Select(name => new object[] { name });
+
+    [Theory]
+    [MemberData(nameof(AcbNonSecretSettingNames))]
+    public async Task Pending_QR_still_blocks_connection_changes_even_when_reentering_secret(string field)
+    {
+        await using var f = await Fixture.Create();
+        await f.Service.TryCreateAsync(100, default);
+        f.Db.StoreBankAccounts.Add(new StoreBankAccount { Id = 2, StoreId = 1, BankCode = "ACB", BankName = "ACB", AccountNumber = "OTHER", AccountName = "Test", IsActive = true });
+        await f.Db.SaveChangesAsync();
+        var saved = (await f.Service.SettingsAsync(default))!;
+        var originalSecret = saved.ClientSecretProtected;
+        var originalField = typeof(StoreAcbSettings).GetProperty(field)!.GetValue(saved);
+        await using var app = SettingsTestHost(f);
+        using var scope = app.Services.CreateScope();
+        var controller = SettingsController(f, scope.ServiceProvider);
+        var form = Assert.IsType<AcbSettingsForm>(Assert.IsType<ViewResult>(await controller.Index(default(CancellationToken))).Model);
+        if (field == nameof(form.Enabled)) form.Enabled = !form.Enabled;
+        else if (field == nameof(form.BankAccountId)) form.BankAccountId = 2;
+        else
+        {
+            var property = typeof(AcbSettingsForm).GetProperty(field)!;
+            property.SetValue(form, (string?)property.GetValue(form) + "/changed");
+        }
+        form.ClientSecret = "replacement-secret";
+        Assert.IsType<ViewResult>(await controller.Index(form, default));
+        Assert.Contains(controller.ModelState[""]!.Errors, e => e.ErrorMessage.Contains("Cần xử lý các QR"));
+        f.Db.ChangeTracker.Clear();
+        saved = (await f.Service.SettingsAsync(default))!;
+        Assert.Equal(originalSecret, saved.ClientSecretProtected);
+        Assert.Equal(originalField, typeof(StoreAcbSettings).GetProperty(field)!.GetValue(saved));
+        Assert.Null(form.ClientSecret);
+    }
+
     private static WebApplication SettingsTestHost(Fixture f)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing", ContentRootPath = Path.GetTempPath() });

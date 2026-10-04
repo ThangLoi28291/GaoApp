@@ -1,0 +1,9 @@
+.operations-tabs{display:flex;gap:12px;margin-bottom:18px}
+.operations-tabs>button{flex:1;min-width:0;border:1px solid #dce3ee;border-radius:14px;background:#fff;color:#475467;text-align:left;padding:16px 20px;font-size:1rem;font-weight:750;line-height:1.45}
+.operations-tabs>button small{display:block;font-size:.8rem;font-weight:500;margin-top:3px;opacity:.8}
+.operations-tabs>button.is-active{background:#244bd1;color:#fff;border-color:#244bd1;box-shadow:0 5px 15px #244bd11a}
+.operations-panel-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}
+.operations-panel-toolbar p{color:#697586;margin:0;font-size:.88rem}
+.operations-panel-toolbar>.btn{flex-shrink:0;white-space:nowrap}
+#posOperationsRequests .ca-heading{margin-top:22px}#posOperationsRequests .ca-heading h1{margin-top:4px}
+@media(max-width:640px){.operations-tabs{gap:8px}.operations-tabs>button{padding:12px;font-size:.9rem}.operations-panel-toolbar{align-items:flex-start}.operations-panel-toolbar p{font-size:.82rem}#posOperationsRequests .ca-heading{flex-wrap:wrap}#posOperationsRequests .ca-tabs{gap:6px;overflow-x:auto}#posOperationsRequests .ca-tabs>.btn{flex-shrink:0;white-space:nowrap;font-size:.82rem;padding:8px 9px}}

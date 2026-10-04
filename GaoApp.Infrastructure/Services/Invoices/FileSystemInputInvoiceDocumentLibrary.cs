@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
-public sealed class FileSystemInputInvoiceDocumentLibrary
+public sealed partial class FileSystemInputInvoiceDocumentLibrary
     : IInputInvoiceDocumentLibrary
 {
     private const int MaximumPdfBytes = 50 * 1024 * 1024;
@@ -180,6 +180,7 @@ public sealed class FileSystemInputInvoiceDocumentLibrary
             Dto = new InputInvoicePickerCandidateDto
             {
                 DocumentKey = $"{year:0000}:{month:00}:{stem}",
+                SourceSupplierTaxCode = taxCode,
                 InvoiceDate = invoice?.InvoiceDate,
                 InvoiceTemplateCode = invoice?.InvoiceTemplateCode,
                 InvoiceSeries = invoice?.InvoiceSeries,

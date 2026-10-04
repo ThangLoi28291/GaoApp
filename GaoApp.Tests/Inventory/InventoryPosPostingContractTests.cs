@@ -287,8 +287,10 @@ public sealed class InventoryPosPostingContractTests
         var act = () => fixture.Service.CreateAsync(
             fixture.CreateRequest(10));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*evidence*");
+        var failure = await act.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>();
+        failure.Which.ErrorCode.Should().Be("POS_PARTIAL_RETURN_FAILED");
+        failure.Which.InnerException.Should().BeOfType<InvalidOperationException>()
+            .Which.Message.Should().Contain("evidence");
         fixture.Movements.PreLockBatches.Should().BeEmpty();
         fixture.Movements.CreatedRequests.Should().BeEmpty();
         fixture.Reversals.Added.Should().BeEmpty();
@@ -304,7 +306,7 @@ public sealed class InventoryPosPostingContractTests
         var act = () => fixture.Service.CreateAsync(
             fixture.CreateRequest(20));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.BusinessRuleException>()
             .WithMessage("*operation-wide batch planning*");
         fixture.Movements.PreLockBatches.Should().BeEmpty();
         fixture.Movements.CreatedRequests.Should().BeEmpty();

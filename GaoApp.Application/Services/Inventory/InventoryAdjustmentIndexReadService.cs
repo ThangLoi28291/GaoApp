@@ -91,7 +91,8 @@ public sealed class InventoryAdjustmentIndexReadService
 
     private static bool IsAdjustmentType(InventoryTransactionType? value)
         => value is InventoryTransactionType.AdjustmentIncrease
-            or InventoryTransactionType.AdjustmentDecrease;
+            or InventoryTransactionType.AdjustmentDecrease
+            or InventoryTransactionType.Revaluation;
 
     private static string? NormalizeText(string? value, int maxLength)
     {
@@ -138,6 +139,7 @@ public sealed class InventoryAdjustmentIndexReadService
         {
             InventoryTransactionType.AdjustmentIncrease => "Điều chỉnh tăng",
             InventoryTransactionType.AdjustmentDecrease => "Điều chỉnh giảm",
+            InventoryTransactionType.Revaluation => "Điều chỉnh giá vốn",
             _ => "Không rõ"
         };
 

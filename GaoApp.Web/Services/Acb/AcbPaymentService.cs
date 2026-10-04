@@ -60,14 +60,15 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
                 throw new InvalidOperationException("Đơn đã thay đổi. Hãy hủy QR cũ trước khi tạo QR mới.");
             return await MapQrAsync(existing, ct);
         }
+        await RequirePreviousQrResolvedAsync(order, ct);
         if (!AcbPaymentPolicy.Eligible(order)) return null;
         if (await Sessions.AnyAsync(x => x.OrderId == orderId &&
             (x.Status == AcbSessionStatus.Creating || x.Status == AcbSessionStatus.ReviewRequired), ct))
             throw new InvalidOperationException("Đơn còn QR đang xác minh hoặc cần kiểm tra. Hãy xử lý QR đó trong lịch sử trước khi tạo thêm.");
         if (order.Status != OrderStatus.Draft) throw new InvalidOperationException("Đơn không còn là giỏ đang thanh toán.");
         var amount = request?.Amount is > 0 ? request.Amount.Value : AcbPaymentPolicy.Balance(order);
-        if (amount <= 0 || amount > AcbPaymentPolicy.Balance(order) || amount != decimal.Truncate(amount) || amount > int.MaxValue)
-            throw new InvalidOperationException("Số tiền QR phải là số đồng nguyên dương, không vượt quá số còn thiếu hoặc giới hạn ACB.");
+        if (amount <= 0 || amount != decimal.Truncate(amount) || amount > int.MaxValue)
+            throw new InvalidOperationException("Số tiền QR phải là số đồng nguyên dương, không vượt quá giới hạn ACB.");
         var bank = await db.StoreBankAccounts.SingleOrDefaultAsync(x => x.Id == settings.BankAccountId && x.StoreId == StoreId && x.IsActive, ct)
             ?? throw new InvalidOperationException("Chưa cấu hình tài khoản ACB đang hoạt động cho cửa hàng.");
         if (settings.MerchantId.Length > 30 || settings.BeneficiaryName.Length > 30)
@@ -149,6 +150,8 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
         if (hint == null) return false;
         await using var gate = await locks.AcquireAsync(db, hint.OrderId, ct);
         var session = await Sessions.SingleAsync(x => x.Id == hint.Id, ct);
+        // A caller may have tracked this session before acquiring the lock. Preserve any callback that won the race.
+        await db.Entry(session).ReloadAsync(ct);
         RequireTerminal(await OrderAsync(session.OrderId, ct), session);
         if (session.Status == AcbSessionStatus.Cancelled) return true;
         var confirmedAbsent = await RetrieveLockedAsync(session, ct, AcbConfirmationSource.CancellationCheck); // Detect a payment racing with cancellation.
@@ -351,6 +354,7 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
         var hint = await Sessions.AsNoTracking().SingleAsync(x => x.QrRequestId == qrId, ct);
         await using var gate = await locks.AcquireAsync(db, hint.OrderId, ct);
         var session = await Sessions.SingleAsync(x => x.Id == hint.Id, ct);
+        await db.Entry(session).ReloadAsync(ct);
         RequireTerminal(await OrderAsync(session.OrderId, ct), session);
         var bankQueried = false;
         if (refresh && (session.Status is AcbSessionStatus.Pending or AcbSessionStatus.Creating ||
@@ -370,6 +374,7 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
         var hint = await Sessions.AsNoTracking().SingleAsync(x => x.QrRequestId == qrId, ct);
         await using var gate = await locks.AcquireAsync(db, hint.OrderId, ct);
         var session = await Sessions.SingleAsync(x => x.Id == hint.Id, ct);
+        await db.Entry(session).ReloadAsync(ct);
         var order = await OrderAsync(session.OrderId, ct);
         RequireTerminal(order, session);
         if (session.Status is not (AcbSessionStatus.Received or AcbSessionStatus.Completed))
@@ -393,6 +398,7 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
             session.PaymentId = payment.Id;
             order.PaidTotal = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount);
             order.BalanceDue = Math.Max(0, order.GrandTotal - order.PaidTotal);
+            order.ChangeDue = Math.Max(0, order.PaidTotal - order.GrandTotal);
             order.PaymentStatus = order.BalanceDue > 0 ? PaymentStatus.PartiallyPaid : PaymentStatus.Paid;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);

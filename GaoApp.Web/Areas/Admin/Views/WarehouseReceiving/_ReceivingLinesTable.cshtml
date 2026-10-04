@@ -97,7 +97,9 @@ else
                                 <button type="button"
                                         class="btn btn-sm btn-outline-danger btn-delete-receiving-line"
                                         data-line-id="@line.Id"
-                                        data-product-name="@line.ProductNameSnapshot">
+                                        data-product-name="@line.ProductNameSnapshot"
+                                        data-unit-name="@line.UnitName"
+                                        data-product-code="@(line.BarcodeSnapshot ?? line.SkuSnapshot ?? "")">
                                     Xóa
                                 </button>
                             }

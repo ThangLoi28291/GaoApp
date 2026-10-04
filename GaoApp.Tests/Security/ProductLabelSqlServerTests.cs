@@ -12,11 +12,60 @@ using Microsoft.EntityFrameworkCore;
 namespace GaoApp.Tests.Security;
 
 [Collection("SqlServerConcurrency")]
-public sealed class ProductLabelSqlServerTests
+public sealed partial class ProductLabelSqlServerTests
 {
     private const string Url = "/admin/label-printing/";
     private static string Version(JsonElement json) => json.GetProperty("rowVersion").GetString()!;
     private static int Id(JsonElement json) => json.GetProperty("id").GetInt32();
+
+    [Fact]
+    public async Task Bound_printer_atomic_plan_and_retry_enforce_assignment_without_changing_receipt()
+    {
+        await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
+        using var admin = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        using var staff = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.System.ProductLabel.Print));
+        using var other = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        var receipt = await SeedReceipt(app, store);
+        var preview = await staff.JsonAsync(HttpMethod.Get, Url + $"receipts/{receipt}/preview");
+        Assert.Equal(JsonValueKind.Null, preview.GetProperty("id").ValueKind);
+        Assert.Empty((await staff.JsonAsync(HttpMethod.Get, Url + "tasks")).EnumerateArray());
+        using (var response = await other.Http.GetAsync(Url + $"receipts/{receipt}/preview")) Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var p1 = await admin.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Kho", WindowsPrinterName = "FAKE KHO" });
+        var p2 = await admin.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Quầy", WindowsPrinterName = "FAKE QUAY" });
+        using (var response = await admin.Http.PostAsJsonAsync(Url + "templates", new SaveLabelTemplate(new(), null))) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using (var response = await other.Http.PostAsJsonAsync(Url + "templates", new SaveLabelTemplate(new() { PrinterId = Id(p1) }, null))) Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var design = new ProductLabelDesign { PrinterId = Id(p1), QuantityMode = "custom" };
+        var template = await admin.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(design, null));
+        var added = await staff.JsonAsync(HttpMethod.Post, Url + "receipts/" + receipt);
+        var task = await staff.JsonAsync(HttpMethod.Get, Url + "tasks/" + Id(added));
+        var request = new LabelJobRequest(Id(task), Id(template), Id(p1), [new(store.VariantId, 7)], Guid.NewGuid(), Version(task), Version(template))
+            { PlanLines = [new(store.VariantId, 7)] };
+        using (var response = await staff.Http.PostAsJsonAsync(Url + "jobs", request with { PrinterId = Id(p2) })) Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        using (var response = await staff.Http.PostAsJsonAsync(Url + "jobs", request with { PlanLines = [new(store.VariantId, 6)] })) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var unchanged = await staff.JsonAsync(HttpMethod.Get, Url + "tasks/" + Id(task));
+        Assert.Equal(0, unchanged.GetProperty("lines")[0].GetProperty("required").GetInt32());
+        Assert.Equal(Version(task), Version(unchanged));
+        var job = await staff.JsonAsync(HttpMethod.Post, Url + "jobs", request);
+        var planned = await staff.JsonAsync(HttpMethod.Get, Url + "tasks/" + Id(task));
+        Assert.Equal(7, planned.GetProperty("lines")[0].GetProperty("required").GetInt32());
+        Assert.Equal(Id(template), planned.GetProperty("templateId").GetInt32());
+        template = await admin.JsonAsync(HttpMethod.Put, Url + "templates/" + Id(template), new SaveLabelTemplate(design with { PrinterId = Id(p2) }, Version(template)));
+        Assert.Equal(Id(job), Id(await staff.JsonAsync(HttpMethod.Post, Url + "jobs", request)));
+        var jobs = await staff.JsonAsync(HttpMethod.Get, Url + "jobs"); Assert.Single(jobs.EnumerateArray());
+        Assert.Equal("Kho", jobs[0].GetProperty("payload").GetProperty("printer").GetProperty("name").GetString());
+        await staff.JsonAsync(HttpMethod.Post, Url + $"jobs/{Id(job)}/cancel", new LabelVersion(Version(jobs[0])));
+        using (var stale = await staff.Http.PostAsJsonAsync(Url + "jobs", request with { RequestId = Guid.NewGuid() })) Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        planned = await staff.JsonAsync(HttpMethod.Get, Url + "tasks/" + Id(task));
+        var newRequest = request with { RequestId = Guid.NewGuid(), PrinterId = Id(p2), TemplateVersion = Version(template), RowVersion = Version(planned) };
+        template = await admin.JsonAsync(HttpMethod.Put, Url + "templates/" + Id(template), new SaveLabelTemplate(design with { PrinterId = Id(p2), ShowPrintButton = false }, Version(template)));
+        using (var hidden = await staff.Http.PostAsJsonAsync(Url + "jobs", newRequest with { TemplateVersion = Version(template) })) Assert.Equal(HttpStatusCode.Conflict, hidden.StatusCode);
+        template = await admin.JsonAsync(HttpMethod.Put, Url + "templates/" + Id(template), new SaveLabelTemplate(design with { PrinterId = Id(p2) }, Version(template)));
+        await admin.JsonAsync(HttpMethod.Put, Url + "printers/" + Id(p2), new SaveLabelPrinter { Name = "Quầy", WindowsPrinterName = "FAKE QUAY", Enabled = false, RowVersion = Version(p2) });
+        using (var disabled = await staff.Http.PostAsJsonAsync(Url + "jobs", newRequest with { TemplateVersion = Version(template) })) Assert.Equal(HttpStatusCode.Conflict, disabled.StatusCode);
+        await using var verify = app.Database.CreateTenantContext(store.StoreId);
+        Assert.Equal(StockDocumentStatus.Draft, (await verify.Set<StockDocument>().SingleAsync(x => x.Id == receipt)).Status);
+        Assert.Equal(100, (await verify.InventoryBalances.SingleAsync()).OnHandQty);
+    }
 
     [Fact]
     public async Task Upgrade_is_additive_and_preserves_existing_stock_and_catalog()
@@ -40,7 +89,8 @@ public sealed class ProductLabelSqlServerTests
         using var employee = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.System.ProductLabel.Print));
         using var outsider = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
         using var denied = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View));
-        var design = new ProductLabelDesign { WidthMm = 50, HeightMm = 30, Columns = 2, QuantityMode = "received" };
+        var assignedPrinter = await manager.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Kho", WindowsPrinterName = "TEST" });
+        var design = new ProductLabelDesign { PrinterId = Id(assignedPrinter), WidthMm = 50, HeightMm = 30, Columns = 2, QuantityMode = "received" };
         using (var response = await employee.Http.PostAsJsonAsync(Url + "templates", new SaveLabelTemplate(design, null))) Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         using (var response = await denied.Http.GetAsync(Url + "tasks")) Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var saved = await manager.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(design, null));
@@ -70,7 +120,7 @@ public sealed class ProductLabelSqlServerTests
         using var denied = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View));
         const string settingsUrl = "/admin/label-printing-settings";
         var printHtml = await staff.Http.GetStringAsync(Url);
-        Assert.Contains("data-page=\"print\"", printHtml); Assert.Contains("id=\"taskLines\"", printHtml);
+        Assert.Contains("data-page=\"print\"", printHtml); Assert.Contains("id=\"taskPrintEditor\"", printHtml);
         Assert.DoesNotContain("id=\"templateFields\"", printHtml); Assert.DoesNotContain("id=\"printerForm\"", printHtml);
         Assert.DoesNotContain("href=\"" + settingsUrl + "\"", printHtml);
         using (var response = await staff.Http.GetAsync(settingsUrl)) Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -85,8 +135,8 @@ public sealed class ProductLabelSqlServerTests
         { using var response = await config.Http.PostAsJsonAsync(Url + path, new { }); Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode); }
         using (var response = await config.Http.PutAsJsonAsync(Url + "tasks/1/plan", new { })) Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
 
-        var template = await config.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new ProductLabelDesign { Layout = "price-tag" }, null));
         var printer = await config.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Kho", WindowsPrinterName = "TEST USB" });
+        var template = await config.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new ProductLabelDesign { PrinterId = Id(printer), Layout = "price-tag" }, null));
         Assert.Equal("Giá nền đen", template.GetProperty("layoutName").GetString());
         Assert.Equal(1, (await staff.JsonAsync(HttpMethod.Get, Url + "templates")).GetArrayLength());
         Assert.Equal(1, (await staff.JsonAsync(HttpMethod.Get, Url + "printers")).GetArrayLength());
@@ -109,8 +159,8 @@ public sealed class ProductLabelSqlServerTests
         var store = app.Stores[0]; var account = await app.AddAccountAsync(store, "*");
         using var client = await app.LoginAsync(account);
         var receipt = await SeedReceipt(app, store);
-        var template = await client.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new ProductLabelDesign { QuantityMode = "received" }, null));
         var printer = await client.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Test USB", WindowsPrinterName = "MOCK-XPRINTER" });
+        var template = await client.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new ProductLabelDesign { PrinterId = Id(printer), QuantityMode = "received" }, null));
         var taskId = Id(await client.JsonAsync(HttpMethod.Post, Url + "receipts/" + receipt));
         var task = await client.JsonAsync(HttpMethod.Get, Url + "tasks/" + taskId);
         var product = task.GetProperty("lines")[0].GetProperty("product");
@@ -159,8 +209,8 @@ public sealed class ProductLabelSqlServerTests
         await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
         using var client = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
         var receiptId = await SeedReceipt(app, store);
-        var template = await client.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new(), null));
         var printer = await client.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Mock", WindowsPrinterName = "Mock" });
+        var template = await client.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(new() { PrinterId = Id(printer) }, null));
         int taskId = Id(await client.JsonAsync(HttpMethod.Post, Url + "receipts/" + receiptId));
         var task = await client.JsonAsync(HttpMethod.Get, Url + "tasks/" + taskId);
         task = await client.JsonAsync(HttpMethod.Put, Url + $"tasks/{taskId}/plan", new LabelPlanRequest(Id(template), [new(store.VariantId, 1)], Version(task)));
@@ -213,10 +263,12 @@ public sealed class ProductLabelSqlServerTests
         var taskId = Id(await client.JsonAsync(HttpMethod.Post, Url + "receipts/" + receipt));
         var task = await client.JsonAsync(HttpMethod.Get, Url + "tasks/" + taskId);
         task = await client.JsonAsync(HttpMethod.Put, Url + $"tasks/{taskId}/plan", new LabelPlanRequest(templateId, [new(store.VariantId, 1)], Version(task)));
+        using (var missingBinding = await client.Http.PostAsJsonAsync(Url + "jobs", new LabelJobRequest(taskId, templateId, Id(printer), [new(store.VariantId, 1)], Guid.NewGuid(), Version(task), Version(template)))) Assert.Equal(HttpStatusCode.Conflict, missingBinding.StatusCode);
+        template = await client.JsonAsync(HttpMethod.Put, Url + "templates/" + templateId, new SaveLabelTemplate(new() { PrinterId = Id(printer) }, Version(template)));
         var request = new LabelJobRequest(taskId, templateId, Id(printer), [new(store.VariantId, 1)], Guid.NewGuid(), Version(task), Version(template));
         var job = await client.JsonAsync(HttpMethod.Post, Url + "jobs", request);
         var saved = await client.JsonAsync(HttpMethod.Put, Url + "templates/" + templateId,
-            new SaveLabelTemplate(new ProductLabelDesign { BarcodeFormat = "EAN8", Layout = "price-first", QuantityMode = "received", WidthMm = 50, HeightMm = 30 }, Version(template)));
+            new SaveLabelTemplate(new ProductLabelDesign { PrinterId = Id(printer), BarcodeFormat = "EAN8", Layout = "price-first", QuantityMode = "received", WidthMm = 50, HeightMm = 30 }, Version(template)));
         Assert.Equal("AUTO", saved.GetProperty("design").GetProperty("barcodeFormat").GetString());
         Assert.Equal("price-first", saved.GetProperty("design").GetProperty("layout").GetString());
         Assert.Equal(Id(job), Id(await client.JsonAsync(HttpMethod.Post, Url + "jobs", request)));
@@ -241,6 +293,72 @@ public sealed class ProductLabelSqlServerTests
             Lines = [new StockDocumentLine { ProductVariantId = variant.Id, Quantity = 2, Factor = 24, BaseQuantity = 48, LineNo = 1, ProductNameSnapshot = "Sữa tươi không đường", UnitNameSnapshot = "Thùng" }] };
         db.Add(doc); await db.SaveChangesAsync(); return doc.Id;
     }
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public async Task Quick_print_uses_catalog_units_checks_stale_prices_and_confirms_each_unit_without_changing_stock()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        using var manager = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        using var employee = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.System.ProductLabel.Print));
+        using var denied = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View));
+        using var outsider = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        await SeedReceipt(app, store);
+        int packId;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var pack = new ProductUnitConversion { StoreId = store.StoreId, ProductVariantId = store.VariantId, Factor = 6, Price = 70000,
+                Unit = new Unit { StoreId = store.StoreId, Code = "QUICKPACK", Name = "Lốc", IsActive = true }, IsActive = true };
+            db.Add(pack); await db.SaveChangesAsync(); packId = pack.Id;
+            db.Add(new ProductVariantUnitBarcode { StoreId = store.StoreId, ProductUnitConversionId = packId, Barcode = "000123", IsActive = true });
+            await db.SaveChangesAsync();
+        }
+        var printer = await manager.JsonAsync(HttpMethod.Post, Url + "printers", new SaveLabelPrinter { Name = "Quick Test", WindowsPrinterName = "No physical printer" });
+        var template = await manager.JsonAsync(HttpMethod.Post, Url + "templates", new SaveLabelTemplate(ProductLabelLayouts.DefaultDesign("retail-large") with { PrinterId = Id(printer) }, null));
+        var options = (await employee.JsonAsync(HttpMethod.Get, Url + "products?variantId=" + store.VariantId)).Deserialize<List<QuickLabelOption>>(LabelJson.Options)!;
+        Assert.Equal(2, options.Count);
+        Assert.Equal(70000, options.Single(x => x.ConversionId == packId).Product.Price);
+        Assert.Single((await employee.JsonAsync(HttpMethod.Get, Url + "products?q=000123")).EnumerateArray());
+        Assert.Empty((await outsider.JsonAsync(HttpMethod.Get, Url + "products?variantId=" + store.VariantId)).EnumerateArray());
+        using (var response = await denied.Http.GetAsync(Url + "products?q=000123")) Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var request = new LabelJobRequest(null, Id(template), Id(printer), [], Guid.NewGuid(), null, Version(template))
+        { QuickLines = options.Select(x => new QuickLabelSelection(x.ConversionId, 2, x.Fingerprint)).ToList() };
+        var token = employee.Http.DefaultRequestHeaders.GetValues("RequestVerificationToken").Single();
+        employee.Http.DefaultRequestHeaders.Remove("RequestVerificationToken");
+        using (var response = await employee.Http.PostAsJsonAsync(Url + "jobs", request)) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        employee.Http.DefaultRequestHeaders.Add("RequestVerificationToken", token);
+        using (var response = await outsider.Http.PostAsJsonAsync(Url + "jobs", request)) Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        using (var response = await employee.Http.PostAsJsonAsync(Url + "jobs", request with { QuickLines = [request.QuickLines[0], request.QuickLines[0]] })) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using (var response = await employee.Http.PostAsJsonAsync(Url + "jobs", request with { QuickLines = [request.QuickLines[0] with { Quantity = 0 }] })) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        { var pack = await db.ProductUnitConversions.SingleAsync(x => x.Id == packId); pack.Price = 71000; await db.SaveChangesAsync(); }
+        using (var response = await employee.Http.PostAsJsonAsync(Url + "jobs", request)) Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        options = (await employee.JsonAsync(HttpMethod.Post, Url + "products/refresh", new QuickLabelRefresh(options.Select(x => x.ConversionId).ToList()))).Deserialize<List<QuickLabelOption>>(LabelJson.Options)!;
+        request = request with { QuickLines = options.Select(x => new QuickLabelSelection(x.ConversionId, 2, x.Fingerprint)).ToList() };
+        int jobId = Id(await employee.JsonAsync(HttpMethod.Post, Url + "jobs", request));
+        Assert.Equal(jobId, Id(await employee.JsonAsync(HttpMethod.Post, Url + "jobs", request)));
+        using (var response = await employee.Http.PostAsJsonAsync(Url + "jobs", request with { QuickLines = [request.QuickLines[0]] })) Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var job = await db.Set<ProductLabelJob>().SingleAsync(x => x.Id == jobId);
+            Assert.Null(job.TaskId); Assert.Equal(4, job.Quantity);
+            var payload = LabelJson.Read<LabelPrintPayload>(job.PayloadJson);
+            Assert.Equal(2, payload.Items.Select(x => x.Product.UnitId).Distinct().Count());
+            Assert.Contains(payload.Items, x => x.Product.Barcode == "000123" && x.Product.Price == 71000);
+            Assert.NotEmpty(ProductLabelRenderer.Commands(payload).ToArray());
+            job.Status = ProductLabelJobStatus.AwaitingConfirmation; await db.SaveChangesAsync();
+        }
+        var saved = (await employee.JsonAsync(HttpMethod.Get, Url + "jobs")).EnumerateArray().Single(x => Id(x) == jobId);
+        var received = options.Select(x => new LabelQuantity(x.Product.VariantId, 2, x.Product.UnitId)).ToList();
+        using (var response = await employee.Http.PostAsJsonAsync(Url + $"jobs/{jobId}/confirm", new LabelConfirmRequest(Version(saved), [received[0], received[0]], null))) Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await employee.JsonAsync(HttpMethod.Post, Url + $"jobs/{jobId}/confirm", new LabelConfirmRequest(Version(saved), received, null));
+        await using var verify = app.Database.CreateTenantContext(store.StoreId);
+        Assert.Empty(await verify.Set<ProductLabelTask>().ToListAsync());
+        Assert.Equal(100, (await verify.InventoryBalances.SingleAsync()).OnHandQty);
+        Assert.Equal(StockDocumentStatus.Draft, (await verify.Set<StockDocument>().SingleAsync()).Status);
+        Assert.Equal(ProductLabelJobStatus.Confirmed, (await verify.Set<ProductLabelJob>().SingleAsync()).Status);
+    }
+
     private sealed class FakeTransport : ILabelPrintTransport
     {
         private int calls; public int Calls => calls; public bool Fail { get; init; }

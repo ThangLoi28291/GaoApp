@@ -1,0 +1,33 @@
+@using System.Text.Json
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService ReceiptAuthorization
+@{
+    async Task<bool> Allowed(string policy) => (await ReceiptAuthorization.AuthorizeAsync(User, null, policy)).Succeeded;
+    var permissions = new {
+        inventory = new { edit = await Allowed("inventory.stockdocument.update"), manage = await Allowed("inventory.stockdocument.approve"), delete = await Allowed("inventory.stockdocument.delete") },
+        purchase = new { edit = await Allowed("purchase.receipt.update"), manage = await Allowed("purchase.receipt.approve"), delete = await Allowed("purchase.receipt.delete") }
+    };
+    var documentId = ViewData["ReceiptDocumentActionsId"] as int? ?? 0;
+}
+<script id="receiptDocumentPermissions" type="application/json">@Html.Raw(JsonSerializer.Serialize(permissions))</script>
+<div id="receiptDocumentActions" data-document-id="@documentId" class="mb-3">
+    @if (documentId > 0) { <div id="receiptDocumentToolbar" class="d-flex flex-wrap gap-2 mb-2"></div><div id="receiptTitleProposalNotice" class="alert alert-info d-none" role="status"></div> }
+</div>
+<div class="modal" id="receiptDocumentModal" tabindex="-1" aria-labelledby="receiptDocumentModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 id="receiptDocumentModalTitle" class="modal-title">Tên phiếu nhập</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            @Html.AntiForgeryToken()
+            <div id="receiptDocumentIdentity" class="fw-semibold mb-3"></div>
+            <div id="receiptTitleProposal" class="alert alert-info d-none"></div>
+            <div id="receiptTitleFields"><label for="receiptNewTitle" class="form-label">Tên phiếu mới</label><input id="receiptNewTitle" class="form-control" maxlength="255" autocomplete="off" /><p id="receiptTitleHint" class="small text-muted mt-2"></p></div>
+            <div id="receiptDeleteWarning" class="alert alert-warning d-none">Xóa phiếu này khỏi danh sách? Chỉ phiếu nháp chưa từng gửi duyệt mới được xóa.</div>
+            <div id="receiptDocumentMessage" class="text-danger mt-2" role="alert"></div>
+        </div>
+        <div class="modal-footer flex-wrap">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Đóng</button>
+            <button id="receiptTitleDecline" type="button" class="btn btn-outline-danger d-none">Từ chối tên đề nghị</button>
+            <button id="receiptTitleApprove" type="button" class="btn btn-success d-none">Duyệt tên đề nghị</button>
+            <button id="receiptTitleSave" type="button" class="btn btn-primary">Lưu tên</button>
+        </div>
+    </div></div>
+</div>

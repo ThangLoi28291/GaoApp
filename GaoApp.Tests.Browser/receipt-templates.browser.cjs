@@ -79,13 +79,16 @@ async function prepare(page, context, info, output) {
     await studio.locator('#designName').fill('Gạo · Bill quầy 45 mm');
     await studio.locator('#designFooter').fill('Cảm ơn quý khách!\nĐổi hàng trong 7 ngày với hóa đơn.');
     await studio.locator('#saveTemplate').click();
-    await studio.locator('#studioMessage').filter({ hasText: 'Đã lưu mẫu cửa hàng' }).waitFor();
+    await studio.locator('#studioMessage').filter({ hasText: 'Đã lưu mẫu.' }).waitFor();
     await studio.locator('#printMode').selectOption('qz');
     await studio.locator('#connectPrinters').click();
     await studio.locator('#studioMessage').filter({ hasText: 'Đã tìm thấy 2 máy in' }).waitFor();
     await studio.locator('#clientPrinter').selectOption('Linux_CUPS_HP');
     await studio.locator('#printCopies').fill('2');
     await studio.locator('#applyTemplate').click();
+    await studio.locator('#setStoreDefault').click();
+    await studio.locator('#studioMessage').filter({hasText:'Đã đặt mẫu mặc định'}).waitFor();
+    await page.waitForFunction(() => PosOffline.status().context.receiptDefault?.template?.design.paperSize === '45');
     await studio.locator('#activePrintProfile').filter({ hasText: 'Linux_CUPS_HP' }).waitFor();
     await studio.screenshot({ path: path.join(output, 'studio-45.png'), fullPage: true });
     const receipt = { storeName: 'GẠO · MARKET', storeAddress: '128 Nguyễn Văn Cừ, TP. Hồ Chí Minh', storePhone: '0901 234 567',
@@ -144,7 +147,7 @@ async function verifyWidePreview(studio, output) {
     await studio.locator('.studio-preview-panel').screenshot({path:path.join(output,'itemwide-preview-80.png')});
     await studio.locator('#designName').fill('Tên hàng rộng · Mẫu quầy');
     await Promise.all([studio.waitForResponse(r => r.url().endsWith('/receipt-templates/data') && r.request().method() === 'POST' && r.ok()), studio.locator('#saveTemplate').click()]);
-    await studio.locator('#studioMessage').filter({hasText:'Đã lưu mẫu cửa hàng'}).waitFor();
+    await studio.locator('#studioMessage').filter({hasText:'Đã lưu mẫu.'}).waitFor();
     await studio.reload();
     await studio.locator('.template-card').filter({hasText:'Tên hàng rộng · Mẫu quầy'}).click();
     await preview.locator('.receipt.itemwide[data-paper-size="80"]').waitFor();
@@ -173,7 +176,7 @@ async function verifyStoreIdentity(studio, pos, context, info, output) {
     await another.close();
     await studio.locator('[data-template-key="classic-A4"]').click();
     await studio.frameLocator('#receiptPreview').locator('.receipt.classic .brand').filter({ hasText: phone }).waitFor();
-    await studio.locator('.store-identity-panel').screenshot({ path: path.join(output, 'store-identity-settings.png') });
+    await studio.locator('[aria-labelledby=storeIdentityTitle]').screenshot({ path: path.join(output, 'store-identity-settings.png') });
     console.log('PASS: shared store identity replaces demo branding, survives reload/template changes and refreshes the open POS offline cache');
 }
 async function verifyClassicPreview(studio, output) {
@@ -259,6 +262,32 @@ async function onlinePrint(context, info, orderId, output) {
     assert.match(jobs[0].data[0].data, /Tiệm Gạo An Bình/); assert.match(jobs[0].data[0].data, /12 Nguyễn Trãi, Phường An Bình/); assert.match(jobs[0].data[0].data, /0909 123 456/);
     await page.screenshot({ path: path.join(output, 'receipts', 'online-selected-template.png'), fullPage: true });
     await page.close();
-    console.log('PASS: server receipt and offline receipt use the same selected client template and printer');
+    console.log('PASS: server receipt and offline receipt use the same store default and selected local printer');
+    const staffContext = await context.browser().newContext();
+    const staff = await staffContext.newPage();
+    await staff.goto(info.baseUrl + '/admin/account/login');
+    await staff.locator('[name=UserName]').fill(info.cashierUser); await staff.locator('[name=Password]').fill(info.cashierPassword);
+    if (await staff.locator('[name=SelectedTerminalId]').count()) await staff.locator('[name=SelectedTerminalId]').selectOption(String(info.terminalId));
+    await Promise.all([staff.waitForURL(url => !url.pathname.endsWith('/login')), staff.locator('#loginForm button[type=submit]').click()]);
+    await staff.goto(info.baseUrl + '/admin/receipt-templates');
+    assert.equal(new URL(staff.url()).pathname, '/admin/account/access-denied');
+    assert.equal(await staff.locator('#receiptStudio').count(), 0);
+    // A fresh employee browser with an old local template must still receive the shared 45 mm design.
+    await staff.goto(info.baseUrl + `/admin/pos/orders/${orderId}/print?autoPrint=false&size=A4`);
+    await staff.evaluate(() => {
+        const setup = JSON.parse(document.getElementById('receiptPrintData').textContent);
+        localStorage.setItem(`gao-pos-print-v1:${setup.storeId}:${setup.terminalId || 'admin'}`, JSON.stringify({template:{paperSize:'A4',title:'LOCAL OVERRIDE'}}));
+    });
+    await staff.reload();
+    await staff.frameLocator('#receiptPaper').locator('.receipt[data-paper-size="45"]').waitFor();
+    assert.equal(await staff.locator('#printTemplateChoice').count(), 0);
+    assert.equal(await staff.locator('a[href="/admin/receipt-templates"]').count(), 0);
+    assert.match(await staff.locator('#printTemplateName').innerText(), /Bill quầy 45 mm/);
+    await staff.evaluate(() => { window.__staffPrints = 0; document.getElementById('receiptPaper').contentWindow.print = () => window.__staffPrints++; });
+    await staff.locator('#printReceipt').click();
+    assert.equal(await staff.evaluate(() => window.__staffPrints), 1);
+    await staff.screenshot({path:path.join(output, 'receipts', 'employee-store-default.png'), fullPage:true});
+    await staffContext.close();
+    console.log('PASS: employee cannot configure templates, receives shared default in a fresh browser, ignores size override and prints without choosing a template');
 }
 module.exports = { prepare, mockPrinters, offlinePrint, onlinePrint, assertBlackInk, assertMoneyFits, assertWideItems };

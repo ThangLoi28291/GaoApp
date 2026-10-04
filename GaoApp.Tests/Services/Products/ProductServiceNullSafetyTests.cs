@@ -370,6 +370,12 @@ public sealed class ProductServiceNullSafetyTests
 
     private sealed class FakeProductRepository : IProductRepository
     {
+        public Task SynchronizeBaseUnitAsync(int storeId, int productId, int unitId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<PagedResult<ProductListItemDto>> SearchCatalogAsync(int storeId, string? search, int? categoryId,
+        bool? isActive, bool? isSellable, int page, int pageSize, ProductListFilters filters, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<List<ProductFilterOptionDto>> FilterOptionsAsync(int storeId, string kind, string? term, int? selectedId, CancellationToken ct = default) => throw new NotSupportedException();
+
+
         public Product? DetailResult { get; set; }
 
         public Product? AddedProduct { get; private set; }

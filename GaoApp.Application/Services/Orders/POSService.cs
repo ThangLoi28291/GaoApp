@@ -35,6 +35,7 @@ namespace GaoApp.Application.Services.Orders;
 
 public sealed class POSService : IPOSService
 {
+    private const decimal MaxPosQuantity = 1_000_000m;
     private readonly ICustomerDepositService? _deposits;
     private readonly ICustomerReceivableService? _receivables;
     private readonly IAppUnitOfWork _uow;
@@ -770,6 +771,8 @@ ICustomerDepositService? deposits = null)
     private static void AddOrMergeLineFromBarcode(Order order, BarcodeLookupResultDto lookup, decimal qty)
     {
         if (qty <= 0) qty = 1;
+        if (qty > MaxPosQuantity)
+            throw new BusinessRuleException("Số lượng không hợp lệ (tối đa 1.000.000).");
 
         var unitPrice = SafePositive(lookup.SellPrice, 0m);
         var multiplier = lookup.Factor <= 0 ? 1m : lookup.Factor;
@@ -786,6 +789,8 @@ ICustomerDepositService? deposits = null)
         {
             if (existing.StoreId <= 0 && order.StoreId > 0)
                 existing.StoreId = order.StoreId;
+            if (existing.Quantity + qty > MaxPosQuantity)
+                throw new BusinessRuleException("Tổng số lượng dòng hàng không được vượt quá 1.000.000.");
             existing.Quantity += qty;
             existing.BaseQuantity += baseQtyToAdd;
             existing.Multiplier = multiplier;
@@ -929,16 +934,16 @@ ICustomerDepositService? deposits = null)
     {
         var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
         if (shift == null)
-            throw new InvalidOperationException(
-                "POS order is missing its shift relation.");
+            throw new BusinessRuleException(
+                "Không thể xử lý hoàn tiền vì đơn không còn liên kết với ca POS. Hãy tải lại đơn và kiểm tra ca bán.");
 
         if (shift.WarehouseId <= 0)
             throw new BusinessRuleException("Ca POS chưa cấu hình kho xuất bán.");
 
         var warehouse = await _warehouses.GetByIdAsync(shift.WarehouseId, ct);
         if (warehouse == null)
-            throw new InvalidOperationException(
-                "POS shift is missing its warehouse relation.");
+            throw new BusinessRuleException(
+                "Không thể xử lý hoàn tiền vì ca POS không còn liên kết với kho xuất bán. Hãy kiểm tra lại cấu hình ca/kho.");
 
         if (!warehouse.IsActive)
             throw new BusinessRuleException("Kho của ca POS đã ngưng hoạt động.");
@@ -1460,8 +1465,8 @@ ICustomerDepositService? deposits = null)
 
             if (sourceEntries.Count == 0)
             {
-                throw new InvalidOperationException(
-                    "Completed order line is missing source valuation entries.");
+                throw new BusinessRuleException(
+                    $"Không thể void vì dòng hàng '{line.ItemName}' thiếu dữ liệu giá vốn xuất kho.");
             }
 
             // Chỉ lấy outbound sale gốc
@@ -1472,8 +1477,8 @@ ICustomerDepositService? deposits = null)
 
             if (outboundEntries.Count == 0)
             {
-                throw new InvalidOperationException(
-                    "Completed order line is missing outbound valuation entries.");
+                throw new BusinessRuleException(
+                    $"Không thể void vì dòng hàng '{line.ItemName}' thiếu giao dịch xuất kho gốc.");
             }
 
             var soldBaseQuantity = line.BaseQuantity > 0
@@ -1483,7 +1488,8 @@ ICustomerDepositService? deposits = null)
                 outboundEntries.Select(x => x.Id).Distinct().Count() != outboundEntries.Count ||
                 outboundEntries.Any(x => x.StoreId != order.StoreId || x.Quantity >= 0 ||
                     x.ProductVariantId != line.VariantId))
-                throw new InvalidOperationException("Void source fragments do not reconcile to the original sale line.");
+                throw new BusinessRuleException(
+                    $"Không thể void vì số lượng xuất kho của dòng '{line.ItemName}' không khớp dữ liệu bán gốc. Hãy kiểm tra tồn kho.");
 
             // GHI CHÚ:
             // Void mức 2 = mirror từng valuation entry gốc.
@@ -1522,16 +1528,16 @@ ICustomerDepositService? deposits = null)
         {
             var line = plan.Line;
             var entry = await _inventoryValuationEntryRepository.GetByIdAsync(plan.SourceEntry.Id, ct)
-                ?? throw new InvalidOperationException("Void source disappeared after balance locking.");
+                ?? throw new BusinessRuleException("Không thể void vì dữ liệu giá vốn đã thay đổi trong lúc xử lý. Vui lòng thử lại.");
             if (entry.StoreId != order.StoreId || entry.WarehouseId != plan.SourceEntry.WarehouseId ||
                 entry.ProductVariantId != line.VariantId || entry.Quantity != -plan.Quantity ||
                 entry.ReferenceId != order.Id.ToString() || entry.ReferenceLineId != line.Id)
-                throw new InvalidOperationException("Void source changed after balance locking.");
+                throw new BusinessRuleException("Không thể void vì dữ liệu xuất kho đã thay đổi trong lúc xử lý. Vui lòng tải lại đơn và thử lại.");
             var cost = SaleValuationCostPolicy.Evaluate(entry,
                 await _inventoryValuationEntryRepository.GetRevaluationEntriesBySourceIdAsync(entry.Id, ct),
                 await _inventoryValuationEntryRepository.GetReverseEntriesBySourceEntryIdAsync(entry.Id, ct));
             if (cost.InventoryReversedQuantity != 0)
-                throw new InvalidOperationException("Void source has already been reversed.");
+                throw new BusinessRuleException("Đơn này đã được đảo tồn kho trước đó. Vui lòng tải lại để kiểm tra trạng thái thay vì void lại.");
             var finalUnitCost = cost.RequireFinalUnitCost();
             var qtyToAddBack = plan.Quantity;
                 var movementRequest = _inventoryMovementFactory.CreateSaleVoid(
@@ -1560,13 +1566,13 @@ ICustomerDepositService? deposits = null)
         foreach (var plan in plans)
         {
             var source = await _inventoryValuationEntryRepository.GetByIdAsync(plan.SourceEntry.Id, ct)
-                ?? throw new InvalidOperationException("Void source is missing at closure.");
+                ?? throw new BusinessRuleException("Không thể hoàn tất void vì không còn dữ liệu giá vốn nguồn. Vui lòng liên hệ quản lý/kỹ thuật.");
             var closure = SaleValuationCostPolicy.Evaluate(source,
                 await _inventoryValuationEntryRepository.GetRevaluationEntriesBySourceIdAsync(source.Id, ct),
                 await _inventoryValuationEntryRepository.GetReverseEntriesBySourceEntryIdAsync(source.Id, ct));
             if (closure.State != SaleValuationCostPolicy.Quality.Finalized || closure.Cost != 0 ||
                 closure.InventoryReversedQuantity != -source.Quantity)
-                throw new InvalidOperationException($"Void did not close sale cost: {closure.Reason}");
+                throw new BusinessRuleException($"Không thể hoàn tất void vì chưa đảo hết giá vốn xuất kho: {closure.Reason}");
         }
     }
 
@@ -1580,8 +1586,8 @@ ICustomerDepositService? deposits = null)
 
             if (line.UnitCostSnapshot is not decimal unitCost || unitCost <= 0)
             {
-                throw new InvalidOperationException(
-                    "Completed order line has an invalid unit-cost snapshot.");
+                throw new BusinessRuleException(
+                    $"Không thể hoàn tiền vì dòng hàng '{line.ItemName}' thiếu giá vốn chốt. Hãy kiểm tra lại dữ liệu tồn kho trước khi thử lại.");
             }
 
             var movementRequest = _inventoryMovementFactory.CreateSaleRefund(
@@ -1604,140 +1610,168 @@ ICustomerDepositService? deposits = null)
      PaymentMethod refundMethod,
      string? refundReferenceCode = null,
      string? refundProvider = null,
-     CancellationToken ct = default)
+     CancellationToken ct = default,
+     bool allowPendingRestock = false)
     {
         reason = (reason ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(reason))
             throw new BusinessRuleException("Lý do trả hàng / hoàn tiền không được để trống.");
 
-        await using var tx = await _uow.BeginTransactionAsync(ct);
-
-        try
+        await using (var tx = await _uow.BeginTransactionAsync(ct))
         {
-            var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
-                ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
-
-            if (order.Status != OrderStatus.Completed)
-                throw new BusinessRuleException("Chỉ được refund toàn phần cho đơn đã hoàn tất.");
-
-            var alreadyRefunded = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
-
-            if (alreadyRefunded > 0)
+            try
             {
-                throw new BusinessRuleException(
-                    "Đơn này đã có phát sinh hoàn tiền trước đó. Vui lòng dùng chức năng Trả hàng / hoàn tiền để xử lý phần còn lại.");
-            }
+                var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
+                    ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
 
-            var refundAmount = order.PaidTotal;
+                if (order.Status != OrderStatus.Completed)
+                    throw new BusinessRuleException("Chỉ được refund toàn phần cho đơn đã hoàn tất.");
 
-            if (refundAmount <= 0)
-                throw new BusinessRuleException("Đơn hàng chưa có số tiền thanh toán để hoàn.");
+                var alreadyRefunded = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
 
-            var oldStatus = order.Status.ToString();
-            var oldPaymentStatus = order.PaymentStatus.ToString();
-
-            var cleanReferenceCode = string.IsNullOrWhiteSpace(refundReferenceCode)
-                ? null
-                : refundReferenceCode.Trim();
-
-            var cleanProvider = string.IsNullOrWhiteSpace(refundProvider)
-                ? null
-                : refundProvider.Trim();
-
-            var request = new GaoApp.Application.DTOs.Returns.CreateSalesReturnRequest
-            {
-                OrderId = order.Id,
-                POSShiftId = order.POSShiftId,
-                Type = SalesReturnType.ReturnAndRefund,
-                Reason = reason,
-                Note = $"Refund toàn phần từ flow cũ. Phương thức hoàn tiền thực tế: {refundMethod}.",
-
-                Lines = order.Lines
-                    .Where(x => !x.IsDeleted)
-                    .Select(x => new GaoApp.Application.DTOs.Returns.CreateSalesReturnLineRequest
-                    {
-                        OrderLineId = x.Id,
-                        ReturnQuantity = x.Quantity,
-                        ReturnBaseQuantity = x.BaseQuantity > 0 ? x.BaseQuantity : x.Quantity,
-                        RefundUnitAmount = x.Quantity > 0 ? (x.LineTotal / x.Quantity) : x.UnitPrice,
-                        Action = SalesReturnLineAction.Restock,
-                        Reason = reason
-                    })
-                    .ToList(),
-
-                Payments = new List<GaoApp.Application.DTOs.Returns.CreateSalesReturnPaymentRequest>
+                if (alreadyRefunded > 0 || await _salesReturns.HasCompletedReturnByOrderAsync(order.Id, ct))
                 {
-                    new GaoApp.Application.DTOs.Returns.CreateSalesReturnPaymentRequest
-                    {
-                        Method = refundMethod,
-                        Amount = refundAmount,
-                        ReferenceCode = cleanReferenceCode,
-                        Provider = cleanProvider,
-                        Note = $"Refund full from order {order.OrderNumber}. Actual refund method: {refundMethod}"
-                    }
+                    throw new BusinessRuleException(
+                        "Đơn này đã có phát sinh hoàn tiền trước đó. Vui lòng dùng chức năng Trả hàng / hoàn tiền để xử lý phần còn lại.");
                 }
-            };
 
-            // SalesReturnService tham gia transaction đang mở trên cùng AppDbContext.
-            // UnitOfWork của service con không commit transaction do service cha sở hữu.
-            await _salesReturnService.CreateAsync(request, ct);
+                var refundAmount = order.PaidTotal;
 
-            order.Status = OrderStatus.Refunded;
-            order.PaymentStatus = PaymentStatus.Refunded;
+                if (refundAmount <= 0)
+                    throw new BusinessRuleException("Đơn hàng chưa có số tiền thanh toán để hoàn.");
 
-            var refundNote =
-                $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] " +
-                $"Refund toàn phần. Số tiền: {refundAmount:n0}. " +
-                $"Phương thức hoàn: {refundMethod}. " +
-                $"Lý do: {reason}";
+                var oldStatus = order.Status.ToString();
+                var oldPaymentStatus = order.PaymentStatus.ToString();
 
-            order.Note = string.IsNullOrWhiteSpace(order.Note)
-                ? refundNote
-                : $"{order.Note}{Environment.NewLine}{refundNote}";
+                var cleanReferenceCode = string.IsNullOrWhiteSpace(refundReferenceCode)
+                    ? null
+                    : refundReferenceCode.Trim();
 
-            // SalesReturnService đã ghi ReturnDeducted theo các dòng thực trả.
-            // Không ghi thêm SaleRefunded để tránh trừ tích lũy hai lần.
-            await _rewardVoucherRepository.RestoreUsedVouchersByOrderIdAsync(
-                order.Id,
-                reason,
-                ct);
+                var cleanProvider = string.IsNullOrWhiteSpace(refundProvider)
+                    ? null
+                    : refundProvider.Trim();
 
-            await _orders.SaveChangesAsync(ct);
-
-            await WritePosAuditLogAsync(
-                action: "ORDER_REFUNDED",
-                orderId: order.Id,
-                note: reason,
-                metadata: new
+                var pendingLineIds = allowPendingRestock
+                    ? (await _salesReturnService.GetEligibilityAsync(order.Id, ct)).Lines
+                        .Where(x => !x.CanRestock && x.ReturnableQuantity > 0).Select(x => x.OrderLineId).ToHashSet()
+                    : new HashSet<int>();
+                var request = new GaoApp.Application.DTOs.Returns.CreateSalesReturnRequest
                 {
-                    order.OrderNumber,
-                    RefundAmount = refundAmount,
-                    RefundMethod = refundMethod.ToString(),
-                    RefundReferenceCode = cleanReferenceCode,
-                    RefundProvider = cleanProvider,
-                    Status = order.Status.ToString(),
-                    PaymentStatus = order.PaymentStatus.ToString(),
-                    Reason = reason
-                },
-                ct: ct);
+                    OrderId = order.Id,
+                    POSShiftId = order.POSShiftId,
+                    Type = SalesReturnType.ReturnAndRefund,
+                    Reason = reason,
+                    Note = $"Refund toàn phần từ flow cũ. Phương thức hoàn tiền thực tế: {refundMethod}.",
 
-            await WriteRefundOrderAuditLogAsync(
-                order: order,
-                oldStatus: oldStatus,
-                oldPaymentStatus: oldPaymentStatus,
-                reason: $"{reason} | RefundMethod={refundMethod} | Amount={refundAmount:n0}",
-                ct: ct);
+                    Lines = order.Lines
+                        .Where(x => !x.IsDeleted)
+                        .Select(x => new GaoApp.Application.DTOs.Returns.CreateSalesReturnLineRequest
+                        {
+                            OrderLineId = x.Id,
+                            ReturnQuantity = x.Quantity,
+                            ReturnBaseQuantity = x.BaseQuantity > 0 ? x.BaseQuantity : x.Quantity,
+                            RefundUnitAmount = x.Quantity > 0 ? (x.LineTotal / x.Quantity) : x.UnitPrice,
+                            Action = pendingLineIds.Contains(x.Id) ? SalesReturnLineAction.PendingRestock : SalesReturnLineAction.Restock,
+                            Reason = reason
+                        })
+                        .ToList(),
 
-            await tx.CommitAsync(ct);
+                    Payments = new List<GaoApp.Application.DTOs.Returns.CreateSalesReturnPaymentRequest>
+                    {
+                        new GaoApp.Application.DTOs.Returns.CreateSalesReturnPaymentRequest
+                        {
+                            Method = refundMethod,
+                            Amount = refundAmount,
+                            ReferenceCode = cleanReferenceCode,
+                            Provider = cleanProvider,
+                            Note = $"Refund full from order {order.OrderNumber}. Actual refund method: {refundMethod}"
+                        }
+                    }
+                };
 
-            return await GetReceiptAsync(order.Id, ct);
+                // SalesReturnService tham gia transaction đang mở trên cùng AppDbContext.
+                // UnitOfWork của service con không commit transaction do service cha sở hữu.
+                await _salesReturnService.CreateAsync(request, ct);
+
+                order.Status = OrderStatus.Refunded;
+                order.PaymentStatus = PaymentStatus.Refunded;
+
+                var refundNote =
+                    $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] " +
+                    $"Refund toàn phần. Số tiền: {refundAmount:n0}. " +
+                    $"Phương thức hoàn: {refundMethod}. " +
+                    $"Lý do: {reason}";
+
+                order.Note = string.IsNullOrWhiteSpace(order.Note)
+                    ? refundNote
+                    : $"{order.Note}{Environment.NewLine}{refundNote}";
+
+                // SalesReturnService đã ghi ReturnDeducted theo các dòng thực trả.
+                // Không ghi thêm SaleRefunded để tránh trừ tích lũy hai lần.
+                await _rewardVoucherRepository.RestoreUsedVouchersByOrderIdAsync(
+                    order.Id,
+                    reason,
+                    ct);
+
+                await _orders.SaveChangesAsync(ct);
+
+                await WritePosAuditLogAsync(
+                    action: "ORDER_REFUNDED",
+                    orderId: order.Id,
+                    note: reason,
+                    metadata: new
+                    {
+                        order.OrderNumber,
+                        RefundAmount = refundAmount,
+                        RefundMethod = refundMethod.ToString(),
+                        RefundReferenceCode = cleanReferenceCode,
+                        RefundProvider = cleanProvider,
+                        Status = order.Status.ToString(),
+                        PaymentStatus = order.PaymentStatus.ToString(),
+                        Reason = reason
+                    },
+                    ct: ct);
+
+                await WriteRefundOrderAuditLogAsync(
+                    order: order,
+                    oldStatus: oldStatus,
+                    oldPaymentStatus: oldPaymentStatus,
+                    reason: $"{reason} | RefundMethod={refundMethod} | Amount={refundAmount:n0}",
+                    ct: ct);
+
+                await tx.CommitAsync(ct);
+            }
+            catch (PosAppException ex) when (ex.ErrorType != PosErrorTypes.Technical)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+            catch (BusinessRuleException)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+                _logger.LogError(ex, "Refund toàn phần thất bại. OrderId={OrderId}", orderId);
+                throw PosAppException.Technical(
+                    "POS_REFUND_FAILED",
+                    "Không thể hoàn tiền toàn phần vì hệ thống không hoàn tất được dữ liệu tồn kho hoặc thanh toán.",
+                    "Vui lòng thử lại một lần. Nếu vẫn lỗi, gửi mã truy vết hiển thị kèm theo cho quản lý/kỹ thuật.",
+                    new { orderId },
+                    innerException: ex);
+            }
         }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        // The refund is already durable. A later receipt read must never attempt
+        // rollback of the committed transaction or label the refund as unposted.
+        return await GetReceiptAsync(orderId, ct);
     }
 
     public async Task<int> CreateDraftAsync(
@@ -1845,6 +1879,8 @@ ICustomerDepositService? deposits = null)
     {
         if (qty <= 0)
             qty = 1;
+        if (qty > MaxPosQuantity)
+            throw new BusinessRuleException("Số lượng không hợp lệ (tối đa 1.000.000).");
 
         var order = await RequireDraftAsync(orderId, ct);
         var priceTier = ResolveOrderPriceTier(order);
@@ -1880,6 +1916,8 @@ ICustomerDepositService? deposits = null)
         {
             if (existing.StoreId <= 0 && order.StoreId > 0)
                 existing.StoreId = order.StoreId;
+            if (existing.Quantity + qty > MaxPosQuantity)
+                throw new BusinessRuleException("Tổng số lượng dòng hàng không được vượt quá 1.000.000.");
             existing.Quantity += qty;
             existing.BaseQuantity += ComputeBaseQuantity(qty, sellingInfo.Multiplier);
             existing.Multiplier = sellingInfo.Multiplier;
@@ -1943,6 +1981,8 @@ ICustomerDepositService? deposits = null)
 
         if (qty <= 0)
             qty = 1;
+        if (qty > MaxPosQuantity)
+            throw new BusinessRuleException("Số lượng không hợp lệ (tối đa 1.000.000).");
 
         var order = await RequireDraftAsync(orderId, ct);
 
@@ -2010,6 +2050,8 @@ ICustomerDepositService? deposits = null)
     public async Task<OrderDraftDto> UpdateLineQtyAsync(int lineId, decimal qty, CancellationToken ct = default)
     {
         if (qty <= 0) qty = 1;
+        if (qty > MaxPosQuantity)
+            throw new BusinessRuleException("Số lượng không hợp lệ (tối đa 1.000.000).");
 
         var line = await _orders.GetDraftLineAsync(lineId, ct)
                    ?? throw new BusinessRuleException("Line không tồn tại hoặc đơn không còn Draft.");
@@ -2036,6 +2078,24 @@ ICustomerDepositService? deposits = null)
         line.IsDeleted = true;
 
         var order = await RequireDraftAsync(line.OrderId, ct);
+
+        return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
+    }
+
+    public async Task<OrderDraftDto> ClearCurrentCartLinesAsync(CancellationToken ct = default)
+    {
+        var order = await RequireCurrentDraftAsync(ct);
+
+        if (order.Payments.Any(payment => !payment.IsDeleted) || order.DepositAmount > 0)
+        {
+            throw PosAppException.Business(
+                errorCode: "POS_CART_HAS_PAYMENT",
+                message: "Không thể xóa toàn bộ sản phẩm vì giỏ đã có khoản thanh toán.",
+                actionHint: "Hãy xử lý hoặc xóa khoản thu trước khi làm trống giỏ.");
+        }
+
+        foreach (var line in order.Lines.Where(line => !line.IsDeleted))
+            line.IsDeleted = true;
 
         return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
@@ -2088,7 +2148,7 @@ ICustomerDepositService? deposits = null)
         if (order.GrandTotal <= 0)
             throw new BusinessRuleException("Không thể thanh toán: tổng tiền đơn hàng không hợp lệ.");
         var currentPaid = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount) + order.DepositAmount;
-        if (dto.Method != PaymentMethod.Cash && currentPaid + dto.Amount > order.GrandTotal)
+        if (dto.Method is not (PaymentMethod.Cash or PaymentMethod.BankTransfer) && currentPaid + dto.Amount > order.GrandTotal)
             throw new BusinessRuleException("Phương thức này không cho phép thanh toán dư (overpay).");
         order.Payments.Add(new OrderPayment {
             StoreId = order.StoreId, OrderId = order.Id, ClientRequestId = dto.ClientRequestId,
@@ -2410,6 +2470,9 @@ ICustomerDepositService? deposits = null)
             ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
         var transferOrderIds = await _orders.GetBankTransferOrderIdsAsync(new[] { order.Id }, ct);
+        var cashier = order.POSShift?.OpenedByUserId is > 0
+            ? (await _users.GetByIdsAsync(new List<int> { order.POSShift.OpenedByUserId }, ct)).FirstOrDefault()
+            : null;
 
         var refundableRemaining = order.PaidTotal - refundedTotal;
         if (refundableRemaining < 0)
@@ -2433,7 +2496,9 @@ ICustomerDepositService? deposits = null)
             CreditDueDate = order.CreditDueDate,
             CustomerPhone = order.Customer?.Phone,
 
-            CashierName = null,
+            CashierName = string.IsNullOrWhiteSpace(cashier?.FullName) ? cashier?.UserName : cashier.FullName,
+            TerminalName = order.POSShift?.Terminal?.Name,
+            TerminalCode = order.POSShift?.Terminal?.Code,
             ShiftCode = order.POSShift?.ShiftCode,
             Note = order.Note,
             StoreName = order.Store?.ReceiptName ?? order.Store?.Name ?? "GaoApp POS",
@@ -2513,18 +2578,10 @@ ICustomerDepositService? deposits = null)
     public async Task<PagedResult<OrderListItemDto>> GetOrdersAsync(OrderListQueryDto query, CancellationToken ct = default)
     {
         var page = query.Page <= 0 ? 1 : query.Page;
-        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        var pageSize = query.PageSize <= 0 ? 20 : Math.Min(query.PageSize, 200);
 
-        var fromLocal = query.FromDate?.Date;
-        var toLocalExclusive = query.ToDate?.Date.AddDays(1);
-
-        DateTime? fromUtc = fromLocal.HasValue
-            ? DateTime.SpecifyKind(fromLocal.Value, DateTimeKind.Local).ToUniversalTime()
-            : null;
-
-        DateTime? toUtcExclusive = toLocalExclusive.HasValue
-            ? DateTime.SpecifyKind(toLocalExclusive.Value, DateTimeKind.Local).ToUniversalTime()
-            : null;
+        var fromUtc = VietnamLocalDateToUtc(query.FromDate);
+        var toUtcExclusive = VietnamLocalDateToUtc(query.ToDate, addOneDay: true);
 
         var (items, total) = await _orders.QueryOrdersAsync(
             fromUtc: fromUtc,
@@ -2533,14 +2590,15 @@ ICustomerDepositService? deposits = null)
             keyword: query.Keyword,
             page: page,
             pageSize: pageSize,
-            ct: ct);
+            ct: ct,
+            filters: query);
 
         // =====================================================
         // Lấy danh sách OrderId của page hiện tại
         // để query hậu mãi 1 lần, tránh N+1
         // =====================================================
         var orderIds = items
-            .Select(x => x.Id)
+            .Select(x => x.OrderId)
             .Distinct()
             .ToList();
 
@@ -2549,51 +2607,34 @@ ICustomerDepositService? deposits = null)
 
         var afterSaleDict = afterSaleSummaries.ToDictionary(x => x.OrderId, x => x);
 
-        var dtoItems = items.Select(o =>
+        foreach (var item in items)
         {
-            afterSaleDict.TryGetValue(o.Id, out var afterSale);
-
-            return new OrderListItemDto
-            {
-                OrderId = o.Id,
-                HasBankTransfer = transferOrderIds.Contains(o.Id),
-                OrderNumber = o.OrderNumber,
-                Status = o.Status.ToString(),
-                PaymentStatus = o.PaymentStatus.ToString(),
-                GrandTotal = o.GrandTotal,
-                VoucherDiscountTotal = o.VoucherDiscountTotal,
-                RewardVouchers = o.RewardVouchers
-    .Where(x => !x.IsDeleted)
-    .OrderBy(x => x.Id)
-    .Select(x => new OrderRewardVoucherDto
-    {
-        VoucherId = x.VoucherId,
-        VoucherCode = x.Voucher != null ? x.Voucher.VoucherCode : "",
-        Value = x.VoucherValue,
-        Status = x.Voucher != null ? x.Voucher.Status.ToString() : null
-    })
-    .ToList(),
-                PaidTotal = o.PaidTotal,
-                BalanceDue = o.BalanceDue,
-                CreatedAtUtc = o.CreatedAtUtc,
-                CompletedAtUtc = o.CompletedAtUtc,
-
-                // =========================
-                // HẬU MÃI
-                // =========================
-                RefundedTotal = afterSale?.RefundedTotal ?? 0m,
-                ReturnCount = afterSale?.ReturnCount ?? 0
-
-            };
-        }).ToList();
+            afterSaleDict.TryGetValue(item.OrderId, out var afterSale);
+            item.HasBankTransfer = transferOrderIds.Contains(item.OrderId);
+            item.RefundedTotal = afterSale?.RefundedTotal ?? 0m;
+            item.ReturnCount = afterSale?.ReturnCount ?? 0;
+        }
 
         return new PagedResult<OrderListItemDto>
         {
-            Items = dtoItems,
+            Items = items,
             Page = page,
             PageSize = pageSize,
             TotalItems = total
         };
+    }
+
+    private static DateTime? VietnamLocalDateToUtc(DateTime? value, bool addOneDay = false)
+    {
+        if (!value.HasValue)
+            return null;
+
+        // POS filters are calendar dates in Vietnam, never dates in the server's local zone.
+        // Vietnam has a fixed UTC+7 offset, so this remains deterministic on Windows/Linux.
+        var localDate = value.Value.Date.AddDays(addOneDay ? 1 : 0);
+        return new DateTimeOffset(
+            DateTime.SpecifyKind(localDate, DateTimeKind.Unspecified),
+            TimeSpan.FromHours(7)).UtcDateTime;
     }
 
     private async Task<Order> RequireDraftAsync(int orderId, CancellationToken ct)
@@ -2912,6 +2953,7 @@ ICustomerDepositService? deposits = null)
             CustomerName = order.Customer?.Name,
             CustomerPhone = order.Customer?.Phone,
             CustomerPriceTier = order.Customer?.PriceTier,
+            AskBeforePrintingReceipt = order.Customer?.AskBeforePrintingReceipt == true,
             CustomerCanBuyOnCredit = order.Customer is { IsActive: true, HaveDebt: true },
             CustomerDepositId = order.CustomerDepositId,
             DepositAmount = order.DepositAmount,
@@ -3736,7 +3778,8 @@ ICustomerDepositService? deposits = null)
             Address = x.Address,
 
             // NEW: trả nhóm giá để UI biết khách lẻ hay khách sỉ
-            PriceTier = NormalizeCustomerPriceTier(x.PriceTier)
+            PriceTier = NormalizeCustomerPriceTier(x.PriceTier),
+            AskBeforePrintingReceipt = x.AskBeforePrintingReceipt
         }).ToList();
     }
 
@@ -3760,63 +3803,30 @@ ICustomerDepositService? deposits = null)
 
         if (order.CustomerId != customer.Id) { order.CustomerDepositId = null; order.DepositAmount = 0; }
         order.CustomerId = customer.Id;
+        order.Customer = customer;
 
         // NEW:
         // Nếu user chọn áp lại giá thì cập nhật giá các dòng hiện có
         // theo PriceTier của khách mới.
         if (repriceExistingLines)
         {
-            await RepriceOrderLinesByCustomerAsync(order, customer.PriceTier, ct);
+            await RepriceOrderLinesByCustomerAsync(order, ct);
         }
 
         return await SaveAndMapDraftAfterCartChangedAsync(order, ct);
     }
-    private async Task RepriceOrderLinesByCustomerAsync(
-    Order order,
-    string? customerPriceTier,
-    CancellationToken ct)
+    private async Task RepriceOrderLinesByCustomerAsync(Order order, CancellationToken ct)
     {
-        var priceTier = NormalizeCustomerPriceTier(customerPriceTier);
+        // Use the same quantity/pack policy as scanning and quantity edits. Price each
+        // variant once using its combined base quantity and the newly selected customer.
+        var variantIds = order.Lines
+            .Where(line => !line.IsDeleted && !line.IsPromotionGift)
+            .Select(line => line.VariantId)
+            .Distinct()
+            .ToArray();
 
-        var lines = order.Lines
-            .Where(x => !x.IsDeleted)
-            .ToList();
-
-        if (!lines.Any())
-            return;
-
-        foreach (var line in lines)
-        {
-            var variant = await _variants.GetActiveWithProductAsync(line.VariantId, ct);
-            if (variant == null)
-                continue;
-
-            ProductUnitConversion? conversion = null;
-
-            // Ưu tiên tìm đúng đơn vị đang bán của dòng.
-            // line.SellingUnitId hiện là UnitId, không phải ProductUnitConversionId.
-            conversion = variant.UnitConversions?
-      .FirstOrDefault(c =>
-          !c.IsDeleted &&
-          c.IsActive &&
-          line.ProductUnitConversionId.HasValue &&
-          c.Id == line.ProductUnitConversionId.Value);
-
-            // Fallback nếu không tìm thấy.
-            conversion ??= variant.UnitConversions?
-      .FirstOrDefault(c =>
-          !c.IsDeleted &&
-          c.IsActive &&
-          c.UnitId == line.SellingUnitId);
-
-            var newUnitPrice = ResolveSalePriceByTier(
-                variant,
-                conversion,
-                priceTier);
-
-            line.UnitPrice = newUnitPrice;
-            line.RewardBaseUnitPrice = ResolveRewardBaseUnitPrice(variant);
-        }
+        foreach (var variantId in variantIds)
+            await ApplyBestPackPriceForVariantLinesAsync(order, variantId, ct);
     }
 
     public async Task<OrderDraftDto> ClearCustomerForCurrentCartAsync(CancellationToken ct = default)
@@ -3976,8 +3986,8 @@ ICustomerDepositService? deposits = null)
 
             var shift = await _shifts.GetByIdAsync(order.POSShiftId, ct);
             if (shift == null)
-                throw new InvalidOperationException(
-                    "Completed POS order is missing its shift relation.");
+                throw new BusinessRuleException(
+                    "Không thể void vì đơn không còn liên kết với ca POS gốc. Hãy kiểm tra lại dữ liệu ca bán.");
 
             // =====================================================
             // QUAN TRỌNG:
@@ -4034,12 +4044,10 @@ ICustomerDepositService? deposits = null)
                 ct: ct);
 
             await tx.CommitAsync(ct);
-
-            return await GetReceiptAsync(order.Id, ct);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            await tx.RollbackAsync(ct);
+            await tx.RollbackAsync(CancellationToken.None);
 
             if (!ct.IsCancellationRequested)
             {
@@ -4074,8 +4082,24 @@ ICustomerDepositService? deposits = null)
                 }
             }
 
-            throw;
+            if (ex is BusinessRuleException)
+                throw;
+
+            if (ex is OperationCanceledException && ct.IsCancellationRequested)
+                throw;
+
+            _logger.LogError(ex, "Void đơn thất bại. OrderId={OrderId}", orderId);
+            throw PosAppException.Technical(
+                "POS_VOID_FAILED",
+                "Không thể void đơn vì hệ thống chưa hoàn tất được việc đảo tồn kho hoặc số liệu ca.",
+                "Vui lòng thử lại. Nếu vẫn lỗi, gửi mã truy vết hiển thị kèm theo cho quản lý/kỹ thuật.",
+                new { orderId },
+                innerException: ex);
         }
+
+        // Receipt rendering runs after the committed write transaction. A read failure
+        // must not attempt to roll back an already completed void.
+        return await GetReceiptAsync(orderId, ct);
     }
     /// <summary>
     /// Trừ lại tích lũy khi refund toàn phần đơn hàng.
@@ -4520,6 +4544,9 @@ ICustomerDepositService? deposits = null)
         if (isWholesale && conversion?.WholesalePrice is > 0)
             return conversion.WholesalePrice.Value;
 
+        if (isWholesale && conversion == null && variant.WholesalePrice is > 0)
+            return variant.WholesalePrice.Value;
+
         if (conversion?.Price is > 0)
             return conversion.Price.Value;
 
@@ -4623,7 +4650,7 @@ ICustomerDepositService? deposits = null)
         var priceTier = ResolveOrderPriceTier(order);
 
         var lines = order.Lines
-            .Where(x => !x.IsDeleted && x.VariantId == variantId)
+            .Where(x => !x.IsDeleted && !x.IsPromotionGift && x.VariantId == variantId)
             .ToList();
 
         if (!lines.Any())

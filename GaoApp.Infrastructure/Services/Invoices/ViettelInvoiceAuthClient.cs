@@ -4,6 +4,7 @@ using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
 using System.Diagnostics;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -100,6 +101,7 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
             var authHeader = ViettelClientHelper.BuildBasicAuthHeader(
                 username,
                 password);
+            var customFieldsUnavailable = false;
 
             // =====================================================
             // TEST 1: getCustomFields
@@ -123,7 +125,12 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
                 var customFieldsRaw = await customFieldsResponse.Content.ReadAsStringAsync(ct);
 
-                if (!customFieldsResponse.IsSuccessStatusCode)
+                // Some production templates expose no dynamic-field metadata.
+                // This is not proof of bad credentials. Confirm access with the
+                // independent read-only invoice API before reporting success.
+                customFieldsUnavailable = customFieldsResponse.StatusCode == HttpStatusCode.BadRequest
+                    && IsExplicitNoDataResponse(customFieldsRaw);
+                if (!customFieldsResponse.IsSuccessStatusCode && !customFieldsUnavailable)
                 {
                     sw.Stop();
 
@@ -133,19 +140,18 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                             $"Basic Auth gọi getCustomFields thất bại. HTTP {(int)customFieldsResponse.StatusCode}."));
                 }
 
-                var customFieldsResult =
-                    ParseCustomFieldsResponse(customFieldsRaw);
-
-                if (!customFieldsResult.IsSuccess)
+                if (!customFieldsUnavailable)
                 {
-                    sw.Stop();
+                    var customFieldsResult = ParseCustomFieldsResponse(customFieldsRaw);
+                    if (!customFieldsResult.IsSuccess)
+                    {
+                        sw.Stop();
 
-                    return Result<TestInvoiceProviderLoginResultDto>.Failure(
-                        Error.Validation(
-                            customFieldsResult.ErrorCode ??
-                                "Viettel.BasicAuthInvalidResponse",
-                            customFieldsResult.ErrorMessage ??
-                                "Viettel trả về phản hồi getCustomFields không hợp lệ."));
+                        return Result<TestInvoiceProviderLoginResultDto>.Failure(
+                            Error.Validation(
+                                customFieldsResult.ErrorCode ?? "Viettel.BasicAuthInvalidResponse",
+                                customFieldsResult.ErrorMessage ?? "Viettel trả về phản hồi getCustomFields không hợp lệ."));
+                    }
                 }
             }
 
@@ -171,6 +177,7 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
             var getInvoicesBody = new
             {
+                supplierTaxCode = supplierTaxCode.Trim(),
                 startDate,
                 endDate,
                 invoiceType = string.IsNullOrWhiteSpace(invoiceType)
@@ -200,6 +207,14 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
 
             if (!getInvoicesResponse.IsSuccessStatusCode)
             {
+                if (getInvoicesResponse.StatusCode == HttpStatusCode.BadRequest && IsExplicitNoDataResponse(getInvoicesRaw))
+                {
+                    return Result<TestInvoiceProviderLoginResultDto>.Failure(Error.Validation(
+                        "Viettel.ConnectionNoData",
+                        "Viettel trả NOT_FOUND_DATA khi tra cứu hóa đơn trong 30 ngày gần nhất. " +
+                        "Chưa đủ dữ liệu xác nhận kết nối; kiểm tra MST, mẫu và ký hiệu trên Viettel. " +
+                        "Phản hồi này không xác định mật khẩu sai."));
+                }
                 return Result<TestInvoiceProviderLoginResultDto>.Failure(
                     Error.Validation(
                         "Viettel.BasicAuthHttpFailed",
@@ -228,9 +243,14 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                     AuthModeName = "Basic Auth",
                     DurationMs = sw.ElapsedMilliseconds,
                     TotalRows = totalRows,
+                    WarningMessage = customFieldsUnavailable
+                        ? "Viettel không trả dữ liệu trường động cho mẫu này (getCustomFields: NOT_FOUND_DATA). " +
+                          "Đã xác nhận quyền đọc hóa đơn qua getInvoices; chưa xác nhận trường động hoặc quyền phát hành hóa đơn."
+                        : null,
                     Message =
                         "Kết nối Viettel SInvoice bằng Basic Auth thành công. " +
-                        $"Đã test getCustomFields và getInvoices. Tổng hóa đơn đọc được: {(totalRows.HasValue ? totalRows.Value.ToString("N0") : "không xác định")}."
+                        (customFieldsUnavailable ? "Đã kiểm tra getInvoices. " : "Đã test getCustomFields và getInvoices. ") +
+                        $"Tổng hóa đơn đọc được: {(totalRows.HasValue ? totalRows.Value.ToString("N0") : "không xác định")}."
                 });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -432,6 +452,30 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
                 Error.Validation(
                     "Viettel.TokenLoginTransportFailed",
                     "Không gọi được dịch vụ Token Login Viettel."));
+        }
+    }
+
+    private static bool IsExplicitNoDataResponse(string raw)
+    {
+        if (ViettelClientHelper.TryParseStrictProviderJson(raw, out var document) != ProviderJsonValidationFailure.None
+            || document is null) return false;
+        using (document)
+        {
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
+            var found = false;
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                // Do not recover an ambiguous response carrying other envelopes.
+                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array) return false;
+                var name = property.Name.ToLowerInvariant();
+                if (name is not ("message" or "errorcode" or "code" or "status")) continue;
+                if (property.Value.ValueKind == JsonValueKind.Null) continue;
+                var value = property.Value.ToString();
+                if (value == "NOT_FOUND_DATA" && name != "status") { found = true; continue; }
+                if ((name is "code" or "status") && value == "400") continue;
+                if (!string.IsNullOrEmpty(value)) return false;
+            }
+            return found;
         }
     }
 

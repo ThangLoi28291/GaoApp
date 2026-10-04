@@ -23,6 +23,16 @@ if($TargetDatabase -in @('master','model','msdb','tempdb')){throw 'System databa
 if($Mode -eq 'COMMIT' -and !$AllowCommit){throw 'COMMIT requires -AllowCommit after reviewing DRYRUN.'}
 $folder=Join-Path $scriptDirectory $Package
 $config=Get-Content -LiteralPath (Join-Path $folder 'package.json') -Raw | ConvertFrom-Json
+# Only the reviewed sales extension may append historical employees to retained accounts.
+# Include these tables in locking and commit/VERIFY hashes, but not the empty-table gate.
+$retainedTargets=@()
+if($config.PSObject.Properties.Name -contains 'RetainedTargetTables'){
+ $retainedTargets=@($config.RetainedTargetTables)
+ if($Package -ne '03-sales' -or ($retainedTargets -join ',') -cne 'Users,UserInStores'){
+  throw 'Unexpected retained-table extension; only the reviewed sales employee contract is supported.'
+ }
+}
+$fingerprintedTargets=@($config.TargetTables)+$retainedTargets
 $sqlPath=Join-Path $folder 'Migration.sql'
 $sql=[IO.File]::ReadAllText($sqlPath).Replace('__SOURCE__',$SourceDatabase).Replace('__TARGET__',$TargetDatabase)
 $packageHash=(Get-FileHash -LiteralPath $sqlPath -Algorithm SHA256).Hash
@@ -95,7 +105,7 @@ try{
  EXEC sys.sp_set_session_context @key=N'GSTORE_INITIAL_IMPORT',@value=1;"
  # Acquire shared table locks before fingerprinting/staging, so source writes cannot interleave.
  foreach($name in $config.SourceTables){Execute "DECLARE @n bigint; SELECT @n=COUNT_BIG(*) FROM [$SourceDatabase].dbo.[$name] WITH(TABLOCK,HOLDLOCK);"}
- foreach($name in $config.TargetTables){Execute "DECLARE @n bigint; SELECT @n=COUNT_BIG(*) FROM dbo.[$name] WITH(TABLOCKX,HOLDLOCK);"}
+ foreach($name in $fingerprintedTargets){Execute "DECLARE @n bigint; SELECT @n=COUNT_BIG(*) FROM dbo.[$name] WITH(TABLOCKX,HOLDLOCK);"}
  Write-Output "Checking $Package ($Mode): $SourceDatabase -> $TargetDatabase"
  $sourceHash=Hash-Tables $SourceDatabase $config.SourceTables
  $manifest['SourceHashes']=$sourceHash | ConvertFrom-Json
@@ -109,7 +119,7 @@ try{
  }
  if($null -ne $prior){
   if($prior.SourceDatabase -ne $SourceDatabase -or $prior.SqlSha256 -ne $packageHash -or $prior.SourceHashes -cne $sourceHash){throw 'Previously imported package/source changed. Initial import does not refresh a live target. Use a fresh rehearsal/cutover target.'}
-  $currentHash=Hash-Tables $TargetDatabase $config.TargetTables
+  $currentHash=Hash-Tables $TargetDatabase $fingerprintedTargets
   if($prior.TargetHashes -cne $currentHash){
    $imageExtensionVerified=$false
    if($Package -eq '01-products' -and [int](Scalar "SELECT CASE WHEN OBJECT_ID(N'dbo.GaoStoreProductImageRunsV1',N'U') IS NULL THEN 0 ELSE 1 END;") -eq 1){
@@ -160,7 +170,7 @@ try{
    else{Write-Output "Report $i : $($table.Rows.Count) rows"}
   }
   if($Mode -ne 'PREVIEW'){
-   $targetHash=Hash-Tables $TargetDatabase $config.TargetTables
+   $targetHash=Hash-Tables $TargetDatabase $fingerprintedTargets
    $manifest['TargetHashes']=$targetHash | ConvertFrom-Json
   }
   if($Mode -eq 'COMMIT'){

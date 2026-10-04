@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$OutputDirectory,[switch]$IncludeImages)
+param([string]$OutputDirectory,[switch]$IncludeImages,[switch]$MigrationOnly,[string]$VerifierBuildRoot='.artifacts/release-build-20260929')
 $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
 $releaseRoot=Split-Path -Parent $PSCommandPath
 $repo=[IO.Path]::GetFullPath((Join-Path $releaseRoot '../../..'))
@@ -9,10 +9,12 @@ if(Test-Path -LiteralPath $OutputDirectory){throw 'Choose a new output directory
 $out=[IO.Path]::GetFullPath($OutputDirectory)
 $package=Join-Path $out 'MIGRATION';$source=Join-Path $out 'SOURCE'
 function Copy-One([string]$from,[string]$to){[void][IO.Directory]::CreateDirectory((Split-Path -Parent $to));Copy-Item -LiteralPath $from -Destination $to}
-foreach($name in @('config.json','Run-Step.ps1','Verify-Package.ps1','Invoke-DatabaseOperation.ps1','HUONG-DAN.md')){Copy-One (Join-Path $releaseRoot $name) (Join-Path $package $name)}
+foreach($name in @('config.json','Run-Step.ps1','Verify-Package.ps1','Invoke-DatabaseOperation.ps1','Backup-Progress.ps1','HUONG-DAN.md','QUY-TAC-CHUYEN.md')){Copy-One (Join-Path $releaseRoot $name) (Join-Path $package $name)}
 $migration=Join-Path $repo 'scripts/migration'
-$initialFiles=@('Invoke-Migration.ps1','00-Preview-Reset.ps1','00-DryRun-Reset-LowLog.ps1','00-Commit-Reset-LowLog.ps1','00-Verify-After-Failed-Reset.ps1','Reset-Hash.ps1','Reset-Plan.ps1','Reset-Truncate-Plan.ps1','TABLE-PLAN.json','Test-Reset-Plan-Offline.ps1','Test-Reset-Truncate-Offline.ps1','REHEARSAL-CURRENT-20260923.md')
+$initialFiles=@('Invoke-Migration.ps1','00-Preview-Reset.ps1','00-DryRun-Reset-LowLog.ps1','00-Commit-Reset-LowLog.ps1','00-Verify-After-Failed-Reset.ps1','Reset-Hash.ps1','Reset-Plan.ps1','Reset-Truncate-Plan.ps1','Target-Contract.sql','TABLE-PLAN.json','Test-Reset-Plan-Offline.ps1','Test-Reset-Truncate-Offline.ps1','REHEARSAL-CURRENT-20260923.md')
 foreach($name in $initialFiles){Copy-One (Join-Path $migration ('initial-import/'+$name)) (Join-Path $package ('scripts/migration/initial-import/'+$name))}
+$tablePlan=Get-Content -LiteralPath (Join-Path $migration 'initial-import/TABLE-PLAN.json') -Raw -Encoding UTF8|ConvertFrom-Json
+$tablePlan.Tables|Select-Object Table,Action,ReceiveStep,Reason|Export-Csv -LiteralPath (Join-Path $package 'TABLE-PLAN.csv') -NoTypeInformation -Encoding UTF8
 foreach($folder in @('initial-import/01-products','initial-import/02-customers','initial-import/03-sales','initial-import/03-return-archive','initial-import/04-inventory','invoice-input-stock','invoices','product-images')){
  foreach($file in Get-ChildItem -LiteralPath (Join-Path $migration $folder) -File){
   if($file.Extension -in @('.ps1','.sql','.json','.md','.py')){Copy-One $file.FullName (Join-Path $package ('scripts/migration/'+$folder+'/'+$file.Name))}
@@ -20,7 +22,7 @@ foreach($folder in @('initial-import/01-products','initial-import/02-customers',
 }
 # Build outputs contain only tooling dependencies here, not copied runtime settings.
 foreach($pair in @(@('invoice','invoice-verifier'),@('returns','return-verifier'))){
- $build=Join-Path $repo ('.artifacts/release-build/'+$pair[0])
+ $build=Join-Path (Join-Path $repo $VerifierBuildRoot) $pair[0]
  if(-not (Test-Path -LiteralPath (Join-Path $build 'Verifier.dll'))){throw "Build missing: $build"}
  foreach($file in Get-ChildItem -LiteralPath $build -File -Recurse){
   $relative=$file.FullName.Substring($build.Length+1)
@@ -30,6 +32,7 @@ foreach($pair in @(@('invoice','invoice-verifier'),@('returns','return-verifier'
   }
  }
 }
+if(-not $MigrationOnly){
 foreach($name in @('GaoApp.sln','global.json','.gitignore')){Copy-One (Join-Path $repo $name) (Join-Path $source $name)}
 # rg respects .gitignore; copy all current source, including untracked source edits.
 $sourceFolders=@('GaoApp.Domain','GaoApp.Application','GaoApp.Infrastructure','GaoApp.Web','GaoApp.Migrator','GaoApp.LabelPrintServer','GaoApp.Tests','GaoApp.Tests.Browser','eng')
@@ -68,6 +71,7 @@ foreach($folder in @('initial-import/Verifier','invoices/Verifier','invoice-inpu
  foreach($f in Get-ChildItem -LiteralPath (Join-Path $migration $folder) -File){if($f.Extension -in @('.cs','.csproj')){Copy-One $f.FullName (Join-Path $source ('scripts/migration/'+$folder+'/'+$f.Name))}}
 }
 Copy-One (Join-Path $releaseRoot 'HUONG-DAN.md') (Join-Path $source 'HUONG-DAN.md')
+}
 Copy-One (Join-Path $releaseRoot 'HUONG-DAN.md') (Join-Path $out 'HUONG-DAN.md')
 function Write-Checksums([string]$folder){
  $entries=@(foreach($f in Get-ChildItem -LiteralPath $folder -Recurse -File|Sort-Object FullName){
@@ -78,11 +82,11 @@ function Write-Checksums([string]$folder){
  [ordered]@{CreatedAtUtc=[datetime]::UtcNow.ToString('o');Files=$entries}|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $folder 'checksums.json') -Encoding UTF8
 }
 Write-Checksums $package
-Copy-One (Join-Path $releaseRoot 'Verify-Package.ps1') (Join-Path $source 'Verify-Package.ps1')
-Write-Checksums $source
+if(-not $MigrationOnly){Copy-One (Join-Path $releaseRoot 'Verify-Package.ps1') (Join-Path $source 'Verify-Package.ps1');Write-Checksums $source}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-foreach($name in @('MIGRATION','SOURCE')){
- $zip=Join-Path $out ('GAOAPP-'+$name+'-WIN-HU6RO2EMIJF-20260923.zip')
+$bundles=if($MigrationOnly){@('MIGRATION')}else{@('MIGRATION','SOURCE')}
+foreach($name in $bundles){
+ $zip=Join-Path $out ('GAOAPP-'+$name+'-WIN-HU6RO2EMIJF-'+(Get-Date -Format 'yyyyMMdd')+'.zip')
  [IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $out $name),$zip,[IO.Compression.CompressionLevel]::Optimal,$false)
  Write-Output "Created: $zip"
 }

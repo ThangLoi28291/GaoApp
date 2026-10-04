@@ -259,6 +259,13 @@ public class StartupValidationService : IStartupValidationService
                 exception);
         }
 
+        if (!Directory.Exists(root) && options.CreateIfMissing)
+        {
+            // The managed XML folder follows the same creation policy as image storage.
+            GaoApp.Infrastructure.Storage.UploadPathResolver.ResolveUnderRoot(
+                Path.GetDirectoryName(root)!, Path.GetFileName(root));
+            Directory.CreateDirectory(root);
+        }
         if (!Directory.Exists(root))
             throw new InvalidOperationException(
                 "Startup validation failed: InputInvoiceLibrary:RootPath không tồn tại.");

@@ -30,7 +30,15 @@ public sealed class EndpointSecurityCoverageTests
             "ReceiptIntake.Get", "ReceiptIntake.Capture", "ReceiptIntake.Known", "ReceiptIntake.Review", "ReceiptIntake.Remove", "ReceiptIntake.Quantity",
             // Photo checks the receipt's store and source-specific view/update/approve permission;
             // ReceivingPackagingPhotoHttpTests covers forbidden and cross-store access.
-            "ReceiptIntake.Photo",
+            "ReceiptIntake.Photo", "ReceiptIntake.ReviewProducts", "ReceiptIntake.ReviewPhoto",
+            // These receipt actions resolve same-store evidence and apply the source-specific
+            // purchase/inventory policies in Rights, Has or Execute before mutations/returns.
+            "ReceiptDocumentActions.Get", "ReceiptDocumentActions.Rename", "ReceiptDocumentActions.RequestTitle",
+            "ReceiptDocumentActions.Review", "ReceiptDocumentActions.Delete",
+            "ReceiptInvoiceFollowUp.Get", "ReceiptInvoiceFollowUp.EndWaiting", "ReceiptInvoiceFollowUp.Review",
+            "ReceiptInvoiceBackfill.Preview", "ReceiptInvoiceBackfill.Confirm",
+            "PurchaseReceiptXmlMapping.Confirm",
+            "ReceiptPriceReviews.Get",
             "StockDocumentProvisionalItems.Get", "StockDocumentProvisionalItems.Options",
             "StockDocumentProvisionalItems.CaptureOptions", "StockDocumentProvisionalItems.Candidates",
             "StockDocumentProvisionalItems.Capture", "StockDocumentProvisionalItems.Increment",

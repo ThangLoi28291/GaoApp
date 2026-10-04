@@ -19,6 +19,75 @@ namespace GaoApp.Tests.Inventory;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class SaleCostReversalIntegrationTests
 {
+    [Fact]
+    public async Task Missing_pending_schema_preserves_normal_eligibility_and_rejects_pending_returns_without_side_effects()
+    {
+        await using var fixture = await CostFixture.CreateAsync("actual", 10);
+        await using var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+        await db.Database.ExecuteSqlRawAsync("DROP TABLE [SalesReturnRestockFragments]"); // isolated disposable test database
+        var eligibility = await fixture.Returns(db).GetEligibilityAsync(fixture.Seed.OrderId);
+        eligibility.Lines.Single(x => x.OrderLineId == fixture.Seed.LegacyOrderLineId).CanRestock.Should().BeTrue();
+        Func<Task> pending = () => fixture.Returns(db).CreateAsync(fixture.ReturnRequest(1, SalesReturnLineAction.PendingRestock));
+        (await pending.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.BusinessRuleException>()).Which.SafeMessage.Should().Contain("cơ sở dữ liệu");
+        (await db.SalesReturns.CountAsync()).Should().Be(0);
+        await fixture.Returns(db).CreateAsync(fixture.ReturnRequest(1));
+        (await db.SalesReturns.CountAsync()).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pending_return_reserves_sources_refunds_now_and_restock_after_resolution_posts_once(bool allocated)
+    {
+        await using var fixture = await CostFixture.CreateAsync("open", 10);
+        await using var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+        if (allocated) await fixture.AddLegalEntityAllocationAsync(db);
+        var originalCount = await db.InventoryTransactions.CountAsync();
+        var returns = new List<int>();
+        foreach (var quantity in new[] {4m, 6m})
+        {
+            var request = fixture.ReturnRequest(quantity, SalesReturnLineAction.PendingRestock);
+            request.Type = SalesReturnType.ReturnAndRefund;
+            request.Lines[0].RefundUnitAmount = 20;
+            request.Payments = [new() {Method = PaymentMethod.BankTransfer, Amount = quantity * 20}];
+            var result = await fixture.Returns(db).CreateAsync(request);
+            returns.Add(result.Id);
+            result.HasPendingRestock.Should().BeTrue();
+        }
+        (await db.InventoryTransactions.CountAsync()).Should().Be(originalCount);
+        (await db.SalesReturnRestockFragments.SumAsync(x => x.BaseQuantity)).Should().Be(10);
+        (await db.SalesReturnRestockFragments.CountAsync(x => x.AllocationReversalId != null)).Should().Be(allocated ? 2 : 0);
+        var evidence = new ReturnableValuationFragmentService(new InventoryValuationEntryRepository(db),
+            new OrderLegalEntityAllocationReversalRepository(db), new SalesReturnRestockRepository(db));
+        (await evidence.GetQuantityOnlyForOrderLineAsync(fixture.Seed.OrderId, fixture.Seed.LegacyOrderLineId, default)).Should().BeEmpty();
+        (await db.POSShifts.SingleAsync(x => x.TerminalId == fixture.Seed.TerminalId)).Status = POSShiftStatus.Closed;
+        await db.SaveChangesAsync(); // managers can finish stock receipt after the cashier closes their shift
+        Func<Task> early = () => fixture.Pending(db).CompleteAsync(returns[0]);
+        (await early.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>()).Which.ErrorCode.Should().Be("POS_RETURN_COST_PENDING");
+        (await db.InventoryTransactions.CountAsync()).Should().Be(originalCount);
+        await fixture.ReceiveAsync(db, 10, 12, "PENDING-COST-RESOLVED");
+        await fixture.AssertCostAsync(db, 120);
+        await fixture.Pending(db).CompleteAsync(returns[0]);
+        await fixture.AssertCostAsync(db, 72);
+        // Competing completion requests serialize on the original order and post only once.
+        async Task CompleteSecond()
+        {
+            await using var other = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+            await fixture.Pending(other).CompleteAsync(returns[1]);
+        }
+        await Task.WhenAll(CompleteSecond(), CompleteSecond());
+        await fixture.Pending(db).CompleteAsync(returns[0]);
+        db.ChangeTracker.Clear();
+        await fixture.AssertCostAsync(db, 0);
+        (await db.SalesReturnRestockFragments.CountAsync(x => x.CompletedAtUtc == null)).Should().Be(0);
+        (await db.SalesReturnLines.Where(x => x.Action == SalesReturnLineAction.Restock).SumAsync(x => x.LineCostTotal)).Should().Be(120);
+        (await db.InventoryTransactions.CountAsync(x => x.TransactionType == InventoryTransactionType.CustomerReturnIn)).Should().Be(2);
+        var shift = await db.POSShifts.SingleAsync(x => x.TerminalId == fixture.Seed.TerminalId);
+        shift.NonCashRefundTotal.Should().Be(200);
+        shift.RefundCount.Should().Be(2);
+        (await db.POSAuditLogs.CountAsync(x => x.Action == "RETURN_RESTOCK_COMPLETED")).Should().Be(2);
+    }
+
     [Theory]
     [InlineData("actual", 10)]
     [InlineData("auto", 12)]
@@ -109,7 +178,10 @@ public sealed class SaleCostReversalIntegrationTests
         await using var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
         var before = await db.InventoryTransactions.CountAsync();
         Func<Task> restock = () => fixture.Returns(db).CreateAsync(fixture.ReturnRequest(2));
-        await restock.Should().ThrowAsync<InvalidOperationException>();
+        var failure = await restock.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>();
+        failure.Which.ErrorCode.Should().Be("POS_RETURN_COST_PENDING");
+        failure.Which.StatusCode.Should().Be(400);
+        failure.Which.ActionHint.Should().Contain("Quản lý");
         (await db.InventoryTransactions.CountAsync()).Should().Be(before);
         // Discard tracked failed-request objects by using a fresh caller context.
         await using var noRestockDb = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
@@ -127,7 +199,9 @@ public sealed class SaleCostReversalIntegrationTests
         await using var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
         var before = await db.InventoryTransactions.CountAsync();
         Func<Task> attempt = () => fixture.Pos(db).VoidCompletedOrderAsync(fixture.Seed.OrderId, "unresolved guard");
-        await attempt.Should().ThrowAsync<InvalidOperationException>();
+        var failure = await attempt.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>();
+        failure.Which.ErrorCode.Should().Be("POS_VOID_FAILED");
+        failure.Which.InnerException.Should().BeAssignableTo<InvalidOperationException>();
         await using var verify = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
         (await verify.InventoryTransactions.CountAsync()).Should().Be(before);
         (await verify.Orders.SingleAsync(x => x.Id == fixture.Seed.OrderId)).Status.Should().Be(OrderStatus.Completed);
@@ -148,7 +222,9 @@ public sealed class SaleCostReversalIntegrationTests
         await fixture.ReceiveAsync(db, 8, 12, "FINAL-AFTER-HISTORICAL-RETURN");
         var before = await db.InventoryTransactions.CountAsync();
         Func<Task> attempt = () => fixture.Returns(db).CreateAsync(fixture.ReturnRequest(2));
-        await attempt.Should().ThrowAsync<InvalidOperationException>();
+        var failure = await attempt.Should().ThrowAsync<GaoApp.Application.Common.Exceptions.Pos.PosAppException>();
+        failure.Which.ErrorCode.Should().Be("POS_RETURN_COST_UNAVAILABLE");
+        failure.Which.StatusCode.Should().Be(400);
         (await db.InventoryTransactions.CountAsync()).Should().Be(before);
         source = (await repo.GetSaleIssueEntriesByOrderLineAsync(fixture.Seed.OrderId, fixture.Seed.LegacyOrderLineId)).Single();
         SaleValuationCostPolicy.Evaluate(source, await repo.GetRevaluationEntriesBySourceIdAsync(source.Id),
@@ -227,6 +303,49 @@ public sealed class SaleCostReversalIntegrationTests
         await new ReturnableValuationFragmentService(new InventoryValuationEntryRepository(db),
             new OrderLegalEntityAllocationReversalRepository(db))
             .ValidateVoidClosureAsync(fixture.Seed.OrderId, line.Id, default);
+    }
+
+    [Fact]
+    public async Task Receipt_read_failure_after_void_commit_preserves_posting_and_original_read_error()
+    {
+        await using var fixture = await CostFixture.CreateAsync("actual", 10);
+        await using var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+        var users = System.Reflection.DispatchProxy.Create<GaoApp.Application.Interfaces.Repositories.Users.IUserRepository, ReceiptReadFailure>();
+        Func<Task> attempt = () => fixture.Pos(db, users).VoidCompletedOrderAsync(fixture.Seed.OrderId, "receipt read failure");
+        await attempt.Should().ThrowAsync<InvalidOperationException>().WithMessage("Injected receipt read failure");
+        await using var verify = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+        (await verify.Orders.SingleAsync(x => x.Id == fixture.Seed.OrderId)).Status.Should().Be(OrderStatus.Voided);
+        (await verify.POSAuditLogs.CountAsync(x => x.OrderId == fixture.Seed.OrderId && x.Action == "ORDER_VOIDED")).Should().Be(1);
+        await fixture.AssertCostAsync(verify, 0);
+    }
+
+    public class ReceiptReadFailure : System.Reflection.DispatchProxy
+    {
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+            => throw new InvalidOperationException("Injected receipt read failure");
+    }
+
+    [Theory]
+    [InlineData("open")]
+    [InlineData("partial")]
+    [InlineData("mixed-open")]
+    public async Task Restock_readiness_reports_pending_cost_and_recovers_after_a_real_receipt(string writer)
+    {
+        await using var fixture = await CostFixture.CreateAsync(writer, 10);
+        await using (var db = fixture.Database.CreateTenantContext(fixture.Seed.StoreId))
+        {
+            var line = (await fixture.Returns(db).GetEligibilityAsync(fixture.Seed.OrderId)).Lines.Single();
+            line.CanRestock.Should().BeFalse();
+            line.RestockBlockCode.Should().Be("POS_RETURN_COST_PENDING");
+            line.RestockActionHint.Should().Contain("Quản lý");
+            (await db.SalesReturns.CountAsync()).Should().Be(0);
+            await fixture.ReceiveAsync(db, 10, 12, "RESOLVE-BEFORE-RETURN");
+        }
+        await using var ready = fixture.Database.CreateTenantContext(fixture.Seed.StoreId);
+        (await fixture.Returns(ready).GetEligibilityAsync(fixture.Seed.OrderId)).Lines.Single().CanRestock.Should().BeTrue();
+        var result = await fixture.Returns(ready).CreateAsync(fixture.ReturnRequest(10));
+        result.Lines.Single().ReturnBaseQuantity.Should().Be(10);
+        await fixture.AssertCostAsync(ready, 0);
     }
 
     internal sealed class CostFixture : IAsyncDisposable
@@ -338,7 +457,7 @@ public sealed class SaleCostReversalIntegrationTests
         }
 
         private ReturnableValuationFragmentService Reader(AppDbContext db)
-            => new(new InventoryValuationEntryRepository(db), new OrderLegalEntityAllocationReversalRepository(db));
+            => new(new InventoryValuationEntryRepository(db), new OrderLegalEntityAllocationReversalRepository(db), new SalesReturnRestockRepository(db));
 
         private OrderLegalEntityReversalService Reversals(AppDbContext db)
             => new(new OrderLegalEntityAllocationRepository(db), new OrderLegalEntityAllocationReversalRepository(db),
@@ -350,9 +469,15 @@ public sealed class SaleCostReversalIntegrationTests
                 CreateRealMovementService(db), new InventoryMovementFactory(), new NoOpAuditLogService(),
                 new FixedCurrentStore(Seed.StoreId), new FixedCurrentUser(Seed.UserId, Seed.TerminalId), Reader(db),
                 new ReturnCostAllocator(), new NoOpRewardLedgerRepository(), new NoOpOrderRewardCalculator(),
-                Reversals(db), new NoOpDraftInvoiceReturnSyncService());
+                Reversals(db), new NoOpDraftInvoiceReturnSyncService(), pendingRestock: new SalesReturnRestockRepository(db));
 
-        public POSService Pos(AppDbContext db)
+        public PendingReturnRestockService Pending(AppDbContext db)
+            => new(new UnitOfWork(db), new SalesReturnRestockRepository(db), new SalesReturnRepository(db),
+                Reader(db), CreateRealMovementService(db), new InventoryMovementFactory(),
+                new FixedCurrentStore(Seed.StoreId), new FixedCurrentUser(Seed.UserId, Seed.TerminalId),
+                new POSAuditLogRepository(db), new NoOpAuditLogService());
+
+        public POSService Pos(AppDbContext db, GaoApp.Application.Interfaces.Repositories.Users.IUserRepository? users = null)
         {
             // Exercise the public completed-order workflow; only unrelated UI,
             // promotion and customer collaborators (unused for these fixtures) are omitted.
@@ -365,7 +490,8 @@ public sealed class SaleCostReversalIntegrationTests
                 ["auditLogService"] = new NoOpAuditLogService(), ["salesReturns"] = new SalesReturnRepository(db),
                 ["inventoryValuationEntryRepository"] = new InventoryValuationEntryRepository(db),
                 ["rewardVoucherRepository"] = new CustomerRewardVoucherRepository(db),
-                ["logger"] = NullLogger<POSService>.Instance, ["legalEntityReversalService"] = Reversals(db)
+                ["logger"] = NullLogger<POSService>.Instance, ["legalEntityReversalService"] = Reversals(db),
+                ["users"] = users ?? new GaoApp.Infrastructure.Repositories.Users.UserRepository(db)
             };
             var constructor = typeof(POSService).GetConstructors().Single();
             return (POSService)constructor.Invoke(constructor.GetParameters()

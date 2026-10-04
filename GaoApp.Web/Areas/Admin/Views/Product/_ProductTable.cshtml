@@ -1,7 +1,22 @@
 @using GaoApp.Web.Areas.Admin.ViewModels.Products
+@using GaoApp.Application.DTOs.Products
+@using System.Text.Json
 @model ProductIndexVM
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService LabelAuthorization
 
 @{
+    var canPrintLabels = (await LabelAuthorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.System.ProductLabel.Print)).Succeeded;
+    var canViewSupplier = (await LabelAuthorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.Catalog.Supplier.View)).Succeeded;
+    var priceJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+    string WholesaleLabel(ProductListItemDto product)
+    {
+        var units = product.SaleUnits.Where(x => x.IsBaseUnit && x.IsActive).ToList();
+        if (units.Count == 0) return "Chưa có giá";
+        if (units.All(x => !x.WholesalePrice.HasValue)) return "Theo giá lẻ";
+        var prices = units.Select(x => x.WholesalePrice ?? x.RetailPrice).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+        if (prices.Count == 0) return "Chưa có giá";
+        return prices.Min() == prices.Max() ? $"{prices.Min():n0} ₫" : $"{prices.Min():n0} – {prices.Max():n0} ₫";
+    }
     var items = Model.Paged.Items;
     var totalItems = Model.Paged.TotalItems;
     var pageSize = Model.PageSize <= 0 ? 20 : Model.PageSize;
@@ -17,6 +32,10 @@
             area = "Admin",
             search = Model.SearchString,
             categoryId = Model.CategoryId,
+            supplierId = Model.Filters.SupplierId,
+            brandId = Model.Filters.BrandId,
+            baseUnitId = Model.Filters.BaseUnitId,
+            dataIssue = Model.Filters.DataIssue,
             lifecycle = Model.Lifecycle,
             page = currentPage,
             pageSize
@@ -40,7 +59,7 @@
                 </div>
                 <div class="fw-semibold mb-1">Chưa có sản phẩm phù hợp</div>
                 <div class="gds-empty__copy">
-                    Thử thay đổi từ khóa, danh mục hoặc trạng thái sẵn sàng bán.
+                    Thử bỏ bớt bộ lọc hoặc chọn Tất cả trạng thái để tìm cả sản phẩm ngừng hoạt động.
                 </div>
             </div>
         }
@@ -85,7 +104,8 @@
                                     data-quick-alias="@product.Alias"
                                     data-quick-brand="@product.BrandName"
                                     data-quick-category="@product.CategoryName"
-                                    data-quick-supplier="@product.SupplierName"
+                                    data-quick-supplier="@(canViewSupplier ? product.SupplierName : null)"
+                                    data-quick-units="@JsonSerializer.Serialize(product.SaleUnits, priceJsonOptions)"
                                     data-quick-tax="@product.TaxName"
                                     data-quick-unit="@product.BaseUnitName"
                                     data-quick-price="@priceLabel"
@@ -136,8 +156,9 @@
                                             @(string.IsNullOrWhiteSpace(product.BaseUnitName) ? "—" : product.BaseUnitName)
                                         </div>
                                         <div class="fw-bold text-primary fs-6 mt-1">
-                                            Đơn giá: @priceLabel
+                                            Giá lẻ: @priceLabel
                                         </div>
+                                        <div class="fw-semibold mt-1 product-wholesale-price">Giá sỉ: @WholesaleLabel(product)</div>
                                     </td>
                                     <td class="text-center">
                                         <span class="gds-code">@product.VariantCount</span>
@@ -157,6 +178,10 @@
                                     </td>
                                     <td class="text-end">
                                         <div class="gds-row-actions justify-content-end">
+                                            @if (canPrintLabels)
+                                            {
+                                                <a href="/admin/label-printing?tab=quick&amp;productId=@product.Id" class="gds-icon-button gds-action-button" title="In tem" aria-label="In tem @product.Name"><i class="bx bx-barcode" aria-hidden="true"></i></a>
+                                            }
                                             <button type="button"
                                                class="gds-icon-button gds-action-button js-quick-view"
                                                aria-label="Xem nhanh sản phẩm @product.Name"
@@ -225,7 +250,8 @@
                              data-quick-alias="@product.Alias"
                              data-quick-brand="@product.BrandName"
                              data-quick-category="@product.CategoryName"
-                             data-quick-supplier="@product.SupplierName"
+                             data-quick-supplier="@(canViewSupplier ? product.SupplierName : null)"
+                             data-quick-units="@JsonSerializer.Serialize(product.SaleUnits, priceJsonOptions)"
                              data-quick-tax="@product.TaxName"
                              data-quick-unit="@product.BaseUnitName"
                              data-quick-price="@priceLabel"
@@ -284,7 +310,8 @@
                             </span>
                             <span class="col-6">
                                 <i class="bx bx-purchase-tag me-1" aria-hidden="true"></i>
-                                <strong class="text-primary">Đơn giá @priceLabel</strong>
+                                <strong class="text-primary">Giá lẻ: @priceLabel</strong>
+                                <strong class="d-block product-wholesale-price">Giá sỉ: @WholesaleLabel(product)</strong>
                             </span>
                             <span class="col-6">
                                 <i class="bx bx-layer me-1" aria-hidden="true"></i>
@@ -298,6 +325,10 @@
                                 <i class="bx bx-show me-1" aria-hidden="true"></i>Xem nhanh
                             </button>
 
+                            @if (canPrintLabels)
+                            {
+                                <a href="/admin/label-printing?tab=quick&amp;productId=@product.Id" class="btn btn-sm btn-outline-primary gds-action-button"><i class="bx bx-barcode me-1"></i>In tem</a>
+                            }
                             <a asp-area="Admin"
                                asp-controller="Product"
                                asp-action="Edit"

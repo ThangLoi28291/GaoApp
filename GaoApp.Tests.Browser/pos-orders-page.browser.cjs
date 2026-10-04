@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
     const page = await context.newPage(), errors = [], commands = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/admin/pos/')) commands.push(request.url()); });
-    let fixtures = false, listError = false, receiptError = false, empty = false, race = false, receiptDelay = false;
+    let fixtures = false, listError = false, receiptError = false, empty = false, race = false, receiptDelay = false, listDelay = false;
     const requests = [], receiptRequests = [];
     const now = new Date();
     const rows = [
@@ -25,6 +25,10 @@ const { chromium } = require('playwright');
         { orderId: 100, orderNumber: 'POS-20260908-00005', status: 'Refunded', paymentStatus: 'Refunded', grandTotal: 95000, paidTotal: 95000, balanceDue: 0, refundedTotal: 95000, returnCount: 1 },
         { orderId: 99, orderNumber: 'POS-20260908-00004', status: 'Voided', paymentStatus: 'Unpaid', grandTotal: 85000, paidTotal: 0, balanceDue: 85000 }
     ].map((row, i) => ({ ...row, createdAtUtc: new Date(now.getTime() - (i + 1) * 3600000).toISOString(), completedAtUtc: row.status === 'Completed' ? new Date(now.getTime() - (i === 0 ? 60000 : 3600000)).toISOString() : null }));
+    rows.forEach((row, i) => Object.assign(row, { customerName: 'Nguyễn Minh Anh', customerPhone: '0901234567',
+        cashierName: 'Trần Ngọc Hà', terminalName: 'Quầy thu ngân 01', terminalCode: 'POS01',
+        paymentMethods: i === 0 ? ['Cash', 'BankTransfer'] : i === 1 ? ['BankTransfer'] : i === 2 ? ['Cash'] : [],
+        isCreditSale: i === 0 || i === 3 }));
     const receipt = id => ({ ...rows.find(row => row.orderId === id), orderId: id, customerName: 'Nguyễn Minh Anh', cashierName: 'Trần Ngọc Hà', shiftCode: 'SHIFT-20260910-01', customerPhone: '0901 234 567', finalizedAtUtc: now.toISOString(),
         subtotal: 168000, discountTotal: 10000, grandTotal: 158000, paidTotal: 158000, balanceDue: 0,
         lines: [{ itemName: 'Sữa tươi TH true MILK không đường 180 ml', productVariantName: 'Sữa tươi TH true MILK không đường 180 ml', scannedBarcode: '2000105515438', barcode: 'TH-PACK', sku: 'TH180', quantity: 2, unitPrice: 32000, lineTotal: 64000, sellingUnitName: 'lốc' },
@@ -35,6 +39,7 @@ const { chromium } = require('playwright');
         if (!fixtures) return route.continue();
         const query = new URL(route.request().url()).searchParams;
         requests.push(Object.fromEntries(query));
+        if (listDelay) await new Promise(resolve => setTimeout(resolve, 600));
         if (listError) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Máy chủ tạm thời không phản hồi.' }) });
         const keyword = query.get('keyword') || '';
         if (race && keyword === 'slow') await new Promise(resolve => setTimeout(resolve, 700));
@@ -55,10 +60,25 @@ const { chromium } = require('playwright');
         return route.fulfill({ contentType: 'application/json', body: JSON.stringify(receipt(id)) }).catch(() => {});
     });
     const loaded = () => page.waitForFunction(() => document.querySelector('.po-table')?.getAttribute('aria-busy') === 'false');
+    await page.route('**/admin/pos/orders/filter-options?*', async route => {
+        if (!fixtures) return route.continue();
+        const query = new URL(route.request().url()).searchParams, kind = query.get('kind'), term = query.get('term');
+        if (term === 'slow') await new Promise(resolve => setTimeout(resolve, 700));
+        const data = term === 'zzz' ? [] : kind === 'employee'
+            ? [{ id: 501, name: term === 'slow' ? 'Old response' : 'Nguyễn Thu Hà', code: 'ha01' }, { id: 502, name: 'Nguyễn Thu Hà', code: 'ha02' }]
+            : [{ id: 601, name: 'Quầy chính', code: 'POS01' }, { id: 602, name: 'Quầy chính', code: 'POS02' }];
+        await route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) }).catch(() => {});
+    });
     async function refresh() { await page.locator('#btnRefresh').click(); await loaded(); }
     async function screenshot(name) { await page.screenshot({ path: path.join(output, name + '.png'), fullPage: false }); }
     async function noOverflow() {
         const overflow = await page.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth, root: document.querySelector('.pos-orders-page').getBoundingClientRect().right }));
+        if (overflow.document > overflow.width + 1 || overflow.root > overflow.width + 1) {
+            await screenshot('overflow-' + overflow.width);
+            console.log('Overflow elements', await page.evaluate(() => [...document.querySelectorAll('body *')]
+                .filter(node => node.getBoundingClientRect().right > innerWidth + 1)
+                .map(node => ({ tag: node.tagName, id: node.id, class: node.className, right: node.getBoundingClientRect().right })).slice(-20)));
+        }
         assert.ok(overflow.document <= overflow.width + 1 && overflow.root <= overflow.width + 1, JSON.stringify(overflow));
         const overlap = await page.locator('.po-order-row').evaluateAll(rows => rows.some(row => {
             const cells = [...row.children].filter(cell => getComputedStyle(cell).display !== 'none');
@@ -80,6 +100,10 @@ const { chromium } = require('playwright');
         assert.equal(await page.locator('#metricCount').innerText(), '28');
         assert.equal((await page.locator('#metricTotal').innerText()).replace(/\s/g, ''), rows.reduce((sum, row) => sum + row.grandTotal, 0).toLocaleString('vi-VN') + 'đ');
         assert.match(await page.locator('#filterSummary').innerText(), /Tất cả thời gian/);
+        const firstText = await page.locator('[data-order-id="105"]').innerText();
+        assert.match(firstText, /Nguyễn Minh Anh/); assert.match(firstText, /Trần Ngọc Hà/);
+        assert.match(firstText, /Quầy thu ngân 01/); assert.match(firstText, /Tiền mặt/); assert.match(firstText, /Chuyển khoản/);
+        assert.match(firstText, /Công nợ/);
         for (const [width, height] of [[1600, 1000], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [390, 844], [360, 800]]) {
             await page.setViewportSize({ width, height }); await noOverflow();
             if (width >= 768) assert.equal(await page.locator('#btnToggleFilters').isVisible(), false, 'Mobile filter toggle stays hidden on desktop/tablet');
@@ -94,6 +118,53 @@ const { chromium } = require('playwright');
         }
         console.log('PASS list totals, all status variants and seven responsive widths.');
         await page.setViewportSize({ width: 1440, height: 900 });
+        for (const [id, value] of [['employee', 'Ngọc Hà'], ['customer', '0901234567'], ['terminal', 'POS01']]) await page.locator('#' + id).fill(value);
+        await page.locator('#settlement').selectOption('Mixed');
+        await page.locator('#btnSearch').click(); await loaded();
+        assert.equal(requests.at(-1).employee, 'Ngọc Hà'); assert.equal(requests.at(-1).customer, '0901234567');
+        assert.equal(requests.at(-1).terminal, 'POS01'); assert.equal(requests.at(-1).settlement, 'Mixed');
+        assert.match(await page.locator('#filterSummary').innerText(), /Nhân viên: Ngọc Hà/);
+        await page.locator('#btnNextPage').click(); await loaded();
+        assert.equal(requests.at(-1).employee, 'Ngọc Hà'); assert.equal(requests.at(-1).settlement, 'Mixed');
+        await page.reload(); await loaded();
+        assert.equal(await page.locator('#employee').inputValue(), 'Ngọc Hà');
+        assert.equal(await page.locator('#customer').inputValue(), '0901234567');
+        assert.equal(await page.locator('#terminal').inputValue(), 'POS01');
+        assert.equal(await page.locator('#settlement').inputValue(), 'Mixed');
+        await page.locator('#btnResetFilters').click(); await loaded();
+        for (const id of ['employee', 'customer', 'terminal', 'settlement']) assert.equal(await page.locator('#' + id).inputValue(), '');
+        console.log('PASS new filter submission, page retention, URL restore and reset; identities and mixed/credit payment badges.');
+        await page.locator('#employee').fill('nguyen');
+        await page.locator('#employeeOptions [role=option]').first().waitFor();
+        await screenshot('employee-autocomplete');
+        const beforeSelection = requests.length;
+        await page.locator('#employee').press('ArrowDown'); await page.locator('#employee').press('Enter');
+        assert.equal(await page.locator('#employeeId').inputValue(), '502');
+        assert.equal(requests.length, beforeSelection, 'Enter selects a suggestion without submitting the form');
+        assert.match(await page.locator('#employee').inputValue(), /ha02/);
+        await page.locator('#terminal').fill('quay');
+        await page.locator('#terminalOptions [role=option]').nth(1).click();
+        assert.equal(await page.locator('#terminalId').inputValue(), '602');
+        await page.locator('#btnSearch').click(); await loaded();
+        assert.equal(requests.at(-1).employeeId, '502'); assert.equal(requests.at(-1).terminalId, '602');
+        await page.reload(); await loaded();
+        assert.equal(await page.locator('#employeeId').inputValue(), '502');
+        assert.equal(await page.locator('#terminalId').inputValue(), '602');
+        await page.locator('#employee').fill('zzz');
+        assert.equal(await page.locator('#employeeId').inputValue(), '');
+        await page.waitForFunction(() => document.querySelector('[data-order-lookup=employee] [role=status]').textContent.includes('Không có kết quả'));
+        await page.locator('#employee').press('Escape');
+        assert.equal(await page.locator('#employee').getAttribute('aria-expanded'), 'false');
+        const slowRequest = page.waitForRequest(r => r.url().includes('filter-options') && r.url().includes('term=slow'));
+        await page.locator('#employee').fill('slow'); await slowRequest;
+        await page.locator('#employee').fill('nguyen');
+        await page.locator('#employeeOptions [role=option]').first().waitFor(); await page.waitForTimeout(750);
+        assert.doesNotMatch(await page.locator('#employeeOptions').innerText(), /Old response/);
+        await page.locator('#employee').press('Enter');
+        await page.locator('#btnResetFilters').click(); await loaded();
+        assert.equal(await page.locator('#employeeId').inputValue(), ''); assert.equal(await page.locator('#terminalId').inputValue(), '');
+        assert.equal(new URL(page.url()).searchParams.has('employeeId'), false);
+        console.log('PASS autocomplete mouse/keyboard selection, duplicate names by ID, URL restore, clearing, empty result, Escape and stale lookup cancellation.');
         const beforeRowPreview = receiptRequests.length;
         await page.locator('[data-order-id="105"] td:nth-child(3)').dblclick();
         await page.locator('#previewBody .po-preview-lines').first().waitFor();
@@ -157,7 +228,14 @@ const { chromium } = require('playwright');
         assert.equal(await page.locator('#orderPreview').evaluate(node => node.open), false, 'Double-click on an action control is excluded');
         console.log('PASS row double-click, one receipt request, code-button double-click, print/action exclusion and restored focus.');
         console.log('PASS preview fields, responsive drawer, Escape/focus, denied/retry, original ACB dialog and print/refund/void destinations.');
-        await page.locator('#btnNextPage').click(); await loaded();
+        listDelay = true;
+        await page.locator('#btnNextPage').click();
+        assert.equal(await page.locator('.po-table').getAttribute('aria-busy'), 'true');
+        assert.equal(await page.locator('.po-order-row').count(), 8, 'Keep the last page readable while fetching the next');
+        assert.equal(await page.locator('.po-skeleton-row').count(), 0);
+        assert.match(await page.locator('#pageIndicator').innerText(), /Trang 1/);
+        assert.equal(await page.locator('#metricCount').innerText(), '28');
+        await loaded(); listDelay = false;
         assert.match(await page.locator('#ordersBody').innerText(), /POS-TRANG-2/);
         assert.match(page.url(), /page=2/);
         await page.locator('#btnPrevPage').click(); await loaded();

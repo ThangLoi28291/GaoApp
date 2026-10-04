@@ -38,6 +38,7 @@ public class POSShift : BaseStoreEntity, IAuditTrackedEntity
     public decimal ClosingCashExpected { get; set; }
     public decimal? ClosingCashActual { get; set; }
     public decimal? CashReceivedAmount { get; set; }
+    public bool NeedsCashReconciliation { get; set; }
     public int? CashReceivedByUserId { get; set; }
     public DateTime? CashReceivedAtUtc { get; set; }
     [StringLength(500)]

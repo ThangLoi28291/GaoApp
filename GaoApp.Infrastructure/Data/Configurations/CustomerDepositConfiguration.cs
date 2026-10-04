@@ -39,3 +39,12 @@ public sealed class OrderCustomerDepositConfiguration : IEntityTypeConfiguration
         b.HasOne<CustomerDeposit>().WithMany().HasForeignKey(x => x.CustomerDepositId).OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+public sealed class CashTransactionDepositConfiguration : IEntityTypeConfiguration<POSShiftCashTransaction>
+{
+    public void Configure(EntityTypeBuilder<POSShiftCashTransaction> b)
+    {
+        b.HasOne<CustomerDepositEntry>().WithMany().HasForeignKey(x => x.CustomerDepositEntryId).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.StoreId, x.CustomerDepositEntryId }).IsUnique().HasFilter("[CustomerDepositEntryId] IS NOT NULL");
+    }
+}

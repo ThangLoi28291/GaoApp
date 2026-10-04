@@ -11,6 +11,57 @@ namespace GaoApp.Tests.Security;
 public sealed class ReceiptTemplateSqlServerTests
 {
     [Fact]
+    public async Task Only_admin_can_configure_shared_default_and_cashiers_receive_live_design_and_offline_snapshot()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        using var admin = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, store));
+        using var employee = await app.LoginAsync(await app.AddAccountAsync(store, "*")); // Permission alone is insufficient.
+        using var foreign = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, app.Stores[1]));
+        const string endpoint = "/admin/receipt-templates/default";
+        var initial = await employee.JsonAsync(HttpMethod.Get, endpoint);
+        Assert.Equal("modern-80", initial.GetProperty("template").GetProperty("key").GetString());
+        using (var page = await employee.Http.GetAsync("/admin/receipt-templates")) Assert.Equal(HttpStatusCode.Forbidden, page.StatusCode);
+        var design = new ReceiptDesign { Name = "Mẫu mặc định 45", PaperSize = "45", Title = "HÓA ĐƠN CHUNG" };
+        using (var createDenied = await employee.Http.PostAsJsonAsync("/admin/receipt-templates/data", new SaveReceiptTemplateRequest(design, null)))
+            Assert.Equal(HttpStatusCode.Forbidden, createDenied.StatusCode);
+        var created = await admin.JsonAsync(HttpMethod.Post, "/admin/receipt-templates/data", new SaveReceiptTemplateRequest(design, null));
+        var key = created.GetProperty("key").GetString()!;
+        var version = created.GetProperty("rowVersion").GetString()!;
+        var request = new SaveReceiptDefaultRequest(key, initial.GetProperty("rowVersion").GetString()!, version);
+        using (var forbidden = await employee.Http.PutAsJsonAsync(endpoint, request)) Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        var otherInitial = await foreign.JsonAsync(HttpMethod.Get, endpoint);
+        using (var cross = await foreign.Http.PutAsJsonAsync(endpoint, request with { RowVersion = otherInitial.GetProperty("rowVersion").GetString()! }))
+            Assert.Equal(HttpStatusCode.NotFound, cross.StatusCode);
+        var saved = await admin.JsonAsync(HttpMethod.Put, endpoint, request);
+        Assert.Equal(key, saved.GetProperty("template").GetProperty("key").GetString());
+        Assert.Equal(saved.GetRawText(), (await employee.JsonAsync(HttpMethod.Get, endpoint)).GetRawText());
+        using (var stale = await admin.Http.PutAsJsonAsync(endpoint, request with { Key = "classic-A4" })) Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using (var invalid = await admin.Http.PutAsJsonAsync(endpoint, request with { Key = "missing", RowVersion = saved.GetProperty("rowVersion").GetString()! })) Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        var id = int.Parse(key[7..]);
+        using (var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"/admin/receipt-templates/data/{id}") { Content = JsonContent.Create(new { rowVersion = version }) })
+        using (var deletion = await admin.Http.SendAsync(deleteRequest)) Assert.Equal(HttpStatusCode.Conflict, deletion.StatusCode);
+        var updated = await admin.JsonAsync(HttpMethod.Put, $"/admin/receipt-templates/data/{id}", new SaveReceiptTemplateRequest(design with { Title = "NỘI DUNG MỚI" }, version));
+        var latest = await employee.JsonAsync(HttpMethod.Get, endpoint);
+        Assert.Equal("NỘI DUNG MỚI", latest.GetProperty("template").GetProperty("design").GetProperty("title").GetString());
+        await employee.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash = 0, warehouseId = store.WarehouseId });
+        var draft = await employee.JsonAsync(HttpMethod.Post, "/admin/pos/draft");
+        foreach (var path in new[] { "/admin/pos/offline/bootstrap", "/admin/pos/offline/status" })
+            Assert.Equal(latest.GetRawText(), (await employee.JsonAsync(HttpMethod.Get, path)).GetProperty("receiptDefault").GetRawText());
+        var orderId = draft.GetProperty("orderId").GetInt32();
+        var print = await employee.Http.GetStringAsync($"/admin/pos/orders/{orderId}/print?autoPrint=false&size=A4");
+        Assert.DoesNotContain("printTemplateChoice", print);
+        Assert.DoesNotContain("href=\"/admin/receipt-templates\"", print);
+        Assert.Contains("printTemplateName", print);
+        Assert.Contains("receiptDefault", print);
+        var other = await foreign.JsonAsync(HttpMethod.Get, endpoint);
+        Assert.Equal("modern-80", other.GetProperty("template").GetProperty("key").GetString());
+        // Invalid/missing tokens cannot change the default.
+        admin.Http.DefaultRequestHeaders.Remove("RequestVerificationToken");
+        using (var csrf = await admin.Http.PutAsJsonAsync(endpoint, request with { Key = "classic-A4", RowVersion = latest.GetProperty("rowVersion").GetString()! })) Assert.Equal(HttpStatusCode.BadRequest, csrf.StatusCode);
+    }
+
+    [Fact]
     public async Task Receipt_identity_migration_preserves_existing_store_data()
     {
         await using var database = new GaoApp.Tests.Configuration.InventoryPostingLocalDb();
@@ -33,9 +84,9 @@ public sealed class ReceiptTemplateSqlServerTests
     {
         await using var app = await FullApplicationFixture.StartAsync();
         var store = app.Stores[0];
-        var account = await app.AddAccountAsync(store, "*");
+        var account = await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, store);
         using var manager = await app.LoginAsync(account);
-        using var other = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        using var other = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, app.Stores[1]));
         using var cashier = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.Reprint));
         const string url = "/admin/receipt-templates/store-info";
         var original = await cashier.JsonAsync(HttpMethod.Get, url);
@@ -89,8 +140,8 @@ public sealed class ReceiptTemplateSqlServerTests
     public async Task Templates_enforce_tenant_permissions_validation_and_concurrent_edit_versions()
     {
         await using var app = await FullApplicationFixture.StartAsync();
-        using var manager = await app.LoginAsync(await app.AddAccountAsync(app.Stores[0], "*"));
-        using var other = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        using var manager = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, app.Stores[0]));
+        using var other = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, app.Stores[1]));
         using var cashier = await app.LoginAsync(await app.AddAccountAsync(app.Stores[0], PermissionCodes.Pos.Order.Reprint, PermissionCodes.Pos.Order.View));
         const string url = "/admin/receipt-templates/data";
         var builtins = await cashier.JsonAsync(HttpMethod.Get, url);

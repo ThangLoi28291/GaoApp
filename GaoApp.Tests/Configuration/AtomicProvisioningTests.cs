@@ -220,7 +220,7 @@ public sealed class AtomicProvisioningTests
         await using var db = database.CreateContext();
         if (pendingUpgrade)
             await db.GetService<Microsoft.EntityFrameworkCore.Migrations.IMigrator>()
-                .MigrateAsync("20260912120000_AddCustomerDisplayWifi");
+                .MigrateAsync("20261001121734_PreserveInputInvoiceLibrarySource");
         else
             await db.Database.MigrateAsync();
 

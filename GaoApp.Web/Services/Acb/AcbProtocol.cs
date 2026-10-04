@@ -79,6 +79,11 @@ public sealed class AcbProtocol(HttpClient http, IDataProtectionProvider protect
         string token;
         try { token = await GetAccessTokenAsync(s, ct); }
         catch (AcbApiException error) { error.BusinessRequestNotSent = true; throw; }
+        catch (CryptographicException)
+        {
+            throw new AcbApiException("Không giải mã được Client secret ACB trên máy này. Hãy nhập lại và lưu Client secret trong Cài đặt ACB, giữ nguyên tài khoản và các thông số khác.")
+            { BusinessRequestNotSent = true };
+        }
         using var request = new HttpRequestMessage(method, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));

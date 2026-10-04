@@ -1204,7 +1204,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
             => throw new NotSupportedException();
         public Task AddInventoryTransactionAsync(InventoryTransaction entity, CancellationToken ct = default)
             => throw new NotSupportedException();
-        public Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default)
+        public Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
             => throw new NotSupportedException();

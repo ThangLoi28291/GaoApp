@@ -20,6 +20,12 @@ public interface IInputInvoiceItemCatalogMappingService
         string? expectedMappingRowVersion,
         CancellationToken ct = default);
 
+    Task<InputInvoiceItemCatalogResolutionDto> ConfirmForPricingAsync(
+        int storeId,
+        int stockDocumentId,
+        ConfirmInputInvoicePricingMappingRequest request,
+        CancellationToken ct = default);
+
     Task AutoApplyKnownMappingsWithinTransactionAsync(
         int storeId,
         int stockDocumentId,

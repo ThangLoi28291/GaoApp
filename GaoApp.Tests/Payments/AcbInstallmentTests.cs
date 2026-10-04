@@ -20,9 +20,7 @@ public sealed partial class AcbPaymentTests
     {
         await using var f = await Fixture.Create();
         var one = await f.Service.TryCreateAsync(100, Installment(20000), default);
-        var two = await f.Service.TryCreateAsync(100, Installment(50000), default);
-        Assert.NotEqual(one!.Id, two!.Id);
-        f.Bank.Pay(one.RequestCode, 20000); f.Bank.Pay(two.RequestCode, 50000);
+        f.Bank.Pay(one!.RequestCode, 20000);
         await f.Callback();
         var first = JsonSerializer.SerializeToElement(await f.Service.CompleteAsync(one.Id, default));
         Assert.False(first.GetProperty("finalized").GetBoolean());
@@ -33,6 +31,10 @@ public sealed partial class AcbPaymentTests
         Assert.Equal(0, f.FinalizeCount);
         await f.Service.CompleteAsync(one.Id, default);
         Assert.Equal(2, f.Order.Payments.Count);
+        var two = await f.Service.TryCreateAsync(100, Installment(50000), default);
+        Assert.NotEqual(one.Id, two!.Id);
+        f.Bank.Pay(two.RequestCode, 50000);
+        await f.Callback();
         var last = JsonSerializer.SerializeToElement(await f.Service.CompleteAsync(two.Id, default));
         Assert.True(last.GetProperty("finalized").GetBoolean());
         Assert.NotEqual(JsonValueKind.Null, last.GetProperty("printUrl").ValueKind);
@@ -62,9 +64,9 @@ public sealed partial class AcbPaymentTests
     }
 
     [Theory]
-    [InlineData(70001)]
     [InlineData(10000.5)]
-    public async Task Dynamic_QR_rejects_over_balance_and_fractional_amounts(decimal amount)
+    [InlineData(2147483648)]
+    public async Task Dynamic_QR_rejects_fractional_amounts_and_bank_limit_overflow(decimal amount)
     {
         await using var f = await Fixture.Create();
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.TryCreateAsync(100, Installment(amount), default));
@@ -72,11 +74,33 @@ public sealed partial class AcbPaymentTests
     }
 
     [Fact]
+    public async Task Dynamic_QR_above_order_total_records_the_full_transfer_and_retries_once()
+    {
+        await using var f = await Fixture.Create();
+        var request = Installment(125000);
+        var qr = (await f.Service.TryCreateAsync(100, request, default))!;
+        Assert.Equal(125000m, qr.Amount);
+        Assert.Equal(qr.Id, (await f.Service.TryCreateAsync(100, request, default))!.Id);
+        f.Bank.Pay(qr.RequestCode, 125000);
+        await f.Callback();
+        var result = JsonSerializer.SerializeToElement(await f.Service.CompleteAsync(qr.Id, default));
+        Assert.True(result.GetProperty("finalized").GetBoolean());
+        Assert.Equal(125000m, result.GetProperty("paidAmount").GetDecimal());
+        await f.Service.CompleteAsync(qr.Id, default);
+        Assert.Equal(125000m, f.Order.Payments.Single(x => x.Method == PaymentMethod.BankTransfer).Amount);
+        Assert.Equal(155000m, f.Order.PaidTotal);
+        Assert.Equal(55000m, f.Order.ChangeDue);
+        Assert.Equal(0m, f.Order.BalanceDue);
+        Assert.Equal(PaymentStatus.Paid, f.Order.PaymentStatus);
+        Assert.Equal(1, f.FinalizeCount);
+    }
+
+    [Fact]
     public async Task Last_payment_cancels_unused_dynamic_QR_after_retrieval()
     {
         await using var f = await Fixture.Create();
         var unused = await f.Service.TryCreateAsync(100, Installment(70000), default);
-        var paid = await f.Service.TryCreateAsync(100, Installment(70000), default);
+        var paid = await SeedLegacyDynamicQrAsync(f, 70000);
         f.Bank.Pay(paid!.RequestCode, 70000);
         await f.Service.StatusAsync(paid.Id, true, default, true);
         await f.Service.CompleteAsync(paid.Id, default);
@@ -86,18 +110,21 @@ public sealed partial class AcbPaymentTests
     }
 
     [Fact]
-    public async Task Excess_received_money_on_another_QR_blocks_finalize_and_preserves_evidence()
+    public async Task Another_received_QR_can_exceed_remaining_balance_and_preserves_all_money_and_evidence()
     {
         await using var f = await Fixture.Create();
         var one = await f.Service.TryCreateAsync(100, Installment(50000), default);
-        var two = await f.Service.TryCreateAsync(100, Installment(70000), default);
+        var two = await SeedLegacyDynamicQrAsync(f, 70000);
         f.Bank.Pay(one!.RequestCode, 50000); f.Bank.Pay(two!.RequestCode, 70000);
         await f.Callback();
         await f.Service.CompleteAsync(one.Id, default);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.CompleteAsync(two.Id, default));
+        await f.Service.CompleteAsync(two.Id, default);
+        await f.Service.CompleteAsync(two.Id, default);
         Assert.Equal(2, await f.Db.Set<AcbPaymentTransaction>().CountAsync());
-        Assert.Equal(80000, f.Order.PaidTotal);
-        Assert.Equal(0, f.FinalizeCount);
+        Assert.Equal(150000m, f.Order.PaidTotal);
+        Assert.Equal(50000m, f.Order.ChangeDue);
+        Assert.Equal(3, f.Order.Payments.Count);
+        Assert.Equal(1, f.FinalizeCount);
         Assert.Equal(0, f.Bank.CancelCalls);
     }
 
@@ -128,19 +155,51 @@ public sealed partial class AcbPaymentTests
     }
 
     [Fact]
-    public async Task Manual_QR_cannot_collect_more_than_remaining_after_another_QR_was_confirmed()
+    public async Task Manual_QR_can_collect_more_than_remaining_after_another_QR_was_confirmed()
     {
         await using var f = await Fixture.Create();
         var service = await ManualService(f);
         var draft = new OrderDraftDto { OrderId = 100 };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.CreateQrAsync(draft, Installment(70001), service, default));
         var one = await f.Service.CreateQrAsync(draft, Installment(50000), service, default);
-        var two = await f.Service.CreateQrAsync(draft, Installment(50000), service, default);
         await f.Service.ConfirmManualQrAsync(one.Id, default);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.ConfirmManualQrAsync(two.Id, default));
+        var two = await f.Service.CreateQrAsync(draft, Installment(50000), service, default);
+        await f.Service.ConfirmManualQrAsync(two.Id, default);
+        await f.Service.ConfirmManualQrAsync(two.Id, default);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.CancelSavedQrAsync(one.Id, default));
-        Assert.Equal(2, f.Order.Payments.Count); Assert.Equal(20000m, f.Order.BalanceDue);
-        Assert.Equal(0, f.FinalizeCount);
+        Assert.Equal(3, f.Order.Payments.Count); Assert.Equal(0m, f.Order.BalanceDue);
+        Assert.Equal(130000m, f.Order.PaidTotal); Assert.Equal(30000m, f.Order.ChangeDue);
+        Assert.Equal(1, f.FinalizeCount);
+    }
+
+    [Fact]
+    public async Task Manual_QR_above_order_total_records_full_amount_after_reload_without_duplicates()
+    {
+        await using var f = await Fixture.Create();
+        var service = await ManualService(f);
+        var draft = new OrderDraftDto { OrderId = 100 };
+        var request = Installment(125000);
+        var qr = await f.Service.CreateQrAsync(draft, request, service, default);
+        Assert.Equal(125000m, qr.Amount);
+        Assert.Equal(qr.Id, (await f.Service.CreateQrAsync(draft, request, service, default)).Id);
+        await f.Service.ConfirmManualQrAsync(qr.Id, default);
+        f.Db.ChangeTracker.Clear();
+        await f.Service.ConfirmManualQrAsync(qr.Id, default);
+        var saved = await f.Db.Orders.Include(x => x.Payments).SingleAsync();
+        Assert.Equal(125000m, saved.Payments.Single(x => x.Method == PaymentMethod.BankTransfer).Amount);
+        Assert.Equal(155000m, saved.PaidTotal); Assert.Equal(55000m, saved.ChangeDue);
+        Assert.Equal(0m, saved.BalanceDue); Assert.Equal(1, f.FinalizeCount);
+    }
+
+    [Theory]
+    [InlineData(10000.5)]
+    [InlineData(10000000000000000)]
+    public async Task Manual_QR_still_rejects_fractional_and_storage_limit_amounts(decimal amount)
+    {
+        await using var f = await Fixture.Create();
+        var service = await ManualService(f);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.CreateQrAsync(
+            new OrderDraftDto { OrderId = 100 }, Installment(amount), service, default));
+        Assert.Empty(await f.Db.PosPaymentQrRequests.ToListAsync());
     }
     private sealed class FakeQrGenerator : ILocalVietQrGenerator
     {
@@ -201,6 +260,7 @@ public sealed partial class AcbPaymentTests
         await using var f = await Fixture.Create();
         var dynamicQr = await f.Service.TryCreateAsync(100, Installment(20000), default);
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.Service.ConfirmManualQrAsync(dynamicQr!.Id, default));
+        await f.Service.CancelSavedQrAsync(dynamicQr!.Id, default);
         var manual = await ManualService(f);
         var qr = await f.Service.CreateQrAsync(new OrderDraftDto { OrderId = 100 }, Installment(10000), manual, default);
         f.Runtime.TerminalId = 4;

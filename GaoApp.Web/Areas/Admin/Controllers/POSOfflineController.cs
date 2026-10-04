@@ -61,6 +61,7 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
             preparedAtUtc = DateTime.UtcNow, expiresAtUtc = DateTime.UtcNow.AddHours(24),
             permissions, accounts, screen = await pos.GetPOSScreenAsync(ct),
             receiptTemplates = await receiptTemplates.ListAsync(ct),
+            receiptDefault = await receiptTemplates.GetDefaultAsync(ct),
             receiptStoreInfo = await receiptTemplates.GetStoreInfoAsync(ct),
             antiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken
         });
@@ -72,6 +73,7 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
         var shift = await RequireShift(ct);
         return Ok(new { storeId = runtime.StoreId, terminalId = runtime.TerminalId, userId = runtime.UserId,
             shiftId = shift.Id, receiptStoreInfo = await receiptTemplates.GetStoreInfoAsync(ct),
+            receiptDefault = await receiptTemplates.GetDefaultAsync(ct),
             antiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken });
     }
 
@@ -104,7 +106,7 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
     {
         await RequireShift(ct);
         var items = await db.Customers.AsNoTracking().Where(x => x.StoreId == runtime.StoreId && x.Id > afterId && x.IsActive)
-            .OrderBy(x => x.Id).Take(250).Select(x => new { customerId = x.Id, x.Name, x.Phone, x.Address, x.PriceTier }).ToListAsync(ct);
+            .OrderBy(x => x.Id).Take(250).Select(x => new { customerId = x.Id, x.Name, x.Phone, x.Address, x.PriceTier, x.AskBeforePrintingReceipt }).ToListAsync(ct);
         return Ok(new { items, nextAfterId = items.Count == 250 ? (int?)items[^1].customerId : null });
     }
 

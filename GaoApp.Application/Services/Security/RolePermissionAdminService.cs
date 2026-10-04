@@ -3,6 +3,7 @@ using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.Security;
 using GaoApp.Application.Interfaces.Services.Security;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.Common.Security;
 
 namespace GaoApp.Application.Services.Security;
 
@@ -66,7 +67,7 @@ public class RolePermissionAdminService : IRolePermissionAdminService
         {
             var validCount = await _permissionRepository.CountByIdsAsync(selectedIds, ct);
             if (validCount != selectedIds.Count)
-                return (false, "Danh sách permission gửi lên không hợp lệ.");
+                return (false, "Danh sách quyền gửi lên không hợp lệ.");
         }
 
         var currentIds = await _rolePermissionRepository.GetPermissionIdsByRoleIdAsync(request.RoleId, ct);
@@ -107,7 +108,7 @@ public class RolePermissionAdminService : IRolePermissionAdminService
             var rows = new List<RolePermissionRowDto>();
 
             var entityGroups = group
-                .GroupBy(p => GetEntityPart(p.Code))
+                .GroupBy(p => GetModulePart(p.Code) + "." + GetEntityPart(p.Code))
                 .OrderBy(g => g.Key);
 
             foreach (var entityGroup in entityGroups)
@@ -115,8 +116,8 @@ public class RolePermissionAdminService : IRolePermissionAdminService
                 var row = new RolePermissionRowDto
                 {
                     Module = GetModulePart(entityGroup.First().Code),
-                    Entity = entityGroup.Key,
-                    DisplayName = ToTitleCase(entityGroup.Key)
+                    Entity = GetEntityPart(entityGroup.First().Code),
+                    DisplayName = PermissionDisplayNames.Feature(GetModulePart(entityGroup.First().Code), GetEntityPart(entityGroup.First().Code))
                 };
 
                 foreach (var permission in entityGroup.OrderBy(x => x.Code))
@@ -126,7 +127,7 @@ public class RolePermissionAdminService : IRolePermissionAdminService
                         PermissionId = permission.Id,
                         PermissionCode = permission.Code,
                         Action = GetActionPart(permission.Code),
-                        ActionDisplayName = ToTitleCase(GetActionPart(permission.Code)),
+                        ActionDisplayName = PermissionDisplayNames.Permission(permission.Code, permission.Name),
                         IsAvailable = true,
                         IsChecked = selectedIds.Contains(permission.Id)
                     });
@@ -137,7 +138,7 @@ public class RolePermissionAdminService : IRolePermissionAdminService
 
             result.Add(new RolePermissionGroupDto
             {
-                GroupName = group.Key,
+                GroupName = PermissionDisplayNames.Group(group.Key),
                 SortOrder = 0,
                 SelectedCount = group.Count(x => selectedIds.Contains(x.Id)),
                 TotalCount = group.Count(),
@@ -169,12 +170,4 @@ public class RolePermissionAdminService : IRolePermissionAdminService
         return parts.Length >= 3 ? parts[2] : "view";
     }
 
-    private static string ToTitleCase(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-
-        return string.Join(" ",
-            value.Split(new[] { '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries)
-                 .Select(x => char.ToUpperInvariant(x[0]) + x.Substring(1).ToLowerInvariant()));
-    }
 }

@@ -10,4 +10,7 @@
     <ProjectReference Include="../GaoApp.Infrastructure/GaoApp.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup><None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <None Update="README.md;Install-Service.ps1" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -23,13 +23,15 @@
     function render(receipt, input, options = {}) {
         const d = normalize(input), size = sizes[d.paperSize], narrow = d.paperSize === '45', thermal = !size.height;
         const e = escape, m = money, order = receipt || {}, lines = order.lines || [], payments = order.payments || [];
+        const deposit = Math.max(0, Number(order.depositAmount) || 0);
+        const afterDeposit = Math.max(0, Number(order.grandTotal || 0) - deposit);
         const date = new Date(order.finalizedAtUtc || order.completedAtUtc || order.createdAtUtc || Date.now());
         const dateText = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN');
         const label = order.orderNumber || '#' + (order.orderId || 'XEM-TRƯỚC');
         const methods = { 0: 'Tiền mặt', 1: 'Chuyển khoản', 2: 'Thẻ', Cash: 'Tiền mặt', BankTransfer: 'Chuyển khoản', Card: 'Thẻ' };
         const statuses = { 0: 'Đơn đang lập', 1: 'Đơn đang giữ', 2: 'Hoàn tất', 3: 'Đã hủy', 4: 'Đã hủy sau chốt', 5: 'Đã hoàn trả',
             Draft: 'Đơn đang lập', OnHold: 'Đơn đang giữ', Completed: 'Hoàn tất', Cancelled: 'Đã hủy', Voided: 'Đã hủy sau chốt', Refunded: 'Đã hoàn trả' };
-        const wideTotals = d.layout === 'itemwide' && [order.subtotal, order.discountTotal, order.grandTotal, order.paidTotal, order.balanceDue, order.changeDue].some(value => m(value).length > 12);
+        const wideTotals = d.layout === 'itemwide' && [order.subtotal, order.discountTotal, order.grandTotal, order.paidTotal, order.balanceDue, order.changeDue, deposit, afterDeposit].some(value => m(value).length > 12);
         // Always black on white, including old custom designs and cached offline selections.
         const css = `*{box-sizing:border-box}html,body{margin:0;padding:0;color:#000;font-family:Arial,Helvetica,sans-serif;font-weight:600;background:#fff}
             .receipt{width:${size.width}mm;padding:${size.margin}mm;font-size:${narrow ? 10 : 12}px;line-height:1.5;overflow-wrap:anywhere}
@@ -71,6 +73,23 @@
             .compact .brand{text-align:left;border-bottom:1px solid #000;padding:1mm 0 2mm}.compact .store{font-size:${narrow ? 14 : 18}px}.compact .title,.compact .number{text-align:left;margin:2mm 0}.compact table.items td{padding:1.5mm 0;border-bottom:1px dashed #000}.compact .meta{margin-bottom:2mm}.compact .footer{margin-top:3mm;padding-top:2mm}
             .itemwide .item-group{break-inside:avoid;page-break-inside:avoid}.itemwide .items .item-heading td{padding:2.5mm 0 .5mm;border-bottom:0}.itemwide .item-name{font-size:13px}.itemwide .items .item-values td{padding:.5mm .5mm 2mm;border-bottom:1px dashed #000}.itemwide .items th{padding:2mm .5mm;white-space:nowrap}.itemwide .item-unit{text-align:center}.itemwide .item-quantity{font-weight:800}
             .itemwide .wide-details{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:2mm 3mm}.itemwide .wide-details .num{white-space:nowrap}.itemwide .wide-detail-label{display:block;font-weight:600;margin-bottom:.5mm}.itemwide .wide-detail-full{grid-column:1/-1}.itemwide .items .item-expanded td{padding:1mm 0 2.5mm}.itemwide .totals .amount-label{margin-bottom:.5mm}
+            /* Tight vertical rhythm for the 80 mm name-first bill; keep font sizes and column widths readable. */
+            .receipt.itemwide{padding-top:2mm;padding-bottom:2mm;line-height:1.3}
+            .itemwide .brand{padding:0 0 1.5mm}.itemwide .store{margin-bottom:1mm}
+            .itemwide .title{margin:2mm 0 .5mm}.itemwide .number{margin-bottom:1.5mm}
+            .itemwide .meta{margin-bottom:1.5mm}.itemwide .meta td{padding:.35mm 0}
+            .itemwide .items th{padding:1mm .5mm}
+            .itemwide .items .item-heading td{padding:1.2mm 0 .25mm}
+            .itemwide .items .item-values td{padding:.25mm .5mm 1mm}
+            .itemwide .items .item-expanded td{padding:.5mm 0 1mm}
+            .itemwide .wide-details{row-gap:1mm}
+            .itemwide .totals{margin-top:1.5mm}.itemwide .totals td{padding:.5mm 1mm}
+            .itemwide .grand td{padding:1.2mm 1mm}
+            .itemwide .payment{margin-top:1.5mm;padding-top:1mm}.itemwide .payment-line{margin:.5mm 0}
+            .itemwide .footer{margin-top:2mm;padding-top:1.5mm}
+            .itemwide .offline-note{margin-top:1.5mm;padding:1mm}
+            .itemwide .invoice-buyer-qr{margin-top:2mm;padding-top:1.5mm}
+            .itemwide .invoice-buyer-qr-title{margin-bottom:1mm}.itemwide .invoice-buyer-qr img{margin-bottom:1mm}
             .amount{white-space:nowrap}.amount-label{text-align:left}.receipt[data-paper-size="45"] .items td,.receipt[data-paper-size="45"] .items th{padding-left:0;padding-right:0}.receipt[data-paper-size="45"] .totals .num{margin-top:1mm}
             @page{size:${size.height ? size.width + 'mm ' + size.height + 'mm' : size.width + 'mm 300mm'};margin:0}
             @media print{html,body{width:${size.width}mm}.receipt{width:${size.width}mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
@@ -165,8 +184,9 @@ const invoiceBuyerQr =
             ${narrow ? '' : `<td class="num">${m(line.quantity)}<div class="muted">${e(line.sellingUnitName || line.unitName || '')}</div></td><td class="num">${m(line.unitPrice)}</td>`}
             <td class="num"><strong>${m(line.lineTotal)}</strong></td></tr>`).join('') || '<tr><td>Chưa có sản phẩm</td></tr>'}</tbody></table>`}
             <table class="totals">${row('Tạm tính', order.subtotal)}${row('Giảm giá', order.discountTotal)}${row('TỔNG CỘNG', order.grandTotal, 'grand')}
-            ${row('Đã thanh toán', order.paidTotal, 'settlement')}${Number(order.balanceDue) > 0 ? row('Còn thiếu', order.balanceDue, 'settlement') : ''}${row('Tiền thừa', order.changeDue, 'settlement')}</table>
-            ${d.showPayments && payments.length ? `<section class="payment"><strong>Thanh toán</strong>${payments.map(p => `<div class="payment-line"><span>${e(methods[p.method] || p.method || 'Khác')}${p.reference ? `<br><small class="muted">${e(p.reference)}</small>` : ''}</span><span>${m(p.amount)}</span></div>`).join('')}</section>` : ''}
+            ${deposit > 0 ? row('Trừ tiền cọc', deposit, 'deposit-applied') + row('Cần trả sau cọc', afterDeposit, 'settlement') : ''}
+            ${row(deposit > 0 ? 'Đã thanh toán (gồm cọc)' : 'Đã thanh toán', order.paidTotal, 'settlement')}${Number(order.balanceDue) > 0 ? row('Còn thiếu', order.balanceDue, 'settlement') : ''}${row('Tiền thừa', order.changeDue, 'settlement')}</table>
+            ${d.showPayments && (payments.length || deposit > 0) ? `<section class="payment"><strong>Thanh toán</strong>${deposit > 0 ? `<div class="payment-line"><span>Tiền cọc đã dùng</span><span>${m(deposit)}</span></div>` : ''}${payments.map(p => `<div class="payment-line"><span>${e(methods[p.method] || p.method || 'Khác')}${p.reference ? `<br><small class="muted">${e(p.reference)}</small>` : ''}</span><span>${m(p.amount)}</span></div>`).join('')}</section>` : ''}
            ${options.offline ? '' : invoiceBuyerQr}
            ${options.offline && order.invoiceIntent ? `<div class="offline-note">${order.invoiceIntent.route === 2
                 ? 'Đã ghi nhận yêu cầu hóa đơn thủ công tại quầy. QR nhập thông tin chờ kết nối; vui lòng liên hệ cửa hàng. Thời hạn tự nhập thông tin là 2 giờ từ lúc hoàn tất đơn.'

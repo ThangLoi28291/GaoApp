@@ -151,10 +151,11 @@ public sealed partial class AcbPaymentTests
     {
         await using var f = await Fixture.Create();
         var first = await f.Service.TryCreateAsync(100, Installment(20000), default);
-        var second = await f.Service.TryCreateAsync(100, Installment(50000), default);
-        f.Bank.Pay(first!.RequestCode, 20000); f.Bank.Pay(second!.RequestCode, 50000);
+        f.Bank.Pay(first!.RequestCode, 20000);
         await VerifyVia(f, first.Id, first.RequestCode, AcbConfirmationSource.ManualCheck);
         await f.Service.CompleteAsync(first.Id, default);
+        var second = await f.Service.TryCreateAsync(100, Installment(50000), default);
+        f.Bank.Pay(second!.RequestCode, 50000);
         await VerifyVia(f, second.Id, second.RequestCode, AcbConfirmationSource.ScheduledCheck);
         await f.Service.CompleteAsync(second.Id, default);
         var data = JsonSerializer.SerializeToElement(await f.Service.LookupAsync(100, false, default), WebJson);

@@ -50,4 +50,5 @@ public class POSShiftCashTransaction : BaseStoreEntity, IAuditTrackedEntity
     /// Người tạo phiếu.
     /// </summary>
     public int CreatedByUserId { get; set; }
+    public int? CustomerDepositEntryId { get; set; }
 }

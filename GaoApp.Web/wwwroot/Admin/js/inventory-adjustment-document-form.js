@@ -32,6 +32,15 @@
         await loadPermissions();
         await loadWarehouses();
 
+        const query = new URLSearchParams(window.location.search);
+        const sourceReceiptId = Number(query.get("sourceReceiptId") || 0);
+        const sourceWarehouseId = Number(query.get("warehouseId") || 0);
+        if (mode === "create" && sourceReceiptId > 0) {
+            if (sourceWarehouseId > 0) els.warehouseId.value = String(sourceWarehouseId);
+            els.note.value = els.note.value ||
+                `Điều chỉnh sau duyệt phiếu nhập #${sourceReceiptId}. Không sửa trực tiếp phiếu gốc.`;
+        }
+
         initProductQuickSelect();
         bindEvents();
 
@@ -247,10 +256,10 @@
                         <b id="popupBaseQty">0</b>
                     </div>
 
-                    ${canShowCostBox() && Number(els.adjustmentType.value) === 30
+                    ${canShowCostBox() && [30, 70].includes(Number(els.adjustmentType.value))
                     ? `
                             <div class="mt-3">
-                                <label class="form-label fw-bold">Giá vốn theo ĐVT chọn</label>
+                                <label class="form-label fw-bold">${Number(els.adjustmentType.value) === 70 ? "Giá vốn đúng theo ĐVT chọn" : "Giá vốn theo ĐVT chọn"}</label>
                                 <input id="popupInputCost"
                                        type="number"
                                        min="0.001"
@@ -428,7 +437,7 @@
     }
 
     function renderCostCell(line, index) {
-        if (!canShowCostBox() || Number(els.adjustmentType.value) !== 30) {
+        if (!canShowCostBox() || ![30, 70].includes(Number(els.adjustmentType.value))) {
             return `<span class="text-muted">-</span>`;
         }
 
@@ -489,7 +498,7 @@
     }
 
     function refreshCostColumn() {
-        const show = canShowCostBox() && Number(els.adjustmentType.value) === 30;
+        const show = canShowCostBox() && [30, 70].includes(Number(els.adjustmentType.value));
 
         document.querySelectorAll(".adj-cost-col").forEach(x => {
             x.classList.toggle("d-none", !show);

@@ -40,6 +40,9 @@ public sealed class QuickCreateProcurementProductRequest
 
     [StringLength(200)]
     public string? NewUnitName { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool GenerateDefaultBarcode { get; set; } = true;
 }
 
 public sealed class QuickCreateAndResolvePurchaseOrderLineRequest

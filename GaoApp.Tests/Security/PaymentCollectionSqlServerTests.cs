@@ -9,6 +9,33 @@ namespace GaoApp.Tests.Security;
 public sealed class PaymentCollectionSqlServerTests
 {
     [Fact]
+    public async Task Bank_transfer_above_order_total_records_full_receipt_once_and_finalizes()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        using var client = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        var orderId = await StartOrderAsync(client, store);
+        using (var card = await client.Http.PostAsJsonAsync("/admin/pos/cart/current/payments",
+            new { orderId, clientRequestId = Guid.NewGuid(), method = 2, amount = 80 }))
+            Assert.Equal(HttpStatusCode.BadRequest, card.StatusCode);
+        var body = new { orderId, clientRequestId = Guid.NewGuid(), method = 1, amount = 80, referenceCode = "BANK-OVERPAY" };
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var receipt = await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/payments", body);
+            Assert.Equal(80m, receipt.GetProperty("paidTotal").GetDecimal());
+            Assert.Equal(20m, receipt.GetProperty("changeDue").GetDecimal());
+            Assert.Equal(0m, receipt.GetProperty("balanceDue").GetDecimal());
+        }
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/finalize");
+        await using var db = app.Database.CreateTenantContext(store.StoreId);
+        var order = await db.Orders.Include(x => x.Payments).SingleAsync(x => x.Id == orderId);
+        Assert.Equal(OrderStatus.Completed, order.Status);
+        Assert.Equal(80m, Assert.Single(order.Payments).Amount);
+        Assert.Equal(80m, order.PaidTotal); Assert.Equal(20m, order.ChangeDue);
+        Assert.Equal(60m, (await db.POSShifts.SingleAsync()).NonCashSalesTotal);
+    }
+
+    [Fact]
     public async Task Busy_collection_returns_retryable_conflict_and_same_identity_eventually_posts_once()
     {
         await using var app = await FullApplicationFixture.StartAsync();

@@ -76,14 +76,64 @@ public sealed class ViettelCustomFieldsConnectionTests
             "0100000001", "2", "2/LKD3", "C26MTM");
     }
 
+    [Theory]
+    [InlineData("{\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData("{\"code\":400,\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData("{\"errorCode\":\"NOT_FOUND_DATA\",\"description\":\"Không tìm thấy\"}")]
+    public async Task Missing_optional_metadata_should_verify_invoice_access_and_report_warning(string metadata)
+    {
+        var handler = new ProbeHandler(metadata) { MetadataStatus = HttpStatusCode.BadRequest };
+        var result = await TestAsync(handler);
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal(0, result.Value.TotalRows);
+        Assert.Contains("getInvoices", result.Value.Message);
+        Assert.DoesNotContain("Đã test getCustomFields", result.Value.Message);
+        Assert.False(string.IsNullOrWhiteSpace(result.Value.WarningMessage));
+        Assert.DoesNotContain(handler.Requests, x => x.Url.Contains("createInvoice"));
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "{\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData(HttpStatusCode.Forbidden, "{\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData(HttpStatusCode.InternalServerError, "{\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"message\":\"ACCESS_DENIED\"}")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"message\":\"NOT_FOUND_DATA\",\"code\":\"ACCESS_DENIED\"}")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"message\":\"NOT_FOUND_DATA\",\"data\":{\"errorCode\":\"ACCESS_DENIED\"}}")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"message\":\"NOT_FOUND_DATA\",\"MESSAGE\":\"ACCESS_DENIED\"}")]
+    [InlineData(HttpStatusCode.BadRequest, "<html>NOT_FOUND_DATA</html>")]
+    public async Task Other_errors_must_not_be_treated_as_absent_metadata(HttpStatusCode status, string metadata)
+    {
+        var handler = new ProbeHandler(metadata) { MetadataStatus = status };
+        var result = await TestAsync(handler);
+        Assert.True(result.IsFailure);
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "{\"message\":\"Unauthorized\"}")]
+    [InlineData(HttpStatusCode.BadRequest, "{\"message\":\"NOT_FOUND_DATA\"}")]
+    [InlineData(HttpStatusCode.OK, "{\"errorCode\":\"ACCESS_DENIED\"}")]
+    [InlineData(HttpStatusCode.OK, "{}")]
+    public async Task Missing_metadata_does_not_hide_failed_or_ambiguous_invoice_check(HttpStatusCode status, string invoices)
+    {
+        var handler = new ProbeHandler("{\"message\":\"NOT_FOUND_DATA\"}", invoices)
+        { MetadataStatus = HttpStatusCode.BadRequest, InvoiceStatus = status };
+        var result = await TestAsync(handler);
+        Assert.True(result.IsFailure);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
     private sealed class ProbeHandler(string metadata, string invoices = "{\"errorCode\":null,\"totalRows\":0,\"invoices\":[]}") : HttpMessageHandler
     {
         public List<(HttpMethod Method, string Url, string? AuthScheme)> Requests { get; } = [];
+        public HttpStatusCode MetadataStatus { get; init; } = HttpStatusCode.OK;
+        public HttpStatusCode InvoiceStatus { get; init; } = HttpStatusCode.OK;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add((request.Method, request.RequestUri!.AbsoluteUri, request.Headers.Authorization?.Scheme));
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(Requests.Count == 1 ? MetadataStatus : InvoiceStatus)
             {
                 Content = new StringContent(Requests.Count == 1 ? metadata : invoices, Encoding.UTF8, "application/json")
             });

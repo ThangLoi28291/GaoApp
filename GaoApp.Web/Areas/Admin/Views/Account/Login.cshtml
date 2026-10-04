@@ -65,14 +65,18 @@
                         </span>
                     </div>
 
-                    <div class="login-title">Đăng nhập</div>
+                    <div class="login-title">@(Model.ManageTerminals ? "Quản lý máy POS" : "Đăng nhập")</div>
 
                     @if (TempData["PasswordChanged"] is string passwordChanged)
                     {
                         <div class="alert alert-success" role="status">@passwordChanged</div>
                     }
 
-                    @if (Model.RequireTerminalPairing)
+                    @if (Model.ManageTerminals)
+                    {
+                        <div class="login-desc">Đăng nhập bằng tài khoản admin của cửa hàng để tạo máy POS và cấp khóa thiết bị. Không cần ghép POS trước.</div>
+                    }
+                    else if (Model.RequireTerminalPairing)
                     {
                         <div class="login-desc">
                             Thiết bị này chưa được ghép máy POS. Chọn máy POS rồi đăng nhập để tiếp tục.
@@ -93,14 +97,23 @@
                         @Html.AntiForgeryToken()
 
                         <input type="hidden" asp-for="ReturnUrl" />
+                        <input type="hidden" asp-for="ManageTerminals" />
 
                         <div asp-validation-summary="ModelOnly" class="text-danger small mb-3"></div>
 
-                        @if (Model.RequireTerminalPairing)
+                        @if (Model.RequireTerminalPairing && !Model.ManageTerminals)
                         {
                             <div class="alert alert-warning mb-3">
                                 <strong>Thiết bị chưa được ghép POS.</strong><br />
                                 Vui lòng chọn máy POS để ghép thiết bị này.
+                            </div>
+
+                            <div class="form-group">
+                                <label asp-for="PairingKey">Khóa máy do admin cấp</label>
+                                <input asp-for="PairingKey" class="form-control" autocomplete="off" spellcheck="false"
+                                       placeholder="Dán khóa máy nếu đã được cấp" />
+                                <span asp-validation-for="PairingKey" class="text-danger small"></span>
+                                <div class="form-text">Có khóa máy thì không cần chọn máy POS bên dưới.</div>
                             </div>
 
                             <div class="form-group">
@@ -161,7 +174,11 @@
                         </div>
 
                         <button type="submit" class="btn-login" id="btnLogin">
-                            @if (Model.RequireTerminalPairing)
+                            @if (Model.ManageTerminals)
+                            {
+                                <text>Đăng nhập quản lý POS</text>
+                            }
+                            else if (Model.RequireTerminalPairing)
                             {
                                 <text>Ghép POS và đăng nhập</text>
                             }
@@ -171,6 +188,16 @@
                             }
                         </button>
                     </form>
+                    <div class="login-management-link">
+                        @if (Model.ManageTerminals)
+                        {
+                            <a href="/admin/account/login">← Quay lại đăng nhập bán hàng</a>
+                        }
+                        else
+                        {
+                            <a href="/admin/account/login?manageTerminals=true">Quản lý máy POS · Dành cho admin</a>
+                        }
+                    </div>
                 </div>
             </section>
 

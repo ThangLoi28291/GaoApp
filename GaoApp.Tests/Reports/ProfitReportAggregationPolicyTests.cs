@@ -9,6 +9,39 @@ namespace GaoApp.Tests.Reports;
 public sealed class ProfitReportAggregationPolicyTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pending_goods_keep_original_cost_until_a_real_stock_receipt_and_never_hide_bad_provenance(bool allocated)
+    {
+        var s = Snapshot(); Return(s, 4, 10, false);
+        var returned = s.ReturnLines.Single(); returned.Action = SalesReturnLineAction.PendingRestock;
+        OrderLegalEntityAllocationReversal? reversal = null;
+        if (allocated)
+        {
+            s.Entries[0].Warehouse.LegalEntityId = 1;
+            s.LegalEntities.Add(new LegalEntity {Id = 1, StoreId = 1});
+            s.LegalAllocations.Add(new OrderLegalEntityAllocation {Id = 1, StoreId = 1, OrderId = 1,
+                OrderLineId = 1, InventoryTransactionId = 1, WarehouseId = 1, ProductVariantId = 1, LegalEntityId = 1, BaseQuantity = 10});
+            reversal = new OrderLegalEntityAllocationReversal {Id = 1, StoreId = 1, OrderId = 1, OrderLineId = 1,
+                OrderLegalEntityAllocationId = 1, SalesReturnId = 1, SalesReturnLineId = 1, LegalEntityId = 1,
+                WarehouseId = 1, ProductVariantId = 1, SourceValuationEntryId = 1, BaseQuantity = 4,
+                ReversalType = OrderLegalEntityReversalType.ReturnPendingRestock};
+            s.LegalReversals.Add(reversal);
+        }
+        var p = Policy();
+        Assert.Equal(100, p.EvaluateCosts(s)[1].Cost);
+        Assert.Equal(120, p.Aggregate(s, Query(), p.EvaluateCosts(s)).Summary.NetSales.Value);
+        var mirror = Mirror(s.Entries[0], 4, 10);
+        mirror.ReferenceType = InventoryReferenceType.Refund; mirror.ReferenceId = "1"; mirror.ReferenceLineId = 1;
+        s.Entries.Add(mirror);
+        Assert.Equal(ProfitQuality.DataIntegrityConflict, p.EvaluateCosts(s)[1].Quality);
+        returned.Action = SalesReturnLineAction.Restock;
+        if (reversal is not null) {reversal.ReversalType = OrderLegalEntityReversalType.ReturnRestock; reversal.InventoryTransactionId = mirror.InventoryTransactionId;}
+        Assert.Equal(60, p.EvaluateCosts(s)[1].Cost);
+        Assert.Equal(120, p.Aggregate(s, Query(), p.EvaluateCosts(s)).Summary.NetSales.Value);
+    }
+
+    [Theory]
     [InlineData(200, 120, 80, 40)]
     [InlineData(-40, 60, -100, 250)]
     [InlineData(100, 130, -30, -30)]

@@ -9,5 +9,6 @@ public sealed class ReceiptIntakeRowsViewModel
     public bool Compact { get; set; }
     public bool CanViewCost { get; set; }
     public bool HasInvoiceColumn { get; set; }
+    public bool HasImageColumn { get; set; }
     public int LineOffset { get; set; }
 }

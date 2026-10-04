@@ -86,6 +86,7 @@ public class WarehouseReceivingController : Controller
                 x.Id,
                 x.DocumentNo,
                 x.DocumentTitle,
+                x.PurchaseOrderId,
                 x.DocumentDate,
                 x.LegalEntityId,
                 x.LegalEntityName,

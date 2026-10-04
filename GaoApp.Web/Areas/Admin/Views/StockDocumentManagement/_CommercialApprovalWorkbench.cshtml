@@ -2,12 +2,16 @@
 @using System.Globalization
 @using GaoApp.Application.DTOs.Inventory
 @using GaoApp.Domain.Enums
+@inject GaoApp.Application.Interfaces.Services.Inventory.IReceiptSellingPriceService ReceiptPrices
+@inject GaoApp.Application.Interfaces.Services.Inventory.IPurchaseReceiptPricingAllocationService PricingAllocation
+@inject GaoApp.Application.Common.ITenantContext PricingTenant
+@inject GaoApp.Application.Common.Interfaces.ICurrentUser PricingUser
 @{
+    var retailPrices = (await ReceiptPrices.GetRetailComparisonAsync(Model.Id, Context.RequestAborted)).ToDictionary(x => x.LineId);
     var taxes = ViewData["ReceiptTaxOptions"] as IEnumerable<StockReceiptTaxOptionDto>
         ?? Enumerable.Empty<StockReceiptTaxOptionDto>();
     var readOnly = Model.Status == StockDocumentStatus.Confirmed;
-    var canManageInputInvoiceMapping =
-        ViewData["CanManageInputInvoiceMapping"] as bool? == true;
+    var allocationApplied = await PricingAllocation.HasAppliedPlanAsync(Model.Id, Context.RequestAborted);
     var canApproveOutsidePo = ViewData["CanApproveOutsidePo"] as bool? == true;
     var canCompleteCatalogProduct =
         ViewData["CanCompleteCatalogProduct"] as bool? == true;
@@ -31,6 +35,7 @@
 <section class="card sd-card sd-commercial-workbench mb-3"
          id="commercialApprovalWorkbench"
          data-readonly="@readOnly.ToString().ToLowerInvariant()"
+         data-allocation-applied="@allocationApplied.ToString().ToLowerInvariant()"
          data-has-pending-outside="@(pendingOutsideLines.Count > 0 ? "true" : "false")"
          data-has-unresolved-provisional="@(unresolvedProvisionalCount > 0 ? "true" : "false")"
          data-has-catalog-review="@(catalogReviewLines.Count > 0 ? "true" : "false")">
@@ -54,6 +59,14 @@
     </div>
 
     <div class="card-body">
+        @if (!readOnly)
+        {
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 border rounded-3 p-3 mb-3 bg-light" id="receiptPriceDraftBar">
+                <div><strong class="small d-block" id="receiptPriceDraftStatus" role="status" aria-live="polite">Giá nhập được tự động lưu nháp</strong>
+                    <span class="small text-muted">Lưu nháp chưa ghi tồn kho, giá vốn hoặc công nợ. Chỉ ghi sổ khi duyệt.</span></div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="receiptPriceDraftSave">Lưu nháp ngay</button>
+            </div>
+        }
         <div class="sd-approval-overview mb-4" aria-label="Tổng quan duyệt phiếu">
             <div><span>Mặt hàng</span><strong>@lines.Count</strong><small>dòng thực nhận</small></div>
             <div class="@(catalogReviewLines.Count > 0 ? "is-warning" : "is-success")">
@@ -78,6 +91,10 @@
                 <b>@lines.Count</b>
             </button>
             <button type="button" role="tab" aria-selected="false"
+                    data-workbench-tab="pricing">
+                <i class="bx bx-gift"></i><span>Giá &amp; khuyến mãi</span>
+            </button>
+            <button type="button" role="tab" aria-selected="false"
                     data-workbench-tab="settlement">
                 <i class="bx bx-wallet"></i>
                 <span>Thanh toán &amp; thuế</span>
@@ -88,16 +105,104 @@
                 <span>Vận chuyển</span>
                 @if (Model.HasFreight) { <b>@Model.FreightTotal.ToString("N0") đ</b> }
             </button>
-            @if (canManageInputInvoiceMapping)
-            {
-                <button type="button" role="tab" aria-selected="false"
-                        data-workbench-tab="xml">
-                    <i class="bx bx-receipt"></i>
-                    <span>Đối chiếu XML</span>
-                </button>
-            }
         </nav>
 
+        <div class="sd-workbench-tab-panel" data-workbench-panel="pricing" hidden>
+            <section id="receiptPricingAllocation" aria-label="Giá và khuyến mãi của bill"
+                     data-draft-store-id="@PricingTenant.StoreId" data-draft-user-id="@PricingUser.UserId">
+                <div class="sd-pricing-toolbar"><h5 class="mb-0">Giá &amp; khuyến mãi</h5><span class="text-muted">Trước VAT</span></div>
+                <div class="d-flex align-items-center flex-wrap gap-2 mt-2">
+                    <span id="pricingLocalDraftStatus" class="small text-muted" role="status" aria-live="polite">Bill và chương trình tự nhớ trên trình duyệt này khi đang nhập.</span>
+                    <button type="button" id="pricingRestoreLocalDraft" class="btn btn-sm btn-outline-primary" hidden>Khôi phục bản nháp trên máy</button>
+                </div>
+                <nav class="sd-pricing-steps" aria-label="Các bước nhập giá">
+                    <button type="button" class="btn" data-pricing-step="bill" aria-pressed="true">1. Nhập bill</button>
+                    <button type="button" class="btn" data-pricing-step="program" aria-pressed="false">2. Chương trình</button>
+                    <button type="button" class="btn" data-pricing-step="price" aria-pressed="false">3. Giá nhập cuối</button>
+                </nav>
+                <div id="pricingQuantityOverview" class="sd-pricing-quantity-overview" role="status" aria-live="polite"></div>
+                <div data-pricing-page="bill">
+                    <div class="sd-pricing-xml-toolbar">
+                        <div><strong>Nhập nhanh từ hóa đơn XML</strong><p class="small text-muted mb-0">Ghép tên và đơn vị lần đầu để nhớ cho lần sau. Chỉ thêm sản phẩm có trong phiếu nhập này.</p></div>
+                        <button type="button" id="pricingXmlImport" class="btn btn-outline-primary">Thêm từ XML</button>
+                    </div>
+                    <div id="pricingXmlSourceWarning" class="alert alert-warning" role="alert" hidden></div>
+                    <section id="pricingXmlPanel" class="sd-pricing-xml-panel" aria-label="Nhập dòng bill từ XML đã liên kết" hidden>
+                        <div class="sd-pricing-section-heading"><div><h6 class="mb-1">Các dòng XML đã liên kết</h6><span id="pricingXmlSummary" class="small text-muted" role="status" aria-live="polite"></span></div><button type="button" id="pricingXmlClose" class="btn btn-sm btn-link">Đóng</button></div>
+                        <p class="small text-muted">Giữ nguyên số lượng và thành tiền trước VAT của từng dòng XML. Sau khi thêm, bạn có thể sửa dòng bill và xem phần đối chiếu bên dưới. Dòng quà cần được gắn chương trình ở bước 2.</p>
+                        <div id="pricingXmlMessage" role="status" aria-live="polite" class="small mb-2"></div>
+                        <div id="pricingXmlRows"></div>
+                        <div class="sd-pricing-xml-footer"><span class="small text-muted">Các dòng đã thêm sẽ được bỏ qua; bill nhập tay và chương trình đang có được giữ.</span><button type="button" id="pricingXmlAddAll" class="btn btn-primary">Thêm các dòng đã nhận diện</button></div>
+                    </section>
+                    <div class="sd-bill-entry">
+                        <div class="sd-bill-search"><label for="pricingBillSearch" class="form-label">Sản phẩm trên phiếu nhập</label><input id="pricingBillSearch" class="form-control" placeholder="Gõ tên sản phẩm theo bill…" autocomplete="off" aria-expanded="false" aria-controls="pricingBillSuggestions" /><div id="pricingBillSuggestions" class="sd-bill-suggestions" hidden></div></div>
+                        <div id="pricingSelectedProduct" class="sd-bill-selected-product" hidden></div>
+                        <div class="sd-bill-entry-fields">
+                            <label>Loại dòng<select id="pricingBillKind" class="form-select"><option value="buy">Hàng mua</option><option value="gift">Hàng tặng</option></select></label>
+                            <label>Đơn vị bill<select id="pricingBillUnit" class="form-select" disabled></select></label>
+                            <label>Số lượng<input id="pricingBillQuantity" class="form-control" type="number" min="0.000000001" step="any" value="1" /></label>
+                        </div>
+                        <div class="sd-bill-price-fields">
+                            <label>Nhập giá theo<select id="pricingBillPriceMode" class="form-select"><option value="unit">Đơn giá</option><option value="amount">Thành tiền</option></select></label>
+                            <label>Đơn giá trước VAT<input id="pricingBillPrice" class="form-control" type="number" min="0" step="any" inputmode="decimal" /></label>
+                            <label>Thành tiền dòng trước VAT<input id="pricingBillAmount" class="form-control" type="number" min="0" step="0.01" inputmode="decimal" readonly /></label>
+                        </div>
+                        <div id="pricingBillPriceHint" class="small text-muted mt-2" role="status" aria-live="polite"></div>
+                        <div class="sd-bill-entry-footer"><span id="pricingBillConversion" class="text-muted"></span><div class="d-flex gap-2"><button type="button" id="pricingBillAdd" class="btn btn-primary">Thêm dòng bill</button><button type="button" id="pricingBillCancelEdit" class="btn btn-outline-secondary" hidden>Hủy dòng đang nhập</button></div></div>
+                    </div>
+                    <div class="sd-pricing-section-heading"><h6 class="mb-0">Danh sách theo bill</h6><span id="pricingBillCount" class="text-muted"></span></div>
+                    <div id="pricingAllocationLines" aria-label="Các dòng trên bill"></div>
+                    <div class="sd-bill-total"><span>Tiền hàng trên các dòng bill</span><strong id="pricingBillTotal">—</strong></div>
+                    <details class="sd-pricing-quantity-check" open><summary>Đối chiếu số lượng theo sản phẩm <span id="pricingQuantitySummary" class="text-muted"></span></summary><div id="pricingQuantityComparison"></div></details>
+                    <div class="sd-pricing-next"><button type="button" class="btn btn-primary" data-pricing-step="program">Tiếp: chương trình</button></div>
+                </div>
+                <div data-pricing-page="program" hidden>
+                    <div class="sd-pricing-section-heading"><h6 class="mb-0">Chương trình trên bill</h6><button type="button" id="pricingNewProgram" class="btn btn-primary">Thêm chương trình</button></div>
+                    <div id="pricingRuleList" class="sd-pricing-rule-list" aria-label="Chương trình của bill"></div>
+                    <div id="pricingRuleEditor" class="sd-pricing-program-editor" hidden>
+                        <div class="sd-pricing-section-heading"><h6 id="pricingRuleEditorTitle" class="mb-0">Chương trình mới</h6><button type="button" id="pricingCloseRule" class="btn btn-link">Hủy</button></div>
+                        <div class="sd-pricing-program-fields"><label>Loại chương trình<select id="pricingRuleType" class="form-select"><option value="1">Tặng hàng</option><option value="2">Giảm %</option><option value="3">Giảm số tiền</option></select></label></div>
+                        <div class="sd-bill-search sd-program-search">
+                            <label for="pricingRuleSearch" class="form-label">Chọn dòng trên bill</label>
+                            <input id="pricingRuleSearch" class="form-control" placeholder="Gõ tên sản phẩm hoặc số dòng trên bill…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pricingRuleSuggestions" aria-haspopup="listbox" />
+                            <div id="pricingRuleSuggestions" class="sd-bill-suggestions" role="listbox" aria-label="Các dòng bill để chọn vào chương trình" hidden></div>
+                        </div>
+                        <p id="pricingRuleSearchHint" class="small text-muted mt-2"></p>
+                        <h6 class="mt-3">Dòng mua tham gia</h6><div id="pricingRuleSources"></div>
+                        <div id="pricingDiscountFields" hidden><label for="pricingRuleDiscount" class="form-label mt-3">Mức giảm (%)</label><input id="pricingRuleDiscount" class="form-control" type="number" min="0.0001" max="99.9999" step="0.0001" value="10" /></div>
+                        <div id="pricingDiscountAmountFields" hidden><label for="pricingRuleDiscountAmount" class="form-label mt-3">Số tiền giảm trước VAT cho các dòng tham gia</label><input id="pricingRuleDiscountAmount" class="form-control" type="number" min="0.01" step="0.01" /><p class="small text-muted mt-2">Phân bổ theo tiền hàng của số lượng tham gia. Tiền giảm phải nhỏ hơn tổng tiền hàng tham gia.</p></div>
+                        <div id="pricingGiftFields">
+                            <div class="sd-pricing-section-heading"><h6 class="mb-0">Quà tặng đã chọn</h6></div><div id="pricingGiftTargets"></div>
+                            <details id="pricingExtraGiftChooser" class="sd-program-extra-gift">
+                                <summary>Quà chỉ ghi trong nội dung chương trình, không có dòng riêng trên bill</summary>
+                                <div class="sd-bill-search sd-program-search">
+                                    <label for="pricingExtraGiftSearch" class="form-label">Tìm quà trong sản phẩm thực nhận</label>
+                                    <input id="pricingExtraGiftSearch" class="form-control" placeholder="Gõ tên sản phẩm quà…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pricingExtraGiftSuggestions" aria-haspopup="listbox" />
+                                    <div id="pricingExtraGiftSuggestions" class="sd-bill-suggestions" role="listbox" aria-label="Quà ghi trong nội dung chương trình" hidden></div>
+                                </div>
+                            </details>
+                        </div>
+                        <details class="sd-program-optional-name"><summary>Thêm tên / ghi chú chương trình (không bắt buộc)</summary><label for="pricingRuleName" class="form-label mt-2">Tên / nội dung trên bill</label><input id="pricingRuleName" class="form-control" maxlength="200" placeholder="Có thể để trống" /></details>
+                        <div id="pricingRuleError" class="text-danger mt-3" role="alert"></div>
+                        <div class="sd-pricing-next"><button type="button" id="pricingSaveRule" class="btn btn-primary">Gắn chương trình</button></div>
+                    </div>
+                    <details class="sd-pricing-quantity-check" open><summary>Đối chiếu số lượng sau chương trình</summary><div id="pricingProgramQuantityComparison"></div></details>
+                    <div class="sd-pricing-next"><button type="button" class="btn btn-primary" data-pricing-step="price">Xem giá nhập cuối</button></div>
+                </div>
+                <div data-pricing-page="price" hidden>
+                    <div class="sd-pricing-section-heading"><h6 class="mb-0">Giá nhập sau phân bổ</h6><span class="text-muted">Trước VAT / đơn vị thực nhận</span></div>
+                    <div id="pricingFinalPrices"></div>
+                    <div class="sd-pricing-reconciliation">
+                        <label>Tiền hàng thực trả trên bill (trước VAT)<input id="pricingActualBillTotal" class="form-control" type="number" min="0.01" step="0.01" /></label>
+                        <label>Giảm toàn bill (%)<input id="pricingGlobalDiscount" class="form-control" type="number" min="0" max="99.9999" step="0.0001" /></label>
+                        <div><span>Tổng hệ thống</span><strong id="pricingSystemTotal">—</strong></div><div><span>Hệ thống − bill</span><strong id="pricingDifference">—</strong></div>
+                    </div>
+                </div>
+                <div id="pricingAllocationMessage" role="status" aria-live="polite" class="my-3"></div>
+                <div class="sd-pricing-actions"><button type="button" id="pricingReload" class="btn btn-outline-secondary">Tải lại kế hoạch</button><div id="pricingFinalActions" class="d-flex gap-2 flex-wrap" hidden><button type="button" id="pricingPreview" class="btn btn-outline-primary">Tính lại / đối chiếu</button><button type="button" id="pricingSave" class="btn btn-outline-primary">Lưu kế hoạch</button><button type="button" id="pricingApply" class="btn btn-primary" disabled>Áp dụng giá nhập</button></div></div>
+                <p class="text-muted small mt-2">Áp dụng giá nhập điền giá đã tính sang tab Hàng hóa. Bạn vẫn có thể sửa giá thủ công tại đó trước khi Duyệt và ghi sổ. Áp dụng lại sẽ thay các giá này bằng kết quả tính mới.</p>
+            </section>
+        </div>
         <div class="sd-workbench-tab-panel" data-workbench-panel="goods">
         <section class="sd-manager-exceptions mb-4" id="managerExceptionQueue"
                  aria-labelledby="managerExceptionQueueTitle">
@@ -265,6 +370,7 @@
                         }
                     </select>
                     <div class="form-text">Nhà cung cấp bắt buộc trước khi duyệt, kể cả phiếu đã trả tiền.</div>
+                    <div id="commercialSupplierSaveState" class="small mt-1" role="status" aria-live="polite"></div>
                 </article>
 
                 <article class="sd-setting-block">
@@ -328,10 +434,12 @@
                 <table class="table align-middle mb-0 sd-commercial-table">
                     <thead>
                         <tr>
+                            <th class="sd-commercial-image-column">Ảnh</th>
                             <th>Sản phẩm</th>
                             <th>Thực nhận</th>
                             <th>Giá nhập</th>
-                            <th>VAT</th>
+                            <th data-commercial-vat hidden="@(!Model.HasVat)">VAT</th>
+                            <th>Giá bán lẻ hiện tại</th>
                             <th>Thành tiền</th>
                             <th>Trạng thái</th>
                         </tr>
@@ -350,7 +458,27 @@
                                 data-price-missing="@(!editableUnitPriceBeforeVat.HasValue ? "true" : "false")"
                                 data-exception="@(isOutside || isOverdelivery || line.RequiresCatalogReview ? "true" : "false")"
                                 data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
-                                data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
+                                data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)"
+                                data-exact-before-vat="@((line.LineTotal - line.VatAmount).ToString(CultureInfo.InvariantCulture))"
+                                data-exact-unit-price="@line.UnitPriceBeforeVat.ToString("0.##", CultureInfo.InvariantCulture)">
+                                <td data-label="Ảnh" class="sd-commercial-image-column">
+                                    @if (!string.IsNullOrWhiteSpace(line.ProductImageUrl))
+                                    {
+                                        <button type="button" class="sd-commercial-image-button"
+                                                aria-label="Xem ảnh phóng to của @line.CatalogDisplayName"
+                                                aria-controls="commercialImagePreview" aria-expanded="false">
+                                            <img class="sd-commercial-thumbnail" src="@line.ProductImageUrl"
+                                                 alt="@line.CatalogDisplayName" loading="lazy" />
+                                            <i class="bx bx-image" aria-hidden="true" hidden></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="sd-commercial-image-empty" title="Chưa có ảnh" role="img" aria-label="Chưa có ảnh sản phẩm">
+                                            <i class="bx bx-image" aria-hidden="true"></i>
+                                        </span>
+                                    }
+                                </td>
                                 <td data-label="Sản phẩm">
                                     <div class="sd-product-identity">
                                         <div class="fw-semibold">@line.CatalogDisplayName</div>
@@ -382,11 +510,14 @@
                                 <td data-label="Giá nhập">
                                     <div class="input-group input-group-sm">
                                         <input class="form-control text-end commercial-unit-price" type="number"
+                                               readonly="@readOnly"
+                                               data-line-version="@line.RowVersion"
                                                min="0.01" step="0.01"
                                                value="@(editableUnitPriceBeforeVat?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty)"
                                                disabled="@readOnly" aria-label="Giá nhập chưa VAT của @line.CatalogDisplayName" />
                                         <span class="input-group-text">đ/@line.UnitName</span>
                                     </div>
+                                    @if (!readOnly) { <div class="small mt-1 commercial-price-save-state" role="status"></div> }
                                     @if (!editableUnitPriceBeforeVat.HasValue)
                                     {
                                         <div class="small text-warning commercial-price-missing">
@@ -401,9 +532,17 @@
                                         </span>
                                     </div>
                                     <div class="small commercial-price-variance text-muted" aria-live="polite"></div>
+                                    <div class="sd-price-review mt-2" data-price-review-line-id="@line.Id" aria-live="polite">Đang tải đánh giá…</div>
+                                    @if (ViewData["CanEditSellingPrices"] as bool? == true)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-primary mt-2 js-receipt-selling-prices"
+                                                data-line-id="@line.Id" data-variant-id="@line.ProductVariantId">
+                                            <i class="bx bx-purchase-tag-alt me-1"></i>Giá bán &amp; lợi nhuận
+                                        </button>
+                                    }
                                     <div class="small commercial-price-error text-danger"></div>
                                 </td>
-                                <td data-label="VAT">
+                                <td data-label="VAT" data-commercial-vat hidden="@(!Model.HasVat)">
                                     <select class="form-select form-select-sm commercial-tax"
                                             disabled="@(readOnly || !Model.HasVat)"
                                             aria-label="Thuế suất của @line.CatalogDisplayName">
@@ -415,9 +554,18 @@
                                         }
                                     </select>
                                 </td>
+                                <td data-label="Giá bán lẻ hiện tại">
+                                    @if (retailPrices.TryGetValue(line.Id, out var retail))
+                                    {
+                                        <div class="fw-semibold text-nowrap" data-retail-variant="@retail.VariantId" data-retail-unit="@retail.UnitId">
+                                            @(retail.Price.HasValue ? $"{retail.Price.Value:N0} đ/{retail.UnitName}" : "Chưa có giá bán")
+                                        </div>
+                                    }
+                                    else { <span class="text-muted">Chưa có giá bán</span> }
+                                </td>
                                 <td data-label="Thành tiền">
                                     <strong class="commercial-line-after-vat">@line.LineTotal.ToString("N0") đ</strong>
-                                    <div class="small text-muted">VAT: <span class="commercial-line-vat">@line.VatAmount.ToString("N0") đ</span></div>
+                                    <div class="small text-muted" data-commercial-vat hidden="@(!Model.HasVat)">VAT: <span class="commercial-line-vat">@line.VatAmount.ToString("N0") đ</span></div>
                                 </td>
                                 <td data-label="Trạng thái">
                                     <div class="d-flex gap-1 flex-wrap">
@@ -438,11 +586,6 @@
                                         @if (isOverdelivery)
                                         {
                                             <span class="badge bg-label-warning">Vượt PO</span>
-                                        }
-                                        @if (canManageInputInvoiceMapping)
-                                        {
-                                            <span class="badge bg-label-secondary js-commercial-item-map-status"
-                                                  data-item-map-line-id="@line.Id">Chưa đối chiếu XML</span>
                                         }
                                     </div>
                                     @if (isOutside && line.OutsidePoDecisionStatus == OutsidePoDecisionStatus.Pending)
@@ -467,41 +610,6 @@
             </div>
         </div>
         </div>
-
-        @if (canManageInputInvoiceMapping)
-        {
-            <div class="sd-workbench-tab-panel" data-workbench-panel="xml" hidden>
-            <section class="sd-commercial-disclosure sd-tab-surface" id="commercialXmlDisclosure">
-                <header>
-                    <span>
-                        <strong>Đối chiếu hóa đơn XML</strong>
-                        <small>Đối chiếu XML — tùy chọn; không chặn duyệt phiếu.</small>
-                    </span>
-                    <span id="inputInvoiceMappingSummary" class="badge bg-label-secondary"
-                          role="status" aria-live="polite">Đang tải đối chiếu...</span>
-                </header>
-                <div class="sd-commercial-disclosure-body">
-                    @foreach (var line in lines)
-                    {
-                        <div class="d-flex justify-content-between align-items-center gap-3 py-2 border-bottom">
-                            <div>
-                                <div class="fw-semibold">@line.CatalogDisplayName</div>
-                                <div class="small text-muted">@line.Quantity.ToString("0.###") @line.UnitName</div>
-                            </div>
-                            <button type="button" class="btn btn-sm btn-outline-primary btn-map-input-invoice-line"
-                                    data-line-id="@line.Id"
-                                    data-product-name="@line.CatalogDisplayName"
-                                    data-quantity="@line.Quantity.ToString(CultureInfo.InvariantCulture)"
-                                    data-unit-name="@line.UnitName"
-                                    data-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)">
-                                Ghép với XML (tùy chọn)
-                            </button>
-                        </div>
-                    }
-                </div>
-            </section>
-            </div>
-        }
 
         <div class="sd-workbench-tab-panel" data-workbench-panel="freight" hidden>
         <section class="sd-commercial-disclosure sd-commercial-freight sd-tab-surface"

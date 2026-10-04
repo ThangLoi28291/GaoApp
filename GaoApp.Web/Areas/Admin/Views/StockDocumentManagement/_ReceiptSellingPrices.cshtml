@@ -1,0 +1,59 @@
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService LabelAuthorization
+<div class="modal fade" id="receiptSellingPrices" tabindex="-1" aria-labelledby="rspTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header">
+            <div><h5 class="modal-title" id="rspTitle">Giá bán &amp; lợi nhuận</h5><div class="small text-muted" id="rspProduct"></div></div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+        </div>
+        <div class="modal-body">
+            <div id="rspMessage" class="alert alert-info" role="status" aria-live="polite">Đang tải giá bán…</div>
+            <div id="rspContent" hidden>
+                <div class="rsp-controls">
+                    <label class="form-label">Giá vốn dự kiến / <span id="rspBaseUnit"></span> (đ)
+                        <input id="rspCost" class="form-control" type="number" min="0.0001" max="999999999999" step="any" />
+                        <span class="form-text" id="rspCostNote"></span>
+                    </label>
+                    <label class="form-label">Lợi nhuận bán lẻ mặc định (%)
+                        <input id="rspTarget" class="form-control" type="number" min="0" max="95" step="0.1" value="10" />
+                        <span class="form-text">Có thể thay đổi riêng cho từng đơn vị bên dưới.</span>
+                    </label>
+                    <label class="form-label">Lợi nhuận bán sỉ mặc định (%)
+                        <input id="rspWholesaleTarget" class="form-control" type="number" min="0" max="95" step="0.1" value="10" />
+                        <span class="form-text">Giá sỉ để trống sẽ dùng giá lẻ.</span>
+                    </label>
+                    <label class="form-label">Cách tính lợi nhuận
+                        <select id="rspBasis" class="form-select"><option value="margin">% trên giá bán</option><option value="markup">% cộng trên giá vốn</option></select>
+                    </label>
+                    <label class="form-label">Làm tròn giá đề xuất
+                        <select id="rspRound" class="form-select"><option value="1">Làm tròn lên 1 đ</option><option value="100" selected>Làm tròn lên 100 đ</option><option value="500">Làm tròn lên 500 đ</option><option value="1000">Làm tròn lên 1.000 đ</option></select>
+                    </label>
+                    <label class="form-label">Giá lẻ dùng đồng bộ Product
+                        <select id="rspProductSource" class="form-select"></select>
+                        <span class="form-text">Quy về đơn vị gốc, không lấy giá nguyên thùng làm giá hộp.</span>
+                    </label>
+                </div>
+                <div class="alert alert-primary mt-3 mb-2" id="rspProductPrice" aria-live="polite"></div>
+                <div class="small text-muted mb-2">Giá Product là giá mặc định chung. Biến thể chưa có giá riêng sẽ dùng giá này.</div>
+                <div class="small text-muted mb-3">Giá vốn dự kiến lấy từ giá nhập đang nhập, VAT và cước được chọn đưa vào vốn. Sửa ô này chỉ tính đề xuất, không ghi lại giá nhập hay giá vốn tồn kho.</div>
+                <div id="rspWarning" class="alert alert-warning" aria-live="polite"></div>
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                    <h6 class="mb-0">Giá bán lẻ &amp; sỉ theo đơn vị</h6>
+                    <button class="btn btn-sm btn-outline-primary" id="rspUseSuggestions" type="button">Dùng đề xuất lẻ &amp; sỉ cho đơn vị đã chọn</button>
+                </div>
+                <table class="table rsp-table"><thead><tr>
+                    <th>Đơn vị</th><th>Giá vốn mới</th><th>Đang bán</th><th>Giá lẻ mới</th><th>Giá sỉ mới</th><th>Lãi sau đổi</th>
+                </tr></thead><tbody id="rspUnits"></tbody></table>
+                <details class="mt-3"><summary>Lịch sử đổi giá tại phiếu nhập (30 lần gần nhất)</summary><div id="rspHistory" class="mt-2"></div></details>
+            </div>
+        </div>
+        <div class="modal-footer justify-content-between">
+            @if ((await LabelAuthorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.System.ProductLabel.Print)).Succeeded)
+            {
+                <a id="rspPrintLabels" class="btn btn-outline-primary" target="_blank" rel="noopener" hidden><i class="bx bx-barcode me-1"></i>In tem giá mới</a>
+            }
+            <div class="small text-muted"><span id="rspCount"></span><br />Lưu ngay giá lẻ, sỉ và giá Product, không cần duyệt phiếu.</div>
+            <button type="button" class="btn btn-outline-secondary" id="rspReview" disabled>Đã kiểm tra, giữ giá</button>
+            <button type="button" class="btn btn-primary" id="rspSave" disabled><i class="bx bx-save me-1"></i>Cập nhật giá bán</button>
+        </div>
+    </div></div>
+</div>

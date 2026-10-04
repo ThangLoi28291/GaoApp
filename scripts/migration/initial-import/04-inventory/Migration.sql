@@ -236,6 +236,49 @@ DECLARE @ApprovedNegativeHeader9 TABLE(OrderId bigint PRIMARY KEY);
 INSERT INTO @ApprovedNegativeHeader9 VALUES
 (952088),(1131893),(1202874),(1458502),(1559005),(1589192),(1611416),(1612817),(1767174);
 
+-- BEGIN REVIEWED 20260929 NEGATIVE HEADERS
+-- Approved by the operator: physical sale lines affect stock; discount lines do not.
+-- These orders remain excluded from the already committed sales/revenue package.
+DECLARE @ReviewedNegativeHeaders TABLE(OrderId bigint PRIMARY KEY,SourceDay date,HeaderTotal decimal(18,4));
+INSERT INTO @ReviewedNegativeHeaders VALUES(1825885,'20260901',-3000),(1832994,'20260926',-2000);
+DECLARE @ReviewedNegativeDetails TABLE
+(
+ OrderId bigint,DetailId bigint PRIMARY KEY,CategoryId int,Code nvarchar(200),
+ Quantity decimal(18,4),Price decimal(18,4),Total decimal(18,4)
+);
+INSERT INTO @ReviewedNegativeDetails VALUES
+(1825885,1722018,1,N'chietkhauthuongmai',2,-30000,-60000),
+(1825885,1722019,1,N'8936025774843',4,7500,30000),
+(1825885,1722020,1,N'8936025773006',4,6750,27000),
+(1832994,1752895,1,N'8934588013157',2,5000,10000),
+(1832994,1752896,1,N'chietkhauthuongmai',1,-30000,-30000),
+(1832994,1752897,1,N'4902430818995',1,18000,18000);
+IF EXISTS
+(
+ SELECT 1 FROM @ReviewedNegativeHeaders r LEFT JOIN [__SOURCE__].dbo.[Order] o ON o.ID=r.OrderId
+ WHERE o.ID IS NULL OR o.OrderCategoryID IS NULL OR o.OrderCategoryID<>1
+ OR o.CreatedDate IS NULL OR CONVERT(date,o.CreatedDate)<>r.SourceDay
+ OR o.Total IS NULL OR o.Total<>r.HeaderTotal OR o.Note IS NOT NULL
+)
+ THROW 51000,N'REVIEWED_NEGATIVE_HEADER_CHANGED: expected orders 1825885/1832994 no longer match approval.',1;
+IF EXISTS
+(
+ SELECT OrderId,DetailId,CategoryId,Code COLLATE DATABASE_DEFAULT,Quantity,Price,Total FROM @ReviewedNegativeDetails
+ EXCEPT
+ SELECT od.OrderID,od.ID,od.OrderCategoryID,od.ProductCode COLLATE DATABASE_DEFAULT,od.Quantity,od.Price,od.Total
+ FROM [__SOURCE__].dbo.OrderDetail od JOIN @ReviewedNegativeHeaders h ON h.OrderId=od.OrderID
+)
+ OR EXISTS
+(
+ SELECT od.OrderID,od.ID,od.OrderCategoryID,od.ProductCode COLLATE DATABASE_DEFAULT,od.Quantity,od.Price,od.Total
+ FROM [__SOURCE__].dbo.OrderDetail od JOIN @ReviewedNegativeHeaders h ON h.OrderId=od.OrderID
+ EXCEPT
+ SELECT OrderId,DetailId,CategoryId,Code COLLATE DATABASE_DEFAULT,Quantity,Price,Total FROM @ReviewedNegativeDetails
+)
+ THROW 51000,N'REVIEWED_NEGATIVE_DETAILS_CHANGED: expected six source lines no longer match approval.',1;
+INSERT INTO @ApprovedNegativeHeader9 SELECT OrderId FROM @ReviewedNegativeHeaders;
+-- END REVIEWED 20260929 NEGATIVE HEADERS
+
 CREATE TABLE #DiscountCode(Code nvarchar(200) COLLATE SQL_Latin1_General_CP1_CI_AS PRIMARY KEY);
 INSERT INTO #DiscountCode(Code)
 SELECT DISTINCT CONVERT(nvarchar(200),od.ProductCode) COLLATE SQL_Latin1_General_CP1_CI_AS
@@ -600,6 +643,32 @@ WHERE od.OrderCategoryID=1 AND o.OrderCategoryID=1 AND orp.Id IS NULL
   AND (o.Total IS NULL OR o.Total>=0 OR nh.OrderId IS NOT NULL)
   AND c.Code IS NULL AND dc.Code IS NULL AND COALESCE(od.Quantity,0)<>0 AND o.CreatedDate IS NOT NULL;
 
+-- BEGIN REVIEWED 20260929 STOCK VERIFICATION
+-- Require all four approved merchandise lines to survive normal stock mapping;
+-- fail if a barcode is missing, ambiguous, classified as combo/discount, or quantity differs.
+IF EXISTS
+(
+ SELECT DetailId,OrderId,Code COLLATE SQL_Latin1_General_CP1_CI_AS,-Quantity
+ FROM @ReviewedNegativeDetails WHERE Price>=0 AND Total>=0
+ EXCEPT
+ SELECT e.SourceId,e.SourceOrderId,e.Code,e.QuantityChange FROM #EventRaw e
+ JOIN @ReviewedNegativeHeaders h ON h.OrderId=e.SourceOrderId WHERE e.EventKind=3 AND e.IsNegativeHeaderException=1
+)
+ OR EXISTS
+(
+ SELECT e.SourceId,e.SourceOrderId,e.Code,e.QuantityChange FROM #EventRaw e
+ JOIN @ReviewedNegativeHeaders h ON h.OrderId=e.SourceOrderId
+ EXCEPT
+ SELECT DetailId,OrderId,Code COLLATE SQL_Latin1_General_CP1_CI_AS,-Quantity
+ FROM @ReviewedNegativeDetails WHERE Price>=0 AND Total>=0
+)
+ THROW 51000,N'REVIEWED_NEGATIVE_STOCK_MISMATCH: the four approved merchandise lines did not map exactly.',1;
+SELECT N'APPROVED_NEGATIVE_HEADER_STOCK_PLAN' Report,h.OrderId,h.HeaderTotal,
+ COUNT_BIG(*) MerchandiseLines,SUM(-e.QuantityChange) StockQuantityOut
+FROM @ReviewedNegativeHeaders h JOIN #EventRaw e ON e.SourceOrderId=h.OrderId
+GROUP BY h.OrderId,h.HeaderTotal ORDER BY h.OrderId;
+-- END REVIEWED 20260929 STOCK VERIFICATION
+
 IF EXISTS
 (
     SELECT ProductVariantId,OccurredWallClock
@@ -608,7 +677,7 @@ IF EXISTS
 )
     THROW 51000,N'STEP4 V2 REAL COMMIT STOP: cross Product/Sale exact timestamp collision found.',1;
 
--- Normal imported sale must still resolve target Order/OrderLine; 13 approved negative-header rows are inventory-only exceptions.
+-- Normal imported sale must still resolve target Order/OrderLine; reviewed negative-header rows are inventory-only exceptions.
 IF EXISTS
 (
     SELECT 1 FROM #EventRaw e

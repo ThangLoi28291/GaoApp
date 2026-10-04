@@ -45,6 +45,9 @@ public sealed class StockDocumentProvisionalItem : BaseStoreEntity
     [MaxLength(500)]
     public string? Note { get; set; }
     public byte[]? PackagingPhoto { get; set; }
+    public byte[]? ReviewPhoto { get; set; }
+    [MaxLength(8000)] public string? ReviewDraftJson { get; set; }
+    [MaxLength(8000)] public string? OriginalDeclarationJson { get; set; }
 
     public StockDocumentProvisionalItemStatus Status { get; set; }
         = StockDocumentProvisionalItemStatus.Unresolved;

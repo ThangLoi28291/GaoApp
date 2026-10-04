@@ -257,6 +257,17 @@ body {
         padding-left: 18px;
     }
 
+.login-management-link {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.login-management-link a {
+    color: #3057bc;
+    text-underline-offset: 4px;
+}
+
 @media (max-width: 840px) {
     .login-page {
         padding: 16px;

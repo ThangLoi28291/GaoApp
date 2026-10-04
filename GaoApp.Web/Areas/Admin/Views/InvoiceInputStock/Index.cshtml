@@ -1,7 +1,11 @@
+@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
 @{
     ViewData["Title"] = "Tồn hàng có hóa đơn XML";
     ViewData["container"] = "container-fluid";
     Layout = "_ContentNavbarLayout";
+    var canBackfill = (await AuthorizationService.AuthorizeAsync(User, null, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded
+        || (await AuthorizationService.AuthorizeAsync(User, null, PermissionCodes.Purchase.Receipt.Approve)).Succeeded;
 }
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/invoice-input-stock.css" asp-append-version="true" />
@@ -10,9 +14,13 @@
     <div class="gds-page-header gds-page-header--compact w-100" data-gao-ui="modern">
         <div class="gds-page-header__main">
             <h3 class="gds-page-header__title">Tồn hàng có hóa đơn XML</h3>
-            <p class="gds-page-header__subtitle mb-0">Theo dõi nguồn nhập từ XML và số lượng đã dùng để phát hành hóa đơn.</p>
+            <p class="gds-page-header__subtitle mb-0">Theo dõi tồn đầu vào theo các phiếu nhập đã được quản lý xác nhận; XML dùng để đối chiếu và tự động nhận diện lần sau.</p>
         </div>
         <div class="gds-page-header__actions">
+            @if (canBackfill)
+            {
+                <button class="btn btn-primary" id="xsBackfillOpen" type="button">Bổ sung phiếu đã duyệt</button>
+            }
             <a class="btn btn-label-secondary" href="/admin/inventory-ledger">Thẻ kho</a>
             <button class="btn btn-label-primary" id="xmlReload" type="button"><i class="bx bx-refresh" aria-hidden="true"></i> Tải lại</button>
         </div>
@@ -49,12 +57,36 @@
         <div class="xs-table-wrap"><table class="table xs-table"><thead id="xsHead"></thead><tbody id="xsBody"><tr><td>Đang tải dữ liệu…</td></tr></tbody></table></div>
         <div class="xs-footer"><span id="xsSummary" role="status"></span><div><button type="button" class="btn btn-sm btn-label-secondary" id="xsPrevious">Trang trước</button><button type="button" class="btn btn-sm btn-label-secondary" id="xsNext">Trang sau</button></div></div>
     </section>
-    <p class="xs-explanation"><i class="bx bx-info-circle" aria-hidden="true"></i> Tồn XML = tồn đầu chuyển sang + nhập / tăng − xuất / giảm. Khả dụng = tồn XML − đang giữ. Tồn đầu là số dư được chuyển từ hệ thống cũ; không gộp vào lượng nhập.</p>
+    <p class="xs-explanation"><i class="bx bx-info-circle" aria-hidden="true"></i> Tồn đầu vào = tồn đầu chuyển sang + các dòng nhập đã được quản lý xác nhận − xuất / giảm. Số lượng và giá vốn lấy theo giao dịch nhập kho đơn vị gốc; XML chỉ lưu kết quả đối chiếu và hỗ trợ nhận diện lần sau.</p>
     <dialog class="xs-dialog" id="xsDialog" aria-labelledby="xsDialogTitle">
         <div class="xs-dialog-header"><div><span class="text-primary small fw-semibold">CHI TIẾT TỒN XML</span><h4 id="xsDialogTitle"></h4></div><button type="button" id="xsClose" class="btn btn-label-secondary" aria-label="Đóng">×</button></div>
         <div id="xsDialogBody"></div><div class="xs-dialog-footer" id="xsDialogActions"></div>
     </dialog>
+    @if (canBackfill)
+    {
+        <dialog class="xs-dialog xs-backfill" id="xsBackfillDialog" aria-labelledby="xsBackfillTitle">
+            <div class="xs-dialog-header"><div><h4 id="xsBackfillTitle">Bổ sung phiếu đã duyệt vào tồn hóa đơn</h4><p>Rà soát phiếu đã duyệt theo ngày gắn XML. Khi xác nhận, toàn bộ số lượng và giá vốn nhập kho của phiếu được tính vào tồn hóa đơn.</p><p>Kho và công nợ đã ghi sổ được giữ nguyên. Phiếu đã tính đủ sẽ tự động bỏ qua.</p></div><button type="button" id="xsBackfillClose" class="btn btn-label-secondary" aria-label="Đóng">×</button></div>
+            <div class="xs-backfill-body">
+                <form id="xsBackfillFilters" class="xs-filters">
+                    @Html.AntiForgeryToken()
+                    <label>Ngày gắn XML từ (giờ Việt Nam)<input type="date" id="xsBackfillFrom" class="form-control" value="2026-09-26" required /></label>
+                    <label>Đến hết ngày (không bắt buộc)<input type="date" id="xsBackfillTo" class="form-control" /></label>
+                    <button type="submit" class="btn btn-label-primary">Rà soát</button>
+                </form>
+                <p id="xsBackfillSummary" role="status" class="mt-3">Bấm Rà soát để xem danh sách. Mặc định lấy các XML được gắn sau ngày 25/9/2026.</p>
+                <div id="xsBackfillNotice" class="alert mt-3" role="status" hidden></div>
+                <div class="xs-table-wrap mt-3"><table class="table xs-backfill-table"><thead><tr><th><input type="checkbox" id="xsBackfillSelectAll" aria-label="Chọn các phiếu cần bổ sung trên trang" disabled /></th><th>Phiếu / kho</th><th>XML / ngày gắn</th><th>Giao dịch nhập</th><th>Sản phẩm cần xác nhận</th><th>Kết quả rà soát</th></tr></thead><tbody id="xsBackfillBody"><tr><td colspan="6">Chưa rà soát.</td></tr></tbody></table></div>
+                <div class="xs-footer"><span id="xsBackfillPage"></span><div><button type="button" id="xsBackfillPrevious" class="btn btn-sm btn-label-secondary" disabled>Trang trước</button><button type="button" id="xsBackfillNext" class="btn btn-sm btn-label-secondary" disabled>Trang sau</button></div></div>
+                <label class="d-block mt-3">Ghi chú xác nhận<input type="text" id="xsBackfillReason" class="form-control mt-1" maxlength="500" value="Đã kiểm tra các phiếu đã duyệt có XML; ghi nhận tồn hóa đơn theo giao dịch nhập kho." /></label>
+            </div>
+            <div class="xs-dialog-footer"><span id="xsBackfillSelected" class="me-auto align-self-center">Chưa chọn phiếu.</span><button type="button" class="btn btn-primary" id="xsBackfillConfirm" disabled>Xác nhận và bổ sung</button></div>
+        </dialog>
+    }
 </main>
 @section PageScripts {
     <script src="~/Admin/js/invoice-input-stock.js" asp-append-version="true"></script>
+    @if (canBackfill)
+    {
+        <script src="~/Admin/js/receipt-invoice-backfill.js" asp-append-version="true"></script>
+    }
 }

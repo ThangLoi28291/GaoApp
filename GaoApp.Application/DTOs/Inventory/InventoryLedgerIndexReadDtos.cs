@@ -14,6 +14,7 @@ public sealed class InventoryLedgerIndexQueryRequest
 {
     public int? WarehouseId { get; set; }
     public string? Keyword { get; set; }
+    public string? SearchScope { get; set; }
     public InventoryTransactionType? TransactionType { get; set; }
     public InventoryReferenceType? ReferenceType { get; set; }
     public DateTime? FromDate { get; set; }
@@ -67,7 +68,21 @@ public sealed class InventoryLedgerIndexItemDto
     public decimal BeforeQty { get; set; }
     public decimal QuantityChange { get; set; }
     public decimal AfterQty { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? UnitCostSnapshot { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? TotalCost { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? BeforeInventoryValue { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? AfterInventoryValue { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? RunningAverageUnitCostAfter { get; set; }
+    public string? BaseUnitName { get; set; }
     public bool IsNegativeAfterTransaction { get; set; }
+    /// <summary>Thời điểm giao dịch được ghi sổ trong GaoAppDb.</summary>
+    public DateTime CreatedAtUtc { get; set; }
+    /// <summary>Ngày nghiệp vụ/chứng từ, có thể được ghi nhận muộn hơn.</summary>
     public DateTime OccurredAtUtc { get; set; }
     public string? Note { get; set; }
 }

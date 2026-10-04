@@ -12,7 +12,7 @@
     var totalQuantity = lines.Sum(x => x.Quantity) + intake.Sum(x => x.Quantity);
     var totalBaseQuantity = lines.Sum(x => x.BaseQuantity) + intake.Sum(x => x.Quantity * x.ProposedFactor.GetValueOrDefault());
     var totalAmount = canViewCost ? lines.Sum(x => x.LineTotal) : 0m;
-    var colspan = 6 + (canViewCost ? 2 : 0) +
+    var colspan = 7 + (canViewCost ? 2 : 0) +
         (canManageInputInvoiceMapping ? 1 : 0) +
         (canEditPhysical ? 1 : 0);
 }
@@ -47,6 +47,7 @@
     <table class="table table-hover align-middle mb-0 sd-line-table">
         <colgroup>
             <col style="width:64px;" />
+            <col style="width:78px;" />
             <col style="min-width:300px;" />
             <col style="width:100px;" />
             <col style="width:90px;" />
@@ -68,7 +69,8 @@
         </colgroup>
         <thead>
             <tr>
-                <th>Line</th>
+                <th>Dòng</th>
+                <th>Ảnh</th>
                 <th>Sản phẩm</th>
                 <th>Đơn vị</th>
                 <th class="text-end">Factor</th>
@@ -115,31 +117,26 @@
 
                     <tr data-line-id="@line.Id">
                         <td class="text-center fw-bold text-muted">@line.LineNo</td>
-
+                        <td class="sd-commercial-image-column">
+                            @if (hasImage)
+                            {
+                                <button type="button" class="sd-commercial-image-button" aria-label="Phóng to ảnh @line.ProductNameSnapshot" aria-expanded="false">
+                                    <img class="sd-commercial-thumbnail" src="@line.ProductImageUrl" alt="@line.ProductNameSnapshot" loading="lazy"
+                                         onerror="this.hidden=true; this.nextElementSibling.hidden=false; this.parentElement.disabled=true;" />
+                                    <i class="bx bx-image" hidden aria-hidden="true"></i>
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="sd-commercial-image-empty" title="Chưa có ảnh"><i class="bx bx-image" aria-hidden="true"></i></span>
+                            }
+                        </td>
                         <td>
                             <div class="sd-product-cell">
-                                <div class="sd-product-img-wrap">
-                                    @if (hasImage)
-                                    {
-                                        <img class="sd-product-img"
-                                             src="@line.ProductImageUrl"
-                                             alt="@line.ProductNameSnapshot" />
-
-                                        <div class="sd-img-preview">
-                                            <img src="@line.ProductImageUrl"
-                                                 alt="@line.ProductNameSnapshot" />
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="sd-product-img-empty">
-                                            <i class="bx bx-image"></i>
-                                        </div>
-                                    }
-                                </div>
-
                                 <div class="sd-product-info">
                                     <div class="sd-product-name">@line.ProductNameSnapshot</div>
+                                    <div class="sd-price-review mt-2" data-price-review-line-id="@line.Id"
+                                         data-price-moved="@((line.LastPurchaseUnitPriceBeforeVat.HasValue && line.EditableUnitPriceBeforeVat.HasValue && line.LastPurchaseUnitPriceBeforeVat != line.EditableUnitPriceBeforeVat).ToString().ToLowerInvariant())">Đang tải đánh giá…</div>
                                     <div class="sd-product-meta">
                                         <i class="bx bx-barcode-reader"></i>
                                         Barcode: @barcodeText
@@ -271,7 +268,7 @@
                 }
             }
             @await Html.PartialAsync("_ReceiptIntakeRows", new GaoApp.Web.Areas.Admin.Models.Inventory.ReceiptIntakeRowsViewModel
-            { Items = intake, CanEdit = canEditPhysical, CanViewCost = canViewCost, HasInvoiceColumn = canManageInputInvoiceMapping, LineOffset = lines.Count })
+            { Items = intake, CanEdit = canEditPhysical, CanViewCost = canViewCost, HasInvoiceColumn = canManageInputInvoiceMapping, HasImageColumn = true, LineOffset = lines.Count })
         </tbody>
     </table>
 </div>

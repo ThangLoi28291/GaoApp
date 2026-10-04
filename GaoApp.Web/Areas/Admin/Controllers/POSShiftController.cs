@@ -6,6 +6,10 @@ using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ClosedXML.Excel;
+using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Interfaces.Repositories.Orders;
+using GaoApp.Domain.Entities;
+using System.Text.Json;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
@@ -77,10 +81,50 @@ public class POSShiftController : ControllerBase
     /// </summary>
     [HttpGet("cash-transactions")]
     [Authorize(Policy = PermissionCodes.Pos.Shift.View)]
-    public async Task<IActionResult> GetCashTransactions(CancellationToken ct)
+    public async Task<IActionResult> GetCashTransactions([FromServices] IPOSCashAdjustmentService adjustments, CancellationToken ct)
     {
         var result = await _service.GetCashTransactionsAsync(ct);
+        var pending = await adjustments.PendingAsync(result.Select(x => x.Id).ToArray(), ct);
+        foreach (var row in result) row.PendingAdjustmentId = pending.TryGetValue(row.Id, out var id) ? id : null;
         return Ok(result);
+    }
+
+    [HttpPost("cash-drawer")]
+    [Authorize(Policy = PermissionCodes.Pos.Shift.Reconcile)]
+    public async Task<IActionResult> RequestCashDrawer(
+        [FromBody] OpenCashDrawerRequest request,
+        [FromServices] ICurrentStore store,
+        [FromServices] ICurrentUser user,
+        [FromServices] IPOSAuditLogRepository audit,
+        CancellationToken ct)
+    {
+        var reason = request.Reason?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || reason.Length > 300)
+            return BadRequest(new { message = "Nhập lý do mở két từ 1 đến 300 ký tự." });
+
+        // Existing service enforces current store, terminal and shift ownership.
+        var shift = await _service.GetCurrentOpenAsync(ct);
+        if (shift == null || shift.Status != POSShiftStatus.Open || shift.Id != request.ShiftId)
+            return Conflict(new { message = "Ca đã thay đổi hoặc chưa mở. Vui lòng tải lại ca POS." });
+        if (store.StoreId <= 0 || user.UserId is not > 0 || user.TerminalId is not > 0 || !user.IsAuthenticated)
+            return Forbid();
+
+        var entry = new POSAuditLog
+        {
+            StoreId = store.StoreId,
+            UserId = user.UserId,
+            Action = "CASH_DRAWER_OPEN_REQUESTED",
+            Note = reason,
+            CreatedAtUtc = DateTime.UtcNow,
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                ShiftId = shift.Id, shift.ShiftCode, TerminalId = user.TerminalId,
+                Reason = reason, Source = "POSShift", Outcome = "Requested"
+            })
+        };
+        await audit.AddAsync(entry, ct);
+        await audit.SaveChangesAsync(ct); // No helper command before the reason is durably recorded.
+        return Ok(new { auditId = entry.Id, shiftId = shift.Id });
     }
 
     /// <summary>

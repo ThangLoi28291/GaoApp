@@ -11,6 +11,7 @@ public sealed class InputInvoicePickerBrowseRequest
 
 public sealed class InputInvoicePickerContextDto
 {
+    public bool? WaitForInputInvoice { get; set; }
     public int StockDocumentId { get; set; }
     public string DocumentNo { get; set; } = string.Empty;
     public string ReceiptStatus { get; set; } = string.Empty;
@@ -34,6 +35,8 @@ public sealed class InputInvoicePickerBrowseResultDto
 public sealed class InputInvoicePickerCandidateDto
 {
     public string DocumentKey { get; set; } = string.Empty;
+    // Physical library partition; it can differ from the seller declared by the XML.
+    public string? SourceSupplierTaxCode { get; set; }
     public DateTime? InvoiceDate { get; set; }
     public string? InvoiceTemplateCode { get; set; }
     public string? InvoiceSeries { get; set; }

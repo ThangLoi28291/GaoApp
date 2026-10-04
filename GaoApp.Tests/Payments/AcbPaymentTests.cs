@@ -281,7 +281,7 @@ public sealed partial class AcbPaymentTests
         }
         private async Task<OrderDraftDto> FinalizeOrder(int id)
         {
-            Assert.Equal(100, id);
+            Assert.Equal(Order.Id, id);
             await new AcbFinalizeGuard(Db).ValidateAsync(Order, default);
             FinalizeCount++; Order.Status = OrderStatus.Completed;
             await Db.SaveChangesAsync(); return new OrderDraftDto { OrderId = id };
@@ -345,6 +345,7 @@ public sealed partial class AcbPaymentTests
         public HashSet<string> FailedRetrieveIds = [];
         public bool FailCancel;
         public bool DropInitiateResponse;
+        public string? InitiateFailureCode;
         public string? CancellationCode;
         public bool MissingRetrieveOrders;
         public bool MalformedRetrieve;
@@ -364,6 +365,8 @@ public sealed partial class AcbPaymentTests
                 Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
                 if (request.RequestUri.AbsolutePath.EndsWith("/initiate"))
                 {
+                    if (InitiateFailureCode != null)
+                        return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { responseStatus = new { responseCode = InitiateFailureCode } }) };
                     using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
                     var p = json.RootElement.GetProperty("requestParameters");
                     var id = AcbProtocol.Text(p, "orderId");

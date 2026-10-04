@@ -55,7 +55,7 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
         if (old != null && (old.IsDeleted || old.RequestJson != payload)) throw new ConflictAppException("Mã giao dịch đã được dùng với nội dung khác.");
         return old;
     }
-    private void CashEntry(POSShift shift, decimal amount, bool refund, int depositId)
+    private void CashEntry(POSShift shift, decimal amount, bool refund, int depositId, int entryId)
     {
         if (refund)
         {
@@ -66,7 +66,7 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
         db.POSShiftCashTransactions.Add(new() { StoreId = StoreId, POSShiftId = shift.Id,
             Type = refund ? POSShiftCashTransactionType.CashOut : POSShiftCashTransactionType.CashIn,
             Amount = amount, Reason = refund ? "Hoàn cọc khách hàng" : "Nhận cọc khách hàng",
-            Note = $"Phiếu cọc DC-{depositId}", CreatedByUserId = pos.UserId!.Value });
+            Note = $"Phiếu cọc DC-{depositId}", CreatedByUserId = pos.UserId!.Value, CustomerDepositEntryId = entryId });
     }
     public async Task<int> ReceiveAsync(ReceiveDepositRequest request, CancellationToken ct)
     {
@@ -85,10 +85,12 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
             Purpose = request.Purpose.Trim(), ExpectedDeliveryDate = request.ExpectedDeliveryDate?.Date };
         db.Set<CustomerDeposit>().Add(deposit);
         await db.SaveChangesAsync(ct);
-        db.Set<CustomerDepositEntry>().Add(new() { StoreId = StoreId, CustomerDepositId = deposit.Id, POSShiftId = shift.Id,
+        var entry = new CustomerDepositEntry { StoreId = StoreId, CustomerDepositId = deposit.Id, POSShiftId = shift.Id,
             Kind = "Receive", Amount = request.Amount, Method = request.Method, StoreBankAccountId = bankId,
-            Reference = request.Reference?.Trim(), Note = request.Note?.Trim(), ClientRequestId = request.ClientRequestId, RequestJson = payload });
-        if (request.Method == PaymentMethod.Cash) CashEntry(shift, request.Amount, false, deposit.Id);
+            Reference = request.Reference?.Trim(), Note = request.Note?.Trim(), ClientRequestId = request.ClientRequestId, RequestJson = payload };
+        db.Set<CustomerDepositEntry>().Add(entry);
+        await db.SaveChangesAsync(ct);
+        if (request.Method == PaymentMethod.Cash) CashEntry(shift, request.Amount, false, deposit.Id, entry.Id);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return deposit.Id;
     }
     public async Task<DepositQrPreviewDto> CreateReceiveQrAsync(CreateDepositQrRequest request, CancellationToken ct)
@@ -126,7 +128,8 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
             Kind = "Refund", Amount = -request.Amount, Method = request.Method, StoreBankAccountId = bankId,
             Reference = request.Reference?.Trim(), Note = request.Note.Trim(), ClientRequestId = request.ClientRequestId, RequestJson = payload };
         db.Set<CustomerDepositEntry>().Add(entry);
-        if (request.Method == PaymentMethod.Cash) CashEntry(shift, request.Amount, true, deposit.Id);
+        await db.SaveChangesAsync(ct);
+        if (request.Method == PaymentMethod.Cash) CashEntry(shift, request.Amount, true, deposit.Id, entry.Id);
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return entry.Id;
     }
     public async Task SelectAsync(int orderId, SelectDepositRequest request, CancellationToken ct)

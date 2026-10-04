@@ -200,7 +200,7 @@ public sealed class SqlServerDatabaseBaselinePreflight
                 appliedMigrationIds,
                 ct);
             var comparison = DatabaseSchemaComparer.Compare(
-                expectedManifest,
+                KnownImportJournalSchema.IncludePresentJournals(expectedManifest, actualManifest),
                 actualManifest);
 
             if (!comparison.IsMatch)

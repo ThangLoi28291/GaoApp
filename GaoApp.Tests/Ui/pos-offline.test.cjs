@@ -61,6 +61,20 @@ test('pack and wholesale pricing matches the existing POS thresholds', () => {
     const wholesale = act('/admin/pos/cart/current/customer/9', { repriceExistingLines: true });
     assert.equal(wholesale.grandTotal, 32000);
 });
+
+test('customer reprice retains 24-bottle carton price for both tiers and respects keep-price offline', () => {
+    const { catalog, act } = fixture();
+    catalog.customers.push({ customerId: 8, name: 'Khách lẻ', priceTier: 'RETAIL' });
+    catalog.products[0].units.push({ id: 16, unitId: 17, unitName: 'Thùng', factor: 24,
+        price: 100000, wholesalePrice: 96000, barcodes: ['CARTON24'] });
+    const draft = act('/admin/pos/cart/current/scan', { barcode: '123456', qty: 24 });
+    assert.equal(draft.grandTotal, 100000);
+    assert.equal(act('/admin/pos/cart/current/customer/8', { repriceExistingLines: true }).grandTotal, 100000);
+    assert.equal(act('/admin/pos/cart/current/customer/9', { repriceExistingLines: true }).grandTotal, 96000);
+    assert.equal(act('/admin/pos/cart/current/customer/8', { repriceExistingLines: true }).grandTotal, 100000);
+    assert.equal(act('/admin/pos/cart/current/customer/9', { repriceExistingLines: false }).grandTotal, 100000);
+    assert.equal(act(`/admin/pos/lines/${draft.lines[0].lineId}?qty=48`, {}, 'PATCH').grandTotal, 192000);
+});
 test('repeated payment identity does not count cash twice', () => {
     const { act } = fixture();
     act('/admin/pos/cart/current/scan', { barcode: '123456' });
@@ -77,6 +91,20 @@ test('manual QR collection is a bank transfer with an explicit local confirmatio
     assert.equal(result.finalized, true); assert.equal(result.confirmationSource, 'offline-manual');
     assert.equal(result.draft.payments[0].method, 'BankTransfer'); assert.equal(result.draft.payments[0].reference, 'GAOABC123');
 });
+
+test('offline transfer records full surplus through retries and reload, while card remains capped', () => {
+    const { state, act } = fixture();
+    const draft = act('/admin/pos/cart/current/scan', { barcode: '123456' });
+    assert.throws(() => act('/admin/pos/cart/current/payments', { clientRequestId: randomUUID(), method: 2, amount: 12500 }), /vượt số còn thiếu/);
+    const body = { orderId: draft.orderId, clientRequestId: randomUUID(), bankAccountId: 1, amount: 12500, referenceCode: 'GAOOVERPAID' };
+    const collection = { ...body, method: 1, provider: 'OFFLINE-MANUAL' };
+    act('/admin/pos/cart/current/payments', collection);
+    act('/admin/pos/cart/current/payments', collection);
+    act('/admin/pos/offline/manual-transfer', body);
+    const saved = JSON.parse(JSON.stringify(state)).orders[draft.orderId];
+    assert.equal(saved.paidTotal, 12500); assert.equal(saved.balanceDue, 0); assert.equal(saved.changeDue, 2500);
+    assert.equal(saved.payments.length, 1); assert.equal(saved.payments[0].amount, 12500);
+});
 test('holding a cart creates a separate cart and resumes only stored orders', () => {
     const { state, act } = fixture();
     act('/admin/pos/cart/current/scan', { barcode: '123456' });
@@ -90,6 +118,12 @@ test('offline scanning accepts the quantity field sent by the barcode input', ()
     const { act } = fixture();
     const draft = act('/admin/pos/cart/current/scan', { barcode: '123456', quantity: 4 });
     assert.equal(draft.lines[0].quantity, 4);
+});
+test('offline quantity updates reject values that can overflow server money columns', () => {
+    const { act } = fixture();
+    const draft = act('/admin/pos/cart/current/scan', { barcode: '123456' });
+    assert.throws(() => act(`/admin/pos/lines/${draft.lines[0].lineId}?qty=138935001002581`, {}, 'PATCH'), /tối đa 1\.000\.000/);
+    assert.equal(draft.lines[0].quantity, 1);
 });
 test('mapped request identities survive restart without changing unrelated product identifiers', () => {
     const { state, act } = fixture();
@@ -209,7 +243,7 @@ async function intentTransportHarness(saved, controls = {}) {
     ]);
     const server = controls.backend?.server || fixture();
     if (!controls.backend) { server.state.orders = {}; server.state.currentId = null; server.state.nextId = 100; }
-    const requests = [], receipts = controls.backend?.receipts || new Map(), prints = [], events = [];
+    const requests = [], receipts = controls.backend?.receipts || new Map(), prints = [], events = [], intervals = [];
     controls.backend = { server, receipts };
     controls.online ||= false;
     const database = { close() {}, transaction(names, mode) {
@@ -232,11 +266,13 @@ async function intentTransportHarness(saved, controls = {}) {
             if (!controls.online) throw new TypeError('Offline');
             const url = new URL(input, 'https://pos.local');
             if (url.pathname.endsWith('/offline/status') || url.pathname.endsWith('/offline/bootstrap')) {
+                if (controls.stallStatusBody) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')); } }), { headers: { 'Content-Type': 'application/json' } });
                 if (controls.authStatus) return Response.json({ message: 'Session rejected' }, { status: controls.authStatus });
                 return Response.json({ ...f.state.context, userId: controls.changedUserId || f.state.context.userId, antiForgeryToken: 'test' });
             }
             const id = options.headers?.['X-POS-Operation-Id'];
             requests.push({ path: url.pathname, id, body: JSON.parse(options.body || '{}') });
+            if (controls.replayAuth) return Response.json({ message: 'Login expired' }, { status: 401 });
             if (controls.rejectRoute && url.pathname.endsWith('/invoice-route')) return Response.json({ message: 'Route conflict' }, { status: 409 });
             let result = receipts.get(id);
             if (!result) {
@@ -250,21 +286,28 @@ async function intentTransportHarness(saved, controls = {}) {
             if (controls.failAfterRouteCommit && url.pathname.endsWith('/invoice-route')) {
                 controls.failAfterRouteCommit = false; controls.failSave = true;
             }
+            if (controls.stallReplayBody) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')); } }), { headers: { 'Content-Type': 'application/json' } });
+            if (controls.slowReplay) await new Promise(resolve => setTimeout(resolve, 60));
             return Response.json(result);
         }
     };
     const location = { origin: 'https://pos.local', href: 'https://pos.local/admin/pos', reload() {} };
+    const qrContext = {};
+    vm.runInNewContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/qrcodegen.js'), 'utf8'), qrContext);
     vm.runInNewContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.js'), 'utf8'), {
         window, location, URL, Response, AbortController, DOMException, structuredClone, Date,
-        crypto: require('node:crypto').webcrypto, TextEncoder, setTimeout, clearTimeout,
-        setInterval: () => 1, clearInterval() {}, navigator: { locks: { request: (_, __, callback) => Promise.resolve(callback({})) } },
-        document: { getElementById: () => ({ dataset: { storeId: '1', terminalId: '2', userId: '3' } }) },
+        crypto: require('node:crypto').webcrypto, TextEncoder,
+        setTimeout: (fn, ms) => setTimeout(fn, controls.fastTimeout ? ms / 100 : ms), clearTimeout,
+        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval() {}, navigator: { locks: { request: (_, __, callback) => Promise.resolve(callback({})) } },
+        qrcodegen: qrContext.qrcodegen,
+        document: { getElementById: () => ({ dataset: { storeId: '1', terminalId: '2', userId: '3' } }),
+            createElement: () => ({ getContext: () => ({ fillRect() {} }), toDataURL: () => 'data:image/png;base64,offline' }) },
         CustomEvent: class { constructor(type) { this.type = type; } },
         indexedDB: { open() { const q = {}; queueMicrotask(() => { q.result = database; q.onsuccess?.(); }); return q; } }
     });
     await window.PosOffline.init();
     await new Promise(resolve => setImmediate(resolve));
-    return { api: window.PosOffline, stores, controls, server, requests, receipts, prints,
+    return { api: window.PosOffline, stores, controls, server, requests, receipts, prints, tick: () => intervals.at(-1)(),
         state: () => stores.get('sessions').get(key),
         post: async (url, body = {}) => { const response = await window.fetch(url, { method: 'POST', body: JSON.stringify(body) }); return { status: response.status, body: await response.json() }; }
     };
@@ -277,6 +320,109 @@ async function sellOffline(h) {
     assert.equal(completed.status, 200);
     return created.body.orderId;
 }
+test('offline repeated create clicks and reload return the original pending QR conflict, and cancellation releases creation', async () => {
+    const seed = await intentTransportHarness();
+    seed.state().context.accounts = [{ id: 1, vietQrBankBin: '970416', accountNumber: '123456789', accountName: 'Test' }];
+    const h = await intentTransportHarness(seed.stores);
+    const original = await h.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 2000 });
+    assert.equal(original.status, 200);
+    const repeated = await Promise.all(Array.from({ length: 7 }, (_, i) =>
+        h.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 3000 + i })));
+    for (const result of repeated) {
+        assert.equal(result.status, 409);
+        assert.equal(result.body.errorCode, 'POS_QR_PENDING');
+        assert.equal(result.body.metadata.savedQr.qr.id, original.body.id);
+        assert.equal(result.body.metadata.savedQr.qr.amount, 2000);
+        assert.equal(result.body.metadata.savedQr.canCancel, true);
+    }
+    assert.equal(Object.keys(h.state().qrs).length, 1);
+    const reloaded = await intentTransportHarness(h.stores);
+    const blocked = await reloaded.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 4000 });
+    assert.equal(blocked.body.metadata.qrId, original.body.id);
+    await reloaded.post(`/admin/pos/payment-qr/${original.body.id}/cancel`);
+    const next = await reloaded.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 4000 });
+    assert.equal(next.status, 200);
+    assert.notEqual(next.body.id, original.body.id);
+    assert.equal(next.body.amount, 4000);
+});
+
+test('offline review-only bank QR cannot be bypassed with a new QR', async () => {
+    const seed = await intentTransportHarness();
+    const orderId = seed.state().currentId;
+    seed.state().qrs[30] = { id: 30, orderId, status: 0, savedStatus: 'ReviewRequired', readOnly: true,
+        automaticConfirmation: true, requestCode: 'BANK-REVIEW', amount: 2000, qrDataUrl: 'saved-review' };
+    const h = await intentTransportHarness(seed.stores);
+    const result = await h.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 3000 });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.errorCode, 'POS_QR_PENDING');
+    assert.equal(result.body.metadata.qrId, 30);
+    assert.equal(Object.keys(h.state().qrs).length, 1);
+});
+
+test('automatic retry resumes after authentication returns for the original cashier and shift', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const before = JSON.stringify(h.state().queue);
+    h.controls.online = true; h.controls.authStatus = 401;
+    await h.tick(); assert.equal(h.api.canWork(), false);
+    assert.equal(JSON.stringify(h.state().queue), before);
+    h.controls.authStatus = 0; h.controls.changedUserId = 44;
+    await h.tick(); assert.equal(h.requests.length, 0);
+    h.controls.changedUserId = 0;
+    await h.tick(); assert.equal(h.state().queue.length, 0);
+    assert.equal(h.api.canWork(), true);
+});
+
+test('401 during replay preserves the command and retries automatically after reauthentication', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    h.controls.online = true; h.controls.replayAuth = true;
+    await h.tick(); const operationId = h.state().queue[0].id;
+    assert.ok(h.state().conflict.recoverable);
+    h.controls.replayAuth = false;
+    await h.tick(); assert.equal(h.state().queue.length, 0);
+    assert.equal(h.requests[1].id, operationId);
+});
+
+for (const stage of ['status', 'replay'])
+test(`a stalled ${stage} response body releases synchronization and retries with original operation IDs`, async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const originalIds = h.state().queue.map(x => x.id);
+    h.controls.online = true; h.controls.fastTimeout = true;
+    h.controls[stage === 'status' ? 'stallStatusBody' : 'stallReplayBody'] = true;
+    await h.tick();
+    assert.equal(h.api.status().syncing, false);
+    assert.match(h.api.status().syncError, /quá lâu/);
+    assert.deepEqual(h.state().queue.map(x => x.id), originalIds);
+    h.controls.stallStatusBody = h.controls.stallReplayBody = false;
+    await h.tick();
+    assert.equal(h.state().queue.length, 0);
+    assert.equal(h.receipts.size, originalIds.length, 'No duplicated sale after an acknowledgement is lost');
+    assert.equal(h.api.status().syncError, '');
+    assert.ok(h.api.status().lastSyncAt);
+});
+
+test('replay allows a slow server more time than foreground sale without parallel synchronization', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    h.controls.online = true; h.controls.fastTimeout = true; h.controls.slowReplay = true;
+    await Promise.all([h.tick(), h.tick(), h.api.sync(true)]);
+    assert.equal(h.state().queue.length, 0);
+    assert.equal(h.requests.length, h.receipts.size);
+});
+
+test('automatic retry drains an 84-operation backlog in order without losing invoices or duplicating sales', async () => {
+    const h = await intentTransportHarness();
+    for (let i = 0; i < 21; i++) {
+        const id = await sellOffline(h);
+        await h.post(`/admin/pos/${id}/invoice-route`, { route: 2 });
+    }
+    const ids = h.state().queue.map(x => x.id);
+    assert.equal(ids.length, 84);
+    h.controls.online = true;
+    await h.tick();
+    assert.equal(h.state().queue.length, 0);
+    assert.deepEqual(h.requests.map(x => x.id), ids);
+    assert.equal(h.receipts.size, 84);
+    assert.equal(Object.values(h.server.state.orders).filter(x => x.status === 2).length, 21);
+});
 
 test('invoice intent journal acknowledges only durable storage, replays FIFO, and deduplicates a lost server response', async () => {
     const h = await intentTransportHarness(); const id = await sellOffline(h);
@@ -325,7 +471,7 @@ test('invoice intent preserves a rejected replay for reconciliation and blocks r
 
 test('invoice intent UI restores the pending order without opening another modal during submission', () => {
     const app = fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.app.js'), 'utf8');
-    const source = app.slice(app.indexOf('function restorePendingInvoiceIntent()'), app.indexOf('function openReceiptPrint(orderId)'));
+    const source = app.slice(app.indexOf('function restorePendingInvoiceIntent()'), app.indexOf('function openReceiptPrint('));
     const calls = [], context = { window: { PosOffline: { pendingInvoiceIntentOrderId: () => 123 } },
         invoiceIntentBusy: false, pendingInvoiceIntentOrderId: null, openReceiptPrint: id => calls.push(id) };
     vm.runInNewContext(source, context); context.restorePendingInvoiceIntent();
@@ -368,4 +514,21 @@ test('invoice intent online commit survives a failed response save and browser r
     assert.equal(reloaded.requests.at(-1).id, operationId);
     assert.equal(reloaded.state().orders[id].invoiceIntent.pendingSync, false);
     assert.equal(reloaded.api.pendingInvoiceIntentOrderId(), null);
+});
+test('receipt print preference belongs to the completed offline order and resets on customer removal', () => {
+    const { state, catalog, act } = fixture();
+    catalog.customers[0].askBeforePrintingReceipt = true;
+    const selected = act('/admin/pos/cart/current/customer/9', {});
+    assert.equal(selected.askBeforePrintingReceipt, true);
+    act('/admin/pos/cart/current/customer', {}, 'DELETE');
+    assert.equal(core.current(state).askBeforePrintingReceipt, false);
+    act('/admin/pos/cart/current/customer/9', {});
+    const order = act('/admin/pos/cart/current/scan', { barcode: '123456', qty: 1 });
+    act('/admin/pos/cart/current/payment-and-finalize', { orderId: order.orderId, clientRequestId: randomUUID(), method: 0, amount: 10000 });
+    act('/admin/pos/cart/current/new');
+    assert.notEqual(core.current(state).askBeforePrintingReceipt, true);
+    const intent = act(`/admin/pos/${order.orderId}/invoice-route`, { route: 1 });
+    assert.equal(intent.askBeforePrintingReceipt, true);
+    assert.equal(intent.orderId, order.orderId);
+    assert.equal(core.invoiceIntentOrder(JSON.parse(JSON.stringify(state)), order.orderId).askBeforePrintingReceipt, true);
 });

@@ -1,5 +1,7 @@
 # Quản lý mẫu bill POS và máy in client
 
+> Cập nhật 28/09/2026: mẫu mặc định chuyển sang dùng chung toàn cửa hàng và chỉ admin được cấu hình. Phần chọn mẫu riêng từng quầy bên dưới là mô tả phiên bản cũ; xem [hướng dẫn hiện tại](RECEIPT-STORE-DEFAULT.md). Máy in vẫn được cấu hình riêng tại quầy.
+
 Status: READY FOR COORDINATOR REVIEW. User authorized the feature on 2026-09-10 and clarified that clients can run Linux. Implementation and local verification are complete. The initial handoff did not modify the live database; the user subsequently explicitly approved the bounded local migration repair recorded below. No commit, deployment, client software installation or physical print was performed.
 Level C: additive tenant-owned template storage and integration with offline POS.
 Branch/base: fix/r2-4-c1-invoice-identity-uniqueness. Base/expected parent: db6a6c5e98b69472624eeb31aa6be2161576c3d2. Preserve the existing dirty workspace.

@@ -32,4 +32,5 @@ public sealed class RefundOrderRequest
     /// Ví dụ: ACB, VietQR, Thẻ, Momo...
     /// </summary>
     public string? RefundProvider { get; set; }
+    public bool AllowPendingRestock { get; set; }
 }

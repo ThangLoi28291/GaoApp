@@ -1,0 +1,39 @@
+<div class="modal fade" id="receiptIntakeReviewModal" tabindex="-1" aria-labelledby="riReviewTitle" aria-hidden="true" data-bs-backdrop="static">
+<div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable"><div class="modal-content ri-modal ri-review-modal">
+<div class="modal-header"><div><span class="ri-review-eyebrow">KIỂM TRA HÀNG MỚI</span><h5 id="riReviewTitle" class="modal-title">Hoàn thiện sản phẩm</h5><p class="small text-muted mb-0">Kiểm tra trước khi thêm vào danh mục. Chưa ghi tồn kho ở bước này.</p></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+<div class="modal-body"><div class="ri-review-layout">
+<div class="ri-review-sidebar"><aside class="ri-review-original"><span class="ri-review-eyebrow">NHÂN VIÊN KHAI BÁO</span><div id="riReviewFacts"></div><small class="text-muted">Thông tin ban đầu được giữ trong lịch sử để đối chiếu.</small></aside>
+<section id="riReviewUploadWrap" class="ri-review-section ri-review-upload ri-review-new-only">
+    <h6><i class="bx bx-image-add" aria-hidden="true"></i> Ảnh sản phẩm</h6>
+    <div id="riReviewPhotoDrop" class="ri-review-photo-drop">
+        <input id="riReviewPhotoFile" type="file" class="visually-hidden" accept="image/jpeg,image/png,image/webp" />
+        <label for="riReviewPhotoFile" id="riReviewPhotoChoose" class="ri-review-photo-choose"><i class="bx bx-cloud-upload" aria-hidden="true"></i><strong>Chọn ảnh sản phẩm</strong><span>hoặc kéo thả ảnh vào đây</span></label>
+        <img id="riReviewPhotoPreview" class="ri-review-photo-preview" alt="Ảnh sản phẩm đang chọn" hidden />
+    </div>
+    <div class="ri-review-photo-actions"><button id="riReviewPhotoReplace" type="button" class="btn btn-sm btn-outline-primary" hidden>Đổi ảnh</button><button id="riReviewPhotoRemove" type="button" class="btn btn-sm btn-outline-danger" hidden>Bỏ ảnh</button></div>
+    <p class="form-text mb-0">JPG, PNG, WebP · tối đa 15 MB. Ảnh tự thu nhỏ và được giữ khi bấm <strong>Lưu nháp</strong>.</p>
+    <div id="riReviewPhotoStatus" class="small mt-2" role="status" aria-live="polite"></div>
+</section></div>
+<div id="riReviewEditor">
+<section class="ri-review-section"><h6><span>1</span> Nhận diện sản phẩm</h6>
+<label for="riReviewMode" class="form-label">Cách xử lý</label><select id="riReviewMode" class="form-select mb-3"><option value="new">Tạo sản phẩm mới</option><option value="existing">Liên kết sản phẩm có sẵn</option></select>
+<div id="riReviewExistingWrap" hidden><label for="riReviewProduct" class="form-label">Tìm theo tên, SKU hoặc barcode</label><select id="riReviewProduct" class="form-select"></select><p class="form-text">Hiển thị cả hàng chưa bán POS và ngừng hoạt động. Kích hoạt hàng ngừng hoạt động trong danh mục trước khi liên kết.</p></div>
+<label for="riReviewName" class="form-label">Tên chính thức *</label><input id="riReviewName" class="form-control" maxlength="200" />
+<div class="row g-3"><div id="riReviewCategoryWrap" class="col-md-6 mt-3"><label for="riReviewCategory" class="form-label">Danh mục *</label><select id="riReviewCategory" class="form-select"></select></div><div id="riReviewBrandWrap" class="col-md-6 mt-3"><label for="riReviewBrand" class="form-label">Thương hiệu</label><select id="riReviewBrand" class="form-select"></select></div></div>
+<div id="riReviewSupplierWrap" class="mt-3" hidden><label for="riReviewSupplier" class="form-label">Nhà cung cấp của phiếu *</label><select id="riReviewSupplier" class="form-select"><option value="">Chọn nhà cung cấp</option></select><div id="riReviewSupplierHint" class="form-text"></div></div>
+</section>
+<section class="ri-review-section"><h6><span>2</span> Đơn vị &amp; quy cách thực nhận</h6>
+<div class="row g-3"><div class="col-md-6"><label for="riReviewBaseUnit" class="form-label">Đơn vị gốc *</label><select id="riReviewBaseUnit" class="form-select"></select></div><div class="col-md-6"><label for="riReviewReceiveUnit" class="form-label">Đơn vị nhận / đơn vị của barcode *</label><select id="riReviewReceiveUnit" class="form-select"></select></div><div class="col-md-6"><label for="riReviewFactor" class="form-label">1 đơn vị nhận = bao nhiêu đơn vị gốc? *</label><input id="riReviewFactor" class="form-control" type="number" min="0.001" step="0.001" /></div><div class="col-md-6"><label for="riReviewQuantity" class="form-label">Số lượng thực nhận *</label><input id="riReviewQuantity" class="form-control" type="number" min="0.001" step="0.001" /></div></div>
+<div id="riReviewEquivalent" class="ri-equivalent mt-3" aria-live="polite"></div></section>
+<section class="ri-review-section"><h6><span>3</span> Barcode</h6><label for="riReviewBarcode" class="form-label">Mã trên bao bì của đơn vị nhận</label><input id="riReviewBarcode" class="form-control ri-code" maxlength="64" autocomplete="off" spellcheck="false" /><p id="riReviewBarcodeHint" class="form-text"></p>
+<label class="d-block mb-2"><input id="riReviewPrimary" type="checkbox" class="form-check-input me-2" checked />Đặt mã này làm barcode chính của đơn vị nhận</label>
+<label id="riReviewGenerateBaseWrap" class="d-block"><input id="riReviewGenerateBase" type="checkbox" class="form-check-input me-2" />Tạo thêm mã nội bộ cho đơn vị gốc chưa có mã</label></section>
+<section class="ri-review-section"><h6><span>4</span> Giá &amp; hoàn thiện</h6><p class="form-text">Giá tính trên <strong id="riReviewPriceUnit">đơn vị nhận</strong>. Lưu nháp giữ giá trên phiếu. Khi duyệt sản phẩm mới, giá nhập được lưu vào giá vốn của biến thể theo đơn vị gốc.</p>
+<div class="row g-3"><div class="col-md-4"><label for="riReviewCost" class="form-label">Giá nhập trước VAT</label><input id="riReviewCost" class="form-control" type="number" min="0.01" step="0.01" placeholder="Bổ sung sau" /></div><div class="col-md-4 ri-review-new-only"><label for="riReviewRetail" class="form-label">Giá bán lẻ</label><input id="riReviewRetail" class="form-control" type="number" min="0" step="0.01" /></div><div class="col-md-4 ri-review-new-only"><label for="riReviewWholesale" class="form-label">Giá bán sỉ</label><input id="riReviewWholesale" class="form-control" type="number" min="0" step="0.01" /></div></div>
+<p id="riReviewCostHint" class="form-text mt-2" aria-live="polite"></p>
+<label class="ri-approve ri-review-new-only"><input id="riReviewSellable" class="form-check-input" type="checkbox" />Cho phép bán tại POS sau khi duyệt sản phẩm</label>
+<label id="riReviewPhotoWrap" class="d-block mt-3 ri-review-new-only"><input id="riReviewUsePhoto" type="checkbox" class="form-check-input me-2" />Dùng ảnh bao bì bên trái làm ảnh sản phẩm</label>
+<label for="riReviewNote" class="form-label mt-3">Ghi chú kiểm tra</label><textarea id="riReviewNote" class="form-control" rows="2" maxlength="500"></textarea></section>
+</div></div><div id="riReviewError" class="ri-review-message" role="alert"></div></div>
+<div class="modal-footer"><span id="riReviewSaveStatus" class="small text-muted me-auto" role="status"></span><button id="riReviewDiscard" type="button" class="btn btn-outline-secondary" hidden>Đóng, bỏ sửa chưa lưu</button><button id="riReject" type="button" class="btn btn-outline-danger">Loại khỏi phiếu</button><button id="riReviewSaveDraft" type="button" class="btn btn-outline-primary">Lưu nháp</button><button id="riApprove" type="button" class="btn btn-primary">Duyệt sản phẩm</button><button id="riApproveNext" type="button" class="btn btn-primary">Duyệt &amp; tiếp theo →</button></div>
+</div></div></div>

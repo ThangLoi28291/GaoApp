@@ -118,6 +118,22 @@ public sealed class ProductLabelRendererTests
     }
 
     [Theory]
+    [InlineData(203)]
+    [InlineData(300)]
+    public void Large_retail_preset_fits_long_names_and_prices_without_losing_barcode(int dpi)
+    {
+        var design = ProductLabelLayouts.DefaultDesign("retail-large");
+        Assert.Equal(50, design.WidthMm); Assert.Equal(30, design.HeightMm); Assert.Equal(1, design.Columns);
+        foreach (var price in new[] { 12500m, 1234567.89m, 9999999.99m })
+        {
+            using var bitmap = ProductLabelRenderer.RenderRow(design,
+                [ProductLabelRenderer.Sample with { Name = "Sữa tươi tiệt trùng không đường nguyên chất hộp 1 lít", Price = price }], dpi, 0, 0);
+            Assert.Equal(ProductLabelRenderer.Dots(30, dpi), bitmap.Height);
+            Assert.Equal(ProductLabelRenderer.Sample.Barcode, Decode(bitmap).Text);
+        }
+    }
+
+    [Theory]
     [InlineData("CODE128")]
     [InlineData("EAN13")]
     [InlineData("EAN8")]

@@ -307,8 +307,8 @@ public sealed class AutoInvoiceRoutingMigrationTests
         var migrations =
             db.Database.GetMigrations().ToList();
 
-        Assert.Equal(43, migrations.Count);
-        Assert.Equal(MigrationId, migrations[^1]);
+        Assert.Equal(60, migrations.Count);
+        Assert.Equal("20261003110000_AddPurchaseReceiptBillLines", migrations[^1]);
         Assert.Single(
             migrations,
             x => x == MigrationId);
@@ -324,7 +324,7 @@ public sealed class AutoInvoiceRoutingMigrationTests
             new EfCoreDatabaseSchemaManifestCatalog(db)
                 .GetCurrentManifest();
 
-        Assert.Equal(MigrationId, manifest.AppliedMigrationIds[^1]);
+        Assert.Equal(migrations, manifest.AppliedMigrationIds);
 
         var selfServiceTable =
             Assert.Single(

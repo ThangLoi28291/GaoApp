@@ -7,6 +7,16 @@ public enum InputInvoiceItemCatalogResolutionState
     Confirmed = 2
 }
 
+public sealed class ConfirmInputInvoicePricingMappingRequest
+{
+    public string ReceiptRowVersion { get; set; } = string.Empty;
+    public int InputInvoiceHeadId { get; set; }
+    public int InputInvoiceDetailId { get; set; }
+    public int ProductVariantId { get; set; }
+    public int ProductUnitConversionId { get; set; }
+    public string? MappingRowVersion { get; set; }
+}
+
 public sealed class InputInvoiceItemCatalogResolutionDto
 {
     public int InputInvoiceDetailId { get; set; }

@@ -1,4 +1,4 @@
-﻿@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess StoreAdminAccess
+@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess StoreAdminAccess
 @{
     var canManageShifts = await StoreAdminAccess.IsAdminAsync(Context.RequestAborted);
     var isHandover = Context.Request.Path.StartsWithSegments("/admin/pos-shift/handover-slips");
@@ -97,6 +97,10 @@
         <a href="/admin/pos-shift/manager-dashboard" class="pos-nav-link @(isManager ? "active" : "")">Quản lý / duyệt ca</a>
     }
 
+    <a href="/admin/pos-shift/requests" class="pos-nav-link @(path.Contains("/pos-shift/requests") || path.Contains("/cash-adjustments") || path.Contains("/payment-adjustments") ? "active" : "")">
+        <i class="bx bx-edit pos-nav-icon"></i><span>Yêu cầu nghiệp vụ</span>
+    </a>
+
     <a href="/admin/pos/orders-page" class="pos-nav-link @(isOrders ? "active" : "")">
         <i class="bx bx-receipt pos-nav-icon"></i>
         <span>Đơn POS</span>
@@ -105,6 +109,10 @@
     <a href="/admin/pos/dashboard" class="pos-nav-link @(isDashboard ? "active" : "")">
         <i class="bx bx-bar-chart-alt-2 pos-nav-icon"></i>
         <span>Dashboard</span>
+    </a>
+
+    <a href="/admin/pos-shift/reconciliation" class="pos-nav-link @(path.Contains("/pos-shift/reconciliation") ? "active" : "")">
+        <i class="bx bx-check-shield pos-nav-icon"></i><span>Đối soát ca</span>
     </a>
 
     <button type="button"

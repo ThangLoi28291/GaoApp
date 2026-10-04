@@ -84,6 +84,8 @@ public class RolesController : BaseAdminController
             var newId = await _roleAdminService.CreateAsync(storeId, userId, request, ct);
 
             ToastSuccess("Tạo vai trò thành công.");
+            if ((bool?)ViewBag.CanPermissions == true)
+                return RedirectToAction("Index", "RolePermissions", new { roleId = newId });
             return RedirectToAction(nameof(Edit), new { id = newId });
         }
         catch (InvalidOperationException ex)

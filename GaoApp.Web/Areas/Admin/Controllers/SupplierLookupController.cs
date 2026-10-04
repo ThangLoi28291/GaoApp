@@ -25,7 +25,7 @@ public class SupplierLookupController : ControllerBase
     }
 
     [HttpGet("select2")]
-    [RequireAnyPermission(PermissionCodes.Catalog.Supplier.View, PermissionCodes.Inventory.StockDocument.View, PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Purchase.Order.View)]
+    [RequireAnyPermission(PermissionCodes.Catalog.Supplier.View, PermissionCodes.Inventory.StockDocument.View, PermissionCodes.Inventory.StockDocument.Approve, PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Purchase.Order.View)]
     public async Task<IActionResult> Select2([FromQuery] string? term, CancellationToken ct)
     {
         if (!_tenantContext.StoreId.HasValue || _tenantContext.StoreId.Value <= 0)

@@ -70,7 +70,7 @@ public sealed class InputInvoicePickerService : IInputInvoicePickerService
             IsConfirmed = confirmed,
             LifecycleState = current is not null
                 ? InputInvoiceAssociationLifecycleStates.Linked
-                : confirmed
+                : confirmed && context.Dto.WaitForInputInvoice == true
                     ? InputInvoiceAssociationLifecycleStates.WaitingXml
                     : InputInvoiceAssociationLifecycleStates.Unlinked,
             CurrentInputInvoiceHeadId = current?.Id,
@@ -578,6 +578,7 @@ public sealed class InputInvoicePickerService : IInputInvoicePickerService
             new InputInvoicePickerContextDto
             {
                 StockDocumentId = receipt.Id,
+                WaitForInputInvoice = receipt.WaitForInputInvoice,
                 DocumentNo = receipt.DocumentNo,
                 ReceiptStatus = receipt.Status.ToString(),
                 SupplierId = receipt.SupplierId.Value,

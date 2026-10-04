@@ -72,7 +72,35 @@
                     </select>
                 </div>
                 <button type="submit" class="po-button po-button-primary" id="btnSearch"><i class="bx bx-search" aria-hidden="true"></i> Tìm kiếm</button>
-                <button type="button" class="po-button po-filter-toggle" id="btnToggleFilters" aria-expanded="false" aria-controls="fromDate toDate status"><i class="bx bx-filter-alt" aria-hidden="true"></i> Bộ lọc</button>
+                <button type="button" class="po-button po-filter-toggle" id="btnToggleFilters" aria-expanded="false" aria-controls="fromDate toDate status orderFilterDetails"><i class="bx bx-filter-alt" aria-hidden="true"></i> Bộ lọc</button>
+            </div>
+            <div class="po-filter-details" id="orderFilterDetails">
+                <div class="po-field po-autocomplete" data-order-lookup="employee">
+                    <label for="employee">Nhân viên thu ngân</label>
+                    <input type="search" id="employee" maxlength="200" placeholder="Gõ tên để chọn nhân viên…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="employeeOptions" />
+                    <input type="hidden" id="employeeId" />
+                    <div class="po-lookup-panel" hidden><div id="employeeOptions" role="listbox" aria-label="Nhân viên đang kích hoạt"></div><p class="po-lookup-status" role="status"></p></div>
+                </div>
+                <div class="po-field"><label for="customer">Khách hàng</label><input type="search" id="customer" maxlength="200" placeholder="Tên, số điện thoại hoặc mã khách…" autocomplete="off" /></div>
+                <div class="po-field po-autocomplete" data-order-lookup="terminal">
+                    <label for="terminal">Máy tính tiền</label>
+                    <input type="search" id="terminal" maxlength="200" placeholder="Gõ tên hoặc mã máy để chọn…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="terminalOptions" />
+                    <input type="hidden" id="terminalId" />
+                    <div class="po-lookup-panel" hidden><div id="terminalOptions" role="listbox" aria-label="Máy tính tiền đang kích hoạt"></div><p class="po-lookup-status" role="status"></p></div>
+                </div>
+                <div class="po-field"><label for="settlement">Thanh toán / công nợ</label>
+                    <select id="settlement">
+                        <option value="">Tất cả hình thức</option>
+                        <option value="Cash">Tiền mặt</option>
+                        <option value="BankTransfer">Chuyển khoản</option>
+                        <option value="Credit">Đơn bán công nợ</option>
+                        <option value="OutstandingCredit">Công nợ — còn nợ</option>
+                        <option value="Mixed">Nhiều hình thức thanh toán</option>
+                        <option value="Card">Thẻ</option>
+                        <option value="EWallet">Ví điện tử</option>
+                        <option value="Other">Khác</option>
+                    </select>
+                </div>
             </div>
             <div class="po-filter-bottom">
                 <div class="po-periods" role="group" aria-label="Khoảng thời gian nhanh">
@@ -97,7 +125,7 @@
         <p class="po-inline-notice" id="ordersNotice" role="status" hidden></p>
         <div class="po-table-wrap">
             <table class="po-table" aria-label="Danh sách đơn hàng POS" aria-busy="true">
-                <thead><tr><th scope="col">Đơn hàng</th><th scope="col">Trạng thái</th><th scope="col" class="po-align-right">Tổng tiền</th><th scope="col" class="po-align-right">Thanh toán</th><th scope="col">Sau bán &amp; voucher</th><th scope="col"><span class="po-sr-only">Thao tác</span></th></tr></thead>
+                <thead><tr><th scope="col">Đơn hàng / Khách hàng</th><th scope="col">Thu ngân / Máy / Trạng thái</th><th scope="col" class="po-align-right">Tổng tiền</th><th scope="col" class="po-align-right">Thanh toán</th><th scope="col">Cọc / Voucher / Sau bán</th><th scope="col"><span class="po-sr-only">Thao tác</span></th></tr></thead>
                 <tbody id="ordersBody"><tr><td colspan="6"><div class="po-state">Đang tải danh sách đơn…</div></td></tr></tbody>
             </table>
         </div>
@@ -120,5 +148,6 @@
 
 @section PageScripts {
     <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.orders.filters.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.orders.page.js" asp-append-version="true"></script>
 }

@@ -113,6 +113,12 @@ public sealed class ProductServiceReadContractTests
 
     private sealed class FakeProductRepository : IProductRepository
     {
+        public Task SynchronizeBaseUnitAsync(int storeId, int productId, int unitId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<PagedResult<ProductListItemDto>> SearchCatalogAsync(int storeId, string? search, int? categoryId,
+        bool? isActive, bool? isSellable, int page, int pageSize, ProductListFilters filters, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<List<ProductFilterOptionDto>> FilterOptionsAsync(int storeId, string kind, string? term, int? selectedId, CancellationToken ct = default) => throw new NotSupportedException();
+
+
         public (int TotalItems, int PosAllowedItems, int NotForPosItems, int InactiveItems) Summary { get; init; }
         public int? LastStoreId { get; private set; }
         public string? LastSearch { get; private set; }

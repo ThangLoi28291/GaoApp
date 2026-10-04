@@ -12,13 +12,16 @@ public class RolePermissionsController : BaseAdminController
 {
     private readonly IRolePermissionAdminService _rolePermissionAdminService;
     private readonly ICurrentStorePermissionService _currentStorePermissionService;
+    private readonly IRoleAdminService _roleAdminService;
 
     public RolePermissionsController(
         IRolePermissionAdminService rolePermissionAdminService,
-        ICurrentStorePermissionService currentStorePermissionService)
+        ICurrentStorePermissionService currentStorePermissionService,
+        IRoleAdminService roleAdminService)
     {
         _rolePermissionAdminService = rolePermissionAdminService;
         _currentStorePermissionService = currentStorePermissionService;
+        _roleAdminService = roleAdminService;
     }
 
     [HttpGet]
@@ -27,14 +30,15 @@ public class RolePermissionsController : BaseAdminController
         var storeId = CurrentStoreId;
         var userId = CurrentUserId;
 
+        await LoadPagePermissionsAsync(storeId, userId, ct);
+        ViewBag.Roles = await _roleAdminService.GetLookupAsync(storeId, onlyActive: true, ct: ct);
+        if (roleId == 0) return View(new RolePermissionMatrixDto());
         var vm = await _rolePermissionAdminService.GetMatrixAsync(storeId, roleId, ct);
         if (vm == null)
         {
             ToastError("Không tìm thấy vai trò.");
             return RedirectToAction("Index", "Roles", new { area = "Admin" });
         }
-
-        await LoadPagePermissionsAsync(storeId, userId, ct);
 
         return View(vm);
     }
@@ -45,6 +49,12 @@ public class RolePermissionsController : BaseAdminController
     {
         var storeId = CurrentStoreId;
         var userId = CurrentUserId;
+
+        if (!ModelState.IsValid)
+        {
+            ToastError("Dữ liệu phân quyền không hợp lệ. Vui lòng tải lại và thử lại.");
+            return RedirectToAction(nameof(Index), new { roleId = request.RoleId });
+        }
 
         var result = await _rolePermissionAdminService.SaveAsync(storeId, userId, request, ct);
 
@@ -58,6 +68,8 @@ public class RolePermissionsController : BaseAdminController
 
     private async Task LoadPagePermissionsAsync(int storeId, int userId, CancellationToken ct)
     {
+        ViewBag.CanRoleCreate = await _currentStorePermissionService.HasPermissionAsync(
+            storeId, userId, PermissionCodes.Security.Role.Create, ct);
         ViewBag.CanRoleView = await _currentStorePermissionService.HasPermissionAsync(
             storeId, userId, PermissionCodes.Security.Role.View, ct);
 

@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Enums;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.DTOs.POSShiftDashboards;
 
@@ -194,6 +194,7 @@ public sealed class POSShiftManagerShiftItemDto
 
     public decimal? ClosingCashActual { get; set; }
     public decimal? CashReceivedAmount { get; set; }
+    public bool NeedsCashReconciliation { get; set; }
     public int? CashReceivedByUserId { get; set; }
     public string? CashReceivedByUserName { get; set; }
     public DateTime? CashReceivedAtUtc { get; set; }

@@ -1,0 +1,55 @@
+@model List<GaoApp.Application.DTOs.AdminMenus.MenuVisibilitySubject>
+@{
+    ViewData["Title"] = "Menu theo nhân viên / nhóm";
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/admin-menu-visibility.css" asp-append-version="true" />
+}
+<div class="mv-page" id="menuVisibility" data-detail-url="@Url.Action("Detail")" data-save-url="@Url.Action("Save")">
+    @Html.AntiForgeryToken()
+    <header class="mv-header">
+        <div><span class="mv-eyebrow">KHÔNG GIAN LÀM VIỆC</span><h1>Menu phù hợp cho từng người</h1><p>Chọn nhân viên hoặc nhóm, chỉnh menu trên cùng một màn hình.</p></div>
+        <a class="btn btn-outline-secondary" asp-controller="AdminMenus" asp-action="Index"><i class="bx bx-sitemap"></i> Cấu trúc menu</a>
+    </header>
+    <div class="mv-notice"><i class="bx bx-show"></i><span><strong>Chỉ thay đổi hiển thị.</strong> Quyền mở trang, thêm, sửa, xóa và duyệt giữ nguyên. Mục chưa có quyền sẽ không xuất hiện.</span></div>
+    <div id="mvMessage" class="mv-message" role="status" aria-live="polite" hidden></div>
+    <div class="mv-layout">
+        <aside class="mv-card mv-subjects">
+            <div class="mv-card-head"><span class="mv-step">1</span><div><h2>Chọn đối tượng</h2><p>Áp dụng theo nhóm hoặc cá nhân</p></div></div>
+            <div class="mv-tabs" aria-label="Loại đối tượng"><button type="button" class="active" data-type="role" aria-pressed="true"><i class="bx bx-group"></i> Nhóm</button><button type="button" data-type="employee" aria-pressed="false"><i class="bx bx-user"></i> Nhân viên</button></div>
+            <div class="mv-search"><i class="bx bx-search"></i><input id="mvSubjectSearch" type="search" placeholder="Tìm tên hoặc tài khoản…" aria-label="Tìm nhân viên hoặc nhóm" /></div>
+            <div class="mv-subject-list" id="mvSubjects">
+                @foreach (var subject in Model)
+                {
+                    <button type="button" class="mv-subject" data-type="@subject.Type" data-id="@subject.Id" data-search="@subject.Name @subject.Detail" hidden="@(subject.Type != "role")">
+                        <span class="mv-avatar"><i class="bx @(subject.Type == "role" ? "bx-group" : "bx-user")"></i></span>
+                        <span><strong>@subject.Name</strong><small>@subject.Detail</small><em>@(subject.Type == "role" ? $"{subject.MemberCount} nhân viên · {subject.PersonalCount} chỉnh riêng" : subject.IsPersonal ? "Menu riêng" : "Theo nhóm")</em></span>
+                        <i class="bx bx-chevron-right"></i>
+                    </button>
+                }
+            </div>
+            <p class="mv-empty" id="mvNoSubjects" hidden>Không có đối tượng phù hợp.</p>
+        </aside>
+        <section class="mv-card mv-editor" aria-busy="false">
+            <div class="mv-card-head"><span class="mv-step">2</span><div><h2 id="mvTargetName">Chọn nhóm hoặc nhân viên</h2><p id="mvTargetDetail">Thiết lập menu sẽ hiện tại đây.</p></div><span class="mv-badge" id="mvMode" hidden></span></div>
+            <div class="mv-tools"><div class="mv-search"><i class="bx bx-search"></i><input id="mvMenuSearch" type="search" placeholder="Tìm mục menu…" aria-label="Tìm mục menu" /></div><button type="button" class="mv-text-button" id="mvShowAll" disabled>Hiện tất cả</button><button type="button" class="mv-text-button" id="mvHideAll" disabled>Ẩn tất cả</button></div>
+            <p class="mv-hint" id="mvImpact">Chọn nhiều mục rồi lưu một lần.</p>
+            <div class="mv-tree" id="mvTree"><div class="mv-empty"><i class="bx bx-customize"></i><p>Menu gọn gàng, đúng nhu cầu công việc.</p></div></div>
+        </section>
+        <aside class="mv-card mv-preview">
+            <div class="mv-card-head"><span class="mv-step">3</span><div><h2>Xem trước</h2><p>Menu thực tế theo quyền hiện có</p></div></div>
+            <div class="mv-preview-brand"><span class="mv-avatar"><i class="bx bx-store-alt"></i></span><div><strong>Cửa hàng của bạn</strong><small id="mvPreviewName">Chưa chọn đối tượng</small></div></div>
+            <div id="mvPreview" class="mv-preview-menu"><p class="mv-empty">Chọn đối tượng để xem menu.</p></div>
+            <div class="mv-preview-foot"><i class="bx bx-check-shield"></i> Không cấp thêm quyền truy cập</div>
+        </aside>
+    </div>
+    <footer class="mv-savebar">
+        <div><strong id="mvSummary">Chưa chọn đối tượng</strong><span id="mvSaveStatus" aria-live="polite">Các thay đổi chỉ áp dụng sau khi lưu.</span></div>
+        <div class="mv-save-actions"><button type="button" class="btn btn-outline-secondary" id="mvReload" disabled>Tải lại</button><button type="button" class="btn btn-outline-primary" id="mvReset" disabled>Khôi phục mặc định</button><button type="button" class="btn btn-primary" id="mvSave" disabled><i class="bx bx-check"></i> Lưu hiển thị</button></div>
+    </footer>
+</div>
+@section PageScripts {
+    <script src="~/Admin/js/admin-menu-visibility.js" asp-append-version="true"></script>
+}

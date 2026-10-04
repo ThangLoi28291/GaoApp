@@ -2194,6 +2194,17 @@
     .pay-preview-box--change #payPreviewChange {
         color: #0f766e;
     }
+
+#paymentModal .pay-preview-box--warning {
+    background: #fffbeb;
+    border-color: #fcd34d;
+    box-shadow: 0 10px 22px rgba(217, 119, 6, .08);
+}
+
+    #paymentModal .pay-preview-box--warning .pay-preview-state,
+    #paymentModal .pay-preview-box--warning #payPreviewChange {
+        color: #92400e;
+    }
 /* =========================================================
    PAYMENT LEDGER LIST
 ========================================================= */
@@ -4916,4 +4927,119 @@
 @media (max-width: 600px) {
     .pos-deposit-auto { grid-template-columns: 38px 1fr; }
     .pos-deposit-auto__choice, .pos-deposit-auto__status { grid-column: 1 / -1; }
+}
+
+
+/* Keep the profile action separate from presentation-specific, hidden hints. */
+.pos-shell .pos-customer-profile-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid #c7d2fe;
+    border-radius: 8px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-decoration: none;
+}
+.pos-shell .pos-customer-profile-link:hover {
+    background: #e0e7ff;
+    border-color: #818cf8;
+    color: #3730a3;
+}
+.pos-shell .pos-customer-profile-link:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+}
+/* Checkout readability shared by the existing POS presentations. */
+@media (min-width: 768px) {
+    #paymentModal .pos-payment-workspace-dialog {
+        width: min(clamp(520px, 33.333vw, 800px), calc(100vw - 28px));
+        max-width: min(clamp(520px, 33.333vw, 800px), calc(100vw - 28px));
+    }
+}
+
+#paymentModal .pos-payment-workspace__header {
+    padding: 20px 22px 16px;
+}
+
+#paymentModal .pos-payment-workspace__title {
+    font-size: 1.4rem;
+}
+
+#paymentModal .pos-payment-workspace__subtitle,
+#paymentModal .pos-payment-method-notes,
+#paymentModal .pos-payment-preview__row,
+#paymentModal .pos-qr-history__status {
+    font-size: .875rem;
+    line-height: 1.5;
+}
+
+#paymentModal .pos-payment-workspace__body {
+    padding: 20px 22px;
+}
+
+#paymentModal .pos-payment-workspace-total__label,
+#paymentModal .pos-payment-summary-item,
+#paymentModal .pos-payment-workspace-section__label,
+#paymentModal .pos-payment-method-button {
+    font-size: .9375rem;
+}
+
+#paymentModal .pos-payment-workspace-total__value {
+    font-size: 2.75rem;
+}
+
+#paymentModal .pos-payment-summary-item strong,
+#paymentModal .pos-payment-preview__row strong {
+    font-size: 1rem;
+}
+
+#paymentModal .pos-payment-method-button {
+    min-height: 52px;
+    padding: 10px 12px;
+}
+
+#paymentModal #payAmount {
+    height: 68px;
+    font-size: 2rem;
+    padding-right: 44px;
+}
+
+#paymentModal .pos-payment-amount-unit {
+    font-size: 1rem;
+}
+
+#paymentModal .pos-payment-quick-button {
+    min-height: 40px;
+    font-size: .875rem;
+    padding: 8px 12px;
+}
+
+#paymentModal .pos-payment-workspace__footer {
+    padding: 16px 22px;
+}
+
+#paymentModal .pos-payment-workspace__footer .btn {
+    min-height: 46px;
+    font-size: .9375rem;
+}
+
+@media (max-width: 767.98px) {
+    #paymentModal .pos-payment-workspace__header,
+    #paymentModal .pos-payment-workspace__body,
+    #paymentModal .pos-payment-workspace__footer {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    #paymentModal #payAmount {
+        font-size: 1.625rem;
+    }
 }

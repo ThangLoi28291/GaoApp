@@ -27,15 +27,21 @@
         ['Gỡ hàng chờ duyệt khỏi phiếu', 'goods'], ['Duyệt hàng vào sản phẩm có sẵn', 'approval'],
         ['Duyệt tạo sản phẩm mới', 'approval'], ['Chưa thể xác nhận: còn hàng chưa xử lý', 'approval'],
         ['Lưu mã vạch vào danh mục', 'goods'], ['Không lưu mã vạch vào danh mục', 'goods'],
-        ['Khôi phục hàng chờ duyệt', 'goods']
+        ['Khôi phục hàng chờ duyệt', 'goods'],
+        ['Đổi tên phiếu nhập', 'receipt'], ['Yêu cầu đổi tên phiếu nhập', 'approval'],
+        ['Duyệt đổi tên phiếu nhập', 'approval'], ['Từ chối đổi tên phiếu nhập', 'approval'],
+        ['Xóa phiếu nháp chưa gửi duyệt', 'receipt'],
+        ['Kết thúc chờ hóa đơn', 'invoice'], ['Xác nhận đã kiểm tra hóa đơn', 'invoice']
     ];
     const labels = {
         Quantity: 'Số lượng nhập', BaseQuantity: 'Số lượng quy đổi', Factor: 'Hệ số quy đổi',
         ProposedFactor: 'Hệ số quy đổi đề xuất', NameSnapshot: 'Tên hàng ghi nhận', UnitNameSnapshot: 'Đơn vị nhận',
         ProposedBaseUnitName: 'Đơn vị gốc đề xuất', RawBarcodeSnapshot: 'Mã vạch ghi nhận', Barcode: 'Mã vạch',
         Status: 'Trạng thái', Note: 'Ghi chú', ApprovalNote: 'Ghi chú duyệt / trả về',
+        WaitForInputInvoice: 'Chờ nhà cung cấp gửi hóa đơn',
+        InvoiceFollowUp: 'Theo dõi hóa đơn', MapId: 'Liên kết hóa đơn', EvidenceFingerprint: 'Dấu kiểm tra số liệu',
         WarehouseId: 'Kho nhập', SupplierId: 'Nhà cung cấp', ReceiptSource: 'Nguồn nhập', PurchaseOrderId: 'Đơn đặt hàng',
-        DocumentDate: 'Ngày phiếu', DirectReceiptReason: 'Lý do nhập trực tiếp',
+        DocumentDate: 'Ngày phiếu', DocumentTitle: 'Tên phiếu', RequestId: 'Mã yêu cầu', IsDeleted: 'Đã xóa', DirectReceiptReason: 'Lý do nhập trực tiếp',
         HasVat: 'Có VAT', SubtotalBeforeVat: 'Tiền hàng trước VAT', VatAmount: 'Tiền VAT',
         IncludeVatInInventoryCost: 'Tính VAT vào giá vốn', HasFreight: 'Có phí vận chuyển',
         CapitalizeFreightInInventoryCost: 'Tính vận chuyển vào giá vốn', FreightTotal: 'Phí vận chuyển',
@@ -72,6 +78,7 @@
     const sourceStates = {0:'Nhập trực tiếp (cũ)', 1:'Nhập trực tiếp', 2:'Theo đơn đặt hàng',
         LegacyDirect:'Nhập trực tiếp (cũ)', Direct:'Nhập trực tiếp', PurchaseOrder:'Theo đơn đặt hàng'};
     const fieldStates = {
+        InvoiceFollowUp: { NeedsReview: 'Cần kiểm tra hóa đơn', Reviewed: 'Đã kiểm tra hóa đơn' },
         ReceivingSessionState: {0:'Chưa bắt đầu', 1:'Đang nhận hàng', 2:'Đã khóa nhận hàng', 3:'Đã kết thúc',
             None:'Chưa bắt đầu', Active:'Đang nhận hàng', Frozen:'Đã khóa nhận hàng', Closed:'Đã kết thúc'},
         ReceiptAllocationKind: {0:'Nhập trực tiếp', 1:'Theo đơn đặt hàng', 2:'Ngoài đơn đặt hàng',

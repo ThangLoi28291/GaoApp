@@ -1,0 +1,32 @@
+@{
+    Layout = "_ContentNavbarLayout";
+    bool isAdmin = ViewBag.IsAdmin == true;
+    ViewData["Title"] = "Yêu cầu nghiệp vụ";
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/cash-adjustments.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/payment-adjustments.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/requests.css" asp-append-version="true" />
+}
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+<main id="posOperationsRequests" class="ca-shell" data-active-tab="@ViewBag.ActiveTab">
+    <header class="ca-heading"><div><span class="ca-eyebrow">ĐIỀU CHỈNH GIAO DỊCH TRONG CA</span>
+        <h1>Yêu cầu nghiệp vụ</h1><p>@(isAdmin ? "Xem và duyệt yêu cầu theo từng loại nghiệp vụ." : "Chọn loại nghiệp vụ để gửi và theo dõi yêu cầu của bạn.")</p></div>
+        <a id="operationsReconciliation" href="/admin/pos-shift/reconciliation" class="btn btn-outline-primary">Xem đối soát ca</a>
+    </header>
+    <div class="operations-tabs" role="tablist" aria-label="Loại yêu cầu nghiệp vụ">
+        <button id="operationsCashTab" type="button" role="tab" data-request-tab="cash" aria-controls="operationsCashPanel" aria-selected="false">Điều chỉnh thu/chi</button>
+        <button id="operationsPaymentTab" type="button" role="tab" data-request-tab="payment" aria-controls="operationsPaymentPanel" aria-selected="false">Đổi phương thức thanh toán <small>Đơn hàng &amp; nhận cọc</small></button>
+    </div>
+    <div id="operationsCashPanel" role="tabpanel" aria-labelledby="operationsCashTab" data-request-panel="cash" hidden>
+        <partial name="_CashPanel" />
+    </div>
+    <div id="operationsPaymentPanel" role="tabpanel" aria-labelledby="operationsPaymentTab" data-request-panel="payment" hidden>
+        <partial name="_PaymentPanel" />
+    </div>
+</main>
+@section PageScripts {
+    <script src="~/Admin/js/pos/cash-adjustments.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/payment-adjustments.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/requests.js" asp-append-version="true"></script>
+}

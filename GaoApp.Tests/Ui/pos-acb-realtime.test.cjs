@@ -25,14 +25,16 @@ function posHarness(fetch, offlineStatus) {
     const links = [];
     const intervals = [];
     const created = [];
+    const printTickets = [], frames = [];
     let now = Date.now();
     class ClockDate extends Date { static now() { return now; } }
-    const element = () => ({ dataset: {}, before() {}, replaceChildren(text) { notes.push(text); }, appendChild(link) { links.push(link); }, setAttribute() {} });
+    const element = () => ({ dataset: {}, style: {}, addEventListener() {}, before() {}, replaceChildren(text) { notes.push(text); }, appendChild(link) { links.push(link); }, setAttribute() {} });
     const context = {
         fetch, Date: ClockDate, Map,
         setInterval(callback) { intervals.push(callback); },
         CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
         document: {
+            body: { appendChild: frame => frames.push(frame) },
             createElement: () => { const value = element(); created.push(value); return value; },
             createTextNode: text => text,
             getElementById: id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
@@ -40,6 +42,7 @@ function posHarness(fetch, offlineStatus) {
             addEventListener: (name, listener) => listeners.set(name, listener)
         },
         window: {
+            PosPrinting: { postPaymentUrl: (url,orderId) => { printTickets.push({url,orderId}); return url+'#one-use-print'; } },
             navigator: { onLine: true },
             PosOffline: offlineStatus ? { status: () => offlineStatus } : undefined,
             addEventListener: (name, listener) => listeners.set(name, listener),
@@ -47,13 +50,24 @@ function posHarness(fetch, offlineStatus) {
         }
     };
     vm.runInNewContext(source, context, { filename: 'pos.acb.js' });
-    return { emit: name => listeners.get(name)?.(), completed, notes, links, elements, acb: context.window.PosAcb,
+    return { emit: name => listeners.get(name)?.(), completed, notes, links, elements, printTickets, frames, acb: context.window.PosAcb,
         navigator: context.window.navigator,
         notice: () => created.find(value => value.className === 'alert alert-info'),
         advance(ms) { now += ms; intervals.forEach(callback => callback()); } };
 }
 const response = value => ({ ok: true, json: async () => value });
 const settle = () => new Promise(setImmediate);
+
+test('automatic QR grants one print handoff only for a finalized completion with a print claim',async()=>{
+    for(const [finalized,printUrl] of [[true,'/admin/pos/orders/100/print?autoPrint=true'],[false,null],[true,null]]){
+        const pos=posHarness(async url=>response(url.includes('/status?')?{status:'Received',orderId:100}
+            :{orderId:100,finalized,paidAmount:100,remainingAmount:0,printUrl}));
+        await pos.acb.check(42);
+        assert.equal(pos.printTickets.length,printUrl?1:0);
+        assert.equal(pos.frames.length,printUrl?1:0);
+        if(printUrl){assert.deepEqual(pos.printTickets[0],{url:printUrl,orderId:100});assert.equal(pos.frames[0].src,printUrl+'#one-use-print');}
+    }
+});
 
 test('countdown follows actual 30-second first lookup and 8-second retries without overlapping requests', async () => {
     const firstLookup = deferred();

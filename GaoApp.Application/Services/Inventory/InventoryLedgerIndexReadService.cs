@@ -40,6 +40,13 @@ public sealed class InventoryLedgerIndexReadService : IInventoryLedgerIndexReadS
         {
             WarehouseId = request.WarehouseId is > 0 ? request.WarehouseId : null,
             Keyword = NormalizeText(request.Keyword, 200),
+            SearchScope = request.SearchScope?.Trim().ToLowerInvariant() switch
+            {
+                "product" => "product",
+                "reference" => "reference",
+                "note" => "note",
+                _ => "all"
+            },
             TransactionType = request.TransactionType.HasValue
                 && Enum.IsDefined(request.TransactionType.Value)
                 ? request.TransactionType

@@ -1,16 +1,60 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace GaoApp.Infrastructure.Repositories.Invoices;
 
 /// <summary>One documentary projection shared by the management view and issuance preflight.</summary>
-public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceInputStockReadRepository
+public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCache? cache = null) : IInvoiceInputStockReadRepository
 {
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> SnapshotLocks = new();
+
     public async Task<IReadOnlyList<InvoiceInputStockMovement>> GetMovementsAsync(int storeId, CancellationToken ct = default)
-        => await GetMovementsAsync(storeId, null, null, ct);
+    {
+        if (cache is null || storeId <= 0)
+            return await LoadMovementsAsync(storeId, null, null, ct);
+
+        // The revision changes when a receipt is linked/reviewed/accepted or
+        // when a physical inventory transaction is posted. This keeps the
+        // fast snapshot while preventing a stale result after approval.
+        var latestAuditId = await db.PurchaseReceiptAuditEvents.AsNoTracking()
+            .Where(x => x.StoreId == storeId)
+            .Select(x => (long?)x.Id)
+            .MaxAsync(ct) ?? 0L;
+        var latestInventoryId = await db.InventoryTransactions.AsNoTracking()
+            .Where(x => x.StoreId == storeId && !x.IsDeleted)
+            .Select(x => (int?)x.Id)
+            .MaxAsync(ct) ?? 0;
+        var key = $"invoice-input-stock:{storeId}:{latestAuditId}:{latestInventoryId}";
+        if (cache.TryGetValue(key, out IReadOnlyList<InvoiceInputStockMovement>? snapshot) && snapshot is not null)
+            return snapshot;
+
+        var gate = SnapshotLocks.GetOrAdd(storeId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (cache.TryGetValue(key, out snapshot) && snapshot is not null)
+                return snapshot;
+
+            snapshot = await LoadMovementsAsync(storeId, null, null, ct);
+            cache.Set(key, snapshot, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30),
+                Size = Math.Max(1, snapshot.Count)
+            });
+            return snapshot;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
 
     /// <summary>
     /// Reads only the movement slice relevant to one invoice preflight.  The
@@ -21,6 +65,15 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
         IReadOnlyCollection<int>? productVariantIds,
         IReadOnlyCollection<int>? warehouseIds,
         CancellationToken ct = default)
+        => productVariantIds is null && warehouseIds is null
+            ? await GetMovementsAsync(storeId, ct)
+            : await LoadMovementsAsync(storeId, productVariantIds, warehouseIds, ct);
+
+    private async Task<IReadOnlyList<InvoiceInputStockMovement>> LoadMovementsAsync(
+        int storeId,
+        IReadOnlyCollection<int>? productVariantIds,
+        IReadOnlyCollection<int>? warehouseIds,
+        CancellationToken ct)
     {
         if (storeId <= 0) return [];
 
@@ -31,6 +84,69 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
         var warehouseFilter = warehouseIds?
             .Where(x => x > 0)
             .Distinct()
+            .ToArray();
+
+        // XML reconciliation is documentary support. After the manager has
+        // explicitly reviewed the linked invoice, or accepted a discrepancy
+        // before approving the receipt, the physical receipt ledger becomes
+        // the source of truth for invoice-input stock. A later unlink/relink
+        // event invalidates an older manager decision. The decision must also
+        // reference the current invoice link and reconciliation evidence.
+        var followUpEventTypes = new[]
+        {
+            PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed,
+            PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted,
+            PurchaseReceiptAuditEventType.InputInvoiceReconciliationAcceptanceInvalidated,
+            PurchaseReceiptAuditEventType.InputInvoiceLinked,
+            PurchaseReceiptAuditEventType.InputInvoiceUnlinked,
+            PurchaseReceiptAuditEventType.InputInvoiceRelinked
+        };
+        var latestFollowUpIds = db.PurchaseReceiptAuditEvents.AsNoTracking()
+            .Where(x => x.StoreId == storeId && x.IsSuccess && followUpEventTypes.Contains(x.EventType))
+            .GroupBy(x => x.StockDocumentId)
+            .Select(group => new { StockDocumentId = group.Key, EventId = group.Max(x => x.Id) });
+        var managerDecisions = await (
+            from audit in db.PurchaseReceiptAuditEvents.AsNoTracking()
+            join latest in latestFollowUpIds
+                on new { audit.StockDocumentId, EventId = audit.Id }
+                equals new { latest.StockDocumentId, latest.EventId }
+            join document in db.StockDocuments.AsNoTracking()
+                on new { audit.StoreId, StockDocumentId = audit.StockDocumentId }
+                equals new { document.StoreId, StockDocumentId = document.Id }
+            join association in db.StockDocumentInputInvoiceMaps.AsNoTracking()
+                on new { document.StoreId, StockDocumentId = document.Id }
+                equals new { association.StoreId, association.StockDocumentId }
+            join reconciliation in db.StockDocumentInputInvoiceReconciliations.AsNoTracking()
+                on new { association.StoreId, MapId = association.Id }
+                equals new { reconciliation.StoreId, MapId = reconciliation.StockDocumentInputInvoiceMapId }
+            join invoice in db.InputInvoiceHeads.AsNoTracking()
+                on new { association.StoreId, association.InputInvoiceHeadId }
+                equals new { invoice.StoreId, InputInvoiceHeadId = invoice.Id }
+            where (audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed
+                    || audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted)
+                && document.Status == StockDocumentStatus.Confirmed && document.Type == StockDocumentType.Receipt
+                && !document.IsDeleted && !association.IsDeleted && !reconciliation.IsDeleted && !invoice.IsDeleted
+                && reconciliation.StockDocumentId == document.Id
+                && reconciliation.InputInvoiceHeadId == association.InputInvoiceHeadId
+            select new
+            {
+                audit.StockDocumentId, audit.OccurredAtUtc, audit.EventType, audit.NewValuesJson,
+                MapId = association.Id, association.InputInvoiceHeadId,
+                reconciliation.EvidenceFingerprint, reconciliation.AcceptedEvidenceFingerprint,
+                ReconciliationState = reconciliation.OverallState
+            }
+        ).ToListAsync(ct);
+        var currentReviewedReceipts = managerDecisions
+            .Where(x => x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed
+                ? ReceiptInvoiceFollowUp.IsReviewCurrent(x.NewValuesJson, x.MapId, x.EvidenceFingerprint)
+                : x.ReconciliationState == InputInvoiceReconciliationState.AcceptedMismatch
+                    && !string.IsNullOrWhiteSpace(x.EvidenceFingerprint)
+                    && x.AcceptedEvidenceFingerprint == x.EvidenceFingerprint
+                    && IsAcceptanceCurrent(x.NewValuesJson, x.InputInvoiceHeadId, x.EvidenceFingerprint))
+            .ToDictionary(x => x.StockDocumentId, x => x.OccurredAtUtc);
+        var reviewedReceiptIds = currentReviewedReceipts.Keys.ToHashSet();
+        var reviewedReceiptReferences = reviewedReceiptIds
+            .Select(x => x.ToString(System.Globalization.CultureInfo.InvariantCulture))
             .ToArray();
 
         var receipts = await (
@@ -72,6 +188,12 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
                 MappedAt = evidence.CreatedAtUtc, AssociatedAt = association.CreatedAtUtc
             }).ToListAsync(ct);
 
+        // Manager-confirmed receipts are posted below from the same
+        // InventoryTransaction rows used by /admin/inventory-ledger. Do not
+        // also count their XML evidence rows, otherwise mapped lines would be
+        // doubled and unmatched receipt lines would be lost.
+        receipts.RemoveAll(x => reviewedReceiptIds.Contains(x.DocumentId));
+
         var result = new List<InvoiceInputStockMovement>();
         // An XML detail may serve several receipts/warehouses. Allocate once globally, before warehouse filtering.
         foreach (var group in receipts.GroupBy(x => x.XmlDetailId))
@@ -90,6 +212,78 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
                     ProductVariantId = source.VariantId, DateUtc = Utc(source.RecognizedAt), Kind = "increase", Change = quantity,
                     StockDocumentId = source.DocumentId, SourceCode = source.DocumentNo, XmlNumber = source.XmlNumber,
                     Note = $"XML quy đổi: {source.XmlBase:0.####}; dòng nhập được map: {source.ReceiptBase:0.####}. Ghi nhận {quantity:0.####} đơn vị gốc sau khi giới hạn số lượng XML dùng chung."
+                });
+            }
+        }
+
+        if (reviewedReceiptReferences.Length > 0)
+        {
+            var reviewedInbound = await db.InventoryTransactions.AsNoTracking()
+                .Where(x => x.StoreId == storeId && !x.IsDeleted
+                    && x.ReferenceType == InventoryReferenceType.StockDocument
+                    && x.TransactionType == InventoryTransactionType.PurchaseReceipt
+                    && x.QuantityChange > 0
+                    && x.ReferenceId != null
+                    && reviewedReceiptReferences.Contains(x.ReferenceId)
+                    && (variantFilter == null || variantFilter.Contains(x.ProductVariantId))
+                    && (warehouseFilter == null || warehouseFilter.Contains(x.WarehouseId)))
+                .Select(x => new ReviewedReceiptSource
+                {
+                    TransactionId = x.Id,
+                    ReferenceId = x.ReferenceId!,
+                    VariantId = x.ProductVariantId,
+                    WarehouseId = x.WarehouseId,
+                    LegalEntityId = x.Warehouse.LegalEntityId,
+                    Quantity = x.QuantityChange,
+                    UnitCost = x.UnitCostSnapshot,
+                    TotalCost = x.TotalCost,
+                    IsProvisionalCost = x.IsProvisionalCost,
+                    OccurredAtUtc = x.OccurredAtUtc
+                })
+                .ToListAsync(ct);
+
+            var reviewedDocuments = await (
+                from document in db.StockDocuments.AsNoTracking()
+                join map in db.StockDocumentInputInvoiceMaps.AsNoTracking()
+                    on new { document.StoreId, StockDocumentId = document.Id }
+                    equals new { map.StoreId, map.StockDocumentId }
+                join invoice in db.InputInvoiceHeads.AsNoTracking()
+                    on new { map.StoreId, InputInvoiceHeadId = map.InputInvoiceHeadId }
+                    equals new { invoice.StoreId, InputInvoiceHeadId = invoice.Id }
+                where document.StoreId == storeId && reviewedReceiptIds.Contains(document.Id)
+                    && !document.IsDeleted && !map.IsDeleted && !invoice.IsDeleted
+                select new ReviewedReceiptDocument
+                {
+                    DocumentId = document.Id,
+                    DocumentNo = document.DocumentNo,
+                    // InvoiceIdentityDate is the date-only value normalized
+                    // from the XML. Fall back to InvoiceDate for legacy XML.
+                    InvoiceDate = invoice.InvoiceIdentityDate ?? invoice.InvoiceDate
+                }).ToDictionaryAsync(x => x.DocumentId, ct);
+
+            foreach (var source in reviewedInbound)
+            {
+                if (!int.TryParse(source.ReferenceId, out var documentId)
+                    || !reviewedReceiptIds.Contains(documentId)
+                    || !reviewedDocuments.TryGetValue(documentId, out var document))
+                    continue;
+
+                result.Add(new InvoiceInputStockMovement
+                {
+                    Key = $"reviewed-receipt-{source.TransactionId}",
+                    WarehouseId = source.WarehouseId,
+                    LegalEntityId = source.LegalEntityId,
+                    ProductVariantId = source.VariantId,
+                    DateUtc = InvoiceDateUtc(document.InvoiceDate, currentReviewedReceipts[documentId]),
+                    Kind = "increase",
+                    Change = source.Quantity,
+                    UnitCost = source.UnitCost,
+                    TotalCost = source.TotalCost,
+                    IsProvisionalCost = source.IsProvisionalCost,
+                    StockDocumentId = documentId,
+                    SourceCode = document.DocumentNo,
+                    OperationLabel = "Nhập theo phiếu đã xác nhận",
+                    Note = $"Quản lý đã xác nhận kiểm tra/đối chiếu hóa đơn. Ghi nhận theo giao dịch nhập kho gốc lúc {Utc(source.OccurredAtUtc):dd/MM/yyyy HH:mm} UTC; XML chỉ hỗ trợ đối chiếu."
                 });
             }
         }
@@ -154,18 +348,27 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
             });
         }
 
+        // The supplemental rows were already loaded above. Keep the legacy
+        // outbound source ids in memory instead of running a correlated
+        // string-concatenation subquery for every InvoiceDetail.
+        var legacyOutboundSourceIds = supplemental
+            .Where(x => x.MovementType == InvoiceInputStockSupplementalMovementType.LegacyOutbound)
+            .Select(x => x.LegacySourceKey)
+            .Where(x => x.StartsWith("GSTORE-IIS-V1|X|", StringComparison.OrdinalIgnoreCase))
+            .Select(x => long.TryParse(x["GSTORE-IIS-V1|X|".Length..], out var id) ? (long?)id : null)
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .ToHashSet();
+
         var invoices = await db.InvoiceDetails.AsNoTracking()
             .Where(x => x.StoreId == storeId && x.InvoiceHead.StoreId == storeId && !x.IsDeleted && !x.InvoiceHead.IsDeleted
                 && x.ProductVariantId.HasValue && x.ProductVariant!.StoreId == storeId
                 && (variantFilter == null || variantFilter.Contains(x.ProductVariantId.Value))
-                && !(x.LegacySourceId.HasValue && db.InvoiceInputStockSupplementalMovements.Any(s =>
-                    s.StoreId == storeId && s.MovementType == InvoiceInputStockSupplementalMovementType.LegacyOutbound
-                    && s.LegacySourceKey == "GSTORE-IIS-V1|X|" + x.LegacySourceId.Value.ToString()))
                 && x.InvoiceHead.OriginalInvoiceHeadId == null && x.InvoiceHead.CorrectionType == null
                 && (x.InvoiceHead.ProviderStatus >= InvoiceProviderStatus.Issuing || x.InvoiceHead.ProviderInvoiceNo != null || x.InvoiceHead.IssuedAtUtc != null))
             .Select(x => new
             {
-                x.Id, x.InvoiceHeadId, VariantId = x.ProductVariantId!.Value, x.ItemName, x.Quantity,
+                x.Id, x.InvoiceHeadId, x.LegacySourceId, VariantId = x.ProductVariantId!.Value, x.ItemName, x.Quantity,
                 x.InvoiceHead.ProviderStatus, x.InvoiceHead.ProviderInvoiceNo, x.InvoiceHead.IssuedAtUtc,
                 x.InvoiceHead.LastErrorCode, x.InvoiceHead.LastErrorMessage, x.InvoiceHead.CreatedAtUtc,
                 x.InvoiceHead.LastSyncedAtUtc, x.InvoiceHead.LegalEntityId,
@@ -179,6 +382,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
             }).ToListAsync(ct);
         foreach (var item in invoices)
         {
+            if (item.LegacySourceId.HasValue && legacyOutboundSourceIds.Contains(item.LegacySourceId.Value))
+                continue;
             var issued = !string.IsNullOrWhiteSpace(item.ProviderInvoiceNo) || item.IssuedAtUtc.HasValue ||
                 item.ProviderStatus is InvoiceProviderStatus.Issued or InvoiceProviderStatus.IssuedWaitingNumber
                     or InvoiceProviderStatus.PdfDownloaded or InvoiceProviderStatus.ZipDownloaded or InvoiceProviderStatus.EmailSent;
@@ -218,6 +423,21 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
         return result;
     }
 
+    private static bool IsAcceptanceCurrent(string? evidenceJson, int invoiceId, string fingerprint)
+    {
+        if (string.IsNullOrEmpty(evidenceJson)) return false;
+        try
+        {
+            using var evidence = JsonDocument.Parse(evidenceJson);
+            return evidence.RootElement.ValueKind == JsonValueKind.Object
+                && evidence.RootElement.TryGetProperty("InputInvoiceHeadId", out var invoice)
+                && invoice.ValueKind == JsonValueKind.Number && invoice.TryGetInt32(out var id) && id == invoiceId
+                && evidence.RootElement.TryGetProperty("EvidenceFingerprint", out var hash)
+                && hash.ValueKind == JsonValueKind.String && hash.GetString() == fingerprint;
+        }
+        catch (JsonException) { return false; }
+    }
+
     private static string? SupplementalLabel(InvoiceInputStockSupplementalMovementType movementType)
         => movementType switch
         {
@@ -238,6 +458,11 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
 
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
+    private static DateTime InvoiceDateUtc(DateTime? invoiceDate, DateTime fallbackUtc)
+        => invoiceDate.HasValue
+            ? DateTime.SpecifyKind(invoiceDate.Value.Date, DateTimeKind.Utc)
+            : Utc(fallbackUtc);
+
     private sealed class ReceiptSource
     {
         public int EvidenceId { get; init; }
@@ -256,5 +481,26 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db) : IInvoiceI
         public DateTime MappedAt { get; init; }
         public DateTime AssociatedAt { get; init; }
         public DateTime RecognizedAt => new[] { ConfirmedAt, MappedAt, AssociatedAt }.Max();
+    }
+
+    private sealed class ReviewedReceiptSource
+    {
+        public int TransactionId { get; init; }
+        public string ReferenceId { get; init; } = "";
+        public int VariantId { get; init; }
+        public int WarehouseId { get; init; }
+        public int LegalEntityId { get; init; }
+        public decimal Quantity { get; init; }
+        public decimal UnitCost { get; init; }
+        public decimal TotalCost { get; init; }
+        public bool IsProvisionalCost { get; init; }
+        public DateTime OccurredAtUtc { get; init; }
+    }
+
+    private sealed class ReviewedReceiptDocument
+    {
+        public int DocumentId { get; init; }
+        public string DocumentNo { get; init; } = "";
+        public DateTime? InvoiceDate { get; init; }
     }
 }

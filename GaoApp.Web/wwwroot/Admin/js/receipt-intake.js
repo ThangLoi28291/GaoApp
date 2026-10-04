@@ -84,6 +84,7 @@
                 options(byId('riReviewCategory'), config.options?.categories || [], 'Chọn danh mục');
                 initAutocomplete();
             }
+            window.ReceiptIntakeReview?.init(config, endpoint);
             byId('riPageMessage').textContent = '';
         } catch (error) { byId('riPageMessage').textContent = error.message; }
     }
@@ -271,7 +272,7 @@
     function setBusy(value) {
         byId('receiptIntakeModal').querySelectorAll('button,input,textarea,select').forEach(el => el.disabled = value);
         if (!value && uncertainIntake) byId('receiptIntakeModal').querySelectorAll('input,textarea,select,[data-ri-unit],[data-intake-tab],#riPhotoRemove').forEach(el=>el.disabled=true);
-        byId('receiptIntakeReviewModal').querySelectorAll('button,select').forEach(el => el.disabled = value);
+        byId('receiptIntakeReviewModal').querySelectorAll('button,input,textarea,select').forEach(el => el.disabled = value);
         document.querySelectorAll('[data-intake-quantity],[data-intake-remove]').forEach(el=>el.disabled=value);
     }
     function dirtyQuantity() {
@@ -306,32 +307,93 @@
     }
     function openReview(item, removeOnly = false) {
         if (saving) return;
+        const supplier = window.GaoAppPurchaseReceiptApproval?.supplierForIntake?.();
+        if (!removeOnly && !item.proposedProductVariantId && supplier?.busy) {
+            byId('riPageMessage').textContent = 'Đang lưu nhà cung cấp. Vui lòng đợi rồi mở duyệt lại.'; return;
+        }
         reviewItem = item; command = null; commandPayload = null;
-        byId('riReviewTitle').textContent = removeOnly ? 'Xóa hàng khỏi phiếu' : 'Duyệt khai báo nhận hàng';
+        byId('riReviewTitle').textContent = removeOnly ? 'Xóa hàng khỏi phiếu' : 'Hoàn thiện sản phẩm trước khi duyệt';
         byId('riApprove').hidden = removeOnly;
         byId('riReviewFacts').innerHTML = `<strong>${esc(item.name)}</strong><p class="text-muted mt-2">${esc(item.rawBarcode || 'Không có barcode')}</p><div class="ri-equivalent">1 ${esc(item.unitName)} = ${num(item.proposedFactor)} ${esc(item.proposedBaseUnitName)}<strong>${num(item.quantity)} ${esc(item.unitName)} = ${num(item.quantity * item.proposedFactor)} ${esc(item.proposedBaseUnitName)}</strong></div><p class="small mt-3 mb-0">${esc(item.note || 'Quy cách do nhân viên khai báo khi nhận hàng.')}</p>`;
         byId('riReviewCategoryWrap').hidden = removeOnly || !!item.proposedProductVariantId;
-        if(item.hasPhoto) byId('riReviewFacts').insertAdjacentHTML('beforeend',`<img class="ri-evidence-photo" src="${endpoint}/${Number(item.id)}/photo" alt="Ảnh bao bì do nhân viên ghi nhận" />`);
+        if(item.hasPhoto) byId('riReviewFacts').insertAdjacentHTML('beforeend',`<a href="${endpoint}/${Number(item.id)}/photo" target="_blank" rel="noopener" title="Xem ảnh lớn"><img class="ri-evidence-photo" src="${endpoint}/${Number(item.id)}/photo" alt="Ảnh bao bì do nhân viên ghi nhận" /></a>`);
         window.jQuery('#riReviewCategory').val(item.proposedCategoryId || '').trigger('change.select2');
+        byId('riReviewSupplierWrap').hidden = removeOnly || !!item.proposedProductVariantId || !supplier;
+        if (supplier) {
+            const select = byId('riReviewSupplier');
+            select.replaceChildren(new Option('Chọn nhà cung cấp', ''));
+            if (supplier.id) select.add(new Option(supplier.name, String(supplier.id)));
+            select.value = supplier.id ? String(supplier.id) : '';
+            select.disabled = !supplier.canEdit || supplier.busy;
+            window.jQuery(select).trigger('change.select2');
+            byId('riReviewSupplierHint').textContent = supplier.busy ? 'Đang lưu nhà cung cấp của phiếu…' : supplier.canEdit
+                ? 'Nhà cung cấp được lưu vào phiếu trước khi duyệt sản phẩm mới.' : 'Nhà cung cấp được lấy từ phiếu hoặc đơn mua.';
+        }
+        window.ReceiptIntakeReview?.open(item, removeOnly);
         byId('riReviewError').textContent = ''; reviewModal.show();
     }
-    async function review(approve) {
+    async function review(approve, saveDraftOnly = false, goNext = false) {
         if (!reviewItem || saving) return;
-        const payload = {approve, categoryId:Number(values('riReviewCategory')) || null};
-        const identity = JSON.stringify({id:reviewItem.id,...payload});
+        let completion = null, photo = {};
+        try { if (approve || saveDraftOnly) {
+            completion = window.ReceiptIntakeReview.payload();
+            if (!completion.productVariantId) photo = window.ReceiptIntakeReviewPhoto.request();
+        } }
+        catch(error) { byId('riReviewError').textContent=error.message;return; }
+        const payload = {approve, saveDraftOnly, completion, ...photo, categoryId:Number(values('riReviewCategory')) || null};
+        const needsSupplier = (approve || saveDraftOnly) && !completion?.productVariantId && !byId('riReviewSupplierWrap').hidden;
+        const supplierId = needsSupplier ? Number(values('riReviewSupplier')) || null : null;
+        if (approve && !completion?.productVariantId && !payload.categoryId) {
+            byId('riReviewError').textContent = 'Vui lòng chọn danh mục sản phẩm.'; return;
+        }
+        if (approve && needsSupplier && !supplierId) {
+            byId('riReviewError').textContent = 'Vui lòng chọn nhà cung cấp ở trên trước khi duyệt sản phẩm mới.'; return;
+        }
+        const identity = JSON.stringify({id:reviewItem.id,...payload,supplierId});
         if (identity !== commandPayload) { command = crypto.randomUUID(); commandPayload = identity; }
         saving = true; setBusy(true); byId('riReviewError').textContent = '';
+        let releasePrices;
         try {
+            if (needsSupplier && supplierId) {
+                byId('riReviewError').textContent = 'Đang kiểm tra và lưu nhà cung cấp…';
+                await window.GaoAppPurchaseReceiptApproval.saveSupplierForIntake(supplierId, byId('riReviewSupplier').selectedOptions[0]?.text || '');
+                byId('riReviewError').textContent = '';
+            }
+            releasePrices = await window.GaoReceiptPriceDrafts?.hold?.();
             const action = byId('riApprove').hidden ? 'remove':'review';
             const next = await api(`/${reviewItem.id}/${action}`, {...payload, commandId:command, leaseToken:lease(),
                 documentRowVersion:rowVersion(), itemRowVersion:reviewItem.rowVersion});
-            allowClose = true; reviewModal.hide(); allowClose = false; await afterSave(next);
+            const updatedReviewItem=next.items.find(x=>x.id===reviewItem.id);
+            if(updatedReviewItem)window.ReceiptIntakeReviewPhoto?.saved(updatedReviewItem);
+            window.ReceiptIntakeReview.markSaved();
+            if (saveDraftOnly) {
+                applyState(next); reviewItem=next.items.find(x=>x.id===reviewItem.id);
+                command=null;commandPayload=null;
+            } else {
+                const hidden = new Promise(resolve => byId('receiptIntakeReviewModal').addEventListener('hidden.bs.modal', resolve, {once:true}));
+                allowClose = true; reviewModal.hide(); allowClose = false;
+                await hidden; await afterSave(next);
+                if(goNext) {
+                    const following=state.items.find(x=>x.status===0 && x.proposedFactor);
+                    if(following) { saving=false;setBusy(false);openReview(following); }
+                }
+            }
         } catch (error) { byId('riReviewError').textContent = error.message; byId('riPageMessage').textContent = error.message; }
-        finally { saving = false; setBusy(false); update(); }
+        finally {
+            releasePrices?.();
+            saving = false; setBusy(false); update(); window.ReceiptIntakeReview?.update();
+            const supplier = window.GaoAppPurchaseReceiptApproval?.supplierForIntake?.();
+            if (supplier) byId('riReviewSupplier').disabled = !supplier.canEdit || supplier.busy;
+        }
     }
     function start() {
         modal = bootstrap.Modal.getOrCreateInstance(byId('receiptIntakeModal'));
         reviewModal = bootstrap.Modal.getOrCreateInstance(byId('receiptIntakeReviewModal'));
+        window.jQuery('#riReviewSupplier').select2({theme:'bootstrap-5',width:'100%',
+            dropdownParent:window.jQuery('#receiptIntakeReviewModal'),placeholder:'Gõ tìm nhà cung cấp…',minimumInputLength:1,
+            ajax:{url:'/admin/api/suppliers/select2',dataType:'json',delay:250,data:params=>({term:params.term || ''}),processResults:data=>data || {results:[]}},
+            language:{inputTooShort:()=>'Nhập tên, mã, số điện thoại hoặc mã số thuế',searching:()=>'Đang tìm…',noResults:()=>'Không tìm thấy nhà cung cấp',errorLoading:()=>'Không tải được nhà cung cấp'}
+        }).on('change',()=>{if (!saving) byId('riReviewError').textContent='';});
         $product = window.jQuery('#riProduct');
         $product.select2({dropdownParent:window.jQuery('#receiptIntakeModal'), theme:'bootstrap-5', width:'100%', minimumInputLength:1,
             placeholder:'Tên sản phẩm, SKU hoặc mã đã có…', language:{inputTooShort:()=>'Nhập tên hoặc mã sản phẩm', searching:()=>'Đang tìm…', noResults:()=>'Không tìm thấy. Bạn có thể chuyển sang tab Sản phẩm mới.'},
@@ -350,7 +412,14 @@
         byId('receiptIntakeModal').addEventListener('change',update);
         byId('receiptIntakeModal').addEventListener('shown.bs.modal',()=>{if(tab === 'new')byId('riNewName').focus();else if(values('riBarcode'))$product.select2('open');else byId('riBarcode').focus();});
         byId('receiptIntakeModal').addEventListener('hide.bs.modal',event=>{if(saving&&!allowClose)event.preventDefault();else {requestNumber++;loading=false;window.jQuery('#receiptIntakeModal select.select2-hidden-accessible').select2('close');}});
-        byId('receiptIntakeReviewModal').addEventListener('hide.bs.modal',event=>{if(saving&&!allowClose)event.preventDefault();});
+        byId('receiptIntakeReviewModal').addEventListener('hide.bs.modal',event=>{
+            if(!allowClose && (saving || window.ReceiptIntakeReview?.dirty())) {
+                event.preventDefault();if(!saving){byId('riReviewError').textContent='Có thay đổi chưa lưu. Bấm Lưu nháp để giữ lại hoặc chọn Đóng, bỏ sửa chưa lưu.';byId('riReviewDiscard').hidden=false;}
+            }
+        });
+        byId('riReviewDiscard').addEventListener('click',()=>{if(saving)return;allowClose=true;reviewModal.hide();allowClose=false;});
+        byId('riReviewSaveDraft').addEventListener('click',()=>review(false,true));
+        byId('riApproveNext').addEventListener('click',()=>review(true,false,true));
         byId('riBarcode').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();if(tab==='existing')$product.select2('open');else byId('riNewName').focus();}});
         byId('receiptIntakeModal').addEventListener('keydown',event=>{if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();save();}});
         byId('riSave').addEventListener('click',save);

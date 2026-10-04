@@ -20,6 +20,8 @@ public sealed class OrderReceiptDto
     public string? CustomerPhone { get; set; }
 
     public string? CashierName { get; set; }
+    public string? TerminalName { get; set; }
+    public string? TerminalCode { get; set; }
     public string? ShiftCode { get; set; }
 
     public string? Note { get; set; }

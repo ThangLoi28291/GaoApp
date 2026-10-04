@@ -1,4 +1,6 @@
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Exceptions;
+using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Returns;
@@ -10,6 +12,7 @@ using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Application.Interfaces.Services.Rewards;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using System.Text.Json;
@@ -56,6 +59,7 @@ public sealed class SalesReturnService : ISalesReturnService
     private readonly IOrderRewardCalculator _orderRewardCalculator;
     private readonly IOrderLegalEntityReversalService _legalEntityReversalService;
     private readonly IDraftInvoiceReturnSyncService _draftInvoiceReturnSyncService;
+    private readonly ISalesReturnRestockRepository? _pendingRestock;
     public SalesReturnService(
         IUnitOfWork uow,
         IOrderRepository orders,
@@ -74,9 +78,11 @@ public sealed class SalesReturnService : ISalesReturnService
         IOrderRewardCalculator orderRewardCalculator,
         IOrderLegalEntityReversalService legalEntityReversalService,
         IDraftInvoiceReturnSyncService draftInvoiceReturnSyncService,
-        ICustomerReceivableService? receivables = null, ICustomerDepositService? deposits = null)
+        ICustomerReceivableService? receivables = null, ICustomerDepositService? deposits = null,
+        ISalesReturnRestockRepository? pendingRestock = null)
     {
         _deposits = deposits;
+        _pendingRestock = pendingRestock;
         _receivables = receivables;
         _uow = uow;
         _orders = orders;
@@ -102,21 +108,31 @@ public sealed class SalesReturnService : ISalesReturnService
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        if (request.Lines == null || request.Lines.Count == 0)
-            throw new InvalidOperationException("Phiếu trả hàng phải có ít nhất 1 dòng.");
+        request.Lines ??= new();
+        request.Payments ??= new();
+        if (request.Type is not (SalesReturnType.RefundOnly or SalesReturnType.ReturnOnly or SalesReturnType.ReturnAndRefund))
+            throw new BusinessRuleException("Loại trả hàng / hoàn tiền không hợp lệ.");
+        if (request.Type != SalesReturnType.RefundOnly && request.Lines.Count == 0)
+            throw new BusinessRuleException("Phiếu trả hàng phải có ít nhất 1 dòng.");
+        if (request.Type == SalesReturnType.RefundOnly && request.Lines.Count > 0)
+            throw new BusinessRuleException("Chỉ hoàn tiền không được kèm hàng trả. Hãy chọn Trả hàng + hoàn tiền nếu có nhận lại hàng.");
+        if (request.Type == SalesReturnType.ReturnOnly && (request.Payments.Count > 0 || request.DepositRefundAmount > 0))
+            throw new BusinessRuleException("Chỉ trả hàng không được kèm khoản hoàn tiền.");
+        if (request.Type == SalesReturnType.RefundOnly && request.Payments.Count == 0 && request.DepositRefundAmount <= 0)
+            throw new BusinessRuleException("Vui lòng nhập số tiền cần hoàn.");
 
         if (request.OrderId <= 0)
-            throw new InvalidOperationException("Order không hợp lệ.");
+            throw new BusinessRuleException("Order không hợp lệ.");
 
         if (string.IsNullOrWhiteSpace(request.Reason))
-            throw new InvalidOperationException("Lý do không được để trống.");
+            throw new BusinessRuleException("Lý do không được để trống.");
 
         var duplicateOrderLineId = request.Lines
             .GroupBy(x => x.OrderLineId)
             .FirstOrDefault(x => x.Count() > 1)?.Key;
         if (duplicateOrderLineId.HasValue)
         {
-            throw new InvalidOperationException(
+            throw new BusinessRuleException(
                 $"OrderLine #{duplicateOrderLineId.Value} bị lặp trong cùng phiếu trả hàng.");
         }
 
@@ -135,14 +151,18 @@ public sealed class SalesReturnService : ISalesReturnService
             // 1. Load order gốc
             // =====================================================
             if (_receivables != null) await _receivables.LockOrderAsync(request.OrderId, ct);
+            else if (_pendingRestock != null) await _pendingRestock.LockOrderAsync(request.OrderId, ct);
             var order = await _orders.GetByIdWithDetailsAsync(request.OrderId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy order.");
+                ?? throw new BusinessRuleException("Không tìm thấy order.");
 
             if (order.Status != OrderStatus.Completed && order.Status != OrderStatus.Refunded)
-                throw new InvalidOperationException("Chỉ xử lý return/refund cho đơn đã chốt.");
+                throw new BusinessRuleException("Chỉ xử lý return/refund cho đơn đã chốt.");
 
             if (order.Lines == null || order.Lines.Count == 0)
-                throw new InvalidOperationException("Order không có dòng hàng để xử lý trả.");
+                throw new BusinessRuleException("Order không có dòng hàng để xử lý trả.");
+
+            if (request.Type == SalesReturnType.RefundOnly && (order.IsCreditSale || order.DepositAmount > 0))
+                throw new BusinessRuleException("Đơn có công nợ hoặc sử dụng cọc cần chọn Trả hàng + hoàn tiền để đối chiếu hàng trả, tiền cọc và công nợ.");
 
             // InvoiceHead còn nháp phải đi cùng return POS; hóa đơn đã phát hành
             // chuyển sang luồng trả hàng kế toán và tuyệt đối không sửa tại đây.
@@ -157,10 +177,10 @@ public sealed class SalesReturnService : ISalesReturnService
             //    KHÔNG dùng order.POSShiftId để tránh bị khóa bởi ca cũ đã đóng
             // =====================================================
             var currentShift = await _shifts.GetOpenShiftAsync(storeId, terminalId, ct)
-                ?? throw new InvalidOperationException("Không có ca POS đang mở tại terminal hiện tại để xử lý trả hàng / hoàn tiền.");
+                ?? throw new BusinessRuleException("Không có ca POS đang mở tại terminal hiện tại để xử lý trả hàng / hoàn tiền.");
 
             var warehouse = await _warehouses.GetByIdAsync(currentShift.WarehouseId, ct)
-                ?? throw new InvalidOperationException("Không tìm thấy kho của ca POS hiện tại.");
+                ?? throw new BusinessRuleException("Không tìm thấy kho của ca POS hiện tại.");
 
             // =====================================================
             // 3. Kiểm tra giới hạn số tiền còn được refund
@@ -174,10 +194,10 @@ public sealed class SalesReturnService : ISalesReturnService
             var maxRefundable = order.PaidTotal;
 
             if (requestedRefund < 0)
-                throw new InvalidOperationException("Tổng tiền hoàn không hợp lệ.");
+                throw new BusinessRuleException("Tổng tiền hoàn không hợp lệ.");
 
             if (alreadyRefunded + requestedRefund > maxRefundable)
-                throw new InvalidOperationException("Số tiền hoàn vượt quá số tiền đã thu còn có thể hoàn.");
+                throw new BusinessRuleException("Số tiền hoàn vượt quá số tiền đã thu còn có thể hoàn.");
 
             // =====================================================
             // 4. Tạo phiếu SalesReturn
@@ -205,22 +225,22 @@ public sealed class SalesReturnService : ISalesReturnService
             {
                 if (reqLine.Action == null)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng OrderLineId={reqLine.OrderLineId} chưa chọn cách xử lý hàng trả.");
                 }
 
                 if (!Enum.IsDefined(typeof(SalesReturnLineAction), reqLine.Action.Value))
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Action không hợp lệ ở dòng OrderLineId={reqLine.OrderLineId}.");
                 }
 
                 var orderLine = order.Lines.FirstOrDefault(x => x.Id == reqLine.OrderLineId && !x.IsDeleted)
-                    ?? throw new InvalidOperationException($"Không tìm thấy dòng hàng #{reqLine.OrderLineId}.");
+                    ?? throw new BusinessRuleException($"Không tìm thấy dòng hàng #{reqLine.OrderLineId}.");
 
                 if (reqLine.ReturnQuantity <= 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Số lượng trả phải > 0 ở dòng OrderLineId={reqLine.OrderLineId}.");
                 }
 
@@ -237,7 +257,7 @@ public sealed class SalesReturnService : ISalesReturnService
 
                 if (baseQty <= 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Base quantity không hợp lệ ở dòng OrderLineId={reqLine.OrderLineId}.");
                 }
 
@@ -249,7 +269,7 @@ public sealed class SalesReturnService : ISalesReturnService
 
                 if (reqLine.ReturnQuantity > returnableQty)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng #{orderLine.Id} chỉ còn được trả tối đa {returnableQty}, nhưng yêu cầu {reqLine.ReturnQuantity}.");
                 }
 
@@ -264,13 +284,13 @@ public sealed class SalesReturnService : ISalesReturnService
 
                 if (baseQty > returnableBaseQty)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Dòng #{orderLine.Id} chỉ còn được trả tối đa {returnableBaseQty} (base qty), nhưng yêu cầu {baseQty}.");
                 }
 
                 if (reqLine.RefundUnitAmount < 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Tiền hoàn trên đơn vị không hợp lệ ở dòng OrderLineId={reqLine.OrderLineId}.");
                 }
 
@@ -299,7 +319,9 @@ public sealed class SalesReturnService : ISalesReturnService
             foreach (var reqPay in request.Payments)
             {
                 if (reqPay.Amount <= 0)
-                    throw new InvalidOperationException("Tiền hoàn phải > 0.");
+                    throw new BusinessRuleException("Tiền hoàn phải > 0.");
+                if (!Enum.IsDefined(reqPay.Method))
+                    throw new BusinessRuleException("Phương thức hoàn tiền không hợp lệ.");
 
                 entity.Payments.Add(new SalesReturnPayment
                 {
@@ -342,7 +364,7 @@ public sealed class SalesReturnService : ISalesReturnService
             if (_legalEntityReversalService is not
                 IOrderLegalEntitySalesReturnBatchService legalEntityBatchService)
             {
-                throw new InvalidOperationException(
+                throw new BusinessRuleException(
                     "Sales return LegalEntity reversal implementation does not support operation-wide batch planning.");
             }
 
@@ -354,6 +376,20 @@ public sealed class SalesReturnService : ISalesReturnService
                     ct);
             var legacyPlansByLineId =
                 new Dictionary<int, LegacyRestockPlan>();
+            var legacyPendingPlans = new Dictionary<int, LegacyRestockPlan>();
+            if (persistedLines.Any(x => x.Action == SalesReturnLineAction.PendingRestock) && _pendingRestock == null)
+                throw new BusinessRuleException("Luồng hàng chờ nhập kho chưa được cấu hình.");
+            if (persistedLines.Any(x => x.Action == SalesReturnLineAction.PendingRestock))
+                await _pendingRestock!.EnsureAvailableAsync(ct);
+
+            foreach (var line in persistedLines.Where(x => x.Action == SalesReturnLineAction.PendingRestock && !legalEntityBatch.HandledLineIds.Contains(x.Id)))
+            {
+                if (_returnableValuationFragmentService is not IReturnableValuationCostEvidence evidence)
+                    throw new BusinessRuleException("Chưa đọc được nguồn hàng để ghi nhận hàng chờ nhập kho.");
+                var fragments = await evidence.GetQuantityOnlyForOrderLineAsync(order.Id, line.OrderLineId, ct);
+                var allocations = _returnCostAllocator.Allocate(fragments, line.ReturnBaseQuantity);
+                legacyPendingPlans.Add(line.Id, new LegacyRestockPlan {Line = line, Fragments = fragments, Allocations = allocations});
+            }
 
             // Complete every unhandled legacy Restock plan before the
             // operation-wide union is locked.
@@ -372,7 +408,7 @@ public sealed class SalesReturnService : ISalesReturnService
                         ct);
                 if (fragments.Count == 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"OrderLine #{line.OrderLineId} không còn source valuation fragment nào để reverse.");
                 }
 
@@ -381,14 +417,14 @@ public sealed class SalesReturnService : ISalesReturnService
                     line.ReturnBaseQuantity);
                 if (allocations.Count == 0)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"SalesReturnLine #{line.Id} không tạo được allocation cost.");
                 }
 
                 var allocatedTotalQty = allocations.Sum(x => x.Quantity);
                 if (allocatedTotalQty != line.ReturnBaseQuantity)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"SalesReturnLine #{line.Id} allocation qty không khớp. " +
                         $"Expected={line.ReturnBaseQuantity}, Actual={allocatedTotalQty}");
                 }
@@ -447,7 +483,7 @@ public sealed class SalesReturnService : ISalesReturnService
                         .SequenceEqual(allocations.Select(x => (x.SourceValuationEntryId, x.Quantity))) ||
                     freshFragments.Any(x => !balanceKeys.Contains(new InventoryPostingLockKey(
                         order.StoreId, x.WarehouseId, x.ProductVariantId))))
-                    throw new InvalidOperationException("Restock source plan changed after locking; retry the operation.");
+                    throw new BusinessRuleException("Restock source plan changed after locking; retry the operation.");
                 var sourceById = freshFragments.ToDictionary(x => x.SourceValuationEntryId);
                 line.LineCostTotal = allocations
                     .Sum(x => x.Quantity * x.UnitCost);
@@ -464,7 +500,7 @@ public sealed class SalesReturnService : ISalesReturnService
                     var allocation = allocations[i];
                     var sourceFragment = sourceById[allocation.SourceValuationEntryId];
                     if (sourceFragment.ProductVariantId != line.VariantId)
-                        throw new InvalidOperationException("Restock source variant mismatch.");
+                        throw new BusinessRuleException("Restock source variant mismatch.");
                     var referenceSubKey =
                         $"RET:{line.Id}:ALLOC:{i + 1}:SRC:{allocation.SourceValuationEntryId}";
                     var movement = _inventoryMovementFactory.CreateSaleRefund(
@@ -489,6 +525,24 @@ public sealed class SalesReturnService : ISalesReturnService
             // Reversal allocation phải được persist trước để sync invoice đọc được
             // tổng đã trả tuyệt đối theo từng HKD. Tất cả vẫn nằm trong transaction ngoài.
             await _salesReturns.SaveChangesAsync(ct);
+            if (_pendingRestock != null && persistedLines.Any(x => x.Action == SalesReturnLineAction.PendingRestock))
+            {
+                var pendingRows = (await _pendingRestock.GetLegalReservationsAsync(entity.Id, ct))
+                    .Select(x => new SalesReturnRestockFragment {StoreId = order.StoreId, SalesReturnLineId = x.SalesReturnLineId!.Value,
+                        SourceValuationEntryId = x.SourceValuationEntryId, AllocationReversalId = x.Id, BaseQuantity = x.BaseQuantity}).ToList();
+                foreach (var plan in legacyPendingPlans.Values)
+                    foreach (var allocation in plan.Allocations)
+                        pendingRows.Add(new SalesReturnRestockFragment {StoreId = order.StoreId, SalesReturnLineId = plan.Line.Id,
+                            SourceValuationEntryId = allocation.SourceValuationEntryId, BaseQuantity = allocation.Quantity});
+                foreach (var line in persistedLines.Where(x => x.Action == SalesReturnLineAction.PendingRestock))
+                {
+                    if (pendingRows.Where(x => x.SalesReturnLineId == line.Id).Sum(x => x.BaseQuantity) != line.ReturnBaseQuantity)
+                        throw new BusinessRuleException("Không lưu đủ nguồn hàng chờ nhập kho.");
+                    line.IsProvisionalCost = true;
+                }
+                await _pendingRestock.AddRangeAsync(pendingRows, ct);
+                await _salesReturns.SaveChangesAsync(ct);
+            }
             await _draftInvoiceReturnSyncService.SyncAfterReturnAsync(
                 order.Id,
                 entity.Id,
@@ -509,7 +563,7 @@ public sealed class SalesReturnService : ISalesReturnService
 
                 if (currentShift.ClosingCashExpected < cashRefundAmount)
                 {
-                    throw new InvalidOperationException(
+                    throw new BusinessRuleException(
                         $"Tiền mặt trong ca không đủ để hoàn tiền. " +
                         $"Hiện có {currentShift.ClosingCashExpected:n0}đ, cần hoàn {cashRefundAmount:n0}đ.");
                 }
@@ -604,12 +658,38 @@ public sealed class SalesReturnService : ISalesReturnService
             await _uow.CommitTransactionAsync(ct);
 
             return await GetByIdAsync(entity.Id, ct)
-                ?? throw new InvalidOperationException("Không đọc được phiếu vừa tạo.");
+                ?? throw new BusinessRuleException("Không đọc được phiếu vừa tạo.");
         }
-        catch
+        catch (SaleRestockCostException ex)
         {
-            await _uow.RollbackTransactionAsync(ct);
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
+            throw PosAppException.Business(ex.ErrorCode, ex.SafeMessage, ex.ActionHint,
+                new { ex.OrderId, ex.OrderLineId });
+        }
+        catch (PosAppException)
+        {
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
             throw;
+        }
+        catch (BusinessRuleException)
+        {
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await _uow.RollbackTransactionAsync(CancellationToken.None);
+            throw PosAppException.Technical(
+                "POS_PARTIAL_RETURN_FAILED",
+                "Không thể hoàn tất trả hàng / hoàn tiền một phần vì hệ thống chưa ghi nhận đủ dữ liệu tồn kho hoặc thanh toán.",
+                "Vui lòng tải lại chi tiết đơn và thử lại. Nếu vẫn lỗi, gửi mã truy vết hiển thị kèm theo cho quản lý/kỹ thuật.",
+                new { orderId = request.OrderId },
+                innerException: ex);
         }
     }
 
@@ -628,7 +708,7 @@ public sealed class SalesReturnService : ISalesReturnService
     public async Task<OrderReturnEligibilityDto> GetEligibilityAsync(int orderId, CancellationToken ct = default)
     {
         var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
-            ?? throw new InvalidOperationException("Không tìm thấy order.");
+            ?? throw new BusinessRuleException("Không tìm thấy order.");
 
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
 
@@ -640,6 +720,7 @@ public sealed class SalesReturnService : ISalesReturnService
             PaidTotal = order.PaidTotal,
             RefundedTotal = refundedTotal,
             DepositRefundable = _deposits != null ? await _deposits.GetReturnableAsync(order, ct) : 0,
+            DepositAmount = order.DepositAmount,
             IsCreditSale = order.IsCreditSale,
             BalanceDue = order.BalanceDue,
             RefundableRemaining = order.PaidTotal - refundedTotal
@@ -660,6 +741,9 @@ public sealed class SalesReturnService : ISalesReturnService
                 ? (line.LineTotal / line.Quantity)
                 : line.UnitPrice;
 
+            var restock = returnableQty > 0 && _returnableValuationFragmentService is IReturnableValuationReadiness readiness
+                ? await readiness.GetRestockReadinessAsync(order.Id, line.Id, ct) : new ReturnRestockReadiness(returnableQty > 0);
+
             result.Lines.Add(new OrderReturnEligibilityLineDto
             {
                 OrderLineId = line.Id,
@@ -672,7 +756,11 @@ public sealed class SalesReturnService : ISalesReturnService
                 UnitPrice = line.UnitPrice,
                 LineDiscount = line.LineDiscount,
                 SuggestedRefundUnitAmount = suggestedUnitRefund,
-                Multiplier = multiplier
+                Multiplier = multiplier,
+                CanRestock = restock.CanRestock,
+                RestockBlockCode = restock.BlockCode,
+                RestockBlockReason = restock.BlockReason,
+                RestockActionHint = restock.ActionHint
 
                 // Nếu DTO của bạn sau này có thêm field base qty,
                 // có thể gắn:
@@ -701,6 +789,7 @@ public sealed class SalesReturnService : ISalesReturnService
             RefundTotal = entity.RefundTotal,
             DepositRestoredTotal = entity.DepositRestoredTotal,
             CreatedAtUtc = entity.CreatedAtUtc,
+            HasPendingRestock = entity.Lines.Any(x => x.Action == SalesReturnLineAction.PendingRestock),
             Lines = entity.Lines.Select(x => new SalesReturnLineDto
             {
                 Id = x.Id,
@@ -729,10 +818,10 @@ public sealed class SalesReturnService : ISalesReturnService
         => _currentStore.StoreId;
 
     private int RequireUserId()
-        => _currentUser.UserId ?? throw new InvalidOperationException("Phiên đăng nhập không hợp lệ.");
+        => _currentUser.UserId ?? throw new BusinessRuleException("Phiên đăng nhập không hợp lệ.");
 
     private int RequireTerminalId()
-        => _currentUser.TerminalId ?? throw new InvalidOperationException("Không xác định được terminal hiện tại.");
+        => _currentUser.TerminalId ?? throw new BusinessRuleException("Không xác định được terminal hiện tại.");
 
     /// <summary>
     /// Sinh mã phiếu return.

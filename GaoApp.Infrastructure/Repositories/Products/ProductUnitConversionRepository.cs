@@ -17,6 +17,10 @@ public class ProductUnitConversionRepository : IProductUnitConversionRepository
         _db = db;
     }
 
+    public Task<ProductVariant?> GetVariantForUnitSetupAsync(int storeId, int variantId, CancellationToken ct = default)
+        => _db.ProductVariants.Include(x => x.Product)
+            .FirstOrDefaultAsync(x => x.StoreId == storeId && x.Id == variantId && !x.IsDeleted && !x.Product.IsDeleted, ct);
+
     /// <summary>
     /// Lấy conversion theo Id, kèm navigation đủ dùng cho service.
     /// </summary>

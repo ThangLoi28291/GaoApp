@@ -6,6 +6,8 @@
       "launchUrl": "admin",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "InputInvoiceLibrary__Enabled": "true",
+        "InputInvoiceLibrary__RootPath": "XML",
         "DataProtection__KeysPath": "C:\\GaoAppData\\DataProtectionKeys"
       },
       "dotnetRunMessages": true,
@@ -17,6 +19,8 @@
       "launchUrl": "admin",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "InputInvoiceLibrary__Enabled": "true",
+        "InputInvoiceLibrary__RootPath": "XML",
         "DataProtection__KeysPath": "C:\\GaoAppData\\DataProtectionKeys"
       },
       "dotnetRunMessages": true,
@@ -28,6 +32,8 @@
       "launchUrl": "admin",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "InputInvoiceLibrary__Enabled": "true",
+        "InputInvoiceLibrary__RootPath": "XML",
         "DataProtection__KeysPath": "C:\\GaoAppData\\DataProtectionKeys"
       }
     },
@@ -37,6 +43,8 @@
       "launchUrl": "http://localhost:7051/admin",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
+        "InputInvoiceLibrary__Enabled": "true",
+        "InputInvoiceLibrary__RootPath": "XML",
         "ASPNETCORE_URLS": "http://localhost:7051",
         "DataProtection__KeysPath": "C:\\GaoAppData\\DataProtectionKeys"
       },

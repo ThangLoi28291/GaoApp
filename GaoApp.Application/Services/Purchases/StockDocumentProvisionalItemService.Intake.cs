@@ -14,7 +14,7 @@ public sealed partial class StockDocumentProvisionalItemService
     {
         var document = await _repository.GetDocumentAsync(RequireStore(), documentId, ct)
             ?? throw new BusinessRuleException("Phiếu nhận hàng không tồn tại.");
-        EnsureWarehouseAccess(document);
+        EnsureReceiptOwnership(document);
         return document.ProvisionalItems.FirstOrDefault(x => x.Id == itemId && !x.IsDeleted)?.PackagingPhoto;
     }
 
@@ -173,13 +173,56 @@ public sealed partial class StockDocumentProvisionalItemService
                 if (document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder && request.LeaseToken != document.ReceivingLeaseToken)
                     throw new BusinessRuleException("Phiên nhận hàng đã thay đổi.");
             }
-            var hash = PayloadHash("intake-review", new { itemId, request.Approve, request.CategoryId });
+            var reviewPhoto = ReceiptIntakePhoto.Parse(request.PhotoDataUrl);
+            if (reviewPhoto is not null && request.RemoveReviewPhoto)
+                throw new BusinessRuleException("Không thể vừa thêm và bỏ ảnh trong cùng yêu cầu.");
+            var hash = PayloadHash("intake-review", new { itemId, request.Approve, request.CategoryId, request.SaveDraftOnly,
+                request.Completion, request.RemoveReviewPhoto,
+                photoHash = reviewPhoto is null ? null : Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(reviewPhoto)) });
             if (await IsReplayAsync(document, request.CommandId, hash, ct)) return;
             EnsureRowVersion(document.RowVersion, request.DocumentRowVersion, "Phiếu");
             var item = RequireUnresolved(document, itemId);
             EnsureRowVersion(item.RowVersion, request.ItemRowVersion, "Mặt hàng");
             if (!item.ProposedFactor.HasValue)
                 throw new BusinessRuleException("Dòng cũ cần được liên kết sản phẩm theo thông tin đã ghi nhận.");
+            var completion = request.Completion ?? (item.ReviewDraftJson is null ? null :
+                System.Text.Json.JsonSerializer.Deserialize<ReceiptIntakeCompletionDto>(item.ReviewDraftJson));
+            if (request.SaveDraftOnly || request.Approve && completion is not null)
+            {
+                if (completion is null) throw new BusinessRuleException("Thiếu thông tin cần lưu nháp.");
+                if (!request.SaveDraftOnly && completion.GenerateBaseBarcode && !permissions.CanCreateBarcode)
+                    throw new BusinessRuleException("Cần quyền tạo barcode để sinh mã đơn vị gốc.");
+                IntakeBaseQuantity(IntakeNumber(completion.Quantity, "Số lượng"), IntakeNumber(completion.Factor, "Quy đổi"));
+                await _intakeCatalog.ValidateCompletionAsync(document.StoreId, completion, !request.SaveDraftOnly, ct);
+                if (completion.ProductVariantId.HasValue && reviewPhoto is not null)
+                    throw new BusinessRuleException("Chỉ tải ảnh ở bước tạo sản phẩm mới. Với sản phẩm có sẵn, sửa ảnh trong danh mục sản phẩm.");
+                var beforeDraft = Snapshot(item);
+                if (request.RemoveReviewPhoto) item.ReviewPhoto = null;
+                else if (reviewPhoto is not null) { item.ReviewPhoto = reviewPhoto; completion.UsePackagingPhoto = false; }
+                item.ReviewDraftJson = System.Text.Json.JsonSerializer.Serialize(completion);
+                if (item.ReviewDraftJson.Length > 8000) throw new BusinessRuleException("Thông tin khai báo quá dài.");
+                if (request.SaveDraftOnly)
+                {
+                    Touch(document);
+                    await AddActionAsync(document, item, request.CommandId, hash, PurchaseReceivingActionType.ProvisionalEdit,
+                        item.Quantity, item.Quantity, false, false, beforeDraft, Snapshot(item), null, ct);
+                    await AddAuditAsync(document, item, PurchaseReceiptAuditEventType.ProvisionalItemChanged, ct);
+                    await _repository.SaveChangesAsync(ct);
+                    return;
+                }
+                item.OriginalDeclarationJson ??= System.Text.Json.JsonSerializer.Serialize(new {
+                    item.NameSnapshot, item.RawBarcodeSnapshot, item.UnitId, item.UnitNameSnapshot, item.Quantity,
+                    item.ProposedProductVariantId, item.ProposedBaseUnitId, item.ProposedBaseUnitName,
+                    item.ProposedFactor, item.ProposedCategoryId, item.Note });
+                item.NameSnapshot = completion.Name; item.RawBarcodeSnapshot = completion.Barcode;
+                item.NormalizedBarcode = NormalizeBarcode(completion.Barcode);
+                item.UnitId = completion.UnitId; item.UnitNameSnapshot = completion.UnitName;
+                item.NormalizedUnitNameSnapshot = NormalizeIdentity(completion.UnitName);
+                item.Quantity = completion.Quantity; item.ProposedFactor = completion.Factor;
+                item.ProposedBaseUnitId = completion.BaseUnitId; item.ProposedBaseUnitName = completion.BaseUnitName;
+                item.ProposedProductVariantId = completion.ProductVariantId; item.ProposedCategoryId = completion.CategoryId;
+                item.Note = completion.Note;
+            }
             if (!request.Approve)
             {
                 var before = Snapshot(item);
@@ -193,12 +236,14 @@ public sealed partial class StockDocumentProvisionalItemService
                 await _repository.SaveChangesAsync(ct);
                 return;
             }
-            var conversion = await _intakeCatalog.ResolveAsync(document, item, request.CategoryId, permissions, ct);
+            var conversion = await _intakeCatalog.ResolveAsync(document, item, completion?.CategoryId ?? request.CategoryId, permissions, ct);
             await ResolveCoreAsync(document, item, request.CommandId, conversion.ProductVariantId, conversion.Id,
                 !string.IsNullOrWhiteSpace(item.RawBarcodeSnapshot), permissions.CanCreateBarcode,
                 item.ProposedProductVariantId.HasValue ? ProvisionalItemResolutionMethod.LinkExisting : ProvisionalItemResolutionMethod.QuickCreate,
                 PurchaseReceivingActionType.ProvisionalQuickCreate,
                 PurchaseReceiptAuditEventType.ProvisionalItemResolvedQuickCreate, hash, ct);
+            if (completion is not null)
+                await _intakeCatalog.CompleteAsync(document, item, completion, ct);
         }, ct, lockCatalog: true);
 
     private static decimal IntakeNumber(decimal value, string label)

@@ -198,10 +198,13 @@ function renderWarehouseReceivingReceipts() {
                     </div>
                 </div>
 
+                <div class="wr-card-actions d-flex flex-wrap gap-2 align-items-center">
+                ${window.GaoReceiptDocumentActions?.buttons(x) || ''}
                 <a class="wr-card-action ${actionClass}"
                    href="/admin/warehouse-receiving/${x.id}">
                     ${actionText}
                 </a>
+                </div>
             </div>
         `;
     }).join('');
@@ -363,7 +366,7 @@ async function createReceivingReceipt() {
 
 function resetCreateReceivingModal() {
     setValue('wrDocumentTitle', '');
-    setValue('wrDirectReceiptSource', '');
+    setValue('wrDirectReceiptSource', 'Nhà phân phối giao');
     setValue('wrNote', '');
     setText('wrCreateMessage', '');
     const legalEntity = document.getElementById('wrLegalEntityId');

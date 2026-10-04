@@ -21,6 +21,9 @@
                 <p class="gds-page-header__subtitle mb-0">Sắp xếp cấu trúc điều hướng và kiểm soát menu hiển thị theo quyền của cửa hàng.</p>
             </div>
             <div class="gds-page-header__actions">
+                <a asp-area="Admin" asp-controller="AdminMenuVisibility" asp-action="Index" class="btn btn-primary gds-action-button">
+                    <i class="bx bx-group"></i><span>Menu theo nhân viên / nhóm</span>
+                </a>
                 <button type="button" class="btn btn-label-secondary gds-action-button" id="btnAdminMenuReload">
                     <i class="bx bx-refresh"></i><span>Tải lại</span>
                 </button>
@@ -40,8 +43,8 @@
     <div class="alert admin-menu-index-notice mb-0" role="note">
         <i class="bx bx-shield-quarter"></i>
         <div>
-            <strong>Quyền hiển thị vẫn là lớp bảo vệ chính.</strong>
-            <span>Menu chỉ xuất hiện khi đang hoạt động và người dùng có đúng quyền được gắn.</span>
+            <strong>Quản lý cấu trúc menu của cửa hàng.</strong>
+            <span>Dùng “Menu theo nhân viên / nhóm” để ẩn hiện hàng loạt. Quyền truy cập chức năng được quản lý riêng.</span>
         </div>
     </div>
 

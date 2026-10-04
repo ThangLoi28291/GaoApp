@@ -151,7 +151,7 @@
         <div class="pos-context-item">
             <div class="pos-context-label">
                 <i class="bx bx-desktop"></i>
-                <span>Terminal</span>
+                <span>Máy tính tiền</span>
             </div>
             <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.TerminalName) ? "pos-context-empty" : "")">
                 @(string.IsNullOrWhiteSpace(Model.TerminalName) ? "Chưa xác định terminal" : Model.TerminalName)
@@ -171,7 +171,7 @@
                 <i class="bx bx-user"></i>
                 <span>Nhân viên</span>
             </div>
-            <div class="pos-context-value @(string.IsNullOrWhiteSpace(Model.UserName) ? "pos-context-empty" : "")">
+            <div id="posCtxUserName" class="pos-context-value @(string.IsNullOrWhiteSpace(Model.UserName) ? "pos-context-empty" : "")">
                 @(string.IsNullOrWhiteSpace(Model.UserName) ? "Chưa xác định nhân viên" : Model.UserName)
             </div>
         </div>
@@ -187,7 +187,7 @@
                 {
                     <span class="pos-shift-pill open" id="posCtxShiftPill">
                         <i class="bx bx-check-circle"></i>
-                        <span id="posCtxShiftCode">@Model.ShiftCode</span>
+                        <span id="posCtxShiftCode" title="@Model.ShiftCode">@Model.UserName · @Model.TerminalName</span>
                     </span>
                 }
                 else

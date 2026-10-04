@@ -107,7 +107,7 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         assert.equal((await request('/admin/pos/screen')).currentDraft.orderId, firstId);
         console.log('PASS: permission denial does not invalidate login; permitted hold and resume work');
         const other = await context.newPage(); await other.goto(info.baseUrl + '/admin/pos');
-        await other.waitForFunction(() => window.PosOffline?.status().ready);
+        await other.waitForFunction(() => window.PosOffline?.status().message.includes('POS đang mở ở tab khác'));
         assert.equal(await other.evaluate(() => PosOffline.status().writer), false); await other.close();
         console.log('PASS: second tab cannot write to the same terminal');
         // The server commits this addition, but its response is lost before the cashier receives it.
@@ -123,6 +123,40 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
             request(`/admin/pos/${firstId}/items?variantId=${info.variantId}&qty=1`, 'POST', {}));
         const cash = await request('/admin/pos/cart/current/payment-and-finalize', 'POST', { orderId: firstId, clientRequestId: require('node:crypto').randomUUID(), method: 0, amount: 60 });
         assert.equal(cash.finalized, true); assert.equal(cash.draft.grandTotal, 60);
+        // Exercise the actual cashier click: first block popups, then allow only
+        // the synchronously preopened window (a second asynchronous open is blocked).
+        await page.locator('#invoiceIntentModal.show').waitFor();
+        await page.evaluate(() => {
+            window.__originalPrintOpen = window.open;
+            window.open = () => null;
+        });
+        await page.locator('#btnInvoiceIntentManual').click();
+        await page.locator('#invoiceIntentErrorBox').filter({ hasText: 'Cho phép mở cửa sổ' }).waitFor();
+        assert.equal(await page.locator('#invoiceIntentModal').isVisible(), true);
+        assert.equal(await page.evaluate(id => PosOffline.invoiceIntentStatus(id).route, firstId), 2);
+        const pendingAfterChoice = await page.evaluate(() => PosOffline.status().pending);
+        await page.evaluate(() => {
+            window.__printOpenCalls = 0; window.__offlinePrintCalls = 0;
+            window.open = (...args) => {
+                if (++window.__printOpenCalls > 1) return null;
+                const popup = window.__originalPrintOpen.apply(window, args);
+                if (popup) popup.print = () => window.__offlinePrintCalls++;
+                return popup;
+            };
+        });
+        const popupEvent = page.waitForEvent('popup');
+        await page.locator('#btnInvoiceIntentManual').click();
+        const offlinePaper = await popupEvent;
+        await offlinePaper.locator('.receipt').waitFor();
+        await page.waitForFunction(() => window.__offlinePrintCalls === 1);
+        assert.equal(await page.evaluate(() => window.__printOpenCalls), 1);
+        assert.equal(await page.evaluate(() => PosOffline.status().pending), pendingAfterChoice, 'Print retry reuses the saved invoice intent');
+        await page.locator('#invoiceIntentModal').waitFor({ state: 'hidden' });
+        assert.match(await offlinePaper.locator('.receipt').innerText(), /60/);
+        await offlinePaper.screenshot({ path: path.join(output, 'offline-cashier-print.png'), fullPage: true });
+        await offlinePaper.close();
+        await page.evaluate(() => { window.open = window.__originalPrintOpen; });
+        console.log('PASS: offline cashier print reuses the click-opened window; blocked popups stay retryable without another sale or invoice intent');
         if (receiptProbe) await receiptProbe.offlinePrint(page, firstId, output);
         screen = await request('/admin/pos/screen');
         const secondId = screen.currentDraft.orderId;
@@ -163,6 +197,7 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         await page.waitForFunction(async id => { const r = await fetch(`/admin/pos/${id}`); return r.ok && (await r.json()).status === 2; }, secondId);
         const transfer = await request(`/admin/pos/${secondId}`);
         assert.equal(transfer.paidTotal, 40); assert.equal(transfer.grandTotal, 40);
+        await request(`/admin/pos/${secondId}/invoice-route`, 'POST', { route: 2 });
         console.log('PASS: cashier reopens QR and confirms manual receipt through the existing offline UI');
         // Keep the first replay in flight to exercise LAN recovery before the queue is drained.
         let releaseReplay, heldReplay = false;

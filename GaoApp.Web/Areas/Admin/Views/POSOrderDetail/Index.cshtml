@@ -31,6 +31,14 @@
 
 <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" />
 <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true" defer></script>
+@if (canReturn)
+{
+    @if (ViewBag.CanCompleteReturnRestock as bool? == true)
+    {
+        <div class="mb-3"><a href="/admin/pos/returns/pending-restock" class="btn btn-outline-warning">Hàng trả chờ nhập kho</a></div>
+    }
+    <div class="mb-3"><a href="/admin/pos-shift/requests?tab=payment&amp;orderId=@Model.OrderId" class="btn btn-outline-primary">Yêu cầu sửa thanh toán</a></div>
+}
 @if (Model.HasBankTransfer)
 {
     <div class="mb-3"><a href="/admin/acb/payments/orders/@Model.OrderId" data-acb-order-id="@Model.OrderId" class="btn btn-outline-primary">Thông tin chuyển khoản</a></div>
@@ -238,7 +246,7 @@
                             class="btn btn-ord btn-ord-warning-soft"
                             title="Refund toàn bộ đơn theo flow hiện tại"
                             onclick="openOrderActionModal('refund', @Model.OrderId)">
-                        Refund toàn phần
+                        Hoàn tiền toàn bộ
                     </button>
                 }
 
@@ -266,6 +274,10 @@
         <div class="ord-stat success">
             <div class="ord-stat-label">Đã thanh toán</div>
             <div class="ord-stat-value">@Model.PaidTotal.ToString("N0") đ</div>
+            @if (Model.DepositAmount > 0)
+            {
+                <div class="ord-stat-sub">Bao gồm tiền cọc: <strong>@Model.DepositAmount.ToString("N0") đ</strong></div>
+            }
         </div>
 
         <div class="ord-stat info">
@@ -323,6 +335,15 @@
                         <div class="ord-info-value">@DisplayCustomerName()</div>
                         <div class="ord-info-sub">SĐT: @DisplayCustomerPhone()</div>
                     </div>
+                    @if (Model.DepositAmount > 0)
+                    {
+                        <div class="ord-info">
+                            <div class="ord-info-label">Tiền cọc đã dùng</div>
+                            <div class="ord-info-value">@Model.DepositAmount.ToString("N0") đ</div>
+                            <div class="ord-info-sub">Cần trả sau cọc: <strong>@Math.Max(0, Model.GrandTotal - Model.DepositAmount).ToString("N0") đ</strong></div>
+                            <div class="ord-info-sub">Tiền cọc được tính vào thanh toán, không phải giảm giá.</div>
+                        </div>
+                    }
                     @if (hasVoucher)
 {
     <div class="ord-info">
@@ -620,6 +641,11 @@
     <div class="ord-popup-callout mb-3" id="orderActionCallout">
         Xác nhận thao tác trên đơn đã chốt. Hãy nhập lý do rõ ràng để dễ audit về sau.
     </div>
+    <div id="orderActionCostWarning" class="alert alert-warning" role="status" style="white-space:pre-line;overflow-wrap:anywhere" hidden></div>
+    <div id="orderActionPendingRestockBox" class="form-check mb-3" hidden>
+        <input class="form-check-input" type="checkbox" id="orderActionPendingRestock">
+        <label class="form-check-label" for="orderActionPendingRestock">Nhận hàng và hoàn tiền ngay. Hàng chưa đủ giá vốn sẽ chờ nhập kho.</label>
+    </div>
 
     <div id="orderActionRefundMethodBox" class="mb-3" style="display:none;">
         <label class="form-label fw-semibold">Phương thức hoàn tiền</label>
@@ -720,7 +746,16 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @if (Model.Payments == null || !Model.Payments.Any())
+                                @if (Model.DepositAmount > 0)
+                                {
+                                    <tr>
+                                        <td><strong>Tiền cọc đã dùng</strong></td>
+                                        <td>Trừ từ số dư cọc khách hàng</td>
+                                        <td>—</td>
+                                        <td class="text-end fw-bold">@Model.DepositAmount.ToString("N0") đ</td>
+                                    </tr>
+                                }
+                                @if ((Model.Payments == null || !Model.Payments.Any()) && Model.DepositAmount <= 0)
                                 {
                                     <tr>
                                         <td colspan="4">
@@ -731,7 +766,7 @@
                                         </td>
                                     </tr>
                                 }
-                                else
+                                else if (Model.Payments != null)
                                 {
                                     foreach (var p in Model.Payments)
                                     {

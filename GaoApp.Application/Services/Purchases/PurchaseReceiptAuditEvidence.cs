@@ -35,6 +35,7 @@ public static class PurchaseReceiptAuditEvidence
         nameof(StockDocument.TotalAmount),
         nameof(StockDocument.Status),
         nameof(StockDocument.ApprovalNote),
+        nameof(StockDocument.WaitForInputInvoice),
         nameof(StockDocument.HasRevisionRequest),
         nameof(StockDocument.RevisionRequestNote),
         nameof(StockDocument.RevisionRequestedAtUtc),

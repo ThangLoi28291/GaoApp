@@ -92,7 +92,24 @@ public sealed class InventoryPostingMigrationTests
 "20260923160000_AddLegacyInvoiceImport",
 "20260923180000_AddLegacyReturnArchive",
 "20260924100000_AddAutoInvoiceIssuance",
-"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService");
+"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService",
+                "20260928160000_OptimizePosOrdersTimeline",
+                "20260928200000_AddStoreReceiptDefault",
+                "20260929090000_OptimizePosOrdersCount",
+                "20260930100000_AddReceiptInvoiceFollowUp",
+                "20260930150000_AddPOSCashAdjustmentRequests",
+                "20260930160000_AllowSignedPOSExpectedCash",
+                "20260930180000_AddStockReceiptEntryTerminal",
+                "20260930190000_OptimizeInventoryLedgerProductSearch",
+                "20260930200000_AddReceiptIntakeReviewDraft",
+                "20260930210000_AddReceiptReviewPhoto",
+                "20261001010000_AddKioskStations",
+                "20261001072417_AddAdminMenuVisibility",
+                "20261001080256_AddCustomerReceiptPrintPreference",
+                "20261001115308_AddInputInvoiceLibrary",
+                "20261001121734_PreserveInputInvoiceLibrarySource",
+                "20261002233000_AddPurchaseReceiptPricingPlans",
+                "20261003110000_AddPurchaseReceiptBillLines");
         db.Database.HasPendingModelChanges().Should().BeFalse();
         var manifest = new EfCoreDatabaseSchemaManifestCatalog(db)
             .GetCurrentManifest();
@@ -256,7 +273,24 @@ public sealed class InventoryPostingMigrationTests
 "20260923160000_AddLegacyInvoiceImport",
 "20260923180000_AddLegacyReturnArchive",
 "20260924100000_AddAutoInvoiceIssuance",
-"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService");
+"20260926113012_AddInvoiceIssuanceRoutingAndBuyerSelfService",
+                "20260928160000_OptimizePosOrdersTimeline",
+                "20260928200000_AddStoreReceiptDefault",
+                "20260929090000_OptimizePosOrdersCount",
+                "20260930100000_AddReceiptInvoiceFollowUp",
+                "20260930150000_AddPOSCashAdjustmentRequests",
+                "20260930160000_AllowSignedPOSExpectedCash",
+                "20260930180000_AddStockReceiptEntryTerminal",
+                "20260930190000_OptimizeInventoryLedgerProductSearch",
+                "20260930200000_AddReceiptIntakeReviewDraft",
+                "20260930210000_AddReceiptReviewPhoto",
+                "20261001010000_AddKioskStations",
+                "20261001072417_AddAdminMenuVisibility",
+                "20261001080256_AddCustomerReceiptPrintPreference",
+                "20261001115308_AddInputInvoiceLibrary",
+                "20261001121734_PreserveInputInvoiceLibrarySource",
+                "20261002233000_AddPurchaseReceiptPricingPlans",
+                "20261003110000_AddPurchaseReceiptBillLines");
         var afterRowCount = await ReadLegacyRowCountAsync(database);
         afterRowCount.Should().Be(beforeRowCount);
         var afterSignature = await ReadLegacySignatureAsync(database);

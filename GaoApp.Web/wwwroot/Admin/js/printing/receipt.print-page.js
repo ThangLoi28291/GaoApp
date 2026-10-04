@@ -1,8 +1,10 @@
 (function () {
     'use strict';
     const setup = JSON.parse(document.getElementById('receiptPrintData').textContent), frame = document.getElementById('receiptPaper');
-    const select = document.getElementById('printTemplateChoice'), feedback = document.getElementById('printFeedback'), button = document.getElementById('printReceipt');
-    let rendered, first = true, loading = false, printing = false;
+    const feedback = document.getElementById('printFeedback'), button = document.getElementById('printReceipt');
+    let rendered, first = true, loading = false, printing = false, helperCompleted = false;
+    const drawerPermission = PosPrinting.consumeCashDrawer(setup.receipt);
+    let cashDrawer = setup.autoPrint === true;
     function buildQrDataUrl(value) {
     if (!value) return null;
 
@@ -71,15 +73,16 @@
     );
 }
     async function print() {
-        if (loading || printing) return;
+        if (loading || printing || helperCompleted) return;
         printing = true; button.disabled = true; feedback.textContent = 'Đang gửi lệnh in…';
-        try { const result = await PosPrinting.send(rendered, setup, frame.contentWindow, () => GaoPrintLifecycle.close(window)); feedback.textContent = result.mode === 'qz' ? `Đã gửi lệnh tới ${result.printer}.` : 'Đã mở hộp thoại in.'; }
+        const openDrawer = cashDrawer; cashDrawer = false;
+        try { const result = await PosPrinting.send(rendered, setup, frame.contentWindow, () => GaoPrintLifecycle.close(window), openDrawer && await drawerPermission); helperCompleted = result.mode === 'helper'; feedback.textContent = result.mode === 'helper' ? 'Print Helper đã nhận và ghi lệnh in.' : result.mode === 'qz' ? `Đã gửi lệnh tới ${result.printer}.` : 'Đã mở hộp thoại in.'; }
         catch (error) {
             feedback.textContent = error.message;
             if (window.parent !== window) window.parent.dispatchEvent(new CustomEvent('pos:print-error', {
                 detail: { orderId: setup.receipt.orderId, message: error.message } }));
         }
-        finally { printing = false; button.disabled = false; }
+        finally { printing = false; button.disabled = helperCompleted; }
     }
     function show(design) {
         const invoiceBuyerQrDataUrl =
@@ -103,23 +106,19 @@ rendered =
         frame.onload = () => {
             frame.style.height = Math.ceil(frame.contentDocument.body.scrollHeight) + 'px';
             PosPrinting.pageSize(frame.contentDocument, rendered);
-            loading = false; button.disabled = false;
-            if (first && setup.autoPrint) print();
+            loading = false; button.disabled = helperCompleted || printing;
+            const autoPrint = first && setup.autoPrint;
             first = false;
+            if (autoPrint) print();
         };
         frame.srcdoc = rendered.html;
     }
     button.addEventListener('click', print);
     document.getElementById('closeReceipt').addEventListener('click', () => window.close());
-    select.addEventListener('change', () => {
-        const choice = setup.templates.find(x => x.key === select.value);
-        if (choice) { first = false; show(choice.design); feedback.textContent = 'Đổi mẫu cho lần in này. Để lưu mặc định, mở Mẫu hóa đơn & máy in.'; }
-    });
     try {
         const selected = PosPrinting.selected(setup, setup.templates), pref = PosPrinting.preferences(setup);
-        select.replaceChildren(new Option('Mẫu đã chọn trên client', ''), ...setup.templates.map(t => new Option(t.design.name, t.key)));
-        if (setup.size && ReceiptTemplates.sizes[setup.size]) selected.paperSize = setup.size;
-        feedback.textContent = pref.mode === 'qz' ? `Máy in: ${pref.printer}` : 'In bằng hộp thoại trình duyệt';
+        document.getElementById('printTemplateName').textContent = selected.name;
+        feedback.textContent = pref.mode === 'helper' ? 'In qua Linux Print Helper trên máy này' : pref.mode === 'qz' ? `Máy in: ${pref.printer}` : 'In bằng hộp thoại trình duyệt';
         show(selected);
     } catch (error) { button.disabled = true; feedback.textContent = error.message; }
 })();

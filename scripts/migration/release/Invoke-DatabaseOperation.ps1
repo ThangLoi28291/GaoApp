@@ -1,17 +1,20 @@
 [CmdletBinding()]
 param(
- [Parameter(Mandatory=$true)][ValidateSet('Inspect','BackupTarget','BackupSource')][string]$Operation,
+ [Parameter(Mandatory=$true)][ValidateSet('Inspect','TargetReady','BackupTarget','BackupSource','VerifySourceBackup','VerifyTargetBackup')][string]$Operation,
  [Parameter(Mandatory=$true)][string]$Server,
  [Parameter(Mandatory=$true)][string]$ExpectedServer,
  [string]$SourceDatabase='DataGaoStore',[string]$TargetDatabase='GaoAppDb',
  [string]$BackupDirectory,
+ [string]$BackupFile,
+ [string]$NotBeforeUtc,
  [Parameter(Mandatory=$true)][string]$OutputDirectory,
  [switch]$CheckSetup
 )
 $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Backup-Progress.ps1')
 foreach($name in @($SourceDatabase,$TargetDatabase)){if($name -notmatch '^[A-Za-z0-9_-]{1,128}$'){throw 'Invalid database name.'}}
 if($SourceDatabase -eq $TargetDatabase -or $TargetDatabase -in @('master','model','msdb','tempdb')){throw 'Invalid source/target.'}
-if($CheckSetup){Write-Output 'DATABASE_OPERATION_SETUP_PASS: no SQL connection.';return}
+if($CheckSetup){Initialize-GaoBackupProgress;Write-Output 'DATABASE_OPERATION_SETUP_PASS: progress helper compiled; no SQL connection.';return}
 if(Test-Path -LiteralPath $OutputDirectory){throw 'Use a new report directory.'}
 [void][IO.Directory]::CreateDirectory($OutputDirectory)
 $cs=[System.Data.SqlClient.SqlConnectionStringBuilder]::new()
@@ -51,7 +54,11 @@ SELECT (SELECT COUNT_BIG(*) FROM [$SourceDatabase].dbo.ProductDetail) ProductDet
   $index=0
   foreach($table in $data.Tables){$index++;$table | Select-Object -Property $table.Columns.ColumnName | Export-Csv -LiteralPath (Join-Path $OutputDirectory ('report-{0:00}.csv' -f $index)) -NoTypeInformation -Encoding UTF8;if($table.Rows.Count -le 8){$table|Format-Table -AutoSize|Out-String -Width 220|Write-Output}else{Write-Output "Report $index : $($table.Rows.Count) rows"}}
   $manifest['Status']='INSPECTION_FINISHED_READ_ONLY'
- }else{
+ }elseif($Operation -eq 'TargetReady'){
+  $c=Cmd ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'scripts/migration/initial-import/Target-Contract.sql')))
+  try{[void]$c.ExecuteNonQuery()}finally{$c.Dispose()}
+  $manifest['Status']='TARGET_CONTRACT_PASS_READ_ONLY'
+ }elseif($Operation -in @('BackupSource','BackupTarget')){
   $database=if($Operation -eq 'BackupSource'){$SourceDatabase}else{$TargetDatabase}
   if([string]::IsNullOrWhiteSpace($BackupDirectory)){
    $c=Cmd "SELECT CONVERT(nvarchar(4000),SERVERPROPERTY('InstanceDefaultBackupPath'));"
@@ -61,11 +68,40 @@ SELECT (SELECT COUNT_BIG(*) FROM [$SourceDatabase].dbo.ProductDetail) ProductDet
   $file=Join-Path $BackupDirectory ($database+'-before-cutover-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N')+'.bak')
   $manifest['BackupFile']=$file
   Write-Output "Backup starting: $file"
-  $c=Cmd "BACKUP DATABASE [$database] TO DISK=@file WITH COPY_ONLY,CHECKSUM,NOINIT,STATS=5; RESTORE VERIFYONLY FROM DISK=@file WITH FILE=1,CHECKSUM;"
+  # Express does not support producing compressed backups. Do not add COMPRESSION.
+  $c=Cmd "BACKUP DATABASE [$database] TO DISK=@file WITH COPY_ONLY,CHECKSUM,NOINIT,STATS=5;"
+  $c.CommandTimeout=7200
   [void]$c.Parameters.Add('@file',[System.Data.SqlDbType]::NVarChar,4000);$c.Parameters['@file'].Value=$file
-  try{[void]$c.ExecuteNonQuery()}finally{$c.Dispose()}
-  $manifest['Status']='BACKUP_VERIFYONLY_PASS'
+  try{Invoke-GaoBackupCommand -Command $c -Stage 'BACKUP'}finally{$c.Dispose()}
+  $manifest['Status']='BACKUP_CREATED_UNVERIFIED'
   Write-Output "BackupFile: $file"
+ }else{
+  $database=if($Operation -eq 'VerifySourceBackup'){$SourceDatabase}else{$TargetDatabase}
+  if($BackupFile -notmatch '^[A-Za-z]:\\.+\.bak$'){throw 'Provide an existing server-local full .bak filename.'}
+  $manifest['BackupFile']=$BackupFile
+  $c=Cmd 'RESTORE HEADERONLY FROM DISK=@file;'
+  [void]$c.Parameters.AddWithValue('@file',$BackupFile)
+  $headers=[System.Data.DataTable]::new();$adapter=[System.Data.SqlClient.SqlDataAdapter]::new($c)
+  try{[void]$adapter.Fill($headers)}finally{$adapter.Dispose();$c.Dispose()}
+  if($headers.Rows.Count -ne 1){throw 'Expected exactly one backup set in a uniquely named file; do not guess FILE position.'}
+  $h=$headers.Rows[0]
+  if($h.DatabaseName -ne $database -or $h.ServerName -ne $ExpectedServer -or $h.BackupType -ne 1 -or
+     -not $h.HasBackupChecksums -or $h.IsDamaged -or -not $h.IsCopyOnly -or $h.BackupFinishDate -is [DBNull]){
+    throw 'Expected completed COPY_ONLY full backup with checksums from this database/server.'
+  }
+  if([string]::IsNullOrWhiteSpace($NotBeforeUtc)){throw 'Backup verification requires the current reset preview timestamp.'}
+  $c=Cmd 'SELECT DATEPART(TZOFFSET,SYSDATETIMEOFFSET());'
+  try{$offset=[TimeSpan]::FromMinutes([int]$c.ExecuteScalar())}finally{$c.Dispose()}
+  $start=[DateTimeOffset]::new([datetime]::SpecifyKind([datetime]$h.BackupStartDate,[DateTimeKind]::Unspecified),$offset)
+  if($start.UtcDateTime -lt [DateTimeOffset]::Parse($NotBeforeUtc).UtcDateTime){throw 'Backup predates the current reset preview. Create a fresh cutover backup after stopping writers.'}
+  $manifest['BackupSetGuid']=[string]$h.BackupSetGUID
+  $manifest['BackupStartDate']=([datetime]$h.BackupStartDate).ToString('o')
+  $manifest['BackupFinishDate']=([datetime]$h.BackupFinishDate).ToString('o')
+  $c=Cmd 'RESTORE VERIFYONLY FROM DISK=@file WITH FILE=1,CHECKSUM,STATS=5;'
+  $c.CommandTimeout=7200
+  [void]$c.Parameters.AddWithValue('@file',$BackupFile)
+  try{Invoke-GaoBackupCommand -Command $c -Stage 'VERIFYONLY'}finally{$c.Dispose()}
+  $manifest['Status']='BACKUP_VERIFYONLY_PASS'
  }
  Write-Output $manifest.Status
 }catch{$manifest['Status']='FAILED';$manifest['Error']=$_.Exception.Message;throw}

@@ -1,6 +1,7 @@
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
@@ -112,6 +113,97 @@ public sealed class InputInvoiceItemCatalogMappingService(
                 ? "Đơn vị XML khớp nhiều đơn vị quy đổi; không thể ghi nhớ an toàn."
                 : "Đơn vị quy đổi được chọn không khớp đơn vị XML.");
 
+        var mapping = await RememberMappingWithinTransactionAsync(
+            storeId, stockDocumentId, stockDocumentLineId, detail,
+            supplierId, target!, expectedMappingRowVersion, pricing: false, ct);
+        return Confirmed(detail, mapping, target!);
+    }
+
+    public async Task<InputInvoiceItemCatalogResolutionDto> ConfirmForPricingAsync(
+        int storeId,
+        int stockDocumentId,
+        ConfirmInputInvoicePricingMappingRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (storeId <= 0 || stockDocumentId <= 0 ||
+            request.InputInvoiceHeadId <= 0 || request.InputInvoiceDetailId <= 0 ||
+            request.ProductVariantId <= 0 || request.ProductUnitConversionId <= 0)
+            throw new BusinessRuleException("Thông tin ghi nhớ sản phẩm XML không hợp lệ.");
+
+        await repository.BeginSupplierResolutionTransactionAsync(ct);
+        try
+        {
+            var receipt = await repository.LockReceiptForInputInvoiceMutationAsync(
+                storeId, stockDocumentId, ct)
+                ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+            if (receipt.Type != StockDocumentType.Receipt)
+                throw new BusinessRuleException("Chứng từ hiện tại không phải phiếu nhập.");
+            PurchaseReceiptWorkflowPolicy.EnsureInputInvoiceMappingEditable(receipt.Status);
+            ValidateReceiptVersion(receipt.RowVersion, request.ReceiptRowVersion);
+
+            var invoices = await repository.GetByStockDocumentAsync(
+                storeId, stockDocumentId, ct);
+            if (invoices.Count != 1 || invoices[0].Id != request.InputInvoiceHeadId ||
+                invoices[0].StoreId != storeId)
+                throw new PurchaseReceiptPricingConflictException(
+                    "Hóa đơn XML liên kết đã thay đổi. Vui lòng tải lại trước khi thêm bill.");
+            var invoice = invoices[0];
+            var detail = invoice.Details.SingleOrDefault(x =>
+                x.Id == request.InputInvoiceDetailId &&
+                x.InputInvoiceHeadId == invoice.Id && !x.IsDeleted)
+                ?? throw new BusinessRuleException(
+                    "Dòng XML không thuộc hóa đơn đang liên kết với phiếu hiện tại.");
+            var supplierId = invoice.ResolvedSupplierId
+                ?? throw new BusinessRuleException(
+                    "Nhà cung cấp canonical của hóa đơn chưa được xác định.");
+            if (supplierId <= 0 || receipt.SupplierId != supplierId)
+                throw new BusinessRuleException(
+                    "Nhà cung cấp canonical của hóa đơn không khớp phiếu nhập.");
+
+            var withLines = await repository.GetStockDocumentWithLinesAsync(
+                storeId, stockDocumentId, ct)
+                ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập kho.");
+            if (!withLines.Lines.Any(x => !x.IsDeleted &&
+                x.ProductVariantId == request.ProductVariantId))
+                throw new BusinessRuleException(
+                    "Chỉ được chọn sản phẩm có trong hàng thực nhận của phiếu hiện tại.");
+            var target = await repository.GetInputInvoiceItemCatalogTargetAsync(
+                storeId, request.ProductVariantId, request.ProductUnitConversionId, ct);
+            ValidateTarget(storeId, supplierId, request.ProductVariantId,
+                request.ProductUnitConversionId, target);
+
+            // An explicit pricing selection can teach XML unit aliases. It only
+            // remembers the catalog target; it never pairs a physical receipt line.
+            var mapping = await RememberMappingWithinTransactionAsync(
+                storeId, stockDocumentId, null, detail, supplierId, target!,
+                request.MappingRowVersion, pricing: true, ct);
+            await repository.SaveChangesAsync(ct);
+            var result = Confirmed(detail, mapping, target!);
+            await repository.CommitSupplierResolutionTransactionAsync(ct);
+            return result;
+        }
+        catch
+        {
+            await repository.RollbackSupplierResolutionTransactionAsync(ct);
+            throw;
+        }
+    }
+
+    private async Task<InputInvoiceItemCatalogMap> RememberMappingWithinTransactionAsync(
+        int storeId,
+        int stockDocumentId,
+        int? stockDocumentLineId,
+        InputInvoiceDetail detail,
+        int supplierId,
+        InputInvoiceItemCatalogTarget target,
+        string? expectedMappingRowVersion,
+        bool pricing,
+        CancellationToken ct)
+    {
+        var identity = RequireIdentity(detail);
+        var productVariantId = target.Variant.Id;
+        var productUnitConversionId = target.Conversion.Id;
         await repository.AcquireInputInvoiceItemCatalogKeyLockAsync(
             storeId,
             supplierId,
@@ -128,7 +220,7 @@ public sealed class InputInvoiceItemCatalogMappingService(
             ct);
 
         ValidateExpectedVersion(mapping, expectedMappingRowVersion,
-            productVariantId, productUnitConversionId, target!);
+            productVariantId, productUnitConversionId, target, pricing);
         var oldValues = mapping is null ? null : MappingValues(mapping);
         var changed = mapping is null ||
             mapping.ProductVariantId != productVariantId ||
@@ -164,7 +256,17 @@ public sealed class InputInvoiceItemCatalogMappingService(
                     detail, mapping, oldValues, currentUser), ct);
         }
 
-        return Confirmed(detail, mapping, target);
+        return mapping;
+    }
+
+    private static void ValidateReceiptVersion(byte[] actual, string? expected)
+    {
+        byte[] posted;
+        try { posted = Convert.FromBase64String(expected ?? string.Empty); }
+        catch (FormatException) { posted = []; }
+        if (posted.Length == 0 || actual is null || !actual.SequenceEqual(posted))
+            throw new PurchaseReceiptPricingConflictException(
+                "Phiếu nhập đã thay đổi. Vui lòng tải lại trước khi ghi nhớ sản phẩm XML.");
     }
 
     public async Task AutoApplyKnownMappingsWithinTransactionAsync(
@@ -428,13 +530,14 @@ public sealed class InputInvoiceItemCatalogMappingService(
         string? expected,
         int productVariantId,
         int productUnitConversionId,
-        InputInvoiceItemCatalogTarget target)
+        InputInvoiceItemCatalogTarget target,
+        bool pricing = false)
     {
         if (mapping is null)
         {
             if (!string.IsNullOrWhiteSpace(expected))
-                throw new BusinessRuleException(
-                    "Mapping đã thay đổi. Hãy tải lại trước khi xác nhận.");
+                throw MappingConflict(
+                    "Mapping đã thay đổi. Hãy tải lại trước khi xác nhận.", pricing);
             return;
         }
 
@@ -446,8 +549,8 @@ public sealed class InputInvoiceItemCatalogMappingService(
         if (string.IsNullOrWhiteSpace(expected))
         {
             if (!sameTarget)
-                throw new BusinessRuleException(
-                    "Mapping đã được người khác xác nhận. Hãy tải lại trước khi đổi mapping.");
+                throw MappingConflict(
+                    "Mapping đã được người khác xác nhận. Hãy tải lại trước khi đổi mapping.", pricing);
             return;
         }
 
@@ -458,13 +561,17 @@ public sealed class InputInvoiceItemCatalogMappingService(
         }
         catch (FormatException)
         {
-            throw new BusinessRuleException("Phiên bản mapping không hợp lệ.");
+            throw MappingConflict("Phiên bản mapping không hợp lệ.", pricing);
         }
         if (mapping.RowVersion is null ||
             !mapping.RowVersion.SequenceEqual(posted))
-            throw new BusinessRuleException(
-                "Mapping đã được người khác cập nhật. Hãy tải lại trước khi xác nhận.");
+            throw MappingConflict(
+                "Mapping đã được người khác cập nhật. Hãy tải lại trước khi xác nhận.", pricing);
     }
+
+    private static BusinessRuleException MappingConflict(string message, bool pricing)
+        => pricing ? new PurchaseReceiptPricingConflictException(message)
+            : new BusinessRuleException(message);
 
     private static ItemIdentity RequireIdentity(InputInvoiceDetail detail)
         => TryIdentity(detail) ?? throw new BusinessRuleException(
@@ -580,7 +687,7 @@ public sealed class InputInvoiceItemCatalogMappingService(
     private static PurchaseReceiptAuditEvent CreateConfirmedAudit(
         int storeId,
         int receiptId,
-        int lineId,
+        int? lineId,
         InputInvoiceDetail detail,
         InputInvoiceItemCatalogMap mapping,
         Dictionary<string, object?>? oldValues,

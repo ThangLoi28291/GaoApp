@@ -12,6 +12,30 @@ namespace GaoApp.Tests.Payments;
 
 public sealed partial class AcbPaymentTests
 {
+    [Fact]
+    public async Task Lost_key_before_initiate_returns_recovery_hint_and_does_not_leave_a_stuck_attempt()
+    {
+        await using var f = await Fixture.Create();
+        var settings = (await f.Service.SettingsAsync(default))!;
+        var oldProtocol = new AcbProtocol(new HttpClient(), new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider());
+        settings.ClientSecretProtected = oldProtocol.Protect(1, "synthetic-secret");
+        await f.Db.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<AcbApiException>(() => f.Service.TryCreateAsync(100, default));
+        Assert.True(error.BusinessRequestNotSent);
+        Assert.Contains("Client secret", error.Message);
+        Assert.DoesNotContain("synthetic-secret", error.Message);
+        Assert.Equal(0, f.Bank.TokenCalls);
+        Assert.Empty(f.Bank.Orders);
+        Assert.Equal(AcbSessionStatus.Cancelled, (await f.Db.Set<AcbQrSession>().SingleAsync()).Status);
+        Assert.Equal(PosPaymentQrStatus.Cancelled, (await f.Db.PosPaymentQrRequests.SingleAsync()).Status);
+        settings.ClientSecretProtected = f.Protocol.Protect(1, "test-secret");
+        await f.Db.SaveChangesAsync();
+        Assert.NotNull(await f.Service.TryCreateAsync(100, default));
+        Assert.Single(f.Bank.Orders);
+        Assert.Equal(30000m, Assert.Single(f.Order.Payments).Amount);
+        Assert.Equal(0, f.FinalizeCount);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

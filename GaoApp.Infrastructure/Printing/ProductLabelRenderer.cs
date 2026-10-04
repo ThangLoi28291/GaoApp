@@ -51,6 +51,7 @@ public static class ProductLabelRenderer
     private static void DrawLabel(Graphics g, ProductLabelDesign d, LabelProduct p, int x, int y, int dpi)
     {
         if (d.Layout == "standard") { DrawStandard(g, d, p, x, y, dpi); return; }
+        if (d.Layout == "retail-large") { DrawRetailLarge(g, d, p, x, y, dpi); return; }
         int labelWidth = Dots(d.WidthMm, dpi), labelHeight = Dots(d.HeightMm, dpi);
         if (d.Layout == "framed")
         {
@@ -97,6 +98,63 @@ public static class ProductLabelRenderer
         if (d.ShowName) { g.DrawString(p.Name, normal, Brushes.Black, new RectangleF(x, y, width, nameHeight), textFormat); y += nameHeight + gap; }
         if (d.ShowBarcode) DrawBarcode(g, d, p, x, y, width, barHeight, codeTextHeight, small, center);
         if (d.Layout != "price-first") DrawPrice(bottom - footHeight);
+    }
+
+    private static void DrawRetailLarge(Graphics g, ProductLabelDesign d, LabelProduct p, int x, int y, int dpi)
+    {
+        int pad = Dots(1, dpi), gap = Math.Max(2, Dots(0.5m, dpi));
+        int width = Dots(d.WidthMm, dpi) - 2 * pad, bottom = y + Dots(d.HeightMm, dpi) - pad;
+        x += pad; y += pad;
+        using var name = new Font("Arial", d.FontSize * dpi / 72f, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var small = new Font("Arial", 6 * dpi / 72f, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var unit = new Font("Arial", Math.Max(6, d.FontSize - 1) * dpi / 72f, FontStyle.Bold, GraphicsUnit.Pixel);
+        using var left = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
+        using var center = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
+        using var singleLine = (StringFormat)left.Clone(); singleLine.FormatFlags |= StringFormatFlags.NoWrap;
+        int nameHeight = d.ShowName ? (int)Math.Ceiling(name.GetHeight(g) * 2) : 0;
+        int codeTextHeight = d.ShowBarcode && d.ShowBarcodeText ? (int)Math.Ceiling(small.GetHeight(g)) : 0;
+        int priceHeight = d.ShowPrice || d.ShowUnit ? Dots(d.HeightMm >= 30 ? 8m : 5m, dpi) : 0;
+        int barHeight = d.ShowBarcode ? bottom - y - nameHeight - priceHeight - codeTextHeight - gap * 2 : 0;
+        if (d.ShowBarcode && barHeight < Dots(5, dpi) || !d.ShowBarcode && y + nameHeight + priceHeight + gap > bottom)
+            throw new ValidationAppException("Nội dung không vừa chiều cao tem. Giảm cỡ chữ, ẩn bớt nội dung hoặc tăng chiều cao.");
+        if (d.ShowName)
+        {
+            g.DrawString(p.Name, name, Brushes.Black, new RectangleF(x, y, width, nameHeight), left);
+            y += nameHeight;
+            using var rule = new Pen(Color.Black, Math.Max(1, Dots(0.15m, dpi)));
+            g.DrawLine(rule, x, y, x + width, y);
+            y += gap;
+        }
+        if (priceHeight > 0)
+        {
+            int unitWidth = d.ShowUnit ? width / 4 : 0;
+            int priceWidth = width - (unitWidth > 0 ? unitWidth + gap : 0);
+            if (d.ShowPrice)
+            {
+                string amount = p.Price.ToString("#,0.##", CultureInfo.GetCultureInfo("vi-VN")) + " đ";
+                // Fit the entire amount, never truncate a price with an ellipsis.
+                float size = (d.FontSize + 9) * dpi / 72f;
+                while (true)
+                {
+                    using var price = new Font("Arial", size, FontStyle.Bold, GraphicsUnit.Pixel);
+                    if (g.MeasureString(amount, price).Width <= priceWidth && price.GetHeight(g) <= priceHeight)
+                    {
+                        g.DrawString(amount, price, Brushes.Black, new RectangleF(x, y, priceWidth, priceHeight), singleLine);
+                        break;
+                    }
+                    size -= 0.5f;
+                    if (size < 6 * dpi / 72f)
+                        throw new ValidationAppException("Giá bán quá dài cho vùng giá trên tem. Tăng khổ tem hoặc ẩn đơn vị.");
+                }
+            }
+            if (d.ShowUnit)
+            {
+                var box = new RectangleF(d.ShowPrice ? x + width - unitWidth : x, y, d.ShowPrice ? unitWidth : width, priceHeight);
+                g.DrawString(p.Unit, unit, Brushes.Black, box, center);
+            }
+            y += priceHeight + gap;
+        }
+        if (d.ShowBarcode) DrawBarcode(g, d, p, x, bottom - barHeight - codeTextHeight, width, barHeight, codeTextHeight, small, center);
     }
 
     // Keep the original layout for previously queued payloads with no layout property.

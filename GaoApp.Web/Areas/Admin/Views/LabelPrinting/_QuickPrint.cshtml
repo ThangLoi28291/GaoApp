@@ -1,0 +1,19 @@
+<section data-panel="quick" class="label-panel">
+    <h2>In tem theo sản phẩm</h2>
+    <p>Quét mã hoặc tìm sản phẩm, chọn đơn vị và số tem. Giá bán lẻ được lấy từ danh mục hiện tại.</p>
+    <fieldset id="quickFields" disabled>
+        <form id="quickSearchForm" class="label-inline mb-3">
+            <label for="quickSearch" class="visually-hidden">Tên, SKU hoặc mã vạch</label>
+            <input id="quickSearch" class="form-control flex-grow-1" style="width:auto" maxlength="100" autocomplete="off" placeholder="Quét mã vạch hoặc nhập tên / SKU…" />
+            <button class="btn btn-primary" type="submit">Tìm / quét mã</button>
+        </form>
+        <div id="quickSearchStatus" role="status" class="small mb-2">Đang tải cấu hình in…</div>
+        <div id="quickResults" class="label-quick-results"></div>
+        <div class="label-toolbar mt-4 mb-3"><h3>Danh sách tem cần in</h3><button type="button" id="quickRefresh" class="btn btn-outline-secondary btn-sm">Cập nhật giá</button></div>
+        <div class="label-table-scroll"><table class="table"><thead><tr><th>Sản phẩm / Đơn vị</th><th>Giá bán lẻ</th><th>Số tem</th><th></th></tr></thead><tbody id="quickLines"></tbody></table></div>
+    </fieldset>
+    <div class="label-toolbar"><h3>Chọn nút để in</h3><span id="quickTotal" role="status">Chưa chọn sản phẩm</span></div>
+    <div id="quickPrintChoices" class="label-print-choices"></div>
+    <button id="quickPrint" type="button" class="btn btn-warning" hidden>Thử lại lệnh trước</button>
+    <p class="label-help">Sản phẩm thiếu mã vạch hoặc giá bán cần được quản lý hoàn thiện trước khi in. Mỗi lần tối đa 10.000 tem. Kết quả in và xác nhận tem thực nhận nằm trong Lịch sử in.</p>
+</section>

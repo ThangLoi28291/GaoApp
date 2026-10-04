@@ -1,0 +1,74 @@
+@inject GaoApp.Application.Common.Interfaces.ICurrentUser CurrentUser
+@{
+    ViewData["Title"] = "Đối soát ca của tôi";
+    Layout = "_ContentNavbarLayout";
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-reconciliation.css" asp-append-version="true" />
+}
+@section header {
+    <div class="recon-heading">
+        <div><span class="recon-eyebrow">KIỂM TRA TIỀN TRONG CA</span><h1>Đối soát ca của tôi</h1>
+            <p>So tiền trong quỹ, mở khoản nhập sai và gửi yêu cầu điều chỉnh.</p></div>
+        <div class="recon-head-actions"><button id="reconRefresh" class="btn btn-outline-primary">Làm mới</button>
+            <a id="reconReturn" class="btn btn-primary" href="/admin/pos-shift">Về ca POS</a></div>
+    </div>
+}
+<partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
+<main id="shiftReconciliation" class="recon" data-user-id="@CurrentUser.UserId" aria-busy="true">
+    <div id="reconError" class="alert alert-danger" role="alert" hidden></div>
+    <div id="reconLoading" class="recon-card recon-loading" role="status">Đang tải toàn bộ giao dịch của ca…</div>
+    <div id="reconContent" hidden>
+        <section class="recon-context" aria-label="Ca đang đối soát"><div><strong id="reconShift">—</strong><span id="reconIdentity"></span></div>
+            <div><span id="reconPeriod"></span><small id="reconUpdated"></small></div></section>
+        <section class="recon-totals" aria-label="Đối chiếu quỹ">
+            <article class="recon-card"><span>Tiền mặt dự kiến trong quỹ</span><strong id="reconExpected">—</strong><small>Theo số liệu ca đang ghi nhận</small></article>
+            <article class="recon-card"><span>Tiền thực đếm</span><strong id="reconActual">—</strong><small id="reconCountSource">Chưa kiểm đếm cuối ca</small></article>
+            <article id="reconDifferenceCard" class="recon-card"><span>Chênh lệch quỹ</span><strong id="reconDifference">—</strong><small id="reconDifferenceNote">Kiểm đếm để đối chiếu</small></article>
+        </section>
+        <div id="reconDataCheck" class="recon-data-check"></div>
+        <details class="recon-breakdown"><summary>Xem cách tính quỹ và bảng kiểm đếm</summary>
+            <article class="recon-card"><div class="recon-card-head"><h2>Cách tính tiền trong quỹ</h2><span>Toàn bộ ca</span></div>
+                <div id="reconFormula" class="recon-formula"></div>
+                <p class="recon-help">Tiền khách đưa và tiền chuyển khoản nhận dư được xem riêng trong từng đơn. Cọc tiền mặt, thu công nợ và hoàn cọc tiền mặt đã nằm trong phiếu thu/chi.</p>
+                <details class="recon-count-details"><summary>Tiền đầu ca và bảng kiểm đếm</summary><div id="reconDenominations"></div></details>
+            </article>
+        </details>
+        <section class="recon-priority">
+            <article class="recon-card"><div class="recon-card-head"><h2>Cần kiểm tra</h2><span id="reconAttentionCount"></span></div>
+                <div id="reconAttention" class="recon-attention"></div>
+            </article>
+        </section>
+        <section class="recon-card recon-detail-card" aria-label="Chi tiết giao dịch">
+            <div class="recon-card-head"><div><h2>Giao dịch trong ca</h2><p>Bấm một dòng để đối chiếu hoặc yêu cầu sửa.</p></div>
+                <div class="recon-item-actions"><a id="reconRequests" href="/admin/pos-shift/requests?tab=cash" class="btn btn-outline-primary">Điều chỉnh thu/chi</a>
+                <a id="reconPaymentRequests" href="/admin/pos-shift/requests?tab=payment" class="btn btn-outline-primary">Đổi thanh toán / cọc</a></div></div>
+            <div id="reconTabs" class="recon-tabs" role="group" aria-label="Loại giao dịch">
+                <button type="button" data-tab="orders" class="active">Đơn hàng <span></span></button>
+                <button type="button" data-tab="cash">Thu / chi <span></span></button>
+                <button type="button" data-tab="refunds">Hoàn tiền <span></span></button>
+                <button type="button" data-tab="other">Cọc &amp; công nợ <span></span></button>
+                <details class="recon-more-tabs"><summary>Lịch sử khác</summary><div>
+                    <button type="button" data-tab="qrs">QR <span></span></button>
+                    <button type="button" data-tab="adjustments">Điều chỉnh <span></span></button>
+                </div></details>
+            </div>
+            <div class="recon-filters">
+                <label class="recon-search">Tìm giao dịch<input id="reconSearch" class="form-control" placeholder="Mã đơn, nội dung, số tiền, mã chuyển khoản…" autocomplete="off" /></label>
+                <details class="recon-extra-filters"><summary>Lọc thêm</summary><div>
+                    <label>Ngày<select id="reconDay" class="form-select"><option value="">Toàn bộ ca</option></select></label>
+                    <label>Hiển thị<select id="reconScope" class="form-select"><option value="all">Tất cả</option><option value="attention">Cần kiểm tra</option><option value="cash">Có tiền mặt</option><option value="bank">Có chuyển khoản</option></select></label>
+                </div></details>
+            </div>
+            <p id="reconFilterNote" class="recon-filter-note">Số quỹ phía trên luôn tính toàn bộ ca.</p>
+            <div id="reconList" class="recon-list"></div>
+            <div class="recon-pager"><span id="reconPageInfo" aria-live="polite"></span><div>
+                <button id="reconPrev" type="button" class="btn btn-outline-secondary">Trước</button>
+                <button id="reconNext" type="button" class="btn btn-outline-secondary">Sau</button></div></div>
+        </section>
+    </div>
+</main>
+@section PageScripts {
+    <script src="~/Admin/js/pos/pos.shift.close-draft.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.reconciliation.js" asp-append-version="true"></script>
+}

@@ -10,6 +10,7 @@ public sealed class OrderDraftDto
     public string? OrderNumber { get; set; }
 
     public int? CustomerId { get; set; }
+    public bool AskBeforePrintingReceipt { get; set; }
     public bool CustomerCanBuyOnCredit { get; set; }
     public decimal CustomerDebtBalance { get; set; }
     public int? CustomerDepositId { get; set; }

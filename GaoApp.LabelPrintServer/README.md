@@ -2,6 +2,49 @@
 
 Ứng dụng web có hai khu riêng: **In tem sản phẩm** (`/admin/label-printing`) cho nhân viên xử lý phiếu và lịch sử; **Cấu hình in tem** (`/admin/label-printing-settings`) cho admin quản lý mẫu và máy in. Dịch vụ này lấy các lệnh đã lưu trong cùng SQL Server và gửi RAW TSPL qua Windows spooler. Client chỉ cần trình duyệt; không cài QZ Tray cho chức năng in tem này.
 
+## Client bấm in, máy in ở server
+
+### Mẫu lớn Siêu thị 50 × 30 mm
+
+Trong **Cấu hình in tem → Mẫu tem**, bấm **+ Mẫu lớn 50 × 30**, kiểm tra số cột/lề/khoảng cách theo cuộn giấy rồi **Lưu mẫu**. Mẫu mới dùng tên đậm, giá lớn tự thu nhỏ để vừa, đơn vị riêng và mã vạch phía dưới; mặc định 1 cột, vẫn cho chọn 2 cột (rộng cuộn mặc định 104 mm). Các mẫu nhỏ đã lưu được giữ nguyên.
+
+Khi cập nhật tính năng này lên server, publish lại **cả GaoApp.Web và GaoApp.LabelPrintServer** vì hai chương trình dùng chung bộ vẽ tem. Dừng dịch vụ in trước khi chép bản mới, giữ cấu hình kết nối/StoreId hiện có, rồi khởi động lại dịch vụ. Không cần migration database. Sau cập nhật, dùng **In thử** để căn lề với cuộn 50 × 30 thực tế trước khi in nhiều tem.
+
+Tham khảo bố cục: [zplCloud Price Tag with Barcode](https://zplcloud.com/en/templates/barcode-price-tag), [Avery 50 × 30 mm](https://www.avery-zweckform.com/vorlage-50x30-p). Bố cục GaoApp được vẽ bằng bộ raster hiện có, dùng chung cho xem trước và TSPL.
+
+### Luồng gửi lệnh
+
+Luồng hiện có: **trình duyệt client → GaoApp.Web → hàng đợi SQL → GaoApp.LabelPrintServer → Windows Spooler → máy in tem trên server**.
+
+Web và dịch vụ in là hai chương trình riêng. Chỉ publish Web hoặc GaoApp.AutoInvoiceWorker sẽ chưa xử lý được hàng đợi in tem. Không cần mở thêm cổng HTTP cho dịch vụ in hoặc cài phần mềm in ở client. Worker kiểm tra hàng đợi mỗi khoảng 2 giây khi không có lệnh đang xử lý.
+
+Đã có profile Visual Studio: nhấp phải **GaoApp.LabelPrintServer → Publish → FolderProfile**. Đích mặc định là `D:\Publish\GaoApp-ServerMoi\LabelPrintServer`, nằm cạnh `Web` và `Worker`. Có thể publish bằng lệnh:
+
+```powershell
+dotnet publish .\GaoApp.LabelPrintServer\GaoApp.LabelPrintServer.csproj -c Release -p:PublishProfile=FolderProfile
+```
+
+Chép **toàn bộ** thư mục này lên server, ví dụ `D:\GaoApp\LabelPrintServer` (ngoài thư mục Web của IIS). Gói có `README.md`, `Install-Service.ps1` và `appsettings.json` trống cấu hình kết nối. Điền đúng kết nối SQL/StoreId theo hướng dẫn bên dưới. Biến môi trường của IIS application pool không tự truyền sang dịch vụ in.
+
+Trên server, mở PowerShell bằng quyền quản trị:
+
+```powershell
+Set-Location 'D:\GaoApp\LabelPrintServer'
+notepad .\appsettings.json
+# Luu dung ConnectionStrings.DefaultConnection va LabelPrinting.StoreId.
+.\GaoApp.LabelPrintServer.exe --list-printers
+.\Install-Service.ps1 -InstallDirectory 'D:\GaoApp\LabelPrintServer'
+# Dich vu se xu ly cac lenh cu dang cho ngay khi Start.
+Start-Service -Name 'GaoApp.LabelPrintServer'
+Get-Service -Name 'GaoApp.LabelPrintServer'
+```
+
+Script yêu cầu tài khoản Windows chạy dịch vụ, đăng ký khởi động Automatic và phụ thuộc Print Spooler; không tự bắt đầu in. Tài khoản này cần đọc thư mục publish, quyền in trên máy tem, quyền truy cập database và quyền **Log on as a service** theo chính sách server. Kết quả `--list-printers` thuộc tài khoản đang chạy lệnh; cần bảo đảm tài khoản dịch vụ cũng thấy đúng tên máy. Script không cấp thêm quyền SQL hay thay đổi cấu hình IIS.
+
+Sau khi dịch vụ chạy: vào **Cấu hình in tem → Máy in tại server**, chọn tên Windows chính xác, bật **Cho phép in**. **Dịch vụ liên lạc lần cuối** phải cập nhật. Lệnh chờ sẽ chuyển sang **Chờ xác nhận tem** khi Windows nhận lệnh. Chỉ xác nhận số lượng sau khi nhận tem thực tế. Nếu vẫn chờ: đối chiếu cùng database, đúng StoreId, máy đã bật và log của dịch vụ trong Windows Event Viewer → Windows Logs → Application. Trạng thái Running không tự chứng minh kết nối SQL thành công.
+
+Khi cập nhật bản sau, dừng riêng dịch vụ in trước khi thay file; giữ lại cấu hình SQL/StoreId tại server. Không chép `appsettings.json` trống từ package đè cấu hình đang dùng.
+
 ## Chuẩn bị
 
 1. Cài driver Xprinter XP-420B trên Windows Server và kết nối USB. Đặt tên riêng cho từng máy trong Windows, ví dụ `Xprinter Kho 1`, `Xprinter Kho 2`.

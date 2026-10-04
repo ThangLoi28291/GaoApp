@@ -1,8 +1,14 @@
 ﻿@using GaoApp.Web.Areas.Admin.ViewModels.POS
+@using System.Text.Json
+@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
 @{
     ViewData["Title"] = "Ca POS";
     Layout = "_ContentNavbarLayout";
     var posCtx = ViewBag.POSHeaderContext as POSHeaderContextViewModel ?? new POSHeaderContextViewModel();
+    var canReconcile = (await Authorization.AuthorizeAsync(User, null, PermissionCodes.Pos.Shift.Reconcile)).Succeeded;
+    var printContext = new { storeId = posCtx.StoreId, terminalId = posCtx.TerminalId, storeName = posCtx.StoreName,
+        terminalName = posCtx.TerminalName, userName = posCtx.UserName, userId = posCtx.UserId, canReconcile };
 }
 
 @section VendorStyles {
@@ -21,6 +27,8 @@
 
 <div class="shift-shell">
     @Html.AntiForgeryToken()
+    <script id="shiftPrintContext" type="application/json">@Html.Raw(JsonSerializer.Serialize(printContext))</script>
+    <div id="shiftCashFeedback" class="alert d-none" role="status"></div>
 
     <div id="posErrorBanner" class="alert alert-warning d-none mt-3 shift-alert-banner" role="alert">
         <div id="posErrorBannerMessage" class="fw-semibold"></div>
@@ -36,11 +44,10 @@
                 </div>
 
                 <div class="shift-command-copy">
-                    <div class="shift-hero-card__title">Điều hành ca POS</div>
+                    <div class="shift-hero-card__title" id="shiftDisplayName">@posCtx.UserName · @posCtx.TerminalName</div>
                     <div class="shift-command-meta" aria-label="Thông tin ca hiện tại">
-                        <span>Mã ca <strong id="shiftId">-</strong></span>
-                        <span>Mã hệ thống <strong id="shiftCode">-</strong></span>
                         <span>Mở lúc <strong id="openedAt">-</strong></span>
+                        <details><summary>Mã ca để tra cứu</summary><span>Mã ca <strong id="shiftId">-</strong> · <strong id="shiftCode">-</strong></span></details>
                     </div>
                 </div>
             </div>
@@ -59,6 +66,9 @@
                 <button id="btnShowCloseModal" type="button" class="btn btn-danger shift-toolbar-btn" style="display:none;">
                     <i class="bx bx-lock-alt"></i>
                     <span>Đóng ca</span>
+                </button>
+                <button id="btnShowDrawerModal" type="button" class="btn btn-outline-secondary shift-toolbar-btn" style="display:none;">
+                    <i class="bx bx-lock-open-alt"></i><span>Mở két</span>
                 </button>
             </div>
         </div>
@@ -146,6 +156,7 @@
                         </div>
                         <div id="closingCashExpected" class="shift-cash-position-total__value money">0</div>
                     </div>
+                    <div id="shiftNegativeCashWarning" class="alert alert-warning mt-3" role="alert" hidden></div>
                 </section>
 
                 <aside class="shift-secondary-card" aria-labelledby="shiftSecondaryTitle">
@@ -209,11 +220,12 @@
                                         <th style="width:140px;">Số tiền</th>
                                         <th style="width:180px;">Lý do</th>
                                         <th>Ghi chú</th>
+                                        <th style="width:110px;">In phiếu</th>
                                     </tr>
                                 </thead>
                                 <tbody id="cashTxnBody">
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">Chưa có giao dịch.</td>
+                                        <td colspan="6" class="text-center text-muted py-4">Chưa có giao dịch.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -471,16 +483,48 @@
         </div>
     </div>
 </div>
+<div class="modal fade shift-modal" id="cashDrawerModal" tabindex="-1" aria-labelledby="cashDrawerTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="cashDrawerTitle">Mở két tiền</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <p>Thao tác này không tạo phiếu thu/chi. Lý do mở két được lưu cùng người thao tác và ca hiện tại.</p>
+            <label class="form-label" for="cashDrawerReason">Lý do mở két <span class="text-danger">*</span></label>
+            <textarea id="cashDrawerReason" class="form-control" rows="3" maxlength="300" required placeholder="Ví dụ: Đổi tiền lẻ cho khách"></textarea>
+            <div id="cashDrawerError" class="text-danger mt-2" role="alert"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button><button id="btnOpenCashDrawer" type="button" class="btn btn-primary">Xác nhận mở két</button></div>
+    </div></div>
+</div>
+
+<div class="modal fade shift-modal" id="shiftDrawerConfirmModal" tabindex="-1" aria-labelledby="shiftDrawerConfirmTitle" aria-describedby="shiftDrawerConfirmDescription" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content shift-drawer-confirm">
+        <div class="modal-body p-4 p-sm-5">
+            <div class="shift-drawer-confirm__icon"><i class="bx bx-lock-open-alt" aria-hidden="true"></i></div>
+            <div class="shift-drawer-confirm__eyebrow">KIỂM ĐẾM TIỀN MẶT</div>
+            <h4 id="shiftDrawerConfirmTitle">Mở két để nhận ca?</h4>
+            <p id="shiftDrawerConfirmDescription" class="text-muted"></p>
+            <div class="shift-drawer-confirm__context"><span id="shiftDrawerTerminal"></span><strong id="shiftDrawerUser"></strong></div>
+            <div class="shift-drawer-confirm__reason">Lý do tự ghi: <strong id="shiftDrawerAutoReason"></strong></div>
+            <div id="shiftDrawerConfirmError" class="alert alert-warning mt-3 mb-0" role="alert" hidden></div>
+            <div class="d-flex gap-2 mt-4">
+                <button id="btnCancelShiftDrawer" type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Để sau</button>
+                <button id="btnConfirmShiftDrawer" type="button" class="btn btn-primary flex-grow-1">Mở két và đếm tiền</button>
+            </div>
+            <button id="btnContinueShiftCount" type="button" class="btn btn-link w-100 mt-2" hidden>Tiếp tục nhập số tiền đã đếm</button>
+        </div>
+    </div></div>
+</div>
+
 <!-- Cash Transaction Modal -->
-<div class="modal fade shift-modal shift-cash-txn-modal" id="cashTxnModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade shift-modal shift-cash-txn-modal" id="cashTxnModal" data-cash-txn-theme="out" tabindex="-1" aria-labelledby="cashTxnTitle" aria-describedby="cashTxnDescription" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
-                    <h5 class="modal-title">Thu / Chi tiền mặt</h5>
-                    <div class="shift-modal-subtitle">Ghi nhận khoản phát sinh ngoài đơn bán trong ca hiện tại.</div>
+                    <h5 class="modal-title" id="cashTxnTitle" aria-live="polite">Chi tiền mặt</h5>
+                    <div class="shift-modal-subtitle" id="cashTxnDescription">Ghi nhận khoản phát sinh ngoài đơn bán trong ca hiện tại.</div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
             </div>
 
             <div class="modal-body">
@@ -489,23 +533,23 @@
                     <div class="shift-cash-type-segment" role="group" aria-label="Loại giao dịch tiền mặt">
                         <button type="button"
                                 class="shift-cash-type-btn active"
-                                data-cash-txn-type="1"
+                                data-cash-txn-type="2"
                                 aria-pressed="true">
-                            <i class="bx bx-plus-circle"></i>
-                            <span>Thu tiền</span>
+                            <i class="bx bx-minus-circle"></i>
+                            <span>Chi tiền</span>
                         </button>
                         <button type="button"
                                 class="shift-cash-type-btn"
-                                data-cash-txn-type="2"
+                                data-cash-txn-type="1"
                                 aria-pressed="false">
-                            <i class="bx bx-minus-circle"></i>
-                            <span>Chi tiền</span>
+                            <i class="bx bx-plus-circle"></i>
+                            <span>Thu tiền</span>
                         </button>
                     </div>
 
                     <select id="cashTxnType" class="form-select visually-hidden" tabindex="-1" aria-label="Giá trị loại giao dịch">
-                        <option value="1">Thu tiền mặt</option>
                         <option value="2">Chi tiền mặt</option>
+                        <option value="1">Thu tiền mặt</option>
                     </select>
                 </div>
 
@@ -513,9 +557,9 @@
                     <label class="shift-form-label" for="cashTxnAmount">Số tiền</label>
                     <div class="shift-cash-amount-wrap">
                         <input id="cashTxnAmount"
-                               type="number"
-                               step="0.01"
+                               type="text"
                                inputmode="decimal"
+                               autocomplete="off"
                                class="form-control shift-cash-amount-input"
                                value="0" />
                         <span class="shift-cash-amount-currency">đ</span>
@@ -606,6 +650,9 @@
                                 <div id="closeDiffHint" class="shift-close-compare-hint match">
                                     Chưa có dữ liệu đối soát.
                                 </div>
+                                <button id="btnReviewShiftDifference" type="button" class="btn btn-outline-primary w-100 mt-3" hidden>
+                                    <i class="bx bx-search-alt me-1"></i>Kiểm tra lệch ca
+                                </button>
                             </div>
                         </div>
 
@@ -758,5 +805,10 @@
 </div>
 @section PageScripts {
     <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/pos.printing.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/shift.cash-printing.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.close-draft.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.shift.page.js" asp-append-version="true"></script>
 }

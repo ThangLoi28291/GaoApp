@@ -121,7 +121,7 @@ public sealed class ProductIndexModernUiContractTests
         Assert.True(
             Regex.IsMatch(
                 controller,
-                @"GetPagedAsync\s*\(\s*storeId\s*,\s*search\s*,\s*categoryId\s*,\s*isActive\s*,\s*isSellable\s*,",
+                @"SearchCatalogAsync\s*\(\s*storeId\s*,\s*search\s*,\s*categoryId\s*,\s*isActive\s*,\s*isSellable\s*,",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
             "Product controller must call the bounded filtered read overload.");
     }

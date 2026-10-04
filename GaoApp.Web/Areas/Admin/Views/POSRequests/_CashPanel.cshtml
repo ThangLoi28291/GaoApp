@@ -1,0 +1,31 @@
+@{ bool isAdmin = ViewBag.IsAdmin == true; }
+<section id="cashAdjustments" class="ca-shell" data-admin="@(isAdmin ? "true" : "false")">
+    @Html.AntiForgeryToken()
+    <div id="caMessage" role="status" hidden></div>
+    <section class="ca-panel">
+        <div class="operations-panel-toolbar"><p>Đề nghị sửa hoặc hủy phiếu thu/chi.</p><button type="button" id="caRefresh" class="btn btn-outline-primary">Tải lại</button></div>
+        <div class="ca-tabs" role="group" aria-label="Danh sách">
+            <button type="button" data-tab="requests" class="btn">Yêu cầu</button>
+            <button type="button" data-tab="transactions" class="btn">Thu/chi của tôi</button>
+        </div>
+        <form id="caFilters" class="ca-filters">
+            <label id="caStatusLabel">Trạng thái<select id="caStatus" class="form-select">
+                <option value="Pending">Chờ duyệt</option><option value="NeedsReconciliation">Cần đối soát lại</option>
+                <option value="Approved">Đã duyệt</option><option value="Rejected">Từ chối</option>
+                <option value="Withdrawn">Đã rút</option><option value="">Tất cả yêu cầu</option>
+            </select></label>
+            <label id="caKeywordLabel" hidden>Nội dung thu/chi<input id="caKeyword" class="form-control" maxlength="200" placeholder="Tìm nội dung hoặc ghi chú…" /></label>
+            <button type="submit" class="btn btn-primary">Tìm kiếm</button>
+            <button type="button" id="caClear" class="btn btn-outline-secondary">Xóa lọc</button>
+            <span id="caScope" class="text-muted"></span>
+        </form>
+        <div class="ca-table-wrap"><table class="table"><thead id="caHead"></thead><tbody id="caRows"></tbody></table></div>
+        <footer class="ca-pager"><span id="caCount"></span><div><button id="caPrev" class="btn btn-outline-secondary" type="button">Trước</button>
+            <span id="caPage"></span><button id="caNext" class="btn btn-outline-secondary" type="button">Sau</button></div></footer>
+    </section>
+    <dialog id="caDialog" class="ca-dialog" aria-labelledby="caDialogTitle">
+        <div class="ca-dialog-header"><div><span class="ca-eyebrow">ĐIỀU CHỈNH THU / CHI</span><h2 id="caDialogTitle"></h2></div><button type="button" id="caClose" class="btn btn-outline-secondary" aria-label="Đóng">✕</button></div>
+        <div id="caDialogError" class="alert alert-danger" role="alert" hidden></div>
+        <div id="caDialogBody"></div>
+    </dialog>
+</section>

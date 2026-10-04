@@ -69,6 +69,7 @@ public sealed class CustomerQuickViewDto
 
 public sealed class CustomerEditDto
 {
+    public bool AskBeforePrintingReceipt { get; set; }
     public int Id { get; set; }
 
     [Required(ErrorMessage = "Vui lòng nhập tên khách hàng.")]

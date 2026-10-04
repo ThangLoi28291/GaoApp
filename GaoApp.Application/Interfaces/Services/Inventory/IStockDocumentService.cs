@@ -4,6 +4,7 @@ namespace GaoApp.Application.Interfaces.Services.Inventory;
 
 public interface IStockDocumentService
 {
+    Task<ReceiptPriceDraftResult> SavePriceDraftAsync(int documentId, SaveReceiptPriceDraftRequest request, CancellationToken ct = default);
     Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default);
 
     Task<StockReceiptFormOptionsDto> GetReceiptFormOptionsAsync(CancellationToken ct = default);

@@ -10,6 +10,7 @@
         const {
             btnNewCart,
             btnHoldCart,
+            btnClearCartLines,
             btnOpenPayment,
             btnFinalizeCart,
             btnCancelCart,
@@ -681,6 +682,51 @@
             );
         }
 
+        async function clearCurrentCartLines() {
+            openConfirmModal({
+                title: 'Xóa toàn bộ sản phẩm',
+                message: 'Xóa toàn bộ sản phẩm khỏi đơn nháp nhưng vẫn giữ mã đơn, khách hàng và ghi chú?',
+                confirmText: 'Xóa sản phẩm',
+                confirmClass: 'btn-warning',
+                onConfirm: async () => {
+                    await runPosAction(
+                        posState,
+                        'order:clearCurrentCartLines',
+                        async function () {
+                            return await postJson('/admin/pos/cart/current/clear-lines', {});
+                        },
+                        {
+                            button: btnConfirmAction,
+                            busyText: 'Đang xóa sản phẩm...',
+                            fallbackMessage: 'Không thể xóa sản phẩm khỏi giỏ.',
+                            scopes: ['cartMutate', 'modalSubmit'],
+                            conflictScopes: ['cartMutate', 'checkout', 'modalSubmit'],
+                            blockedMessage: 'POS đang xử lý thanh toán hoặc thao tác giỏ khác, chưa thể xóa sản phẩm.',
+                            requireOnline: true,
+                            offlineMessage: 'Đang offline, chưa thể xóa sản phẩm khỏi giỏ.',
+                            offlineDisplayMode: 'toast',
+                            displayMode: 'toast',
+                            onSuccess: async function (data) {
+                                await applyScreenSuccess({
+                                    successMessage: data?.message || 'Đã xóa toàn bộ sản phẩm khỏi giỏ nháp',
+                                    reason: 'order-clear-current-cart-lines',
+                                    silent: false,
+                                    force: true,
+                                    focusBarcode: true,
+                                    beforeRefresh: async function () {
+                                        confirmModal?.hide();
+                                    }
+                                });
+                            },
+                            onFinally: function () {
+                                refreshLocksSafe();
+                            }
+                        }
+                    );
+                }
+            });
+        }
+
         function openConfirmModal(options) {
             if (confirmTitle) {
                 confirmTitle.textContent = options?.title || 'Xác nhận thao tác';
@@ -738,6 +784,8 @@
                 confirmText: 'Chốt đơn',
                 confirmClass: 'btn-success',
                 onConfirm: async () => {
+                    const cashSummary = window.PosCheckoutFeedback?.cashSummary(posState?.business?.currentDraft || posState?.currentDraft);
+                    const askBeforePrintingReceipt = (posState?.business?.currentDraft || posState?.currentDraft)?.askBeforePrintingReceipt === true;
                     await runPosAction(
                         posState,
                         'order:finalizeCurrentCart',
@@ -766,7 +814,7 @@
                                         confirmModal?.hide();
 
                                         if (data?.orderId) {
-                                            openReceiptPrint(data.orderId, '80', true);
+                                            openReceiptPrint(data.orderId, '80', true, true, cashSummary, askBeforePrintingReceipt);
                                         }
                                     }
                                 });
@@ -1162,6 +1210,16 @@
             });
 
             registerUiLock(posState, {
+                target: btnClearCartLines,
+                requireOnline: true,
+                busyScopes: ['cartMutate', 'checkout', 'modalSubmit'],
+                pendingActions: ['order:clearCurrentCartLines', 'order:holdCurrentCart', 'order:finalizeCurrentCart', 'payment:finalizeFromModal'],
+                offlineMessage: 'Đang offline, chưa thể xóa sản phẩm khỏi giỏ.',
+                busyMessage: 'POS đang bận xử lý giỏ hàng.',
+                pendingMessage: 'Đang xóa sản phẩm khỏi giỏ.'
+            });
+
+            registerUiLock(posState, {
                 target: btnOpenPayment,
                 requireOnline: true,
                 busyScopes: ['checkout', 'cartMutate'],
@@ -1237,6 +1295,7 @@
 
             btnNewCart?.addEventListener('click', createNewCart);
             btnHoldCart?.addEventListener('click', openHoldModal);
+            btnClearCartLines?.addEventListener('click', clearCurrentCartLines);
             btnOpenPayment?.addEventListener('click', openPaymentModal);
             btnFinalizeCart?.addEventListener('click', finalizeCurrentCart);
             btnCancelCart?.addEventListener('click', cancelCurrentCart);

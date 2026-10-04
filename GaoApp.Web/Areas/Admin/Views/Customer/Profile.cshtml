@@ -1,0 +1,34 @@
+@model GaoApp.Application.DTOs.Customers.CustomerProfileSummaryDto
+@using System.Globalization
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService DebtAuthorization
+@{
+    Layout="_ContentNavbarLayout";ViewData["Title"]="Hồ sơ khách hàng";ViewData["container"]="container-fluid";
+    var c=Model.Customer;var r=Model.Rewards;
+    string N(decimal? n)=>n?.ToString("N0",CultureInfo.GetCultureInfo("vi-VN"))??"—";
+    var pointsNeeded=r==null?0:Math.Max(0,r.PointsPerVoucher-r.AvailablePoints);
+}
+@section PageStyles {<link rel="stylesheet" href="~/Admin/css/customer-profile.css" asp-append-version="true" />}
+<div id="customerProfile" class="cp" data-id="@c.Id" data-orders="@Model.CanViewOrders.ToString().ToLowerInvariant()">
+    <a class="cp-back" href="/Admin/Customer"><i class="bx bx-arrow-back"></i> Danh sách khách hàng</a>
+    @if ((await DebtAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.View)).Succeeded)
+    {
+        <div class="d-flex flex-wrap gap-2 mb-3"><a class="btn btn-outline-primary" href="/admin/customer-debt?customerId=@c.Id">Xem công nợ / thu nợ</a><a class="btn btn-outline-secondary" href="/admin/customer-debt/collections?customerId=@c.Id">Báo cáo thu công nợ</a></div>
+    }
+    <header class="cp-header"><div class="cp-avatar"><i class="bx bx-user"></i></div><div><span class="cp-eyebrow">HỒ SƠ KHÁCH HÀNG</span><h2>@c.Name</h2><p>@(c.Code??"Chưa có mã") · @(c.Phone??"Chưa có điện thoại")</p><div class="cp-tags"><span>@(c.PriceTier=="WHOLESALE"?"Khách sỉ":"Khách lẻ")</span><span>@(c.IsActive?"Đang hoạt động":"Ngừng hoạt động")</span>@if(c.IsImportedFromOldSystem){<span>Chuyển từ hệ thống cũ</span>}</div></div><button id="cpRefresh" class="btn btn-outline-primary ms-auto" type="button"><i class="bx bx-refresh"></i> Tải lại</button></header>
+    <section class="cp-stats" aria-label="Tình trạng hiện tại">
+        <article class="cp-stat cp-stat-primary"><i class="bx bx-star"></i><span>Điểm hiện có</span><strong id="cpPoints">@N(r?.AvailablePoints)</strong><small>@(r==null?"Chưa có cấu hình điểm":pointsNeeded>0?$"Còn {N(pointsNeeded)} điểm để đổi voucher":$"Có thể đổi {r.RedeemableVoucherCount} voucher")</small></article>
+        <article class="cp-stat"><i class="bx bx-gift"></i><span>Voucher dùng được</span><strong>@(r?.AvailableVoucherCount.ToString()??"—")</strong><small>Tổng giá trị @N(r?.AvailableVoucherValue) đ</small></article>
+        <article class="cp-stat"><i class="bx bx-shopping-bag"></i><span>Giá trị mua sau hoàn tiền</span><strong>@N(Model.NetSales) @(Model.CanViewOrders?"đ":"")</strong><small>@(Model.CanViewOrders?"Đơn đã chốt, loại đơn hủy; trừ tiền đã hoàn":"Cần quyền xem đơn hàng")</small></article>
+        <article class="cp-stat"><i class="bx bx-receipt"></i><span>Đơn đã hoàn tất</span><strong>@(Model.CompletedOrders?.ToString()??"—")</strong><small>Lần mua gần nhất: @(Model.LastPurchaseAtUtc?.AddHours(7).ToString("dd/MM/yyyy HH:mm")??"—")</small></article>
+    </section>
+    @if(Model.RewardNotice!=null){<p class="cp-notice">@Model.RewardNotice</p>}
+    <div class="cp-body"><aside class="cp-info"><h5>Thông tin khách hàng</h5><dl><dt>Điện thoại</dt><dd>@(c.Phone??"—")</dd><dt>Email</dt><dd>@(c.Email??"—")</dd><dt>Địa chỉ</dt><dd>@(c.Address??"—")</dd><dt>Mã số thuế</dt><dd>@(c.TaxCode??"—")</dd><dt>Ghi chú</dt><dd>@(c.Note??"Chưa có ghi chú")</dd></dl><div class="cp-explain"><i class="bx bx-info-circle"></i><p>Đổi điểm sẽ trừ tích lũy để tạo voucher. Dùng voucher thanh toán không trừ điểm lần nữa.</p></div>@if(c.IsImportedFromOldSystem){<p class="small text-muted">Số dư chuyển từ hệ thống cũ được ghi riêng. Trang chỉ hiển thị lịch sử có trong dữ liệu.</p>}</aside>
+    <main class="cp-main"><nav class="cp-tabs" aria-label="Lịch sử khách hàng"><button type="button" data-tab="overview" aria-pressed="true">Tổng quan</button>@if(Model.CanViewOrders){<button type="button" data-tab="orders" aria-pressed="false">Mua hàng</button>}<button type="button" data-tab="points" aria-pressed="false">Lịch sử điểm</button><button type="button" data-tab="vouchers" aria-pressed="false">Voucher</button></nav>
+    <form id="cpFilters" class="cp-filters" hidden><label class="cp-search">Tìm kiếm<input id="cpSearch" class="form-control" maxlength="100" placeholder="Mã đơn, voucher hoặc nội dung…" /></label><label>Từ ngày<input id="cpFrom" class="form-control" type="date" /></label><label>Đến ngày<input id="cpTo" class="form-control" type="date" /></label><label>Loại / trạng thái<select id="cpStatus" class="form-select"></select></label><button class="btn btn-primary" type="submit">Lọc</button><button id="cpClear" class="btn btn-outline-secondary" type="button">Xóa lọc</button></form>
+    <p id="cpHint" class="cp-hint"></p><div id="cpResults" aria-live="polite" aria-busy="true"></div><footer id="cpPager" class="cp-pager" hidden><span id="cpCount"></span><div><button id="cpPrev" class="btn btn-sm btn-outline-secondary" type="button">Trước</button><span id="cpPage"></span><button id="cpNext" class="btn btn-sm btn-outline-secondary" type="button">Sau</button></div></footer>
+    </main></div>
+</div>
+<dialog id="cpDetail" class="cp-dialog" aria-labelledby="cpDetailTitle"><header><h4 id="cpDetailTitle">Chi tiết</h4><button id="cpCloseDetail" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Đóng chi tiết">Đóng ×</button></header><div id="cpDetailBody"></div></dialog>
+@section PageScripts {<script src="~/Admin/js/customer-profile.js" asp-append-version="true"></script>}

@@ -1,0 +1,78 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.POSTerminals.POSTerminalIndexVm
+@{
+    ViewData["Title"] = "Quản lý máy POS";
+}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h3 class="mb-2">Quản lý máy POS</h3>
+        <p class="text-muted mb-0">Tạo quầy thu ngân và cấp khóa ghép thiết bị cho cửa hàng hiện tại.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="/admin/kiosks" class="btn btn-outline-primary">Quầy tự phục vụ</a>
+        <a href="/admin/account/login" class="btn btn-outline-secondary">Đăng nhập bán hàng</a>
+        <a asp-action="Create" class="btn btn-primary">+ Thêm máy POS</a>
+    </div>
+</div>
+@if (TempData["Success"] is string success)
+{
+    <div class="alert alert-success" role="status">@success</div>
+}
+<div class="alert alert-info">Mỗi thiết bị nên dùng một khóa riêng. Sau khi cấp khóa, sao chép và dán vào ô “Khóa máy do admin cấp” trên trang đăng nhập của thiết bị đó.</div>
+@if (Model.Terminals.Count == 0)
+{
+    <div class="card"><div class="card-body text-center py-5">
+        <h4>Chưa có máy POS</h4>
+        <p class="text-muted">Tạo máy POS đầu tiên, sau đó cấp khóa cho máy tính hoặc máy tính bảng tại quầy.</p>
+        <a asp-action="Create" class="btn btn-primary">Tạo máy POS đầu tiên</a>
+    </div></div>
+}
+@foreach (var terminal in Model.Terminals)
+{
+    <section class="card mb-4" aria-labelledby="terminal-@terminal.Id">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h5 id="terminal-@terminal.Id" class="mb-1">@terminal.Code · @terminal.Name</h5>
+                <span class="badge @(terminal.IsActive ? "bg-label-success" : "bg-label-secondary")">@(terminal.IsActive ? "Đang hoạt động" : "Ngừng hoạt động")</span>
+                <span class="text-muted ms-2">@terminal.Devices.Count(x => x.IsActive) khóa đang dùng</span>
+                @if (!string.IsNullOrWhiteSpace(terminal.Description)) { <p class="text-muted mt-2 mb-0">@terminal.Description</p> }
+            </div>
+            @if (terminal.IsActive)
+            {
+                <a asp-action="CreateKey" asp-route-terminalId="@terminal.Id" class="btn btn-outline-primary">+ Tạo khóa máy</a>
+            }
+        </div>
+        @if (terminal.Devices.Count == 0)
+        {
+            <div class="card-body text-muted">Chưa có khóa thiết bị. Chọn “Tạo khóa máy” để cấp khóa đầu tiên.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead><tr><th>Thiết bị</th><th>Ngày cấp (UTC+7)</th><th>Trạng thái khóa</th><th>Thao tác</th></tr></thead>
+                    <tbody>
+                    @foreach (var device in terminal.Devices)
+                    {
+                        <tr>
+                            <td><strong>@(string.IsNullOrWhiteSpace(device.DeviceName) ? "Thiết bị chưa đặt tên" : device.DeviceName)</strong><div class="text-muted small">#@device.Id</div></td>
+                            <td class="text-nowrap">@device.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><span class="badge @(device.IsActive ? "bg-label-success" : "bg-label-secondary")">@(device.IsActive ? "Đang dùng" : "Đã thu hồi")</span></td>
+                            <td>
+                                @if (device.IsActive)
+                                {
+                                    <form asp-action="RevokeKey" asp-route-id="@device.Id" method="post" data-revoke-key>
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">Thu hồi khóa</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+@section PageScripts {
+    <script src="~/Admin/js/pos-terminals.js" asp-append-version="true"></script>
+}

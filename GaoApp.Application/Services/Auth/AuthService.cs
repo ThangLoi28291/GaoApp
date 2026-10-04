@@ -65,8 +65,13 @@ public class AuthService : IAuthService
 
         if (userInStore.Role == null || userInStore.Role.IsDeleted)
             return Result<LoginResponse>.Failure(AuthErrors.RoleUnavailable);
+
+        if (request.ManageTerminals && userInStore.Role.Code != "ADMIN")
+            return Result<LoginResponse>.Failure(AuthErrors.TerminalManagementDenied);
+
         // 2. Resolve terminal bằng DeviceKey
-        var deviceKey = request.DeviceKey;
+        var suppliedKey = !string.IsNullOrWhiteSpace(request.PairingKey);
+        var deviceKey = request.ManageTerminals ? null : suppliedKey ? request.PairingKey!.Trim() : request.DeviceKey;
         var devicePaired = false;
 
         GaoApp.Domain.Entities.POSTerminal? terminal = null;
@@ -77,7 +82,10 @@ public class AuthService : IAuthService
         }
 
         // 3. Nếu chưa có terminal từ cookie thì bắt buộc chọn terminal để ghép
-        if (terminal == null)
+        if (suppliedKey && !request.ManageTerminals && terminal == null)
+            return Result<LoginResponse>.Failure(AuthErrors.InvalidPairingKey);
+
+        if (terminal == null && !request.ManageTerminals)
         {
             if (!request.SelectedTerminalId.HasValue || request.SelectedTerminalId.Value <= 0)
             {
@@ -118,9 +126,9 @@ public class AuthService : IAuthService
 
                 StoreId = storeId,
 
-                TerminalId = terminal.Id,
-                TerminalCode = terminal.Code,
-                TerminalName = terminal.Name,
+                TerminalId = terminal?.Id ?? 0,
+                TerminalCode = terminal?.Code ?? string.Empty,
+                TerminalName = terminal?.Name ?? string.Empty,
 
                 ClientIp = clientIp,
                 DeviceKey = deviceKey,

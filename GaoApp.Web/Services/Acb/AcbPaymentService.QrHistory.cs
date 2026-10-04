@@ -48,7 +48,10 @@ public sealed partial class AcbPaymentService
             ? qr.Status != PosPaymentQrStatus.Pending
             : session.Status is AcbSessionStatus.Cancelled or AcbSessionStatus.Completed ||
               (session.PaymentId != null && AcbPaymentPolicy.Balance(order) > 0));
-        var canCancel = !readOnly && (session == null || session.Status == AcbSessionStatus.Pending);
+        var canCancel = session == null
+            ? order.Status == OrderStatus.Draft && qr.PaymentId == null &&
+              qr.Status is PosPaymentQrStatus.Pending or PosPaymentQrStatus.Failed or PosPaymentQrStatus.Expired
+            : !readOnly && session.Status == AcbSessionStatus.Pending;
         var message = session?.Status switch
         {
             AcbSessionStatus.Received => "ACB đã xác nhận tiền. Bấm Kiểm tra ngay để tiếp tục ghi nhận và chốt đơn; không chuyển thêm tiền.",
@@ -56,6 +59,7 @@ public sealed partial class AcbPaymentService
             _ => "Đang xem lại QR đã tạo. Số tiền và mã chuyển khoản giữ nguyên."
         };
         if (readOnly) message = "QR đã kết thúc hoặc đã ghi nhận tiền. Chỉ xem lại thông tin, không chuyển thêm vào QR này.";
+        if (readOnly && canCancel) message = "QR chưa ghi nhận tiền và đã hết hạn hoặc không còn hợp lệ. Hủy QR này trước khi tạo QR mới.";
         return new(dto, session?.Status.ToString() ?? qr.Status.ToString(), canCancel, message, readOnly);
     }
 

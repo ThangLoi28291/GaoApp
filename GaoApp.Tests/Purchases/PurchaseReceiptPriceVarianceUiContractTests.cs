@@ -39,7 +39,7 @@ const get=id=>elements.get(id)||null,price=new Element(),last=new Element(),row=
 price.value='30000';last.dataset.value='3000';row.dataset.lineNo='1';
 row.querySelector=s=>s==='.commercial-unit-price'?price:s==='.commercial-last-price'?last:new Element();
 get('commercialSupplierId').value='1';get('priceVarianceAcceptancePanel').classes.add('d-none');
-global.window=global;global.setTimeout=()=>0;
+global.window=global;global.setTimeout=()=>0;global.addEventListener=()=>{};
 global.document={getElementById:get,addEventListener(){},querySelector(){return null;},createElement:()=>new Element(),
  querySelectorAll:s=>s==='#commercialApprovalWorkbench .commercial-line'?[row]:[]};
 global.fetch=()=>{throw new Error('Opening confirmation must not post or fetch');};

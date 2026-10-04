@@ -36,3 +36,13 @@ Chỉ thử migration và giao dịch trên database thử riêng trong quá tr�
 - Browser runner `--customer-debt`: ẩn nút khi chưa chọn khách, kế thừa khách POS, chốt nợ, thu tiền, ảnh desktop/mobile bằng cửa hàng thử riêng.
 
 Hạn mức theo khách, nhắc nợ tự động, nhập dư đầu kỳ và điều chỉnh/xóa nợ có phê duyệt chưa nằm trong đợt cơ bản này. Không có tự động tạo giao dịch ngân hàng; chuyển khoản thu nợ là xác nhận tiền thực nhận đã được đối soát.
+
+## Quản lý và báo cáo thu nợ
+
+- Từ danh sách khách chọn **Quản lý công nợ**, hoặc từ hồ sơ khách chọn **Xem công nợ / thu nợ**. Quyền truy cập là `customer.debt.view`; ghi nhận thu tiền vẫn cần `customer.debt.collect` và ca mở hợp lệ.
+- Sổ công nợ lọc theo tên, mã, điện thoại và trạng thái còn nợ / quá hạn / hết nợ; phân trang 50 khách. Các tổng số dư tính trên toàn bộ kết quả theo bộ lọc, không bị giới hạn ở trang đang xem.
+- **Báo cáo thu công nợ** tại `/admin/customer-debt/collections`: mặc định từ đầu tháng đến hôm nay, lọc theo khách, tham chiếu ngân hàng, phương thức, người thu và mã ca. Ngày lọc và thời gian hiển thị dùng UTC+7, bao gồm cả ngày kết thúc.
+- Báo cáo tổng tiền mặt, chuyển khoản, số phiếu và số khách đã trả nợ. Tổng hợp toàn bộ kết quả; bảng chi tiết phân trang 50 phiếu. Chỉ tính phiếu thu nợ thực nhận, không gộp giảm nợ do trả hàng, hủy đơn hoặc chi hoàn tiền.
+- Bấm mã `PTCN-…` để xem người thu, ca thu, tài khoản, tham chiếu, ghi chú và số tiền phân bổ vào từng đơn; có nút **In phiếu thu**.
+- **Xuất Excel** giữ nguyên bộ lọc và xuất tất cả các trang. Giới hạn 50.000 phiếu mỗi lần; vượt giới hạn sẽ yêu cầu thu hẹp bộ lọc, không âm thầm cắt dữ liệu.
+- Nâng cấp này dùng bảng hiện có, không cần migration mới. Phân quyền và giới hạn cửa hàng được áp dụng cho cả trang, chi tiết phiếu và xuất Excel.

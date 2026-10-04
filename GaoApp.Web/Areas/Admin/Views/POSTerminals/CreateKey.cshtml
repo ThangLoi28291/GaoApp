@@ -1,0 +1,22 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.POSTerminals.CreatePOSKeyVm
+@{ ViewData["Title"] = "Tạo khóa máy"; }
+<div class="row justify-content-center"><div class="col-12 col-lg-7">
+    <a asp-action="Index" class="d-inline-block mb-3">← Quản lý máy POS</a>
+    <div class="card"><div class="card-body p-4">
+        <h3>Tạo khóa máy</h3>
+        <p class="text-muted">Cấp khóa cho <strong>@ViewBag.TerminalLabel</strong>.</p>
+        <form asp-action="CreateKey" asp-route-terminalId="@Model.TerminalId" method="post">
+            <input asp-for="TerminalId" type="hidden" />
+            <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+            <div class="mb-4">
+                <label asp-for="DeviceName" class="form-label">Tên thiết bị</label>
+                <input asp-for="DeviceName" class="form-control" placeholder="Ví dụ: PC thu ngân 2, iPad quầy 1" maxlength="150" autofocus />
+                <span asp-validation-for="DeviceName" class="text-danger"></span>
+                <div class="form-text">Đặt tên dễ nhận biết để quản lý và thu hồi đúng khóa.</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Tạo khóa máy</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Hủy</a>
+        </form>
+    </div></div>
+</div></div>
+@section PageScripts { <partial name="_ValidationScriptsPartial" /> }

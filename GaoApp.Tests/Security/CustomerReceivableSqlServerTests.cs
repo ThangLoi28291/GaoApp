@@ -137,6 +137,140 @@ public sealed class CustomerReceivableSqlServerTests
         Assert.Equal(0m, await verify.Set<CustomerReceivableEntry>().SumAsync(x => x.Amount));
     }
 
+    [Fact]
+    public async Task Collection_report_filters_local_dates_exports_all_pages_and_protects_receipts()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var account = await app.AddAccountAsync(store, "*");
+        using var client = await app.LoginAsync(account);
+        var (orderId, customerId) = await Start(app, client, store, true);
+        await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/finalize-credit", new {
+            clientRequestId = Guid.NewGuid(), expectedCustomerId = customerId, expectedBalance = 60 });
+        var result = await client.JsonAsync(HttpMethod.Post, "/admin/customer-debt/collect", new {
+            clientRequestId = Guid.NewGuid(), customerId, amount = 10, method = 0 });
+        var receiptId = result.GetProperty("receiptId").GetInt32();
+        int shiftId;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var receipt = await db.Set<CustomerDebtReceipt>().SingleAsync();
+            shiftId = receipt.POSShiftId;
+            // Read-model fixtures on a disposable database, including both UTC+7 boundaries.
+            var middle = new DateTime(2026, 10, 1, 5, 0, 0, DateTimeKind.Utc);
+            for (var i = 0; i < 51; i++) db.Set<CustomerDebtReceipt>().Add(new() {
+                StoreId = store.StoreId, CustomerId = customerId, POSShiftId = shiftId,
+                ClientRequestId = Guid.NewGuid(), Amount = 1, Method = PaymentMethod.Cash, Reference = "REPORT-IN" });
+            foreach (var (reference, amount) in new[] { ("REPORT-BANK", 20), ("REPORT-BEFORE", 100), ("REPORT-AFTER", 200) })
+                db.Set<CustomerDebtReceipt>().Add(new() { StoreId = store.StoreId, CustomerId = customerId, POSShiftId = shiftId,
+                    ClientRequestId = Guid.NewGuid(), Amount = amount, Method = PaymentMethod.BankTransfer, Reference = reference });
+            await db.SaveChangesAsync();
+            await db.Set<CustomerDebtReceipt>().ExecuteUpdateAsync(s => s.SetProperty(x => x.CreatedAtUtc, middle));
+            await db.Set<CustomerDebtReceipt>().Where(x => x.Id == receiptId).ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.CreatedAtUtc, new DateTime(2026, 9, 30, 17, 0, 0, DateTimeKind.Utc)));
+            await db.Set<CustomerDebtReceipt>().Where(x => x.Reference == "REPORT-BANK").ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.CreatedAtUtc, new DateTime(2026, 10, 1, 16, 59, 59, DateTimeKind.Utc)));
+            await db.Set<CustomerDebtReceipt>().Where(x => x.Reference == "REPORT-BEFORE").ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.CreatedAtUtc, new DateTime(2026, 9, 30, 16, 59, 59, DateTimeKind.Utc)));
+            await db.Set<CustomerDebtReceipt>().Where(x => x.Reference == "REPORT-AFTER").ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.CreatedAtUtc, new DateTime(2026, 10, 1, 17, 0, 0, DateTimeKind.Utc)));
+        }
+        var filter = $"from=2026-10-01&to=2026-10-01&customerId={customerId}&shiftId={shiftId}";
+        using var viewer = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.CustomerDebt.View));
+        var html = WebUtility.HtmlDecode(await viewer.Http.GetStringAsync("/admin/customer-debt/collections?" + filter));
+        Assert.Contains("53 phiếu", html);
+        Assert.Contains("REPORT-BANK", html);
+        Assert.DoesNotContain("REPORT-BEFORE", html);
+        Assert.DoesNotContain("REPORT-AFTER", html);
+        Assert.Contains("PTCN-" + receiptId.ToString("D6"), await viewer.Http.GetStringAsync("/admin/customer-debt/collections?" + filter + "&page=2"));
+        using (var export = await viewer.Http.GetAsync("/admin/customer-debt/collections/export?" + filter + "&page=2"))
+        {
+            export.EnsureSuccessStatusCode();
+            using var stream = new MemoryStream(await export.Content.ReadAsByteArrayAsync());
+            using var book = new ClosedXML.Excel.XLWorkbook(stream);
+            var sheet = book.Worksheet(1);
+            Assert.Equal(81m, sheet.Cell(4, 2).GetValue<decimal>());
+            Assert.Equal(61m, sheet.Cell(4, 4).GetValue<decimal>());
+            Assert.Equal(20m, sheet.Cell(4, 6).GetValue<decimal>());
+            Assert.Equal(60, sheet.LastRowUsed()!.RowNumber()); // 7 heading rows + 53 receipts.
+        }
+        var bankHtml = WebUtility.HtmlDecode(await viewer.Http.GetStringAsync("/admin/customer-debt/collections?" + filter + "&method=1&search=REPORT-BANK"));
+        Assert.Contains("1 phiếu", bankHtml);
+        Assert.DoesNotContain("REPORT-IN", bankHtml);
+        var collectorHtml = WebUtility.HtmlDecode(await viewer.Http.GetStringAsync("/admin/customer-debt/collections?" + filter + $"&userId={account.UserId}"));
+        Assert.Contains("PTCN-" + receiptId.ToString("D6"), collectorHtml);
+        var detail = WebUtility.HtmlDecode(await viewer.Http.GetStringAsync($"/admin/customer-debt/receipts/{receiptId}"));
+        Assert.Contains($"/admin/pos/order-detail/{orderId}", detail);
+        Assert.Contains("E2E test user", detail);
+        Assert.Contains("10", detail);
+        using var foreign = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        using (var denied = await foreign.Http.GetAsync($"/admin/customer-debt/receipts/{receiptId}")) Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode);
+        var foreignReport = await foreign.Http.GetStringAsync("/admin/customer-debt/collections?from=2026-10-01&to=2026-10-01");
+        Assert.DoesNotContain("REPORT-BANK", foreignReport);
+        using var noPermission = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View));
+        foreach (var path in new[] { "/collections", "/collections/export", $"/receipts/{receiptId}" })
+        {
+            using var denied = await noPermission.Http.GetAsync("/admin/customer-debt" + path);
+            Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        }
+        foreach (var invalid in new[] { "from=2026-10-02&to=2026-10-01", "method=99", "from=invalid", "shiftId=-1" })
+        {
+            using var bad = await viewer.Http.GetAsync("/admin/customer-debt/collections?" + invalid);
+            Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        }
+        // Customer selection is independent of the list's search term.
+        using var customer = await viewer.Http.GetAsync($"/admin/customer-debt?customerId={customerId}&search=no-match");
+        Assert.Equal(HttpStatusCode.OK, customer.StatusCode);
+        using var list = await viewer.Http.GetAsync("/admin/customer-debt?status=open&page=999");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_totals_cover_all_pages_and_status_filters()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var account = await app.AddAccountAsync(store, "*");
+        await using var db = app.Database.CreateTenantContext(store.StoreId);
+        var shift = new POSShift { StoreId = store.StoreId, TerminalId = store.TerminalId,
+            WarehouseId = store.WarehouseId, OpenedByUserId = account.UserId };
+        var orders = Enumerable.Range(0, 206).Select(i => new Order {
+            StoreId = store.StoreId, POSShift = shift, Customer = new Customer {
+                StoreId = store.StoreId, Code = $"DEBT-PAGE-{i:D3}", Name = $"Khách phân trang {i:D3}" },
+            OrderNumber = $"DEBT-PAGE-{i:D3}", Status = OrderStatus.Completed, IsCreditSale = true,
+            GrandTotal = 10, PaidTotal = i == 205 ? 10 : 0, BalanceDue = i == 205 ? 0 : 10,
+            CreditDueDate = i == 0 ? DateTime.UtcNow.AddHours(7).Date.AddDays(-1) : null }).ToList();
+        db.Orders.AddRange(orders);
+        await db.SaveChangesAsync();
+        foreach (var order in orders)
+            db.Set<CustomerReceivableEntry>().Add(new() { StoreId = store.StoreId,
+                CustomerId = order.CustomerId!.Value, OrderId = order.Id, Amount = 10, Kind = "Sale" });
+        db.Set<CustomerReceivableEntry>().Add(new() { StoreId = store.StoreId,
+            CustomerId = orders[^1].CustomerId!.Value, OrderId = orders[^1].Id, Amount = -10, Kind = "Return" });
+        await db.SaveChangesAsync();
+        var service = new GaoApp.Infrastructure.Services.Orders.CustomerReceivableService(db, null!, null!);
+        var first = await service.GetAsync(null, null, default);
+        Assert.Equal(206, first.TotalCustomers);
+        Assert.Equal(205, first.OpenCustomers);
+        Assert.Equal(1, first.SettledCustomers);
+        Assert.Equal(2050m, first.TotalBalance);
+        Assert.Equal(10m, first.TotalOverdue);
+        Assert.Equal(50, first.Customers.Count);
+        var last = await service.GetAsync(null, null, default, 999);
+        Assert.Equal(5, last.Page);
+        Assert.Equal(6, last.Customers.Count);
+        Assert.Equal(2050m, last.TotalBalance);
+        Assert.Empty(first.Customers.Select(x => x.Id).Intersect(last.Customers.Select(x => x.Id)));
+        var overdue = await service.GetAsync(null, null, default, 1, "overdue");
+        Assert.Single(overdue.Customers);
+        Assert.Equal(10m, overdue.TotalBalance);
+        var settled = await service.GetAsync(null, null, default, 1, "settled");
+        Assert.Single(settled.Customers);
+        Assert.Equal(0m, settled.TotalBalance);
+        var search = await service.GetAsync(null, "DEBT-PAGE-204", default);
+        Assert.Single(search.Customers);
+        Assert.Equal(10m, search.TotalBalance);
+    }
+
     private static async Task<(int OrderId, int CustomerId)> Start(FullApplicationFixture app, FullApplicationFixture.Client client, FullApplicationFixture.StoreSeed store, bool eligible)
     {
         int customerId;

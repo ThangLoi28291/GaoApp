@@ -9,7 +9,21 @@ namespace GaoApp.Application.Services.Invoices;
 public sealed class InvoiceInputStockReadService(IInvoiceInputStockReadRepository repository, ICurrentStore currentStore)
 {
     public async Task<InvoiceInputStockPage> GetPageAsync(InvoiceInputStockQuery request, CancellationToken ct = default)
-        => BuildPage(await repository.GetMovementsAsync(currentStore.StoreId, ct), request);
+    {
+        // A drill-down is normally opened for one product and one warehouse.
+        // Push those predicates into SQL so the ledger does not load the full
+        // store history (which can contain hundreds of thousands of rows).
+        var products = request.ProductVariantId is > 0
+            ? new[] { request.ProductVariantId.Value }
+            : null;
+        var warehouses = request.WarehouseId is > 0
+            ? new[] { request.WarehouseId.Value }
+            : null;
+        var source = products is null && warehouses is null
+            ? await repository.GetMovementsAsync(currentStore.StoreId, ct)
+            : await repository.GetMovementsAsync(currentStore.StoreId, products, warehouses, ct);
+        return BuildPage(source, request);
+    }
 
     public static InvoiceInputStockPage BuildPage(IReadOnlyList<InvoiceInputStockMovement> source, InvoiceInputStockQuery request)
     {
@@ -28,11 +42,17 @@ public sealed class InvoiceInputStockReadService(IInvoiceInputStockReadRepositor
             }
         }
         var keyword = Normalize(request.Keyword);
-        var selected = source.Where(x =>
-            (!request.WarehouseId.HasValue || x.WarehouseId == request.WarehouseId) &&
-            (!request.ProductVariantId.HasValue || x.ProductVariantId == request.ProductVariantId) &&
-            (keyword.Length == 0 || Normalize($"{x.ProductName} {x.Code} {x.SourceCode} {x.XmlNumber} {x.LegacySourceKey}").Contains(keyword)))
-            .ToList();
+        var hasRowFilter = request.WarehouseId.HasValue || request.ProductVariantId.HasValue || keyword.Length > 0;
+        // Do not copy the complete snapshot for the common first page. The
+        // snapshot is already scoped by the repository when an id filter is
+        // present; reusing it avoids another 200k+ item allocation.
+        var selected = hasRowFilter
+            ? source.Where(x =>
+                (!request.WarehouseId.HasValue || x.WarehouseId == request.WarehouseId) &&
+                (!request.ProductVariantId.HasValue || x.ProductVariantId == request.ProductVariantId) &&
+                (keyword.Length == 0 || Normalize($"{x.ProductName} {x.Code} {x.SourceCode} {x.XmlNumber} {x.LegacySourceKey}").Contains(keyword)))
+                .ToList()
+            : source;
         var balances = selected.GroupBy(x => (x.WarehouseId, x.ProductVariantId)).Select(group =>
         {
             // A source keyword must not produce a misleading partial product balance.

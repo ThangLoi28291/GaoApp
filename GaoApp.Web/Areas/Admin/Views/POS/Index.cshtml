@@ -19,6 +19,7 @@
 
     var currentStoreId = User.FindFirst("store_id")?.Value ?? "";
     var canSellOnCredit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.Sell)).Succeeded;
+    var canViewCustomerProfile = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.Catalog.Customer.View)).Succeeded;
     var canUseDeposit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Use)).Succeeded;
     var currentTerminalId = User.FindFirst("terminal_id")?.Value ?? "";
     var currentTerminalName = User.FindFirst("terminal_name")?.Value ?? "";
@@ -29,7 +30,10 @@
         ?? new POSHeaderContextViewModel();
 }
 
+<span id="posCustomerProfileAccess" data-allowed="@canViewCustomerProfile.ToString().ToLowerInvariant()" hidden></span>
+
 @section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos.checkout-feedback.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos.scan-feedback.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos.qr-history.css" asp-append-version="true" />
     <link rel="stylesheet"
@@ -318,7 +322,7 @@
                                 <div class="pos-deposit-auto__copy">
                                     <span>TIỀN CỌC CỦA <b id="depositCustomerLabel"></b></span>
                                     <strong id="depositAvailableLabel"></strong>
-                                    <small id="depositAppliedLabel">Hệ thống tự áp dụng tối đa khi mở thanh toán.</small>
+                                    <small id="depositAppliedLabel">Chưa sử dụng cọc. Chọn phiếu nếu khách muốn dùng.</small>
                                 </div>
                                 <label class="pos-deposit-auto__choice"><span>Phiếu áp dụng</span><select id="posDepositChoice"><option value="">Không sử dụng cọc</option></select></label>
                                 <div id="posDepositStatus" class="pos-deposit-auto__status" role="status"></div>
@@ -368,8 +372,9 @@
 
                         <div class="pos-payment-amount-wrap">
                             <input id="payAmount"
-                                   type="number"
-                                   step="0.01"
+                                   type="text"
+                                   inputmode="decimal"
+                                   autocomplete="off"
                                    class="form-control pos-payment-workspace-amount"
                                    placeholder="Nhập số tiền" />
 
@@ -610,6 +615,7 @@
 
             <div class="modal-body">
 
+                <div id="paymentQrPendingWarning" class="alert alert-warning" role="alert" hidden></div>
                 <div id="paymentQrContent"
                      class="pos-payment-qr-content"
                      style="display:none;">
@@ -791,15 +797,12 @@
      data-bs-backdrop="static"
      data-bs-keyboard="false">
 
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content pos-card">
 
             <div class="modal-body p-4">
 
                 <div class="text-center mb-4">
-                    <div class="fs-2 mb-2">
-                        🧾
-                    </div>
 
                     <h4 class="mb-2"
                         id="invoiceIntentModalTitle">
@@ -810,49 +813,66 @@
                         Đơn hàng
                         <strong id="invoiceIntentOrderText"></strong>
                         đã thanh toán thành công.
-                        Chọn phương thức hóa đơn trước khi in bill.
+                        <span id="invoiceIntentDescription">Chọn phương thức hóa đơn trước khi in bill.</span>
                     </div>
                 </div>
+
+                <section id="cashReceiptSummary" class="pos-cash-summary" aria-label="Tiền mặt và tiền thối" hidden>
+                    <div class="pos-cash-total"><span>Tổng tiền đơn</span><strong id="cashReceiptTotal"></strong></div>
+                    <div class="pos-cash-total" id="cashReceiptOtherRow" hidden><span>Đã trả bằng phương thức khác</span><strong id="cashReceiptOther"></strong></div>
+                    <div class="pos-cash-grid">
+                        <div class="pos-cash-amount"><span>Tiền mặt khách đưa</span><strong id="cashReceiptReceived"></strong></div>
+                        <div class="pos-cash-amount pos-cash-change"><span>TIỀN THỐI LẠI</span><strong id="cashReceiptChange"></strong></div>
+                    </div>
+                </section>
 
                 <div id="invoiceIntentErrorBox"
                      class="alert alert-danger d-none mb-3"
                      role="alert">
                 </div>
 
-                <div class="d-grid gap-3">
+                <div class="d-grid gap-3" id="invoiceIntentChoices">
 
                     <button type="button"
-                            class="btn btn-primary btn-lg text-start p-3"
-                            id="btnInvoiceIntentManual">
+                            class="btn btn-primary btn-lg text-start p-3 pos-invoice-option"
+                            id="btnInvoiceIntentAutomatic">
 
                         <span class="d-block fw-semibold">
-                            Có — Khách lấy hóa đơn
+                            Không — Khách không lấy hóa đơn <kbd>Enter / K</kbd>
                         </span>
 
                         <small class="d-block opacity-75 mt-1">
-                            Bill sẽ có QR để khách nhập thông tin.
-                            Hóa đơn chờ quản lý phát hành thủ công.
+                            Bán cho người tiêu dùng. Hệ thống đưa hóa đơn vào hàng đợi phát hành tự động.
                         </small>
                     </button>
 
                     <button type="button"
-                            class="btn btn-outline-secondary btn-lg text-start p-3"
-                            id="btnInvoiceIntentAutomatic">
+                            class="btn btn-outline-secondary btn-lg text-start p-3 pos-invoice-option"
+                            id="btnInvoiceIntentManual">
 
                         <span class="d-block fw-semibold">
-                            Không — Bán cho người tiêu dùng
+                            Có — Khách lấy hóa đơn <kbd>C</kbd>
                         </span>
 
                         <small class="d-block text-muted mt-1">
-                            Hệ thống sẽ đưa hóa đơn vào hàng đợi
-                            phát hành tự động.
+                            Bill có QR để khách nhập thông tin. Hóa đơn chờ quản lý phát hành thủ công.
                         </small>
                     </button>
 
                 </div>
 
-                <div class="small text-muted text-center mt-3">
-                    Bắt buộc chọn một phương thức để tiếp tục in bill.
+                <div id="receiptPrintChoices" class="d-grid gap-3" hidden>
+                    <button type="button" id="btnReceiptDoNotPrint" class="btn btn-primary btn-lg text-start p-3 pos-invoice-option">
+                        <span class="d-block fw-semibold">Không in bill <kbd>Enter / K</kbd></span>
+                        <small class="d-block opacity-75 mt-1">Hoàn tất và tiếp tục bán hàng. Có thể in lại trong lịch sử đơn.</small>
+                    </button>
+                    <button type="button" id="btnReceiptPrint" class="btn btn-outline-secondary btn-lg text-start p-3 pos-invoice-option">
+                        <span class="d-block fw-semibold">Có — In bill <kbd>C</kbd></span>
+                        <small class="d-block text-muted mt-1">In bill giấy cho đơn vừa thanh toán.</small>
+                    </button>
+                </div>
+                <div id="invoiceIntentHelp" class="small text-muted text-center mt-3">
+                    Enter / K: Không lấy hóa đơn · C: Có lấy hóa đơn
                 </div>
 
             </div>
@@ -1171,6 +1191,15 @@
         </div>
     </div>
 </div>
+<dialog id="posScanGuard" class="pos-scan-guard" aria-labelledby="posScanGuardTitle" aria-describedby="posScanGuardMessage posScanGuardHelp">
+    <div class="pos-scan-guard__icon" aria-hidden="true">!</div>
+    <p class="pos-scan-guard__eyebrow">TẠM DỪNG QUÉT SẢN PHẨM</p>
+    <h2 id="posScanGuardTitle">Mã vừa quét chưa được ghi nhận</h2>
+    <p id="posScanGuardMessage"></p>
+    <div class="pos-scan-guard__code"><span>Mã cần kiểm tra</span><strong id="posScanGuardCode"></strong></div>
+    <p id="posScanGuardHelp">Kiểm tra sản phẩm và mã vạch trước khi tiếp tục. Các mã quét trong lúc cảnh báo sẽ không được thêm vào giỏ.</p>
+    <button id="posScanGuardConfirm" type="button" autofocus>Đã kiểm tra — nhấn Enter</button>
+</dialog>
 @section PageScripts {
     <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
@@ -1185,10 +1214,12 @@
     <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.render.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.scan-feedback.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.scan-guard.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.customer.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.acb.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.qr-history.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.payment.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.checkout-feedback.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.barcode.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.order.js" asp-append-version="true"></script>
   <script src="~/Admin/js/pos/pos.keyboard.js"

@@ -30,6 +30,8 @@ public sealed class StockDocumentProvisionalItemDto
     public int? ProposedCategoryId { get; set; }
     public string? Note { get; set; }
     public bool HasPhoto { get; set; }
+    public bool HasReviewPhoto { get; set; }
+    public ReceiptIntakeCompletionDto? ReviewDraft { get; set; }
     public StockDocumentProvisionalItemStatus Status { get; set; }
     public int? ResolvedStockDocumentLineId { get; set; }
     public ReceiptAllocationKind? ResolutionAllocationKind { get; set; }

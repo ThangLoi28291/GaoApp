@@ -8,6 +8,19 @@
     let selecting = false;
     let relinkExpectedInputInvoiceHeadId = null;
     let associationContext = null;
+    let browseController = null;
+    let browseSequence = 0;
+    let previewController = null;
+    let previewSequence = 0;
+
+    function invalidatePicker() {
+        ++browseSequence;
+        browseController?.abort();
+        candidates = [];
+        associationContext = null;
+        clearSelection();
+        setCandidateContent('');
+    }
 
     document.addEventListener('DOMContentLoaded', function () {
         const modal = document.getElementById('inputInvoicePickerModal');
@@ -25,7 +38,11 @@
         });
         document.getElementById('btnSelectInputInvoice')?.addEventListener('click', selectCandidate);
         document.getElementById('inputInvoicePickerCandidates')?.addEventListener('keydown', moveCandidateFocus);
-        modal.addEventListener('hidden.bs.modal', releasePreview);
+        modal.addEventListener('hidden.bs.modal', invalidatePicker);
+        document.addEventListener('input-invoice-supplier-changing', function () {
+            invalidatePicker();
+            modalInstance.hide();
+        });
         window.openInputInvoicePickerForRelink = function (expectedInputInvoiceHeadId) {
             relinkExpectedInputInvoiceHeadId = Number(expectedInputInvoiceHeadId || 0) || null;
             openPicker();
@@ -48,6 +65,16 @@
         const receiptId = getReceiptId();
         if (!receiptId) return announce('Không xác định được phiếu nhập.', true);
 
+        browseController?.abort();
+        const controller = new AbortController();
+        browseController = controller;
+        const sequence = ++browseSequence;
+        const supplierId = Number(document.getElementById('CurrentSupplierId')?.value || 0);
+        const supplierName = document.getElementById('CurrentSupplierText')?.value || 'Chưa chọn nhà cung cấp';
+        const supplierTax = document.getElementById('inputInvoiceSupplierTaxCode')?.textContent || 'Chưa có MST';
+        setText('inputInvoicePickerSupplierContext', `${supplierName} · MST ${supplierTax}`);
+        candidates = [];
+        associationContext = null;
         clearSelection();
         setCandidateContent('<div class="text-muted">Đang tải thư viện hóa đơn...</div>');
         const query = new URLSearchParams();
@@ -59,9 +86,12 @@
         try {
             const response = await fetch(
                 `/admin/api/stock-documents/${receiptId}/input-invoices/picker/candidates?${query}`,
-                { credentials: 'same-origin', cache: 'no-store' });
+                { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
             const data = await readJson(response);
+            if (sequence !== browseSequence) return;
             if (!response.ok) throw new Error(data?.message || 'Không tải được thư viện hóa đơn.');
+            if (supplierId && Number(data.context?.supplierId) !== supplierId)
+                throw new Error('Nhà cung cấp của phiếu đã thay đổi. Vui lòng tải lại phiếu trước khi chọn hóa đơn.');
 
             candidates = data.candidates || [];
             associationContext = data.context || {};
@@ -76,6 +106,7 @@
                 announce(`Tìm thấy ${candidates.length} hóa đơn.`, false);
             }
         } catch (error) {
+            if (sequence !== browseSequence || error.name === 'AbortError') return;
             candidates = [];
             setCandidateContent(`<div class="text-danger">${escapeHtml(error.message)}</div>`);
             announce(error.message, true);
@@ -160,6 +191,9 @@
 
     async function preview(candidate) {
         releasePreview();
+        const controller = new AbortController();
+        previewController = controller;
+        const sequence = previewSequence;
         const box = document.getElementById('inputInvoicePickerPreview');
         if (!box) return;
         box.innerHTML = '<div class="text-muted p-4">Đang tải bản xem trước...</div>';
@@ -169,9 +203,12 @@
             if (candidate.hasPdf) {
                 const response = await fetch(
                     `/admin/api/stock-documents/${receiptId}/input-invoices/picker/pdf?documentKey=${key}`,
-                    { credentials: 'same-origin' });
+                    { credentials: 'same-origin', signal: controller.signal });
+                if (sequence !== previewSequence) return;
                 if (response.ok) {
-                    previewObjectUrl = URL.createObjectURL(await response.blob());
+                    const blob = await response.blob();
+                    if (sequence !== previewSequence) return;
+                    previewObjectUrl = URL.createObjectURL(blob);
                     box.innerHTML = `<iframe title="Bản xem trước PDF hóa đơn" src="${previewObjectUrl}"></iframe>`;
                     return;
                 }
@@ -182,13 +219,17 @@
             if (candidate.hasXml) {
                 const response = await fetch(
                     `/admin/api/stock-documents/${receiptId}/input-invoices/picker/xml?documentKey=${key}`,
-                    { credentials: 'same-origin' });
+                    { credentials: 'same-origin', signal: controller.signal });
+                if (sequence !== previewSequence) return;
                 if (!response.ok) throw new Error(await responseMessage(response, 'Không dựng được bản xem trước XML.'));
-                box.innerHTML = await response.text();
+                const html = await response.text();
+                if (sequence !== previewSequence) return;
+                box.innerHTML = html;
                 return;
             }
             box.innerHTML = '<div class="text-muted p-4">Hóa đơn không có PDF hoặc XML để xem trước.</div>';
         } catch (error) {
+            if (sequence !== previewSequence || error.name === 'AbortError') return;
             box.innerHTML = `<div class="alert alert-danger m-4">${escapeHtml(error.message)}</div>`;
             announce(error.message, true);
         }
@@ -277,6 +318,8 @@
     }
 
     function releasePreview() {
+        ++previewSequence;
+        previewController?.abort();
         if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
         previewObjectUrl = null;
     }

@@ -204,6 +204,14 @@ public static class DependencyInjection
         services.AddScoped<GaoApp.Infrastructure.Services.Media.MediaLibraryService>();
         services.AddScoped<IProductImageRepository, ProductImageRepository>();
         services.AddScoped<IProductBarcodeVerificationRepository, ProductBarcodeVerificationRepository>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Inventory.IReceiptSellingPriceService, GaoApp.Infrastructure.Services.Products.ReceiptSellingPriceService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Inventory.IReceiptDocumentActionsService, GaoApp.Infrastructure.Services.Inventory.ReceiptDocumentActionsService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Inventory.IReceiptInvoiceFollowUpService, GaoApp.Infrastructure.Services.Inventory.ReceiptInvoiceFollowUpService>();
+        services.AddScoped<IReceiptInvoiceBackfillService, GaoApp.Infrastructure.Services.Inventory.ReceiptInvoiceBackfillService>();
+        services.AddScoped<IReceiptInvoiceBackfillService, GaoApp.Infrastructure.Services.Inventory.ReceiptInvoiceBackfillService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.POSShifts.IPOSCashAdjustmentService, GaoApp.Infrastructure.Services.POSShifts.POSCashAdjustmentService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.POSShifts.IPOSShiftReconciliationService, GaoApp.Infrastructure.Services.POSShifts.POSShiftReconciliationService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.POSShifts.IPOSPaymentAdjustmentService, GaoApp.Infrastructure.Services.POSShifts.POSPaymentAdjustmentService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Products.IReceiptBarcodeProposalService, GaoApp.Infrastructure.Services.Products.ReceiptBarcodeProposalService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Purchases.IReceiptIntakeCatalog, GaoApp.Infrastructure.Services.Products.ReceiptIntakeCatalog>();
 
@@ -222,6 +230,7 @@ public static class DependencyInjection
         services.AddScoped<IPOSShiftRepository, POSShiftRepository>();
         services.AddScoped<ICustomerRepository, CustomerRepository>();
         services.AddScoped<ICustomerManagementRepository, CustomerManagementRepository>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Customers.ICustomerProfileReader, CustomerProfileReader>();
         services.AddScoped<IPOSAuditLogRepository, POSAuditLogRepository>();
         services.AddScoped<IStoreBankAccountRepository, StoreBankAccountRepository>();
         services.AddScoped<IStoreBankAccountIndexReadRepository, StoreBankAccountIndexReadRepository>();
@@ -273,6 +282,8 @@ public static class DependencyInjection
           .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddScoped<IInvoiceFileStorage, InvoiceFileStorage>();
         services.AddScoped<IInputInvoiceDocumentLibrary, FileSystemInputInvoiceDocumentLibrary>();
+        services.AddScoped<FileSystemInputInvoiceDocumentLibrary>();
+        services.AddScoped<InputInvoiceCatalogService>();
 
         services.AddHttpClient<IViettelOfficialFileClient, ViettelOfficialFileClient>((sp, client) =>
         {
@@ -352,6 +363,7 @@ public static class DependencyInjection
         services.AddScoped<IInventoryTransactionRepository, InventoryTransactionRepository>();
         services.AddScoped<IInventoryPostingTransactionCoordinator, InventoryPostingTransactionCoordinator>();
         services.AddScoped<IStockDocumentRepository, StockDocumentRepository>();
+        services.AddScoped<IPurchaseReceiptPricingPlanRepository, PurchaseReceiptPricingPlanRepository>();
         services.AddScoped<IPurchaseReceivingWorkbenchRepository, PurchaseReceivingWorkbenchRepository>();
         services.AddScoped<IStockDocumentProvisionalItemRepository, StockDocumentProvisionalItemRepository>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
@@ -387,6 +399,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceInputStockReadRepository, InvoiceInputStockReadRepository>();
         services.AddScoped<IAdminMenuRepository, AdminMenuRepository>();
         services.AddScoped<IAdminMenuPermissionRepository, AdminMenuPermissionRepository>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.AdminMenus.IAdminMenuVisibilityService, AdminMenuVisibilityService>();
 
         // =========================================================
         // UNIT OF WORK
@@ -420,6 +433,7 @@ public static class DependencyInjection
         // SALES RETURN
         // =========================================================
         services.AddScoped<ISalesReturnRepository, SalesReturnRepository>();
+        services.AddScoped<ISalesReturnRestockRepository, SalesReturnRestockRepository>();
 
         // =========================================================
         // AUDIT

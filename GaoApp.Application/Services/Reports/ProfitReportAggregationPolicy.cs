@@ -122,7 +122,7 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                     if (returned.Action == SalesReturnLineAction.Restock &&
                         (inbound.Sum(x => x.Quantity) != returned.ReturnBaseQuantity ||
                          inbound.Any(x => !roots.Any(r => r.Id == x.SourceValuationEntryId))) ||
-                        returned.Action == SalesReturnLineAction.NoRestock && inbound.Count > 0)
+                        returned.Action is SalesReturnLineAction.NoRestock or SalesReturnLineAction.PendingRestock && inbound.Count > 0)
                         lineCost.Add(Conflict());
                 }
                 var subtotal = Summarize(0, lineCost, true);
@@ -192,6 +192,11 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                 if (reversal.ReversalType == OrderLegalEntityReversalType.ReturnNoRestock)
                 {
                     if (returned.Action != SalesReturnLineAction.NoRestock || reversal.InventoryTransactionId is not null) return false;
+                    continue;
+                }
+                if (reversal.ReversalType == OrderLegalEntityReversalType.ReturnPendingRestock)
+                {
+                    if (returned.Action != SalesReturnLineAction.PendingRestock || reversal.InventoryTransactionId is not null) return false;
                     continue;
                 }
                 if (reversal.ReversalType != OrderLegalEntityReversalType.ReturnRestock || returned.Action != SalesReturnLineAction.Restock)

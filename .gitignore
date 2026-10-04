@@ -98,3 +98,16 @@ App_Data/Logs/
 # Historical migration packages/evidence kept locally, not current source
 /scripts/migration/review-legacy/original/
 /.runtime/WorkerDataProtectionKeys/
+
+# Local publish packages, diagnostics, and IDE publish profiles
+/publish-invoice-stock-fast/
+/publish-pos-offline-fix/
+/Logs/ViettelReadOnlyProbe/
+/Logs/receipt-spacing-before.cjs
+/Logs/receipt-spacing-preview.cjs
+/Logs/shift-cash-format/
+/Logs/shift-cash-highlight/
+/GaoApp.AutoInvoiceWorker/Properties/PublishProfiles/FolderProfile.pubxml
+/GaoApp.LabelPrintServer/Properties/PublishProfiles/FolderProfile.pubxml
+/GaoApp.Migrator/Properties/PublishProfiles/FolderProfile1.pubxml
+/GaoApp.Web/Properties/PublishProfiles/FolderProfile2.pubxml

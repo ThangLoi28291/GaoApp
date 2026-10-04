@@ -1,6 +1,7 @@
 using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GaoApp.Infrastructure.Data.Migrations;
 
@@ -573,6 +574,7 @@ public sealed class SqlServerSchemaSnapshotReader
             .CreateCommand();
         command.CommandText = sql;
         command.CommandType = CommandType.Text;
+        command.Transaction = _db.Database.CurrentTransaction?.GetDbTransaction();
         return command;
     }
 

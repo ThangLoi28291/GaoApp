@@ -106,7 +106,8 @@
                             ? `Đã ghi nhận chuyển khoản. Đơn ${completed.orderId} còn thiếu ${Number(completed.remainingAmount).toLocaleString('vi-VN')}đ.`
                             : `Đã nhận chuyển khoản và chốt đơn ${completed.orderId}.`, completed.orderId, id);
                         if (completed.printUrl) {
-                            const frame = document.createElement('iframe'); frame.title = 'In bill'; frame.style.cssText = 'position:fixed;width:0;height:0;border:0'; frame.addEventListener('load', () => frame.contentWindow?.addEventListener('afterprint', () => frame.remove(), { once: true })); frame.src = completed.printUrl; document.body.appendChild(frame);
+                            const frame = document.createElement('iframe'); frame.title = 'In bill'; frame.style.cssText = 'position:fixed;width:0;height:0;border:0'; frame.addEventListener('load', () => frame.contentWindow?.addEventListener('afterprint', () => frame.remove(), { once: true })); frame.src = completed.finalized === true
+                                ? window.PosPrinting.postPaymentUrl(completed.printUrl, completed.orderId) : completed.printUrl; document.body.appendChild(frame);
                         }
                         window.dispatchEvent(new CustomEvent('acb:completed', { detail: { ...completed, qrId: id } }));
                     } else if (result.status === 'Creating') {

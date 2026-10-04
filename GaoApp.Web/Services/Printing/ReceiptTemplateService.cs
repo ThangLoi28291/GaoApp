@@ -24,6 +24,8 @@ public sealed record ReceiptDesign
 
 public sealed record ReceiptTemplateOption(string Key, ReceiptDesign Design, bool BuiltIn, string? RowVersion = null);
 public sealed record SaveReceiptTemplateRequest(ReceiptDesign Design, string? RowVersion);
+public sealed record ReceiptDefault(ReceiptTemplateOption Template, string RowVersion);
+public sealed record SaveReceiptDefaultRequest([Required, StringLength(100)] string Key, [Required] string RowVersion, string? TemplateVersion);
 public sealed record ReceiptStoreInfo(string StoreName, string StoreAddress, string StorePhone, string RowVersion);
 public sealed record SaveReceiptStoreInfoRequest
 {
@@ -48,6 +50,41 @@ public sealed class ReceiptTemplateService(AppDbContext db)
         var storeId = StoreId;
         var saved = await db.Set<PosReceiptTemplate>().AsNoTracking().Where(x => x.StoreId == storeId).OrderBy(x => x.Name).ToListAsync(ct);
         return BuiltIns().Concat(saved.Select(ToOption)).ToArray();
+    }
+
+    public async Task<ReceiptDefault> GetDefaultAsync(CancellationToken ct)
+    {
+        var storeId = StoreId;
+        var store = await db.Stores.AsNoTracking().SingleAsync(x => x.Id == storeId && !x.IsDeleted, ct);
+        var builtins = BuiltIns();
+        var selected = builtins.FirstOrDefault(x => x.Key == store.ReceiptTemplateKey);
+        if (selected == null && TryCustomId(store.ReceiptTemplateKey, out var id))
+        {
+            var custom = await db.Set<PosReceiptTemplate>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.StoreId == storeId, ct);
+            if (custom != null) selected = ToOption(custom);
+        }
+        return new(selected ?? builtins.Single(x => x.Key == "modern-80"), Convert.ToBase64String(store.RowVersion));
+    }
+
+    public async Task<ReceiptDefault> SaveDefaultAsync(SaveReceiptDefaultRequest request, CancellationToken ct)
+    {
+        var storeId = StoreId;
+        var store = await db.Stores.SingleAsync(x => x.Id == storeId && !x.IsDeleted, ct);
+        if (request.RowVersion != Convert.ToBase64String(store.RowVersion))
+            throw new ConflictAppException("Cấu hình cửa hàng đã thay đổi. Tải lại trang trước khi đặt mẫu mặc định.");
+        if (TryCustomId(request.Key, out var id)) CheckVersion(await FindAsync(id, storeId, ct), request.TemplateVersion);
+        else if (!BuiltIns().Any(x => x.Key == request.Key)) throw new ValidationAppException("Không tìm thấy mẫu hóa đơn để áp dụng.");
+        store.ReceiptTemplateKey = request.Key;
+        // Always touch the store row, even when applying the same key, to serialize against deletion.
+        db.Entry(store).Property(x => x.ReceiptTemplateKey).IsModified = true;
+        await SaveChanges(ct);
+        return await GetDefaultAsync(ct);
+    }
+
+    private static bool TryCustomId(string? key, out int id)
+    {
+        id = 0;
+        return key?.StartsWith("custom-", StringComparison.Ordinal) == true && int.TryParse(key[7..], out id) && id > 0;
     }
 
     public async Task<ReceiptStoreInfo> GetStoreInfoAsync(CancellationToken ct)
@@ -111,8 +148,13 @@ public sealed class ReceiptTemplateService(AppDbContext db)
 
     public async Task DeleteAsync(int id, string? rowVersion, CancellationToken ct)
     {
+        var storeId = StoreId;
+        var store = await db.Stores.SingleAsync(x => x.Id == storeId && !x.IsDeleted, ct);
+        if (store.ReceiptTemplateKey == $"custom-{id}")
+            throw new ConflictAppException("Mẫu này đang được dùng mặc định. Chọn mẫu mặc định khác trước khi xóa.");
         var template = await FindAsync(id, StoreId, ct);
         CheckVersion(template, rowVersion);
+        db.Entry(store).Property(x => x.ReceiptTemplateKey).IsModified = true;
         db.Remove(template);
         await SaveChanges(ct);
     }

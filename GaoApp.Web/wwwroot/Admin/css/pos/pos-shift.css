@@ -2337,12 +2337,89 @@
     color: #667085;
 }
 
+.shift-cash-txn-modal {
+    --shift-cash-accent: #067647;
+    --shift-cash-accent-hover: #055c37;
+    --shift-cash-accent-rgb: 6, 118, 71;
+    --shift-cash-border: #9ed8b7;
+    --shift-cash-bg: #f0fdf4;
+    --shift-cash-header-bg: #dcfce7;
+    --shift-cash-footer-bg: #e4f7ec;
+}
+
+.shift-cash-txn-modal[data-cash-txn-theme="out"] {
+    --shift-cash-accent: #b42318;
+    --shift-cash-accent-hover: #912018;
+    --shift-cash-accent-rgb: 180, 35, 24;
+    --shift-cash-border: #fda4af;
+    --shift-cash-bg: #fff1f2;
+    --shift-cash-header-bg: #fee2e2;
+    --shift-cash-footer-bg: #ffebed;
+}
+
 .shift-cash-txn-modal .modal-content {
-    border: 1px solid #dde5ef;
+    border: 1px solid var(--shift-cash-border);
+    background: var(--shift-cash-bg);
+}
+
+.shift-cash-txn-modal .modal-header {
+    border-top: 5px solid var(--shift-cash-accent);
+    border-bottom-color: var(--shift-cash-border);
+    background: var(--shift-cash-header-bg);
+}
+
+.shift-cash-txn-modal .modal-title,
+.shift-cash-txn-modal .shift-form-label,
+.shift-cash-txn-modal .shift-cash-amount-currency {
+    color: var(--shift-cash-accent);
+}
+
+.shift-cash-txn-modal .shift-modal-subtitle {
+    color: #475467;
 }
 
 .shift-cash-txn-modal .modal-body {
     padding: 20px 22px 18px;
+    background: var(--shift-cash-bg);
+}
+
+.shift-cash-txn-modal .modal-footer {
+    border-top-color: var(--shift-cash-border);
+    background: var(--shift-cash-footer-bg);
+}
+
+.shift-cash-txn-modal .form-control {
+    border-color: var(--shift-cash-border);
+    background: #fff;
+}
+
+.shift-cash-txn-modal .form-control:focus,
+.shift-cash-txn-modal .shift-cash-type-btn:focus-visible {
+    border-color: var(--shift-cash-accent);
+    outline: none;
+    box-shadow: 0 0 0 .2rem rgba(var(--shift-cash-accent-rgb), .16);
+}
+
+.shift-cash-txn-modal .shift-cash-amount-input {
+    color: var(--shift-cash-accent);
+}
+
+#cashTxnModal #btnAddCashTxn {
+    color: #fff;
+    border-color: var(--shift-cash-accent);
+    background: var(--shift-cash-accent);
+    box-shadow: 0 4px 10px rgba(var(--shift-cash-accent-rgb), .2);
+}
+
+#cashTxnModal #btnAddCashTxn:hover,
+#cashTxnModal #btnAddCashTxn:active {
+    border-color: var(--shift-cash-accent-hover);
+    background: var(--shift-cash-accent-hover);
+}
+
+#cashTxnModal #btnAddCashTxn:focus-visible {
+    outline: 2px solid var(--shift-cash-accent);
+    outline-offset: 3px;
 }
 
 .shift-cash-type-block,
@@ -2381,17 +2458,17 @@
 }
 
 .shift-cash-type-btn.active[data-cash-txn-type="1"] {
-    border-color: #9ed8b7;
-    background: #ecfdf3;
-    color: #067647;
-    box-shadow: 0 0 0 2px rgba(6, 118, 71, .06);
+    border-color: #067647;
+    background: #067647;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(6, 118, 71, .12);
 }
 
 .shift-cash-type-btn.active[data-cash-txn-type="2"] {
-    border-color: #fecaca;
-    background: #fff1f2;
-    color: #b42318;
-    box-shadow: 0 0 0 2px rgba(180, 35, 24, .05);
+    border-color: #b42318;
+    background: #b42318;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(180, 35, 24, .12);
 }
 
 .shift-cash-amount-wrap {
@@ -2556,3 +2633,11 @@
         width: 100%;
     }
 }
+/* Receiving/closing starts with an explicit, audited drawer confirmation. */
+#shiftDrawerConfirmModal [hidden] { display: none !important; }
+#shiftDrawerConfirmModal .shift-drawer-confirm { border: 0; border-radius: 24px; box-shadow: 0 24px 72px #22345430; }
+.shift-drawer-confirm__icon { display: grid; place-items: center; width: 64px; height: 64px; margin-bottom: 20px; border-radius: 20px; color: #4e53de; background: #eeefff; font-size: 32px; }
+.shift-drawer-confirm__eyebrow { color: #696cff; font-size: 11px; font-weight: 800; letter-spacing: .1em; margin-bottom: 10px; }
+.shift-drawer-confirm__context { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-radius: 12px; background: #f5f7fc; }
+.shift-drawer-confirm__reason { margin-top: 14px; font-size: 13px; color: #64748b; }
+#shiftDrawerConfirmModal .btn { border-radius: 12px; padding: 12px 16px; }

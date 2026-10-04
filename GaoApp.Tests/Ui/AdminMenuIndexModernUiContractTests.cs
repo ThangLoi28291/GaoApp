@@ -114,7 +114,9 @@ public sealed class AdminMenuIndexModernUiContractTests
         Assert.Contains("[ValidateAntiForgeryToken]", controller, StringComparison.Ordinal);
         Assert.Contains("DeleteAsync(CurrentStoreId", controller, StringComparison.Ordinal);
         Assert.Contains("GetForRenderAsync", verticalMenu, StringComparison.Ordinal);
-        Assert.Contains("Where(x => x.IsActive)", verticalMenu, StringComparison.Ordinal);
+        Assert.Contains("Where(x => x.IsActive && ShowReceiptMenu(x))", verticalMenu, StringComparison.Ordinal);
+        Assert.Contains("GetHiddenIdsAsync", verticalMenu, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetForAdminAsync", verticalMenu, StringComparison.Ordinal);
         Assert.Contains("children.Any()", verticalMenu, StringComparison.Ordinal);
     }
 

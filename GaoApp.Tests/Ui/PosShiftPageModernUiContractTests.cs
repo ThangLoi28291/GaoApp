@@ -140,7 +140,8 @@ public sealed class PosShiftPageModernUiContractTests
         Assert.Contains("withButtonLoading(btnAddCashTxn", body, StringComparison.Ordinal);
         Assert.Contains("postJson('/admin/pos/shift/cash-transaction'", body, StringComparison.Ordinal);
         Assert.Contains("type: parseInt((cashTxnType && cashTxnType.value)", body, StringComparison.Ordinal);
-        Assert.Contains("amount: parseFloat((cashTxnAmount && cashTxnAmount.value)", body, StringComparison.Ordinal);
+        Assert.Contains("parseCashTxnAmount((cashTxnAmount && cashTxnAmount.value)", body, StringComparison.Ordinal);
+        Assert.Contains("amount: amount", body, StringComparison.Ordinal);
         Assert.Contains("reason: (cashTxnReason && cashTxnReason.value)", body, StringComparison.Ordinal);
         Assert.Contains("note: (cashTxnNote && cashTxnNote.value)", body, StringComparison.Ordinal);
     }

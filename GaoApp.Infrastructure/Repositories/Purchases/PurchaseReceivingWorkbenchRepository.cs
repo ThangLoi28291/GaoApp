@@ -1,3 +1,5 @@
+using GaoApp.Application.Interfaces.Common;
+using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -12,7 +14,12 @@ public sealed class PurchaseReceivingWorkbenchRepository : IPurchaseReceivingWor
     private readonly AppDbContext _context;
     private IDbContextTransaction? _transaction;
 
-    public PurchaseReceivingWorkbenchRepository(AppDbContext context) => _context = context;
+    private readonly ICurrentPOSContext? _pos;
+    public PurchaseReceivingWorkbenchRepository(AppDbContext context, ICurrentPOSContext? pos = null)
+    {
+        _context = context;
+        _pos = pos;
+    }
 
     public async Task BeginTransactionAsync(CancellationToken ct = default)
         => _transaction = await _context.Database.BeginTransactionAsync(ct);
@@ -100,8 +107,11 @@ public sealed class PurchaseReceivingWorkbenchRepository : IPurchaseReceivingWor
             .OrderByDescending(x => x.Id)
             .FirstOrDefaultAsync(ct);
 
-    public Task AddDocumentAsync(StockDocument document, CancellationToken ct = default)
-        => _context.StockDocuments.AddAsync(document, ct).AsTask();
+    public async Task AddDocumentAsync(StockDocument document, CancellationToken ct = default)
+    {
+        await ReceiptEntryTerminal.CaptureAsync(_context, _pos, document, ct);
+        await _context.StockDocuments.AddAsync(document, ct);
+    }
 
     public Task AddActionAsync(PurchaseReceivingAction action, CancellationToken ct = default)
         => _context.PurchaseReceivingActions.AddAsync(action, ct).AsTask();

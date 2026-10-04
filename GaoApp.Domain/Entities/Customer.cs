@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Common;
 using GaoApp.Domain.Constants;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -40,6 +40,7 @@ public class Customer : BaseStoreEntity
 
     // Khách có công nợ hay không, lấy từ User.HaveDebt cũ
     public bool HaveDebt { get; set; }
+    public bool AskBeforePrintingReceipt { get; set; }
 
     // Đánh dấu khách được import từ hệ thống cũ
     public bool IsImportedFromOldSystem { get; set; }

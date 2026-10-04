@@ -1,0 +1,58 @@
+@using GaoApp.Domain.Enums
+@using Microsoft.AspNetCore.WebUtilities
+@model GaoApp.Application.Interfaces.Services.Orders.DebtCollectionReportDto
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = "Báo cáo thu công nợ";
+    ViewData["container"] = "container-fluid";
+    var q = Model.Query;
+    var pages = Math.Max(1, (Model.TotalReceipts + Model.PageSize - 1) / Model.PageSize);
+    string Link(string path, int page = 1) => QueryHelpers.AddQueryString(path, new Dictionary<string, string?> {
+        ["from"] = q.From?.ToString("yyyy-MM-dd"), ["to"] = q.To?.ToString("yyyy-MM-dd"),
+        ["customerId"] = q.CustomerId?.ToString(), ["search"] = q.Search, ["method"] = q.Method.HasValue ? ((int)q.Method.Value).ToString() : null,
+        ["userId"] = q.UserId?.ToString(), ["shiftId"] = q.ShiftId?.ToString(), ["page"] = page.ToString() });
+}
+@section header {
+    <div data-gao-ui="modern" class="w-100"><div class="gds-page-header gds-page-header--compact">
+        <div class="gds-page-header__main"><h3 class="gds-page-header__title">Báo cáo thu công nợ</h3><p class="gds-page-header__subtitle mb-0">Tiền khách trả nợ đã được ghi nhận tại cửa hàng · Giờ Việt Nam (UTC+7).</p></div>
+        <div class="gds-page-header__actions"><a class="btn btn-outline-secondary" href="/admin/customer-debt">Sổ công nợ</a><a id="debtReportExport" class="btn btn-primary" href="@Link("/admin/customer-debt/collections/export")"><i class="bx bx-spreadsheet"></i> Xuất Excel</a></div>
+    </div></div>
+}
+<div data-gao-ui="modern"><div id="customerDebtPage" class="gds-page">
+    <section class="debt-surface card border-0">
+        <div class="debt-section-heading"><div><h2>Lọc phiếu thu</h2><p>Mặc định từ đầu tháng đến hôm nay. Tổng số liệu tính trên toàn bộ kết quả theo bộ lọc.</p></div></div>
+        <form method="get" class="debt-report-filters" id="debtReportFilters">
+            @if(q.CustomerId.HasValue) { <input type="hidden" name="customerId" value="@q.CustomerId" /><p class="debt-filter-customer">Khách hàng: <strong>@Model.CustomerName</strong></p> }
+            <label>Từ ngày<input type="date" name="from" value="@q.From?.ToString("yyyy-MM-dd")" class="form-control" required /></label>
+            <label>Đến ngày<input type="date" name="to" value="@q.To?.ToString("yyyy-MM-dd")" class="form-control" required /></label>
+            <label class="debt-report-search">Khách / tham chiếu<input name="search" value="@q.Search" maxlength="100" class="form-control" placeholder="Tên, mã khách, điện thoại, mã giao dịch" /></label>
+            <label>Phương thức<select name="method" class="form-select"><option value="">Tất cả</option><option value="0" selected="@(q.Method == PaymentMethod.Cash)">Tiền mặt</option><option value="1" selected="@(q.Method == PaymentMethod.BankTransfer)">Chuyển khoản</option></select></label>
+            <label>Người thu<select name="userId" class="form-select"><option value="">Tất cả</option>@foreach(var u in Model.Collectors) { <option value="@u.Id" selected="@(q.UserId == u.Id)">@u.Name</option> }</select></label>
+            <label>Mã ca<input type="number" name="shiftId" min="1" value="@q.ShiftId" class="form-control" placeholder="Tất cả" /></label>
+            <div class="debt-actions"><button class="btn btn-primary" type="submit">Áp dụng</button><a class="btn btn-outline-secondary" href="/admin/customer-debt/collections">Đặt lại</a></div>
+            <p id="debtReportError" class="text-danger mb-0" role="alert"></p>
+        </form>
+    </section>
+    <section class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3" aria-label="Tổng thu công nợ">
+        <div class="col"><article class="card border-0 p-3 h-100"><span>Tổng thu trong kỳ</span><strong id="debtReportTotal" class="fs-3 text-primary">@Model.Total.ToString("N0") đ</strong><small>@Model.TotalReceipts phiếu thu</small></article></div>
+        <div class="col"><article class="card border-0 p-3 h-100"><span>Thu tiền mặt</span><strong class="fs-3 text-success">@Model.CashTotal.ToString("N0") đ</strong><small>Ghi nhận vào ca thu tiền</small></article></div>
+        <div class="col"><article class="card border-0 p-3 h-100"><span>Thu chuyển khoản</span><strong class="fs-3 text-success">@Model.BankTotal.ToString("N0") đ</strong><small>Tiền nhận đã đối soát</small></article></div>
+        <div class="col"><article class="card border-0 p-3 h-100"><span>Khách đã trả nợ</span><strong class="fs-3">@Model.CustomerCount</strong><small>Trong khoảng ngày đang chọn</small></article></div>
+    </section>
+    <section class="debt-surface card border-0">
+        <div class="debt-section-heading"><div><h2>Chi tiết thu công nợ</h2><p>Chọn mã phiếu để xem phân bổ vào từng đơn và in phiếu thu.</p></div></div>
+        <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th>Khách hàng</th><th class="text-end">Thực thu (đ)</th><th>Phương thức / tài khoản</th><th>Người thu / ca</th><th>Tham chiếu / ghi chú</th></tr></thead><tbody>
+        @foreach(var r in Model.Rows) {
+            <tr><td><a class="debt-name" href="/admin/customer-debt/receipts/@r.Id">PTCN-@r.Id.ToString("D6")</a><small class="debt-secondary">@r.At.AddHours(7).ToString("dd/MM/yyyy HH:mm")</small></td>
+            <td><a href="/admin/customer-debt?customerId=@r.CustomerId">@r.CustomerName</a><small class="debt-secondary">@r.Phone</small></td>
+            <td class="text-end debt-positive debt-strong">@r.Amount.ToString("N0")</td><td>@(r.Method == PaymentMethod.Cash ? "Tiền mặt" : "Chuyển khoản")<small class="debt-secondary">@r.Bank</small></td>
+            <td>@(r.UserName ?? $"NV #{r.UserId}")<small class="debt-secondary">Ca #@r.ShiftId</small></td><td class="debt-note">@(r.Reference ?? "—")<small class="debt-secondary">@r.Note</small></td></tr>
+        }
+        @if(Model.Rows.Count == 0) { <tr><td colspan="6" class="debt-empty"><strong>Chưa có phiếu thu phù hợp</strong><span>Thay đổi khoảng ngày hoặc bộ lọc để tra cứu.</span></td></tr> }
+        </tbody></table></div>
+        <footer class="debt-pager"><span>@Model.TotalReceipts phiếu · Trang @q.Page / @pages</span><div class="debt-actions">@if(q.Page > 1) { <a class="btn btn-outline-secondary" href="@Link("/admin/customer-debt/collections", q.Page - 1)">Trước</a> }@if(q.Page < pages) { <a class="btn btn-outline-secondary" href="@Link("/admin/customer-debt/collections", q.Page + 1)">Sau</a> }</div></footer>
+        <p class="debt-table-note">Báo cáo chỉ tính tiền thực thu nợ; trả hàng giảm nợ và chi hoàn tiền được xem trong sổ từng khách. Thu nợ không ghi nhận thêm doanh thu bán hàng.</p>
+    </section>
+</div></div>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script> }

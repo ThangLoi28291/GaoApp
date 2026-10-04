@@ -27,6 +27,11 @@ public sealed class InvoiceInputStockMovement
     public DateTime DateUtc { get; set; }
     public string Kind { get; set; } = "";
     public decimal Change { get; set; }
+    /// <summary>Giá vốn đơn vị gốc lấy từ giao dịch nhập kho đã ghi sổ.</summary>
+    public decimal? UnitCost { get; set; }
+    /// <summary>Tổng giá vốn của biến động, cùng dấu với Change.</summary>
+    public decimal? TotalCost { get; set; }
+    public bool IsProvisionalCost { get; set; }
     public bool IsOpening { get; set; }
     public decimal Held { get; set; }
     public decimal Before { get; set; }

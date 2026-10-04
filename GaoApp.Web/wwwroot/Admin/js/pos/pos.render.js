@@ -199,6 +199,11 @@ window.PosRender = (function () {
 
     function getNetworkUiState(posState) {
         const offline = window.PosOffline?.status();
+        if (offline?.queueIssue) {
+            return { variant: 'offline', title: 'Có thao tác offline cần đối soát',
+                message: offline.queueIssue.message + ` Còn ${offline.pending} thao tác trong hàng đợi; dữ liệu chưa bị xóa.`,
+                lastSyncAt: offline.lastSyncAt || posState?.offline?.lastSyncAt };
+        }
         if (offline?.sessionIssue) {
             return { variant: 'blocked', title: offline.sessionIssue.title,
                 message: offline.sessionIssue.message + (offline.pending ? ` Đang giữ ${offline.pending} thao tác tại quầy để đồng bộ/đối soát.` : ''),
@@ -212,8 +217,9 @@ window.PosRender = (function () {
             return {
                 variant: 'offline',
                 title: !offline.ready || !window.PosOffline.canWork() ? 'POS offline chưa sẵn sàng' : offline.connected ? 'Đang đồng bộ dữ liệu tại quầy' : 'Mất kết nối máy chủ — đang bán offline',
-                message: offline.message || (offline.pending ? `${offline.pending} thao tác đã lưu tại quầy, đang chờ đồng bộ.` : 'Giao dịch được lưu trên máy tính tiền.'),
-                lastSyncAt: posState?.offline?.lastSyncAt
+                message: offline.message || [offline.pending ? `${offline.pending} thao tác đã lưu tại quầy, đang chờ đồng bộ.` : 'Giao dịch được lưu trên máy tính tiền.',
+                    offline.syncError, offline.lastSyncAttemptAt ? `Lần thử gần nhất: ${formatNetworkTime(offline.lastSyncAttemptAt)}${offline.syncing ? ' (đang chạy)' : ''}.` : ''].filter(Boolean).join(' '),
+                lastSyncAt: offline.lastSyncAt || posState?.offline?.lastSyncAt
             };
         }
         const isOnline = !!posState?.offline?.isOnline;
@@ -302,9 +308,21 @@ window.PosRender = (function () {
 
         if (window.PosOffline?.status().pending > 0) {
             const tools = document.createElement('div'); tools.className = 'd-flex gap-2 px-3 pb-2';
-            for (const [label, action] of [['Thử đồng bộ', () => window.PosOffline.sync(true)], ['Lưu bản đối soát', () => window.PosOffline.exportPending()]]) {
+            const queueIssue = window.PosOffline.status().queueIssue;
+            const actions = queueIssue
+                ? [[queueIssue.kind === 'payment-overpay' ? 'Cô lập khoản thu lỗi' : 'Cô lập thao tác lỗi', async () => {
+                        await window.PosOffline.quarantineFirstBlocked(); await window.PosOffline.sync(true);
+                    }],
+                    ['Lưu bản đối soát', () => window.PosOffline.exportPending()]]
+                : [['Thử đồng bộ', () => window.PosOffline.sync(true)], ['Lưu bản đối soát', () => window.PosOffline.exportPending()]];
+            for (const [label, action] of actions) {
                 const button = document.createElement('button'); button.type = 'button'; button.className = 'btn btn-sm btn-outline-secondary';
-                button.textContent = label; button.addEventListener('click', action); tools.appendChild(button);
+                button.textContent = label;
+                if (label === 'Thử đồng bộ' && window.PosOffline.status().syncing) { button.disabled = true; button.textContent = 'Đang đồng bộ…'; }
+                button.addEventListener('click', () => Promise.resolve(action()).catch(error => {
+                    window.dispatchEvent(new CustomEvent('pos:offline-status'));
+                    window.alert(error?.message || 'Không thể xử lý thao tác offline.');
+                })); tools.appendChild(button);
             }
             container.appendChild(tools);
         }
@@ -492,6 +510,13 @@ window.PosRender = (function () {
     function renderSummaryActionState(draft) {
         const actionGrid = document.getElementById('posSummaryActionGrid');
         if (!actionGrid) return;
+
+        const clearCartLinesButton = document.getElementById('btnClearCartLines');
+        const hasLines = Array.isArray(draft?.lines)
+            && draft.lines.some(line => !line.isDeleted);
+        if (clearCartLinesButton) {
+            clearCartLinesButton.disabled = !hasLines;
+        }
 
         actionGrid.classList.remove('is-empty', 'is-due', 'is-paid', 'is-change');
 
@@ -746,7 +771,7 @@ window.PosRender = (function () {
             posState?.currentDraft ||
             null;
 
-        const currentInput = Number(payAmount.value || 0);
+        const currentInput = window.PosCommon.parseMoneyInput(payAmount.value);
 
         function setPreviewState(state, text) {
             if (!payPreviewBox) return;
@@ -755,7 +780,8 @@ window.PosRender = (function () {
                 'pay-preview-box--empty',
                 'pay-preview-box--due',
                 'pay-preview-box--paid',
-                'pay-preview-box--change'
+                'pay-preview-box--change',
+                'pay-preview-box--warning'
             );
 
             payPreviewBox.classList.add(state);
@@ -807,6 +833,11 @@ window.PosRender = (function () {
         }
 
         if (expectedChange > 0) {
+            if (Number(document.getElementById('payMethod')?.value) === 1) {
+                setPreviewState('pay-preview-box--warning',
+                    `Chuyển khoản dư ${formatMoney(expectedChange)} đ. Vẫn ghi nhận đủ ${formatMoney(currentInput)} đ.`);
+                return;
+            }
             setPreviewState('pay-preview-box--change', 'Khách đưa dư tiền');
             setFooterState('is-change', 'Đã đủ tiền. Có thể chốt đơn và trả lại tiền thừa.');
             return;
@@ -1034,6 +1065,14 @@ window.PosRender = (function () {
                 </button>
 
             </div>
+
+            ${document.getElementById('posCustomerProfileAccess')?.dataset.allowed === 'true' && Number(customer.customerId)>0
+                ? `<a class="pos-customer-profile-link" href="/admin/customers/${Number(customer.customerId)}/profile" target="_blank" rel="noopener" title="Xem lịch sử mua hàng, điểm và voucher trong tab mới">
+                    <i class="bx bx-history" aria-hidden="true"></i>
+                    <span>Lịch sử &amp; điểm</span>
+                    <i class="bx bx-link-external" aria-hidden="true"></i>
+                </a>`
+                : ''}
 
             <div class="pos-customer-compact__footer">
 

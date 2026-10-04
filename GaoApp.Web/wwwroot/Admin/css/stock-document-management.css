@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    STOCK DOCUMENT MANAGEMENT UI
    Dùng cho màn chi tiết phiếu nhập kho.
    Tách riêng khỏi View để dễ quản lý và đồng bộ UI.
@@ -1103,7 +1103,7 @@
 }
 
 .sd-line-table {
-    min-width: 1320px;
+    min-width: 1120px;
     table-layout: fixed;
 }
 
@@ -1321,18 +1321,31 @@
 [data-stock-document-index] .sd-index-list-panel { overflow: hidden; }
 
 [data-stock-document-index] .sd-index-table {
-    min-width: 1080px;
+    min-width: 1120px;
     table-layout: fixed;
 }
 
 [data-stock-document-index] .sd-index-table thead th { white-space: nowrap; }
-[data-stock-document-index] .sd-index-col-document { width: 26%; }
-[data-stock-document-index] .sd-index-col-place { width: 16%; }
-[data-stock-document-index] .sd-index-col-progress { width: 14%; }
-[data-stock-document-index] .sd-index-col-products { width: 8%; }
-[data-stock-document-index] .sd-index-col-amount { width: 12%; }
-[data-stock-document-index] .sd-index-col-updated { width: 12%; }
+[data-stock-document-index] .sd-index-col-document { width: 28%; }
+[data-stock-document-index] .sd-index-col-progress { width: 16%; }
+[data-stock-document-index] .sd-index-col-products { width: 6%; }
+[data-stock-document-index] .sd-index-col-amount { width: 10%; }
+[data-stock-document-index] .sd-index-col-updated { width: 10%; }
 [data-stock-document-index] .sd-index-col-actions { width: 12%; }
+[data-stock-document-index] .sd-index-col-employee { width: 18%; }
+[data-stock-document-index] .sd-index-table th.sd-index-col-employee { white-space: normal; }
+[data-stock-document-index] .sd-index-entry { white-space: normal; }
+[data-stock-document-index] .sd-index-entry-line {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    align-items: start;
+    column-gap: .35rem;
+    line-height: 1.45;
+}
+[data-stock-document-index] .sd-index-entry-line > i { margin-top: .15rem; }
+[data-stock-document-index] .sd-index-entry-line > span { overflow-wrap: anywhere; }
+[data-stock-document-index] .sd-index-entry .text-muted { margin-top: .35rem; }
+[data-stock-document-index] .sd-index-terminal-code { display: inline-block; font-size: .7rem; background: #f0f2f6; border-radius: .3rem; padding: .1rem .3rem; }
 [data-stock-document-index] .sd-index-row { cursor: default; }
 
 [data-stock-document-index] .sd-index-title {
@@ -1373,9 +1386,13 @@
 [data-stock-document-index] .sd-index-actions {
     align-items: center;
     display: inline-flex;
+    flex-wrap: wrap;
+    max-width: 100%;
     gap: .4rem;
     justify-content: flex-end;
 }
+
+[data-stock-document-index] .sd-index-actions > a { white-space: normal; }
 
 [data-stock-document-index] .sd-index-mobile-list {
     display: none;

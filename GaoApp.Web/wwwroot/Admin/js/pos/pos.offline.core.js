@@ -11,10 +11,11 @@
     const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
     const draftOf = result => result?.draft || result?.data || (Array.isArray(result?.lines) ? result : null);
     const contextKey = value => `${value.storeId}:${value.terminalId}:${value.userId}:${value.shiftId}`;
+    const maxPosQuantity = 1000000;
 
     function initial(context) {
         const state = { version: 1, context: clone(context), key: contextKey(context), orders: {}, currentId: null,
-            nextId: 1500000000, queue: [], maps: { order: {}, line: {}, payment: {}, customer: {} }, qrs: {}, conflict: null };
+            nextId: 1500000000, queue: [], quarantined: [], maps: { order: {}, line: {}, payment: {}, customer: {} }, qrs: {}, conflict: null };
         absorb(state, context.screen);
         return state;
     }
@@ -166,8 +167,9 @@
     function addItem(state, catalog, draft, product, unit, qty, barcode) {
         permission(state, 'pos.order.create'); editable(draft);
         if (!product || !unit) error('Sản phẩm hoặc đơn vị chưa có trong dữ liệu offline của quầy.');
-        if (!Number.isFinite(qty) || qty <= 0 || qty > 1000000) error('Số lượng không hợp lệ.');
+        if (!Number.isFinite(qty) || qty <= 0 || qty > maxPosQuantity) error('Số lượng không hợp lệ (tối đa 1.000.000).');
         let line = draft.lines.find(x => x.variantId === product.id && x.sellingUnitId === unit.unitId && !x.isPromotionGift);
+        if (line && line.quantity + qty > maxPosQuantity) error('Tổng số lượng dòng hàng không được vượt quá 1.000.000.');
         if (line) line.quantity += qty;
         else {
             line = { lineId: id(state), variantId: product.id, productUnitConversionId: unit.id,
@@ -192,7 +194,7 @@
             return draft;
         }
         if (draft.status !== 0) error('Đơn đã kết thúc.');
-        if (method !== 0 && amount > draft.balanceDue) error('Số tiền nhận vượt số còn thiếu.');
+        if (method !== 0 && method !== 1 && amount > draft.balanceDue) error('Số tiền nhận vượt số còn thiếu.');
         draft.payments.push({ paymentId: id(state), clientRequestId: body.clientRequestId,
             method: ['Cash', 'BankTransfer', 'Card', 'EWallet'][method] || 'Other', amount,
             reference: body.referenceCode?.trim() || null, provider: body.provider?.trim() || null, createdAt: at, confirmationSource: 'offline-manual' });
@@ -273,6 +275,7 @@
             order.invoiceIntent ||= { route: body.route, operationId: operation.id, selectedAtUtc: at,
                 contextKey: state.key, pendingSync: true };
             return { success: true, orderId: order.orderId, route: body.route === 1 ? 'Automatic' : 'Manual',
+                askBeforePrintingReceipt: order.askBeforePrintingReceipt === true,
                 pendingSync: order.invoiceIntent.pendingSync };
         }
         if (pendingInvoiceIntent(state) && /\/(?:items|scan|payments|payment-and-finalize|manual-transfer|finalize)$/.test(path))
@@ -318,7 +321,7 @@
             if (lineRoute[2]) { permission(state, 'pos.order.discount'); line.lineDiscount = Number(body.discountAmount || 0);
                 if (!Number.isFinite(line.lineDiscount) || line.lineDiscount < 0 || line.lineDiscount > round(line.quantity * line.unitPrice)) error('Giảm giá dòng hàng không hợp lệ.'); }
             else if (method === 'DELETE') draft.lines = draft.lines.filter(x => x !== line);
-            else { const qty = Number(p.get('qty')); if (!Number.isFinite(qty) || qty <= 0) error('Số lượng phải lớn hơn 0.'); line.quantity = qty; }
+            else { const qty = Number(p.get('qty')); if (!Number.isFinite(qty) || qty <= 0 || qty > maxPosQuantity) error('Số lượng không hợp lệ (tối đa 1.000.000).'); line.quantity = qty; }
             return recalc(draft, catalog, true, state);
         }
         const paymentRoute = path.match(/^\/admin\/pos\/payments\/(\d+)$/);
@@ -359,6 +362,13 @@
                 remainingAmount: draft.balanceDue, confirmationSource: 'offline-manual', printUrl: finalized ? `/admin/pos/orders/${draft.orderId}/print` : null };
         }
         if (path.endsWith('/finalize')) return { success: true, orderId: draft.orderId, data: finalize(state, draft, at) };
+        if (path.endsWith('/clear-lines')) {
+            permission(state, 'pos.order.create');
+            editable(draft);
+            if (draft.payments.length) error('Giỏ đã nhận tiền; cần xử lý khoản thu trước khi xóa toàn bộ sản phẩm.');
+            draft.lines = [];
+            return recalc(draft, catalog, true, state);
+        }
         if (path.endsWith('/hold')) {
             permission(state, 'pos.order.hold'); draft.status = 1; draft.holdNote = body.holdNote || null; draft.heldAtUtc = at;
             draft.holdCode = `OFF-${state.context.terminalId}-${draft.orderId}`;
@@ -383,6 +393,7 @@
         if (customerId && !customer) error('Khách hàng chưa có trong dữ liệu offline.');
         draft.customerId = customerId; draft.customerName = customer?.name || null; draft.customerPhone = customer?.phone || null;
         draft.customerPriceTier = customer?.priceTier || 'RETAIL'; draft.rewardSummary = null;
+        draft.askBeforePrintingReceipt = customer?.askBeforePrintingReceipt === true;
         return recalc(draft, catalog, reprice, state);
     }
     function mapId(state, kind, value) { return state.maps[kind]?.[value] || value; }

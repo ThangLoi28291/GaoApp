@@ -54,11 +54,7 @@
         <div class="modal-footer"><small class="text-muted me-auto">Ctrl+Enter: lưu · Esc: đóng</small><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button id="riSave" type="button" class="btn btn-primary">Lưu hàng nhận</button></div>
     </div></div>
 </div>
-<div class="modal fade" id="receiptIntakeReviewModal" tabindex="-1" aria-labelledby="riReviewTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered"><div class="modal-content ri-modal">
-        <div class="modal-header"><h5 id="riReviewTitle" class="modal-title">Duyệt khai báo nhận hàng</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
-        <div class="modal-body"><div id="riReviewFacts"></div><div id="riReviewCategoryWrap" class="mt-3"><label for="riReviewCategory" class="form-label">Danh mục sản phẩm <span class="text-danger">*</span></label><select id="riReviewCategory" class="form-select"></select></div><div id="riReviewError" class="text-danger mt-3" role="alert"></div></div>
-        <div class="modal-footer"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Đóng</button><button id="riReject" type="button" class="btn btn-outline-danger">Loại khỏi phiếu</button><button id="riApprove" type="button" class="btn btn-primary">Duyệt khai báo</button></div>
-    </div></div>
-</div>
+@await Html.PartialAsync("_ReceiptIntakeReview")
+<script src="~/Admin/js/receipt-intake-review-photo.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/receipt-intake-review.js" asp-append-version="true" defer></script>
 <script src="~/Admin/js/receipt-intake-photo.js" asp-append-version="true" defer></script>

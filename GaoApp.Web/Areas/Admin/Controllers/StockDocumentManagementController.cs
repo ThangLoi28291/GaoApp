@@ -247,6 +247,12 @@ public class StockDocumentManagementController : Controller
             }
 
             await _stockDocumentService.UpdateHeaderAsync(request, ct);
+            if (request.RowVersion is not null)
+            {
+                var saved = await _stockDocumentService.GetDetailAsync(request.StockDocumentId, ct)
+                    ?? throw new BusinessRuleException("Không tải được phiếu vừa lưu. Vui lòng tải lại trang.");
+                return Json(new { success = true, saved.RowVersion, saved.SupplierId, saved.SupplierName, saved.SupplierTaxCode });
+            }
             return Json(new { success = true, message = "Cập nhật thông tin phiếu thành công." });
         }
         catch (BusinessRuleException ex)

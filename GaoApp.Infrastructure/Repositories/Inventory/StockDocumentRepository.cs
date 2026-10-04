@@ -1,5 +1,7 @@
-﻿using GaoApp.Application.Interfaces.Repositories.Inventory;
+using GaoApp.Application.Interfaces.Common;
+using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Audit;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -14,20 +16,24 @@ namespace GaoApp.Infrastructure.Repositories.Inventory;
 public class StockDocumentRepository : IStockDocumentRepository
 {
     private readonly AppDbContext _context;
+    private readonly ICurrentPOSContext? _pos;
     private readonly IAuditExecutionContextAccessor?
         _auditExecutionContextAccessor;
     private IDbContextTransaction? _transaction;
 
     public StockDocumentRepository(
         AppDbContext context,
-        IAuditExecutionContextAccessor? auditExecutionContextAccessor = null)
+        IAuditExecutionContextAccessor? auditExecutionContextAccessor = null,
+        ICurrentPOSContext? pos = null)
     {
         _context = context;
+        _pos = pos;
         _auditExecutionContextAccessor = auditExecutionContextAccessor;
     }
 
     public async Task AddAsync(StockDocument entity, CancellationToken ct = default)
     {
+        await ReceiptEntryTerminal.CaptureAsync(_context, _pos, entity, ct);
         await _context.StockDocuments.AddAsync(entity, ct);
     }
 
@@ -422,25 +428,81 @@ public class StockDocumentRepository : IStockDocumentRepository
 
 
 
-    public async Task<List<StockDocument>> GetReceiptListAsync(CancellationToken ct = default)
+    public async Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
     {
         return await _context.StockDocuments
             .AsNoTracking()
-            .Include(x => x.Warehouse)
-                .ThenInclude(x => x.LegalEntity)
-            .Include(x => x.ConfirmedLegalEntity)
-            .Include(x => x.Supplier)
-            .Include(x => x.PurchaseOrder)
-            .Include(x => x.Lines)
             .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted)
             .OrderByDescending(x => x.DocumentDate)
             .ThenByDescending(x => x.Id)
+            // Return one summary per receipt without loading all historical lines.
+            .Select(x => new StockDocumentListItemDto
+            {
+                Id = x.Id,
+                DocumentNo = x.DocumentNo,
+                DocumentTitle = x.DocumentTitle,
+                DocumentDate = x.DocumentDate,
+                LegalEntityId = x.Warehouse != null ? x.Warehouse.LegalEntityId : 0,
+                LegalEntityName = x.Warehouse != null && x.Warehouse.LegalEntity != null ? x.Warehouse.LegalEntity.Name : string.Empty,
+                WarehouseName = x.Warehouse != null ? x.Warehouse.Name : string.Empty,
+                CreatedByName = _context.Users
+                    .Where(u => u.Id == x.CreatedBy)
+                    .Select(u => u.FullName != null && u.FullName != "" ? u.FullName : u.UserName)
+                    .FirstOrDefault(),
+                EntryTerminalName = x.EntryTerminalName,
+                EntryTerminalCode = x.EntryTerminalCode,
+                SupplierName = x.Supplier != null ? x.Supplier.Name : null,
+                PurchaseOrderId = x.PurchaseOrderId,
+                PurchaseOrderNumber = x.PurchaseOrder != null ? x.PurchaseOrder.OrderNumber : null,
+                PurchaseOrderTitle = x.PurchaseOrder != null ? x.PurchaseOrder.Title : null,
+                Status = x.Status,
+                WaitForInputInvoice = x.WaitForInputInvoice,
+                HasLinkedInputInvoice = x.InputInvoiceMaps.Any(m => !m.IsDeleted && m.StoreId == x.StoreId),
+                InvoiceMapId = x.InputInvoiceMaps.Where(m => !m.IsDeleted && m.StoreId == x.StoreId).Select(m => (int?)m.Id).FirstOrDefault(),
+                InvoiceEvidenceFingerprint = _context.Set<StockDocumentInputInvoiceReconciliation>()
+                    .Where(r => r.StoreId == x.StoreId && r.StockDocumentId == x.Id && !r.IsDeleted && !r.StockDocumentInputInvoiceMap.IsDeleted)
+                    .Select(r => r.EvidenceFingerprint).FirstOrDefault(),
+                InvoiceReviewEvidenceJson = _context.PurchaseReceiptAuditEvents
+                    .Where(a => a.StoreId == x.StoreId && a.StockDocumentId == x.Id && a.IsSuccess &&
+                        (a.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed ||
+                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceLinked ||
+                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceUnlinked ||
+                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceRelinked))
+                    .OrderByDescending(a => a.Id).Select(a => a.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed ? a.NewValuesJson : null).FirstOrDefault(),
+                InvoiceReconciliationState = _context.Set<StockDocumentInputInvoiceReconciliation>()
+                    .Where(r => r.StoreId == x.StoreId && r.StockDocumentId == x.Id && !r.IsDeleted &&
+                        !r.StockDocumentInputInvoiceMap.IsDeleted)
+                    .Select(r => (InputInvoiceReconciliationState?)r.OverallState).FirstOrDefault(),
+                TotalAmount = x.TotalAmount,
+                SubmittedAtUtc = x.SubmittedAtUtc,
+                ApprovedAtUtc = x.ApprovedAtUtc,
+                CreatedAtUtc = x.CreatedAtUtc,
+                UpdatedAtUtc = x.UpdatedAtUtc,
+                HasRevisionRequest = x.HasRevisionRequest,
+                RevisionRequestNote = x.RevisionRequestNote,
+                RevisionRequestedAtUtc = x.RevisionRequestedAtUtc,
+                TotalLines = x.Lines.Count(l => !l.IsDeleted),
+                TotalProductTypes = x.Lines.Where(l => !l.IsDeleted)
+                    .Select(l => l.ProductVariantId).Distinct().Count()
+            })
             .ToListAsync(ct);
     }
 
     public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
     {
-        _context.StockDocumentLines.Remove(line);
+        // AppDbContext converts Deleted to a soft delete before SQL is saved.
+        // Do not null tracked provisional-item links while marking the line Deleted:
+        // a resolved intake must retain its line reference and audit evidence.
+        var cascadeTiming = _context.ChangeTracker.CascadeDeleteTiming;
+        try
+        {
+            _context.ChangeTracker.CascadeDeleteTiming = CascadeTiming.OnSaveChanges;
+            _context.StockDocumentLines.Remove(line);
+        }
+        finally
+        {
+            _context.ChangeTracker.CascadeDeleteTiming = cascadeTiming;
+        }
         return Task.CompletedTask;
     }
 

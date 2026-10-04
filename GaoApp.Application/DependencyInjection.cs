@@ -127,7 +127,12 @@ public static class DependencyInjection
         services.AddScoped<IStockTransferIndexReadService, StockTransferIndexReadService>();
         services.AddScoped<IStockCountIndexReadService, StockCountIndexReadService>();
         services.AddScoped<IInventoryAdjustmentIndexReadService, InventoryAdjustmentIndexReadService>();
-        services.AddScoped<IStockDocumentService, StockDocumentService>();
+        services.AddScoped<IStockDocumentService>(provider =>
+            ActivatorUtilities.CreateInstance<StockDocumentService>(provider)
+                .WithPricingAllocationService(
+                    provider.GetRequiredService<IPurchaseReceiptPricingAllocationService>()));
+        services.AddSingleton<PurchaseReceiptPricingAllocationCalculator>();
+        services.AddScoped<IPurchaseReceiptPricingAllocationService, PurchaseReceiptPricingAllocationService>();
         services.AddScoped<IPurchaseReceivingWorkbenchService, PurchaseReceivingWorkbenchService>();
         services.AddScoped<IStockDocumentProvisionalItemService, StockDocumentProvisionalItemService>();
         services.AddScoped<IReceiptIntakeService, StockDocumentProvisionalItemService>();
@@ -219,6 +224,7 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ISalesReturnService, SalesReturnService>();
+        services.AddScoped<IPendingReturnRestockService, PendingReturnRestockService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);

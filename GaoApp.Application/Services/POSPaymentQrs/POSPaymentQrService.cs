@@ -44,8 +44,8 @@ public class POSPaymentQrService : IPOSPaymentQrService
 
         if (amount <= 0)
             throw new InvalidOperationException("Đơn hàng đã đủ tiền, không cần tạo QR.");
-        if (amount > currentDraft.BalanceDue || amount != decimal.Truncate(amount))
-            throw new InvalidOperationException("Số tiền QR phải là số đồng nguyên, không vượt quá số còn thiếu.");
+        if (amount != decimal.Truncate(amount) || amount >= 10000000000000000m)
+            throw new InvalidOperationException("Số tiền QR phải là số đồng nguyên dương, nhỏ hơn 10.000.000.000.000.000 đồng.");
 
         var bank = await _bankRepository.GetDefaultActiveAsync(ct);
 

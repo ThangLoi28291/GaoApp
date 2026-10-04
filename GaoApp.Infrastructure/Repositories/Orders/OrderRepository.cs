@@ -1,11 +1,12 @@
 ﻿using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.DTOs.POS;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 namespace GaoApp.Infrastructure.Repositories.Orders;
 
-public sealed class OrderRepository : IOrderRepository
+public sealed partial class OrderRepository : IOrderRepository
 {
     private readonly AppDbContext _db;
 
@@ -97,33 +98,27 @@ public sealed class OrderRepository : IOrderRepository
 
           .AsSplitQuery()
           .FirstOrDefaultAsync(o => o.Id == orderId && !o.IsDeleted, ct);
-    public async Task<(List<Order> Items, int Total)> QueryOrdersAsync(
+    public async Task<(List<OrderListItemDto> Items, int Total)> QueryOrdersAsync(
       DateTime? fromUtc,
       DateTime? toUtcExclusive,
       OrderStatus? status,
       string? keyword,
       int page,
       int pageSize,
-      CancellationToken ct = default)
+      CancellationToken ct = default,
+      OrderListQueryDto? filters = null)
     {
         if (page <= 0) page = 1;
         if (pageSize <= 0) pageSize = 20;
         if (pageSize > 200) pageSize = 200;
 
+        if (_db.CurrentStoreId is not > 0) return ([], 0);
+        var storeId = _db.CurrentStoreId.Value;
         var q = _db.Orders
       .AsNoTracking()
-      .Where(o => !o.IsDeleted);
+      .Where(o => o.StoreId == storeId && !o.IsDeleted);
 
-        // Ẩn đơn nháp rỗng khỏi màn danh sách đơn.
-        // Draft rỗng vẫn giữ trong POS để làm giỏ hiện tại,
-        // nhưng không đưa vào lịch sử đơn.
-        q = q.Where(o =>
-            o.Status != OrderStatus.Draft
-            || o.GrandTotal > 0
-            || o.PaidTotal > 0
-            || !string.IsNullOrWhiteSpace(o.Note)
-            || o.Lines.Any(l => !l.IsDeleted)
-            || o.Payments.Any(p => !p.IsDeleted));
+        q = ApplyListFilters(q, storeId, filters);
 
         // 1) Lọc theo trạng thái
         if (status.HasValue)
@@ -175,18 +170,61 @@ public sealed class OrderRepository : IOrderRepository
                 (o.Note != null && o.Note.Contains(k)));
         }
 
-        // 4) Tổng số bản ghi
-        var total = await q.CountAsync(ct);
+        // Count the two disjoint groups separately in one SQL statement. Checking
+        // draft children in an OR over the entire history makes SQL Server scan
+        // OrderLines/OrderPayments even when almost every order is completed.
+        var visibleDrafts = q.Where(o => o.Status == OrderStatus.Draft &&
+            (o.GrandTotal > 0 || o.PaidTotal > 0 || !string.IsNullOrWhiteSpace(o.Note)
+             || o.Lines.Any(l => l.StoreId == storeId && !l.IsDeleted)
+             || o.Payments.Any(p => p.StoreId == storeId && !p.IsDeleted)));
+        var visibleNonDrafts = q.Where(o => o.Status != OrderStatus.Draft);
+        var countQuery = status == OrderStatus.Draft
+            ? visibleDrafts.Select(o => o.Id)
+            : status.HasValue
+                ? visibleNonDrafts.Select(o => o.Id)
+                : visibleNonDrafts.Select(o => o.Id).Concat(visibleDrafts.Select(o => o.Id));
+        var total = await countQuery.TagWith("POS orders: filtered count").CountAsync(ct);
+        if (total == 0 || (long)(page - 1) * pageSize >= total) return ([], total);
+
+        // Keep timeline paging as a single ordered index scan. Empty drafts are
+        // still hidden, and related rows must belong to the current store.
+        q = status == OrderStatus.Draft ? visibleDrafts : status.HasValue ? visibleNonDrafts
+            : q.Where(o => o.Status != OrderStatus.Draft
+                || o.GrandTotal > 0 || o.PaidTotal > 0 || !string.IsNullOrWhiteSpace(o.Note)
+                || o.Lines.Any(l => l.StoreId == storeId && !l.IsDeleted)
+                || o.Payments.Any(p => p.StoreId == storeId && !p.IsDeleted));
 
         // 5) Sort: Completed ưu tiên theo CompletedAtUtc desc (nếu có), còn lại theo Id desc
-        q = q.OrderByDescending(o => o.CompletedAtUtc ?? o.CreatedAtUtc)
+        q = q.OrderByDescending(o => EF.Property<DateTime>(o, "ListSortAtUtc"))
              .ThenByDescending(o => o.Id);
 
         // 6) Paging
         var items = await q
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(o => new OrderListItemDto
+            {
+                OrderId = o.Id, OrderNumber = o.OrderNumber, Status = o.Status.ToString(), PaymentStatus = o.PaymentStatus.ToString(),
+                GrandTotal = o.GrandTotal, PaidTotal = o.PaidTotal, BalanceDue = o.BalanceDue,
+                IsCreditSale = o.IsCreditSale, DepositAmount = o.DepositAmount,
+                VoucherDiscountTotal = o.VoucherDiscountTotal, CreatedAtUtc = o.CreatedAtUtc, CompletedAtUtc = o.CompletedAtUtc
+            })
+            .TagWith("POS orders: page headers only")
             .ToListAsync(ct);
+
+        var ids = items.Select(o => o.OrderId).ToArray();
+        await EnrichListPageAsync(items, storeId, ct);
+        var vouchers = await _db.Set<OrderRewardVoucher>().AsNoTracking()
+            .Where(v => v.StoreId == storeId && !v.IsDeleted && ids.Contains(v.OrderId))
+            .OrderBy(v => v.Id)
+            .Select(v => new { v.OrderId, v.VoucherId, v.VoucherValue,
+                Code = v.Voucher.StoreId == storeId && !v.Voucher.IsDeleted ? v.Voucher.VoucherCode : "",
+                Status = v.Voucher.StoreId == storeId && !v.Voucher.IsDeleted ? v.Voucher.Status.ToString() : null })
+            .TagWith("POS orders: page vouchers").ToListAsync(ct);
+        var byOrder = vouchers.ToLookup(v => v.OrderId);
+        foreach (var item in items)
+            item.RewardVouchers = byOrder[item.OrderId].Select(v => new OrderRewardVoucherDto
+                { VoucherId = v.VoucherId, VoucherCode = v.Code, Value = v.VoucherValue, Status = v.Status }).ToList();
 
         return (items, total);
     }
@@ -275,6 +313,7 @@ public sealed class OrderRepository : IOrderRepository
             .Include(x => x.Customer)
             .Include(x => x.InventoryIssue)
             .Include(x => x.POSShift)
+                .ThenInclude(x => x.Terminal)
             .Include(x => x.Store)
 
             .Include(x => x.Lines.Where(l => !l.IsDeleted))

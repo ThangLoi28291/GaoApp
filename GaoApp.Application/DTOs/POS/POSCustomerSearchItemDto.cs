@@ -1,8 +1,9 @@
-﻿namespace GaoApp.Application.DTOs.POS;
+namespace GaoApp.Application.DTOs.POS;
 
 public sealed class POSCustomerSearchItemDto
 {
     public int CustomerId { get; set; }
+    public bool AskBeforePrintingReceipt { get; set; }
 
     public string Name { get; set; } = default!;
 

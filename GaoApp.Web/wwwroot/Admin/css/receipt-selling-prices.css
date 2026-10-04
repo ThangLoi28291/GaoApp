@@ -1,0 +1,30 @@
+#receiptSellingPrices .rsp-controls { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px 20px; }
+#receiptSellingPrices #rspUseSuggestions { white-space:normal; max-width:100%; }
+#receiptSellingPrices .rsp-controls .form-label { margin:0; }
+#receiptSellingPrices .rsp-controls input,#receiptSellingPrices .rsp-controls select { margin-top:6px; }
+#receiptSellingPrices .rsp-table { table-layout:fixed; font-variant-numeric:tabular-nums; }
+#receiptSellingPrices .rsp-table th,#receiptSellingPrices .rsp-table td { padding:12px 8px; vertical-align:top; white-space:normal; }
+#receiptSellingPrices .rsp-table th { font-size:.8rem; }
+#receiptSellingPrices .rsp-table input[type=number] { padding:8px; min-width:0; }
+#receiptSellingPrices .rsp-unit-label { display:flex; align-items:center; gap:8px; }
+#receiptSellingPrices .rsp-suggestion { border:0; background:transparent; color:var(--bs-primary,#696cff); padding:4px 0; text-align:left; font-size:.8rem; }
+#receiptSellingPrices .rsp-history-row { border-bottom:1px solid var(--bs-border-color,#e7e7ee); padding:8px 0; }
+#receiptSellingPrices [hidden] { display:none!important; }
+.sd-price-review { font-size:.8rem; }
+.sd-price-attention > td { background-color:rgba(255,171,0,.06)!important; border-top-color:#ffab00; border-bottom-color:#ffab00; }
+.sd-price-attention > td:first-child { box-shadow:inset 4px 0 #ffab00; }
+.sd-price-loss > td { background-color:rgba(255,62,29,.07)!important; border-top-color:#ff3e1d; border-bottom-color:#ff3e1d; }
+.sd-price-loss > td:first-child { box-shadow:inset 4px 0 #ff3e1d; }
+.sd-price-reviewed > td:first-child { box-shadow:inset 4px 0 #71dd37; }
+@media(max-width:767px) {
+    #receiptSellingPrices .btn-close { position:static; transform:none; margin:0; flex-shrink:0; }
+    #receiptSellingPrices .rsp-controls { grid-template-columns:1fr; }
+    #receiptSellingPrices .rsp-table,#receiptSellingPrices .rsp-table tbody { display:block; width:100%; }
+    #receiptSellingPrices .rsp-table thead { display:none; }
+    #receiptSellingPrices .rsp-table tr { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px 12px; border-bottom:1px solid var(--bs-border-color,#e7e7ee); padding:12px 0; }
+    #receiptSellingPrices .rsp-table td { border:0; padding:0; }
+    #receiptSellingPrices .rsp-table td:first-child,#receiptSellingPrices .rsp-table td:last-child { grid-column:1/-1; }
+    #receiptSellingPrices .rsp-table td[data-label]:before { content:attr(data-label); display:block; color:var(--bs-secondary-color,#697a8d); font-size:.8rem; margin-bottom:5px; }
+    #receiptSellingPrices .modal-footer { align-items:stretch; flex-direction:column; }
+    #receiptSellingPrices input,#receiptSellingPrices select { font-size:16px; }
+}

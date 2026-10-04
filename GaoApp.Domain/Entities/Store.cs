@@ -8,6 +8,7 @@ public class Store : BaseEntity
     public string? ReceiptName { get; set; }
     public string? ReceiptAddress { get; set; }
     public string? ReceiptPhone { get; set; }
+    public string? ReceiptTemplateKey { get; set; }
     public string? GuestWifiName { get; set; }
     public string? GuestWifiPassword { get; set; }
 

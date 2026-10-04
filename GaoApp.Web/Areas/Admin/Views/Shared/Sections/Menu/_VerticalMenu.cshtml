@@ -4,10 +4,17 @@
 @using Microsoft.Extensions.Hosting
 
 @inject IAdminMenuService AdminMenuService
+@inject IAdminMenuVisibilityService MenuVisibilityService
+@inject GaoApp.Application.Common.ITenantContext MenuTenant
 @inject IWebHostEnvironment WebHostEnvironment
+@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess ReceiptMenuAdminAccess
 
 @{
     TempData.Keep();
+    var canConfigureReceipts = await ReceiptMenuAdminAccess.IsAdminAsync(Context.RequestAborted);
+    bool ShowReceiptMenu(AdminMenuItemDto item) => canConfigureReceipts ||
+        (!string.Equals(item.Controller, "ReceiptTemplates", StringComparison.OrdinalIgnoreCase)
+        && !(item.Url?.StartsWith("/admin/receipt-templates", StringComparison.OrdinalIgnoreCase) ?? false));
 
     string currentController =
         ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
@@ -15,20 +22,14 @@
     string currentAction =
         ViewContext.RouteData.Values["action"]?.ToString() ?? "";
 
-    /*
-     * Lấy StoreId/UserId từ Claim.
-     * Nếu chưa có claim thì fallback StoreId = 1 vì seed menu hiện tại đang dùng StoreId = 1.
-     */
-    int storeId = GetClaimInt("StoreId")
-        ?? GetClaimInt("storeId")
-        ?? GetClaimInt("CurrentStoreId")
-        ?? 1;
+    // Resolve the active tenant; never render another store's seeded menu as a fallback.
+    int storeId = MenuTenant.StoreId ?? 0;
 
     int userId = GetClaimInt("UserId")
         ?? GetClaimInt("userId")
         ?? GetClaimInt("NameIdentifier")
         ?? GetClaimInt(System.Security.Claims.ClaimTypes.NameIdentifier)
-        ?? 1;
+        ?? 0;
 
     /*
      * Load menu theo quyền.
@@ -38,17 +39,7 @@
         userId,
         Context.RequestAborted);
 
-    /*
-     * Fallback khi đang DEV:
-     * Nếu permission chưa khớp làm menu rỗng thì vẫn hiện toàn bộ menu để test giao diện.
-     * Khi phân quyền đã chuẩn, có thể bỏ đoạn này.
-     */
-    if ((!dynamicMenus.Any()) && WebHostEnvironment.IsDevelopment())
-    {
-        dynamicMenus = await AdminMenuService.GetForAdminAsync(
-            storeId,
-            Context.RequestAborted);
-    }
+    var hiddenMenuIds = await MenuVisibilityService.GetHiddenIdsAsync(storeId, userId, Context.RequestAborted);
 }
 
 <aside id="layout-menu"
@@ -85,6 +76,28 @@
 
     <ul class="menu-inner py-1">
 
+        @if (User.IsInRole("ADMIN"))
+        {
+            @if (!hiddenMenuIds.Contains(GaoApp.Application.Services.AdminMenus.MenuVisibilityRules.PosTerminals))
+            {
+            <li class="menu-item @(currentController == "POSTerminals" ? "active" : "")">
+                <a href="/admin/pos-terminals" class="menu-link">
+                    <i class="menu-icon icon-base bx bx-desktop"></i>
+                    <div class="text-truncate">Quản lý máy POS</div>
+                </a>
+            </li>
+            }
+            @if (!hiddenMenuIds.Contains(GaoApp.Application.Services.AdminMenus.MenuVisibilityRules.Kiosks))
+            {
+            <li class="menu-item @(currentController == "KioskManagement" ? "active" : "")">
+                <a href="/admin/kiosks" class="menu-link">
+                    <i class="menu-icon icon-base bx bx-desktop"></i>
+                    <div class="text-truncate">Quầy tự phục vụ</div>
+                </a>
+            </li>
+            }
+        }
+
         @if (dynamicMenus == null || !dynamicMenus.Any())
         {
             <li class="menu-item">
@@ -97,11 +110,11 @@
         else
         {
             foreach (var menu in dynamicMenus
-                .Where(x => x.IsActive)
+                .Where(x => x.IsActive && ShowReceiptMenu(x))
                 .OrderBy(x => x.SortOrder))
             {
                 var children = menu.Children?
-                    .Where(x => x.IsActive)
+                    .Where(x => x.IsActive && ShowReceiptMenu(x))
                     .OrderBy(x => x.SortOrder)
                     .ToList() ?? new List<AdminMenuItemDto>();
 

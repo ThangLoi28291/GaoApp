@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -35,6 +35,13 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     public int? PurchaseOrderId { get; set; }
     public PurchaseOrder? PurchaseOrder { get; set; }
 
+    // Captured when the receipt is created; never inferred from a later login or approval.
+    public int? EntryTerminalId { get; set; }
+    [StringLength(150)]
+    public string? EntryTerminalName { get; set; }
+    [StringLength(30)]
+    public string? EntryTerminalCode { get; set; }
+
     public ReceivingSessionState ReceivingSessionState { get; set; }
         = ReceivingSessionState.None;
     public int? ReceivingOwnerUserId { get; set; }
@@ -47,6 +54,9 @@ public class StockDocument : BaseStoreEntity, IAuditTrackedEntity
     public string? DirectReceiptReason { get; set; }
 
     public bool HasVat { get; set; }
+
+    /// <summary>Null preserves unclassified legacy receipts. Posting and invoice follow-up are independent.</summary>
+    public bool? WaitForInputInvoice { get; set; }
 
     /// <summary>
     /// Whether input VAT is included in the inventory cost posted by this receipt.

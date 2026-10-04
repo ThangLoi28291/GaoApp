@@ -40,6 +40,15 @@ var expected = (await db.Database.SqlQueryRaw<SourceCounts>($"""
     """).ToListAsync()).Single();
 #pragma warning restore EF1002
 var heads = db.InvoiceHeads.Where(x => x.StoreId == storeId && x.LegacySourceId != null);
+#pragma warning disable EF1002
+var routeMismatches = await db.Database.SqlQueryRaw<int>($"""
+    SELECT COUNT(*) AS [Value] FROM dbo.Orders o
+    JOIN {quotedSource}.dbo.InvoiceHead h ON h.Id=o.Id
+    WHERE o.StoreId=@storeId AND o.IsDeleted=0 AND o.OrderNumber=CONCAT(N'LEGACY-',h.Id)
+      AND o.InvoiceIssuanceRoute<>CASE WHEN h.LayHD=1 THEN 2 ELSE 1 END
+    """, new SqlParameter("@storeId",storeId)).SingleAsync();
+#pragma warning restore EF1002
+if (routeMismatches != 0) throw new InvalidOperationException("Invoice routing differs from legacy LayHD (1=manual, otherwise automatic).");
 var headCount = await heads.LongCountAsync();
 var detailCount = await db.InvoiceDetails.LongCountAsync(x => x.StoreId == storeId && x.LegacySourceId != null);
 var issued = await heads.LongCountAsync(x => x.ProviderStatus == InvoiceProviderStatus.Issued);
@@ -89,6 +98,7 @@ Console.WriteLine(JsonSerializer.Serialize(new {
     Result = "INVOICE_AND_STOCK_READ_PASS", Target = target, Source = source, StoreId = storeId,
     ImportedHeads = headCount, ImportedDetails = detailCount, Issued = issued, Drafts = headCount - issued,
     ReadOnlyCorrections = corrections, AdminListTotal = page.Value.TotalItems,
+    LegacyLayHdRouteMismatches = routeMismatches,
     UnlinkedOrders = await heads.CountAsync(x => x.OrderId == null),
     StockMovements = importedStock.Count, StockVariants = expectedStock.Count, LinkedOutbound = linkedOutbound,
     StockNegativeVariants = expectedStock.Count(x => x.Quantity < 0),

@@ -306,7 +306,8 @@ public sealed class OrderLegalEntityReversalService
                 IsRestock = isRestock,
                 ReversalType = isRestock
                     ? OrderLegalEntityReversalType.ReturnRestock
-                    : OrderLegalEntityReversalType.ReturnNoRestock,
+                    : salesReturnLine.Action == SalesReturnLineAction.PendingRestock
+                        ? OrderLegalEntityReversalType.ReturnPendingRestock : OrderLegalEntityReversalType.ReturnNoRestock,
                 OccurredAtUtc = DateTime.UtcNow
             });
             handledLineIds.Add(salesReturnLine.Id);

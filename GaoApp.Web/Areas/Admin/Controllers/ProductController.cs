@@ -20,11 +20,13 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 public class ProductController : BaseAdminController
 {
     private const int DropdownPageSize = 500;
+    private const string AllLifecycle = "all";
     private const string PosAllowedLifecycle = "pos-allowed";
     private const string NotForPosLifecycle = "not-for-pos";
     private const string InactiveLifecycle = "inactive";
     private const string ProductSetupFreshIdKey = "ProductSetupFreshId";
 
+    private readonly IAuthorizationService _authorization;
     private readonly ITenantContext _tenant;
     private readonly IProductService _productService;
     private readonly ICategoryService _categoryService;
@@ -42,8 +44,10 @@ public class ProductController : BaseAdminController
         IBrandService brandService,
         ITaxService taxService,
         IUnitService unitService,
-        IProductVariantService variantService)
+        IProductVariantService variantService,
+        IAuthorizationService authorization)
     {
+        _authorization = authorization;
         _tenant = tenant;
         _productService = productService;
         _categoryService = categoryService;
@@ -69,17 +73,18 @@ public class ProductController : BaseAdminController
         if (pageSize > 200) pageSize = 200;
     }
 
-    private static string? NormalizeLifecycle(string? lifecycle)
+    private static string NormalizeLifecycle(string? lifecycle)
     {
         if (string.IsNullOrWhiteSpace(lifecycle))
-            return null;
+            return PosAllowedLifecycle;
 
         return lifecycle.Trim().ToLowerInvariant() switch
         {
+            AllLifecycle => AllLifecycle,
             PosAllowedLifecycle => PosAllowedLifecycle,
             NotForPosLifecycle => NotForPosLifecycle,
             InactiveLifecycle => InactiveLifecycle,
-            _ => null
+            _ => PosAllowedLifecycle
         };
     }
 
@@ -101,6 +106,7 @@ public class ProductController : BaseAdminController
         int page,
         int pageSize,
         bool includeCategoryOptions,
+        ProductListFilters filters,
         CancellationToken ct)
     {
         if (categoryId <= 0)
@@ -109,7 +115,7 @@ public class ProductController : BaseAdminController
         lifecycle = NormalizeLifecycle(lifecycle);
         var (isActive, isSellable) = ResolveLifecycle(lifecycle);
 
-        var paged = await _productService.GetPagedAsync(
+        var paged = await _productService.SearchCatalogAsync(
             storeId,
             search,
             categoryId,
@@ -117,6 +123,7 @@ public class ProductController : BaseAdminController
             isSellable,
             page,
             pageSize,
+            filters,
             ct);
 
         var summary = await _productService.GetSummaryAsync(storeId, ct);
@@ -146,6 +153,7 @@ public class ProductController : BaseAdminController
         {
             SearchString = search,
             CategoryId = categoryId,
+            Filters = filters,
             Lifecycle = lifecycle,
             Page = paged.Page,
             PageSize = paged.PageSize,
@@ -153,6 +161,9 @@ public class ProductController : BaseAdminController
             PosAllowedProductCount = summary.PosAllowedItems,
             NotForPosProductCount = summary.NotForPosItems,
             InactiveProductCount = summary.InactiveItems,
+            SupplierOption = filters.SupplierId.HasValue ? (await _productService.FilterOptionsAsync(storeId, "supplier", null, filters.SupplierId, ct)).SingleOrDefault() : null,
+            BrandOption = filters.BrandId.HasValue ? (await _productService.FilterOptionsAsync(storeId, "brand", null, filters.BrandId, ct)).SingleOrDefault() : null,
+            UnitOption = filters.BaseUnitId.HasValue ? (await _productService.FilterOptionsAsync(storeId, "unit", null, filters.BaseUnitId, ct)).SingleOrDefault() : null,
             CategoryOptions = categoryOptions,
             Paged = paged
         };
@@ -184,8 +195,16 @@ public class ProductController : BaseAdminController
         string? lifecycle = null,
         int page = 1,
         int pageSize = 20,
+        int? supplierId = null,
+        int? brandId = null,
+        int? baseUnitId = null,
+        string? dataIssue = null,
         CancellationToken ct = default)
     {
+        if (supplierId.HasValue && !(await _authorization.AuthorizeAsync(User, PermissionCodes.Catalog.Supplier.View)).Succeeded) return Forbid();
+        if (search?.Length > 200) return BadRequest(new { message = "Từ khóa tìm kiếm tối đa 200 ký tự." });
+        if (dataIssue is not (null or "" or "no-brand" or "no-image" or "no-barcode")) return BadRequest(new { message = "Bộ lọc thông tin không hợp lệ." });
+        var filters = new ProductListFilters(supplierId > 0 ? supplierId : null, brandId > 0 ? brandId : null, baseUnitId > 0 ? baseUnitId : null, dataIssue);
         var storeId = RequireStoreId();
         Normalize(ref page, ref pageSize);
 
@@ -197,7 +216,8 @@ public class ProductController : BaseAdminController
             page,
             pageSize,
             includeCategoryOptions: true,
-            ct);
+            filters: filters,
+            ct: ct);
 
         return View(vm);
     }
@@ -209,8 +229,16 @@ public class ProductController : BaseAdminController
         string? lifecycle = null,
         int page = 1,
         int pageSize = 20,
+        int? supplierId = null,
+        int? brandId = null,
+        int? baseUnitId = null,
+        string? dataIssue = null,
         CancellationToken ct = default)
     {
+        if (supplierId.HasValue && !(await _authorization.AuthorizeAsync(User, PermissionCodes.Catalog.Supplier.View)).Succeeded) return Forbid();
+        if (search?.Length > 200) return BadRequest(new { message = "Từ khóa tìm kiếm tối đa 200 ký tự." });
+        if (dataIssue is not (null or "" or "no-brand" or "no-image" or "no-barcode")) return BadRequest(new { message = "Bộ lọc thông tin không hợp lệ." });
+        var filters = new ProductListFilters(supplierId > 0 ? supplierId : null, brandId > 0 ? brandId : null, baseUnitId > 0 ? baseUnitId : null, dataIssue);
         var storeId = RequireStoreId();
         Normalize(ref page, ref pageSize);
 
@@ -222,9 +250,17 @@ public class ProductController : BaseAdminController
             page,
             pageSize,
             includeCategoryOptions: false,
-            ct);
+            filters: filters,
+            ct: ct);
 
         return PartialView("_ProductTable", vm);
+    }
+
+    [HttpGet, Authorize(Policy = PermissionCodes.Catalog.Product.View)]
+    public async Task<IActionResult> FilterOptions(string kind, string? term, int? selectedId, CancellationToken ct)
+    {
+        if (kind == "supplier" && !(await _authorization.AuthorizeAsync(User, PermissionCodes.Catalog.Supplier.View)).Succeeded) return Forbid();
+        return Json(await _productService.FilterOptionsAsync(RequireStoreId(), kind, term, selectedId, ct));
     }
 
     [HttpGet]

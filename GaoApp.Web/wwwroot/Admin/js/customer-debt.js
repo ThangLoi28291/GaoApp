@@ -4,6 +4,13 @@
     const form = document.getElementById('debtCollectForm');
     document.getElementById('debtPrint')?.addEventListener('click', () => window.print());
     if (!root) return;
+    document.getElementById('debtReportFilters')?.addEventListener('submit', event => {
+        const filters = event.currentTarget;
+        if (filters.elements.from.value > filters.elements.to.value) {
+            event.preventDefault();
+            document.getElementById('debtReportError').textContent = 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.';
+        }
+    });
     const tabs = root.querySelectorAll('[data-debt-tab]');
     const panels = root.querySelectorAll('[data-debt-panel]');
     function selectSection(name) {

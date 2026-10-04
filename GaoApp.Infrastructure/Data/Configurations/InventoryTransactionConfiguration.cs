@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Entities;
+using GaoApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -76,6 +76,12 @@ public class InventoryTransactionConfiguration : IEntityTypeConfiguration<Invent
                 x.QuantityChange,
                 x.AfterQty
             })
+            .HasFilter("[IsDeleted] = 0");
+
+        builder.HasIndex(x => new { x.StoreId, x.ProductVariantId, x.OccurredAtUtc, x.Id })
+            .HasDatabaseName("IX_InventoryTransactions_LedgerProductTimeline")
+            .IsDescending(false, false, true, true)
+            .IncludeProperties(x => new { x.WarehouseId, x.TransactionType, x.ReferenceType, x.QuantityChange, x.AfterQty })
             .HasFilter("[IsDeleted] = 0");
 
         builder.HasIndex(x => new

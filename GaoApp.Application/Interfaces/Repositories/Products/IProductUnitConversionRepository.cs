@@ -7,6 +7,7 @@ namespace GaoApp.Application.Interfaces.Repositories.Products;
 /// </summary>
 public interface IProductUnitConversionRepository
 {
+    Task<ProductVariant?> GetVariantForUnitSetupAsync(int storeId, int variantId, CancellationToken ct = default);
     /// <summary>
     /// Lấy conversion theo Id, kèm Unit + Barcodes + Variant + Product.
     /// </summary>

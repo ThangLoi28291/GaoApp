@@ -9,6 +9,7 @@
         const btnClearSearch = document.getElementById("btnClearSearch");
         const ddlCategory = document.getElementById("ddlCategory");
         const ddlLifecycle = document.getElementById("ddlLifecycle");
+        const lifecycleButtons = shell.querySelectorAll("[data-product-lifecycle]");
         const ddlPageSize = document.getElementById("ddlPageSize");
         const wrapper = document.getElementById("productTableWrapper");
         const totalCount = document.getElementById("productTotalCount");
@@ -28,6 +29,7 @@
         const quickViewUnit = document.getElementById("productQuickViewUnit");
         const quickViewVariantCount = document.getElementById("productQuickViewVariantCount");
         const quickViewPrice = document.getElementById("productQuickViewPrice");
+        const quickViewUnits = document.getElementById("productQuickViewUnits");
         const quickViewDetailLink = document.getElementById("productQuickViewDetailLink");
 
         if (
@@ -51,6 +53,9 @@
         let loadController = null;
         let requestSequence = 0;
         let imageHoverPreview = null;
+        const extraFilters = window.initProductFilters?.({ shell, onChange() {
+            window.clearTimeout(typingTimer); updateClearButtonVisibility(); updateLifecycleButtons(); loadPage(1, "push");
+        } });
 
         function getToken() {
             return document.querySelector(
@@ -88,6 +93,12 @@
             btnClearSearch.classList.toggle(
                 "d-none",
                 txtSearch.value.trim().length === 0);
+        }
+
+        function updateLifecycleButtons() {
+            lifecycleButtons.forEach(function (button) {
+                button.setAttribute("aria-pressed", button.dataset.productLifecycle === ddlLifecycle.value ? "true" : "false");
+            });
         }
 
         function disposeTooltips() {
@@ -180,6 +191,47 @@
             if (imageHoverPreview) imageHoverPreview.hidden = true;
         }
 
+        function renderUnitPrices(json) {
+            if (!quickViewUnits) return;
+            quickViewUnits.replaceChildren();
+            let units;
+            try { units = JSON.parse(json || '[]'); } catch { units = []; }
+            if (!Array.isArray(units) || !units.length) {
+                quickViewUnits.textContent = 'Chưa có đơn vị bán.';
+                return;
+            }
+            const money = value => Number(value) > 0 ? Number(value).toLocaleString('vi-VN') + ' ₫' : 'Chưa có giá';
+            const groups = new Map();
+            units.forEach(unit => {
+                if (!groups.has(unit.variantId)) groups.set(unit.variantId, []);
+                groups.get(unit.variantId).push(unit);
+            });
+            groups.forEach(rows => {
+                const group = document.createElement('div'); group.className = 'product-unit-group mb-3';
+                const heading = document.createElement('div'); heading.className = 'fw-semibold mb-2';
+                heading.textContent = `${rows[0].variantName} · SKU: ${rows[0].sku || '—'}`;
+                group.append(heading);
+                const table = document.createElement('table'); table.className = 'table table-sm product-unit-table mb-0';
+                const head = table.createTHead().insertRow();
+                ['Đơn vị', 'Giá lẻ', 'Giá sỉ'].forEach(label => {
+                    const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; head.append(cell);
+                });
+                const body = table.createTBody();
+                rows.sort((a,b) => Number(b.isBaseUnit)-Number(a.isBaseUnit) || a.factor-b.factor).forEach(unit => {
+                    const row = body.insertRow(); row.dataset.unitName = unit.unitName;
+                    const name = row.insertCell(); name.textContent = unit.unitName;
+                    const note = document.createElement('small'); note.className = 'd-block text-muted';
+                    note.textContent = unit.isBaseUnit ? 'Đơn vị gốc' : `Quy đổi: ${Number(unit.factor).toLocaleString('vi-VN')} ${rows.find(x=>x.isBaseUnit)?.unitName || 'đơn vị gốc'}`;
+                    name.append(note);
+                    if (!unit.isActive) { const inactive = document.createElement('small'); inactive.className = 'd-block text-warning'; inactive.textContent = 'Ngừng dùng'; name.append(inactive); }
+                    row.insertCell().textContent = money(unit.retailPrice);
+                    const wholesale = row.insertCell(); wholesale.textContent = money(unit.wholesalePrice ?? unit.retailPrice);
+                    if (!(unit.wholesalePrice > 0)) { const fallback = document.createElement('small'); fallback.className = 'd-block text-muted'; fallback.textContent = 'Theo giá lẻ'; wholesale.append(fallback); }
+                });
+                group.append(table); quickViewUnits.append(group);
+            });
+        }
+
         function showQuickView(source) {
             const productRow = source.closest("[data-product-row]");
             if (!productRow || !quickViewModalElement || !window.bootstrap?.Modal) return;
@@ -196,6 +248,7 @@
             setQuickViewText(quickViewUnit, data.quickUnit);
             setQuickViewText(quickViewVariantCount, data.quickVariants);
             setQuickViewText(quickViewPrice, data.quickPrice);
+            renderUnitPrices(data.quickUnits);
             setQuickViewText(quickViewState, data.quickState);
 
             if (quickViewState) {
@@ -227,7 +280,7 @@
             const parameters = new URLSearchParams();
             const search = txtSearch.value.trim();
             const categoryId = ddlCategory.value;
-            const lifecycle = ddlLifecycle.value;
+            const lifecycle = ddlLifecycle.value || "pos-allowed";
             const pageSize = ddlPageSize.value || "20";
 
             if (search) parameters.set("search", search);
@@ -236,6 +289,7 @@
             if (page > 1) parameters.set("page", page.toString());
             if (pageSize !== "20") parameters.set("pageSize", pageSize);
 
+            extraFilters?.append(parameters);
             return parameters;
         }
 
@@ -255,11 +309,15 @@
 
         function applyLocationState() {
             const parameters = new URLSearchParams(window.location.search);
+            extraFilters?.restore(parameters);
             txtSearch.value = parameters.get("search") || "";
             ddlCategory.value = parameters.get("categoryId") || "";
-            ddlLifecycle.value = parameters.get("lifecycle") || "";
+            const lifecycle = (parameters.get("lifecycle") || "pos-allowed").trim().toLowerCase();
+            ddlLifecycle.value = ["all", "pos-allowed", "not-for-pos", "inactive"].includes(lifecycle) ? lifecycle : "pos-allowed";
             ddlPageSize.value = parameters.get("pageSize") || "20";
             updateClearButtonVisibility();
+
+            updateLifecycleButtons();
 
             return Math.max(
                 Number.parseInt(parameters.get("page") || "1", 10) || 1,
@@ -307,6 +365,7 @@
         }
 
         async function loadPage(page, historyMode) {
+            extraFilters?.render();
             const requestedPage = Math.max(Number.parseInt(page || "1", 10) || 1, 1);
             const currentSequence = ++requestSequence;
 
@@ -581,7 +640,18 @@
         });
 
         ddlLifecycle.addEventListener("change", function () {
+            window.clearTimeout(typingTimer);
+            updateLifecycleButtons();
             loadPage(1, "push");
+        });
+
+        lifecycleButtons.forEach(function (button) {
+            button.addEventListener("click", function () {
+                ddlLifecycle.value = button.dataset.productLifecycle;
+                window.clearTimeout(typingTimer);
+                updateLifecycleButtons();
+                loadPage(1, "push");
+            });
         });
 
         ddlPageSize.addEventListener("change", function () {
@@ -595,6 +665,7 @@
 
         updateClearButtonVisibility();
         updateSummaryCounts();
+        updateLifecycleButtons();
         bindTableEvents();
         syncHistory(currentPage, "replace");
     });

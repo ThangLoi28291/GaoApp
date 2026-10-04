@@ -10,6 +10,9 @@ namespace GaoApp.Application.DTOs.Auth;
 /// </summary>
 public class LoginRequest
 {
+    public bool ManageTerminals { get; set; }
+    public string? PairingKey { get; set; }
+
     [Required]
     public string UserName { get; set; } = default!;
 

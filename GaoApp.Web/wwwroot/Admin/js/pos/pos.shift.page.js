@@ -82,6 +82,7 @@
     const closeActualCashText = document.getElementById('closeActualCashText');
     const closeDiffCashText = document.getElementById('closeDiffCashText');
     const closeDiffHint = document.getElementById('closeDiffHint');
+    const btnReviewShiftDifference = document.getElementById('btnReviewShiftDifference');
     const txtHandoverSlipBarcode = document.getElementById('txtHandoverSlipBarcode');
     const btnLoadHandoverSlip = document.getElementById('btnLoadHandoverSlip');
     const selectedHandoverSlipId = document.getElementById('selectedHandoverSlipId');
@@ -95,6 +96,24 @@
 
     let cashTxnAllItems = [];
     let cashTxnPage = 1;
+    const printContext = JSON.parse(document.getElementById('shiftPrintContext')?.textContent || '{}');
+    const drawerModalEl = document.getElementById('cashDrawerModal');
+    const drawerModal = drawerModalEl ? new bootstrap.Modal(drawerModalEl) : null;
+    const btnShowDrawerModal = document.getElementById('btnShowDrawerModal');
+    const btnOpenCashDrawer = document.getElementById('btnOpenCashDrawer');
+    const drawerReason = document.getElementById('cashDrawerReason');
+    const drawerError = document.getElementById('cashDrawerError');
+    const shiftDrawerEl = document.getElementById('shiftDrawerConfirmModal');
+    const shiftDrawerModal = shiftDrawerEl ? new bootstrap.Modal(shiftDrawerEl, { backdrop: 'static', keyboard: false }) : null;
+    const shiftDrawerConfirm = document.getElementById('btnConfirmShiftDrawer');
+    const shiftDrawerCancel = document.getElementById('btnCancelShiftDrawer');
+    const shiftDrawerContinue = document.getElementById('btnContinueShiftCount');
+    const shiftDrawerError = document.getElementById('shiftDrawerConfirmError');
+    let shiftDrawerPurpose = null;
+    let shiftDrawerBusy = false;
+    let shiftDrawerNext = null;
+    let shiftDrawerShiftId = null;
+    let activeShift = null;
 
     // =========================
     // Helpers
@@ -114,6 +133,43 @@
 
     function getRawMoney(value) {
         return Number((value || '').toString().replace(/\./g, '').replace(/,/g, '').replace(/[^\d]/g, '') || 0);
+    }
+
+    function parseCashTxnAmount(value) {
+        return Number((value || '').toString().replace(/\./g, '').replace(',', '.'));
+    }
+
+    function formatCashTxnAmountInput(input) {
+        const value = input.value;
+        const parts = value.replace(/\./g, '').match(/^(-?)(\d*)(,\d*)?$/);
+        if (!parts) return;
+
+        const caret = input.selectionStart;
+        const charactersBeforeCaret = value.slice(0, caret).replace(/\./g, '').length;
+        const formatted = parts[1] + parts[2].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + (parts[3] || '');
+        if (formatted === value) return;
+
+        input.value = formatted;
+        if (caret !== null) {
+            let position = 0;
+            let characters = 0;
+            while (position < formatted.length && characters < charactersBeforeCaret) {
+                if (formatted[position] !== '.') characters++;
+                position++;
+            }
+            input.setSelectionRange(position, position);
+        }
+    }
+
+    function normalizeCashTxnPastedAmount(text) {
+        const value = text.trim().replace(/\s/g, '').replace(/(?:₫|đ|vnd)$/i, '');
+        if (/^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(value)) {
+            return value.replace(/,/g, '').replace('.', ',');
+        }
+        if (/^-?\d+\.\d+$/.test(value) && !/^-?\d{1,3}\.\d{3}$/.test(value)) {
+            return value.replace('.', ',');
+        }
+        return value;
     }
 
     function setOpenDirectInput(value) {
@@ -266,6 +322,8 @@
         const expected = getExpectedClosingCashValue();
         const diff = actual - expected;
 
+        if (btnReviewShiftDifference) btnReviewShiftDifference.hidden = diff === 0;
+
         const closeLeftTotalText = document.getElementById('closeLeftTotalText');
         const closeMoneyText = document.getElementById('closeMoneyText');
         const closeBillCountText = document.getElementById('closeBillCountText');
@@ -387,10 +445,22 @@
     function setClosingCashExpectedText(value) {
         const text = formatMoney(value);
         setText(closingCashExpected, text);
+        const warning = document.getElementById('shiftNegativeCashWarning');
+        if (warning) {
+            warning.hidden = !(Number(value) < 0);
+            warning.textContent = `Cần đối soát: tiền dự kiến trong ca là ${text} đ. Chi và hoàn tiền đang vượt tiền đầu ca, doanh thu tiền mặt và thu thêm. Kiểm tra chứng từ và tiền thực đếm với Admin; hệ thống không tự bù khoản thiếu.`;
+        }
+        closingCashExpected?.classList.toggle('text-danger', Number(value) < 0);
     }
 
     function syncCashTxnTypePresentation() {
-        const currentValue = (cashTxnType && cashTxnType.value || '1').toString();
+        const currentValue = (cashTxnType && cashTxnType.value || '2').toString();
+
+        if (cashTxnModalEl) {
+            cashTxnModalEl.dataset.cashTxnTheme = currentValue === '2' ? 'out' : 'in';
+            const title = document.getElementById('cashTxnTitle');
+            if (title) title.textContent = currentValue === '2' ? 'Chi tiền mặt' : 'Thu tiền mặt';
+        }
 
         cashTxnTypeButtons.forEach(button => {
             const isActive = button.dataset.cashTxnType === currentValue;
@@ -427,6 +497,9 @@
     }
 
     function renderNoOpenShift() {
+        activeShift = null;
+        syncShiftIdentity(null);
+        if (btnShowDrawerModal) btnShowDrawerModal.style.display = 'none';
         if (window.PosError && window.PosError.clearBanner) {
             window.PosError.clearBanner();
         }
@@ -464,6 +537,9 @@
     }
 
     function renderOpenShift(shift) {
+        activeShift = shift;
+        syncShiftIdentity(shift);
+        if (btnShowDrawerModal) btnShowDrawerModal.style.display = printContext.canReconcile ? '' : 'none';
         if (window.PosError && window.PosError.clearBanner) {
             window.PosError.clearBanner();
         }
@@ -477,7 +553,7 @@
         if (openShiftSection) openShiftSection.style.display = '';
 
         if (btnShowOpenModal) btnShowOpenModal.style.display = 'none';
-        if (btnShowCashTxnModal) btnShowCashTxnModal.style.display = '';
+        if (btnShowCashTxnModal) btnShowCashTxnModal.style.display = printContext.canReconcile ? '' : 'none';
         if (btnShowCloseModal) btnShowCloseModal.style.display = '';
 
         setText(shiftId, shift.id || '-');
@@ -497,6 +573,25 @@
         setText(openNote, shift.openNote || '-');
 
         renderCloseShiftCompare();
+    }
+
+    function syncShiftIdentity(shift) {
+        const employee = shift?.openedByUserName || printContext.userName || 'Chưa xác định nhân viên';
+        const terminal = shift?.terminalName || shift?.terminalCode || printContext.terminalName || 'Chưa xác định máy tính tiền';
+        const displayName = employee + ' · ' + terminal;
+        setText(document.getElementById('shiftDisplayName'), displayName);
+        setText(document.getElementById('posCtxUserName'), employee);
+        const code = document.getElementById('posCtxShiftCode');
+        setText(code, shift ? displayName : 'Chưa mở ca');
+        if (code) code.title = shift?.shiftCode || '';
+        const pill = document.getElementById('posCtxShiftPill');
+        if (pill) {
+            pill.className = 'pos-shift-pill ' + (shift ? 'open' : 'warning');
+            const icon = pill.querySelector('i');
+            if (icon) icon.className = shift ? 'bx bx-check-circle' : 'bx bx-error-circle';
+        }
+        setText(document.getElementById('posCtxShiftOpenedAt'), shift ? 'Mở lúc: ' + formatDateTime(shift.openedAtUtc) : '');
+        setText(document.getElementById('posCtxWarehouseName'), shift?.warehouseName || 'Chưa chọn kho');
     }
 
     function switchShiftTab(tabId) {
@@ -799,6 +894,61 @@
     // =========================
     // Modal actions
     // =========================
+    function confirmShiftDrawer(purpose) {
+        if (shiftDrawerPurpose || !shiftDrawerModal) return;
+        if (purpose === 'Close' && !activeShift) return;
+        shiftDrawerPurpose = purpose;
+        shiftDrawerShiftId = purpose === 'Close' ? activeShift.id : null;
+        const receiving = purpose === 'Receive';
+        document.getElementById('shiftDrawerConfirmTitle').textContent = receiving ? 'Mở két để nhận ca?' : 'Mở két để chốt ca?';
+        document.getElementById('shiftDrawerConfirmDescription').textContent = receiving
+            ? 'Đếm tiền có trong két, sau đó nhập số tiền đầu ca để bắt đầu nhận ca.'
+            : 'Đếm tiền thực tế trong két, sau đó nhập số tiền cuối ca để đối chiếu và chốt ca.';
+        document.getElementById('shiftDrawerAutoReason').textContent = receiving ? 'Mở két nhận ca' : 'Mở két chốt ca';
+        document.getElementById('shiftDrawerTerminal').textContent = printContext.terminalName || 'Quầy hiện tại';
+        document.getElementById('shiftDrawerUser').textContent = printContext.userName || '';
+        shiftDrawerError.hidden = true;
+        shiftDrawerError.textContent = '';
+        shiftDrawerContinue.hidden = true;
+        shiftDrawerConfirm.disabled = true; // Enabled only when the confirmation is visible.
+        shiftDrawerModal.show();
+    }
+
+    function continueShiftCount() {
+        if (shiftDrawerBusy || !shiftDrawerPurpose) return;
+        shiftDrawerNext = shiftDrawerPurpose === 'Receive' ? openOpenShiftModal : openCloseShiftPopup;
+        shiftDrawerModal.hide();
+    }
+
+    async function confirmShiftDrawerOpen() {
+        if (shiftDrawerBusy || !shiftDrawerPurpose || shiftDrawerConfirm.disabled) return;
+        const purpose = shiftDrawerPurpose;
+        const shiftId = shiftDrawerShiftId;
+        shiftDrawerBusy = true;
+        shiftDrawerCancel.disabled = true;
+        shiftDrawerContinue.hidden = true;
+        let opened = false;
+        await withButtonLoading(shiftDrawerConfirm, async () => {
+            shiftDrawerError.hidden = true;
+            try {
+                await window.PosPrinting.drawerReady(printContext);
+                const recorded = await postJson(`/admin/pos/shift/cash-drawer/${purpose === 'Receive' ? 'receive' : 'close'}`, { shiftId });
+                if (!(recorded?.auditId > 0) || recorded.purpose !== purpose || recorded.shiftId !== shiftId)
+                    throw new Error('Chưa xác nhận lưu lý do mở két.');
+                await window.PosPrinting.openDrawer(printContext);
+                cashFeedback(purpose === 'Receive' ? 'Đã gửi lệnh mở két nhận ca. Hãy đếm và nhập tiền đầu ca.' : 'Đã gửi lệnh mở két chốt ca. Hãy đếm và nhập tiền cuối ca.');
+                opened = true;
+            } catch (error) {
+                shiftDrawerError.textContent = (error.message || 'Không thể mở két.') + ' Kiểm tra két trước khi thử lại. Nếu đã đếm được tiền, có thể tiếp tục nhập số tiền.';
+                shiftDrawerError.hidden = false;
+                shiftDrawerContinue.hidden = false;
+            }
+        }, 'Đang mở két…');
+        shiftDrawerBusy = false;
+        shiftDrawerCancel.disabled = false;
+        if (opened) continueShiftCount();
+    }
+
     function openOpenShiftModal() {
         resetDenoms('open');
         setOpenDirectInput(0);
@@ -826,14 +976,28 @@
         if (cashTxnAmount) cashTxnAmount.value = '0';
         if (cashTxnReason) cashTxnReason.value = '';
         if (cashTxnNote) cashTxnNote.value = '';
-        setCashTxnType('1');
+        setCashTxnType('2');
 
         if (cashTxnModal) {
             cashTxnModal.show();
         }
     }
 
-    function openCloseShiftPopup() {
+    function closeDraftContext() {
+        return {storeId:printContext.storeId,userId:printContext.userId,terminalId:printContext.terminalId,shiftId:activeShift?.id};
+    }
+    function reviewShiftDifference() {
+        if (!activeShift) return;
+        try {
+            window.PosShiftCloseDraft.save(closeDraftContext(), {
+                actual:getRawMoney(txtClosingCashActual?.value),note:txtCloseNote?.value || '',
+                denominations:getDenomInputs('close').map(x=>({value:Number(x.dataset.denom),quantity:Number(x.value || 0)}))
+            });
+            window.location.assign(`/admin/pos-shift/reconciliation?shiftId=${activeShift.id}`);
+        } catch(error) {showError(error.message || 'Chưa lưu được bảng kiểm đếm. Vui lòng kiểm tra trình duyệt.');}
+    }
+
+    function openCloseShiftPopup(restoreCount = false) {
         resetDenoms('close');
 
         if (txtCloseNote) {
@@ -841,6 +1005,20 @@
         }
         if (txtClosingCashActual) {
             txtClosingCashActual.value = '0';
+        }
+
+        if (restoreCount && activeShift) {
+            try {
+                const count = window.PosShiftCloseDraft.read(closeDraftContext());
+                if (count) {
+                    getDenomInputs('close').forEach(input => {
+                        input.value = count.denominations.find(x=>x.value === Number(input.dataset.denom))?.quantity || 0;
+                    });
+                    calcDenomTotal('close');
+                    if (txtClosingCashActual) txtClosingCashActual.value = formatMoney(count.actual);
+                    if (txtCloseNote) txtCloseNote.value = count.note;
+                }
+            } catch(error) {showError(error.message || 'Không đọc được kiểm đếm đã lưu. Vui lòng kiểm đếm lại.');}
         }
 
         updateCloseShiftSummary();
@@ -911,7 +1089,7 @@
 
         cashTxnBody.innerHTML = `
             <tr>
-                <td colspan="5" class="text-center text-muted py-4">
+                <td colspan="6" class="text-center text-muted py-4">
                     Chưa có giao dịch.
                 </td>
             </tr>`;
@@ -947,8 +1125,10 @@
                         <td class="${isIn ? 'shift-money-positive' : 'shift-money-negative'} cash-amount">
                             ${formatMoney(x.amount)}
                         </td>
-                        <td class="cash-reason">${x.reason || '-'}</td>
-                        <td class="cash-note">${x.note || '-'}</td>
+                        <td class="cash-reason">${window.PosShiftCashPrinting.escape(x.reason || '-')}</td>
+                        <td class="cash-note">${window.PosShiftCashPrinting.escape(x.note || '-')}</td>
+                        <td><button type="button" class="btn btn-sm btn-outline-primary" data-print-cash="${Number(x.id)}">In lại</button>
+                            <a class="btn btn-sm btn-outline-secondary mt-1" href="/admin/pos-shift/requests?tab=cash&transactionId=${Number(x.id)}">${x.pendingAdjustmentId ? 'Chờ duyệt điều chỉnh' : 'Yêu cầu sửa / hủy'}</a></td>
                     </tr>
                 `;
             }).join('');
@@ -1045,9 +1225,13 @@
     async function addCashTransaction() {
         await withButtonLoading(btnAddCashTxn, async () => {
             try {
-                await postJson('/admin/pos/shift/cash-transaction', {
+                const amount = parseCashTxnAmount((cashTxnAmount && cashTxnAmount.value) || '0');
+                if (!Number.isFinite(amount) || amount <= 0) {
+                    throw new Error('Vui lòng nhập số tiền lớn hơn 0.');
+                }
+                const saved = await postJson('/admin/pos/shift/cash-transaction', {
                     type: parseInt((cashTxnType && cashTxnType.value) || '0', 10),
-                    amount: parseFloat((cashTxnAmount && cashTxnAmount.value) || '0'),
+                    amount: amount,
                     reason: (cashTxnReason && cashTxnReason.value) || null,
                     note: (cashTxnNote && cashTxnNote.value) || null
                 });
@@ -1058,6 +1242,8 @@
                     cashTxnModal.hide();
                 }
 
+                await printCashTransaction(saved, true);
+
                 await loadCurrentShift();
                 await loadCashTransactions();
                 switchShiftTab('historyTab');
@@ -1065,6 +1251,38 @@
                 window.PosError.handle(err);
             }
         }, 'Đang ghi nhận');
+    }
+    function cashFeedback(message, failed = false) {
+        const feedback = document.getElementById('shiftCashFeedback');
+        if (feedback) { feedback.textContent = message; feedback.className = 'alert ' + (failed ? 'alert-warning' : 'alert-success'); }
+    }
+    async function printCashTransaction(transaction, immediate = false) {
+        try {
+            const result = await window.PosShiftCashPrinting.print(transaction, printContext, immediate === true);
+            cashFeedback(result.mode === 'helper' ? `Đã gửi phiếu #${transaction.id} tới Print Helper.` : `Đã gửi lệnh in phiếu #${transaction.id}.`);
+        } catch (error) {
+            cashFeedback(`Phiếu #${transaction.id} đã được lưu. Chưa xác nhận được kết quả in. ${error.message} Có thể bấm In lại trong lịch sử; in lại không mở két.`, true);
+        }
+    }
+    async function openCashDrawer() {
+        const reason = (drawerReason?.value || '').trim();
+        if (!reason || reason.length > 300) { drawerError.textContent = 'Nhập lý do mở két từ 1 đến 300 ký tự.'; drawerReason?.focus(); return; }
+        if (!activeShift) { drawerError.textContent = 'Vui lòng mở ca trước khi mở két.'; return; }
+        await withButtonLoading(btnOpenCashDrawer, async () => {
+            drawerError.textContent = '';
+            btnShowDrawerModal.disabled = true;
+            try {
+                await window.PosPrinting.drawerReady(printContext);
+                const recorded = await postJson('/admin/pos/shift/cash-drawer', {shiftId:activeShift.id,reason});
+                if (!(recorded?.auditId > 0) || recorded.shiftId !== activeShift.id) throw new Error('Chưa xác nhận lưu lý do mở két.');
+                await window.PosPrinting.openDrawer(printContext);
+                drawerModal?.hide(); drawerReason.value = '';
+                cashFeedback('Đã lưu lý do và gửi lệnh mở két.');
+            } catch (error) {
+                drawerError.textContent = error.message || 'Không thể mở két. Vui lòng kiểm tra kết nối.';
+                cashFeedback(drawerError.textContent, true);
+            } finally { btnShowDrawerModal.disabled = false; }
+        }, 'Đang mở két');
     }
     function confirmCloseShiftWithDiff(diff) {
         return new Promise(resolve => {
@@ -1107,6 +1325,9 @@
                             <button type="button" class="btn btn-light shift-modal-btn" data-bs-dismiss="modal">
                                 Kiểm tra lại
                             </button>
+                            <button type="button" class="btn btn-outline-primary shift-modal-btn" id="btnReviewConfirmedShiftDifference">
+                                Kiểm tra lệch ca
+                            </button>
                             <button type="button" class="btn btn-danger shift-modal-btn" id="btnConfirmCloseShiftDiff">
                                 Vẫn đóng ca
                             </button>
@@ -1133,6 +1354,12 @@
                 modal.hide();
             }, { once: true });
 
+            document.getElementById('btnReviewConfirmedShiftDifference').addEventListener('click', function () {
+                resolve(false);
+                modal.hide();
+                reviewShiftDifference();
+            }, { once: true });
+
             modal.show();
         });
     }
@@ -1155,6 +1382,8 @@
                 });
 
                 showSuccess('Đã đóng ca thành công');
+
+                try { window.PosShiftCloseDraft?.clear(closeDraftContext()); } catch { /* A stale browser draft cannot change a saved closing. */ }
 
                 if (result && result.id) {
                     window.open(`/admin/pos-shift/closing-slip-print?shiftId=${result.id}`, '_blank');
@@ -1300,9 +1529,29 @@
             });
         }
 
-        if (btnShowOpenModal) btnShowOpenModal.addEventListener('click', openOpenShiftModal);
+        if (btnShowOpenModal) btnShowOpenModal.addEventListener('click', () => confirmShiftDrawer('Receive'));
         if (btnShowCashTxnModal) btnShowCashTxnModal.addEventListener('click', openCashTxnPopup);
-        if (btnShowCloseModal) btnShowCloseModal.addEventListener('click', openCloseShiftPopup);
+        if (btnShowCloseModal) btnShowCloseModal.addEventListener('click', () => confirmShiftDrawer('Close'));
+        shiftDrawerEl?.addEventListener('shown.bs.modal', () => { shiftDrawerConfirm.disabled = false; shiftDrawerConfirm.focus(); });
+        shiftDrawerEl?.addEventListener('hide.bs.modal', event => { if (shiftDrawerBusy) event.preventDefault(); });
+        shiftDrawerEl?.addEventListener('hidden.bs.modal', () => {
+            const next = shiftDrawerNext;
+            shiftDrawerPurpose = null;
+            shiftDrawerNext = null;
+            next?.();
+        });
+        shiftDrawerConfirm?.addEventListener('click', confirmShiftDrawerOpen);
+        shiftDrawerContinue?.addEventListener('click', continueShiftCount);
+        btnShowDrawerModal?.addEventListener('click', () => {
+            drawerReason.value = ''; drawerError.textContent = ''; btnOpenCashDrawer.disabled = true; drawerModal?.show();
+        });
+        drawerModalEl?.addEventListener('shown.bs.modal', () => { btnOpenCashDrawer.disabled = false; drawerReason?.focus(); });
+        btnOpenCashDrawer?.addEventListener('click', openCashDrawer);
+        cashTxnBody?.addEventListener('click', event => {
+            const button = event.target.closest('[data-print-cash]');
+            const transaction = button && cashTxnAllItems.find(item => item.id === Number(button.dataset.printCash));
+            if (transaction) withButtonLoading(button, () => printCashTransaction(transaction, false), 'Đang in');
+        });
 
         cashTxnTypeButtons.forEach(button => {
             button.addEventListener('click', function () {
@@ -1371,6 +1620,32 @@
         if (cashTxnAmount) {
             cashTxnAmount.addEventListener('focus', function () {
                 this.select();
+            });
+
+            cashTxnAmount.addEventListener('input', function () {
+                formatCashTxnAmountInput(this);
+            });
+
+            cashTxnAmount.addEventListener('beforeinput', function (event) {
+                const start = this.selectionStart;
+                if (start !== this.selectionEnd) return;
+                // Delete the adjacent digit together with a cosmetic grouping separator.
+                if (event.inputType === 'deleteContentBackward' && this.value[start - 1] === '.') {
+                    event.preventDefault();
+                    this.setRangeText('', start - 2, start, 'end');
+                } else if (event.inputType === 'deleteContentForward' && this.value[start] === '.') {
+                    event.preventDefault();
+                    this.setRangeText('', start, start + 2, 'end');
+                } else return;
+                formatCashTxnAmountInput(this);
+            });
+
+            cashTxnAmount.addEventListener('paste', function (event) {
+                const text = event.clipboardData?.getData('text');
+                if (!text) return;
+                event.preventDefault();
+                this.setRangeText(normalizeCashTxnPastedAmount(text), this.selectionStart, this.selectionEnd, 'end');
+                formatCashTxnAmountInput(this);
             });
         }
 
@@ -1506,6 +1781,11 @@
         syncCashTxnTypePresentation();
         await loadWarehouses();
         const currentShift = await loadCurrentShift();
-        if (receivingForPos && currentShift === null) openOpenShiftModal();
+        btnReviewShiftDifference?.addEventListener('click', reviewShiftDifference);
+        if (entryQuery.get('resumeClose') === '1') {
+            if (currentShift?.id === Number(entryQuery.get('shiftId'))) openCloseShiftPopup(true);
+            else showError('Ca cần đóng đã thay đổi hoặc đã kết thúc. Bảng kiểm đếm không được áp dụng sang ca khác.');
+        }
+        if (receivingForPos && currentShift === null) confirmShiftDrawer('Receive');
     });
 })();

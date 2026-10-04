@@ -8,10 +8,10 @@ public sealed class InputInvoiceReconciliationDto
     public int? InputInvoiceHeadId { get; set; }
     public InputInvoiceReconciliationState State { get; set; }
     public string StateName => State.ToString();
+    // Chỉ dữ liệu khớp hoặc đã được quản lý chấp nhận mới được tự động duyệt.
+    // Thiếu dòng XML/chênh lệch phải qua bước xác nhận của quản lý.
     public bool ConfirmReady => State is InputInvoiceReconciliationState.NotApplicable
-        or InputInvoiceReconciliationState.Incomplete
         or InputInvoiceReconciliationState.Matched
-        or InputInvoiceReconciliationState.Mismatch
         or InputInvoiceReconciliationState.AcceptedMismatch;
     public string EvidenceFingerprint { get; set; } = string.Empty;
     public DateTime? LastCalculatedAtUtc { get; set; }

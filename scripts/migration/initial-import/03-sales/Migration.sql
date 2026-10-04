@@ -29,13 +29,73 @@ IF EXISTS(SELECT 1 FROM #SourceOrders WHERE LEN(Note)>500)
  OR EXISTS(SELECT 1 FROM #SourceReturns WHERE Total<0 OR LEN(Note)>1000)
  THROW 55417,'Negative linked return or source note exceeds target length.',1;
 
--- Customer and employee identities are independent. Never overwrite GaoApp accounts.
-SELECT DISTINCT UserID INTO #Actors FROM #SourceOrders UNION SELECT UserID FROM #SourceReturns;
-IF EXISTS(SELECT 1 FROM #Actors a LEFT JOIN dbo.Users u ON u.Id=a.UserID
- LEFT JOIN [__SOURCE__].dbo.[User] s ON s.ID=a.UserID
- WHERE u.Id IS NULL OR s.ID IS NULL OR NULLIF(LTRIM(RTRIM(u.UserName)),N'') IS NULL OR NULLIF(LTRIM(RTRIM(s.UserName)),N'') IS NULL
- OR UPPER(LTRIM(RTRIM(u.UserName)))<>UPPER(LTRIM(RTRIM(s.UserName))) COLLATE DATABASE_DEFAULT)
- THROW 55406,'Legacy employee ID/login mapping differs from preserved GaoApp users.',1;
+-- Reviewed employee exceptions, approved 2026-09-29. Never infer identity from login alone.
+-- Keep source IDs in staging until all sales/shift/cash/return contracts are built.
+-- The runner locks Users/UserInStores and includes both in commit and VERIFY hashes.
+SELECT DISTINCT UserID INTO #Actors FROM #SourceOrders
+UNION SELECT UserID FROM #SourceReturns
+UNION SELECT m.UserID FROM [__SOURCE__].dbo.ManagementJob m
+WHERE EXISTS(SELECT 1 FROM #SourceOrders o WHERE o.CaLamID=m.ID)
+ OR EXISTS(SELECT 1 FROM #SourceReturns r WHERE r.CaLamID=m.ID)
+ OR EXISTS(SELECT 1 FROM [__SOURCE__].dbo.ChiTietThuChi c WHERE c.CaLamID=m.ID
+ AND c.SoTien>0 AND (c.MaThuChi LIKE 'Thu-%' OR c.MaThuChi LIKE 'Chi-%')
+ AND c.MaThuChi NOT IN('Chi-TienKhachTraHang','Chi-TienChuyenKhoan'));
+CREATE UNIQUE CLUSTERED INDEX IX_Actors ON #Actors(UserID);
+
+DECLARE @ApprovedEmployees TABLE(SourceId int PRIMARY KEY,SourceLogin nvarchar(100),ExistingTargetId int NULL);
+INSERT @ApprovedEmployees VALUES(662222,N'hoa',NULL),(662309,N'nguyet',6),
+ (662370,N'quynhi',NULL),(662429,N'dung',NULL),(662590,N'nhung123',NULL);
+IF EXISTS(SELECT 1 FROM @ApprovedEmployees e LEFT JOIN [__SOURCE__].dbo.[User] s ON s.ID=e.SourceId
+ LEFT JOIN #Actors a ON a.UserID=e.SourceId WHERE s.ID IS NULL OR a.UserID IS NULL
+ OR NULLIF(LTRIM(RTRIM(s.UserName)),N'') IS NULL
+ OR UPPER(LTRIM(RTRIM(s.UserName))) COLLATE DATABASE_DEFAULT<>UPPER(e.SourceLogin))
+ THROW 55424,'Approved employee IDs/logins no longer match the reviewed source.',1;
+IF NOT EXISTS(SELECT 1 FROM dbo.Users WHERE Id=6 AND IsDeleted=0
+ AND UPPER(LTRIM(RTRIM(UserName)))=N'NGUYET')
+ THROW 55425,'Approved nguyet mapping requires the existing non-deleted GaoApp user 6.',1;
+IF EXISTS(SELECT 1 FROM @ApprovedEmployees e JOIN dbo.Users u
+ ON UPPER(LTRIM(RTRIM(u.UserName)))=UPPER(e.SourceLogin) WHERE e.ExistingTargetId IS NULL)
+ THROW 55426,'A historical employee login now exists; review instead of overwriting or merging it.',1;
+
+DECLARE @LastUserId bigint=(SELECT ISNULL(MAX(Id),0) FROM dbo.Users);
+IF @LastUserId+4>2147483647 THROW 55427,'Historical employee IDs exceed INT.',1;
+IF EXISTS(SELECT 1 FROM @ApprovedEmployees e JOIN [__SOURCE__].dbo.[User] s ON s.ID=e.SourceId
+ WHERE e.ExistingTargetId IS NULL AND DATALENGTH(COALESCE(NULLIF(LTRIM(RTRIM(s.Name)),N''),e.SourceLogin))>400)
+ THROW 55428,'Historical employee name exceeds the target FullName length.',1;
+SELECT e.SourceId,CONVERT(int,@LastUserId+ROW_NUMBER() OVER(ORDER BY e.SourceId)) Id,
+ e.SourceLogin UserName,CONVERT(nvarchar(200),COALESCE(NULLIF(LTRIM(RTRIM(s.Name)),N''),e.SourceLogin)) FullName,
+ CONVERT(nvarchar(500),CONCAT(N'!GAOSTORE-HISTORY-NO-LOGIN!',e.SourceId)) PasswordHash
+INTO #HistoricalUsers FROM @ApprovedEmployees e JOIN [__SOURCE__].dbo.[User] s ON s.ID=e.SourceId
+WHERE e.ExistingTargetId IS NULL;
+
+SELECT CONVERT(int,a.UserID) SourceId,
+ CONVERT(int,COALESCE(e.ExistingTargetId,h.Id,u.Id)) TargetId,
+ CONVERT(nvarchar(100),s.UserName) SourceLogin,
+ CONVERT(nvarchar(40),CASE WHEN h.Id IS NOT NULL THEN N'CREATE_INACTIVE_HISTORY'
+ WHEN e.ExistingTargetId IS NOT NULL THEN N'APPROVED_EXISTING_USER' ELSE N'PRESERVED_ID_AND_LOGIN' END) Mapping
+INTO #EmployeeMap FROM #Actors a
+LEFT JOIN [__SOURCE__].dbo.[User] s ON s.ID=a.UserID
+LEFT JOIN @ApprovedEmployees e ON e.SourceId=a.UserID
+LEFT JOIN #HistoricalUsers h ON h.SourceId=a.UserID
+LEFT JOIN dbo.Users u ON u.Id=a.UserID AND NULLIF(LTRIM(RTRIM(u.UserName)),N'') IS NOT NULL
+ AND UPPER(LTRIM(RTRIM(u.UserName)))=UPPER(LTRIM(RTRIM(s.UserName))) COLLATE DATABASE_DEFAULT;
+IF EXISTS(SELECT 1 FROM #EmployeeMap WHERE SourceId IS NULL OR TargetId IS NULL
+ OR NULLIF(LTRIM(RTRIM(SourceLogin)),N'') IS NULL)
+ THROW 55406,'An employee outside the approved mapping is missing or differs; review the source actor.',1;
+IF EXISTS(SELECT TargetId FROM #EmployeeMap GROUP BY TargetId HAVING COUNT_BIG(*)>1)
+ THROW 55429,'Multiple source employees map to one target user; explicit review required.',1;
+CREATE UNIQUE CLUSTERED INDEX IX_EmployeeMap ON #EmployeeMap(SourceId);
+
+-- Compare every column, including password hashes and rowversions, without reporting them.
+SELECT u.Id,HASHBYTES('SHA2_256',(SELECT u.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER,INCLUDE_NULL_VALUES)) RowHash
+INTO #UsersBefore FROM dbo.Users u;
+SELECT u.Id,HASHBYTES('SHA2_256',(SELECT u.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER,INCLUDE_NULL_VALUES)) RowHash
+INTO #UserInStoresBefore FROM dbo.UserInStores u;
+SELECT N'EMPLOYEE_MAPPING_ADJUSTMENTS' Report,m.SourceId,m.SourceLogin,m.TargetId,m.Mapping,h.FullName
+FROM #EmployeeMap m LEFT JOIN #HistoricalUsers h ON h.SourceId=m.SourceId
+WHERE m.Mapping<>N'PRESERVED_ID_AND_LOGIN' ORDER BY m.SourceId;
+SELECT N'EMPLOYEE_MAPPING_PLAN' Report,1 ApprovedExistingMapping,4 NewInactiveHistoricalEmployees,
+ CONVERT(bit,1) PreserveExistingAccounts,CONVERT(bit,0) GrantStoreAccess;
 
 -- Unique code -> selling conversion. Retain inactive, non-deleted historical catalog entries.
 SELECT Code,MIN(ConversionId) ConversionId INTO #CodeMap FROM (
@@ -148,11 +208,8 @@ IF EXISTS(SELECT 1 FROM #ActualShift WHERE LEN(GhiChu)>300)
  THROW 55422,'Shift note would be truncated.',1;
 IF EXISTS(SELECT 1 FROM #Activity a LEFT JOIN #ActualShift s ON s.ID=a.CaLamID WHERE a.CaLamID>0 AND s.ID IS NULL)
  THROW 55409,'Positive source shift reference is missing.',1;
-IF EXISTS(SELECT 1 FROM #ActualShift s LEFT JOIN dbo.Users u ON u.Id=s.UserID
- LEFT JOIN [__SOURCE__].dbo.[User] lu ON lu.ID=s.UserID WHERE u.Id IS NULL OR lu.ID IS NULL
- OR NULLIF(LTRIM(RTRIM(u.UserName)),N'') IS NULL OR NULLIF(LTRIM(RTRIM(lu.UserName)),N'') IS NULL
- OR UPPER(LTRIM(RTRIM(u.UserName)))<>UPPER(LTRIM(RTRIM(lu.UserName))) COLLATE DATABASE_DEFAULT)
- THROW 55410,'Actual-shift actor does not map to a preserved employee.',1;
+IF EXISTS(SELECT 1 FROM #ActualShift s LEFT JOIN #EmployeeMap m ON m.SourceId=s.UserID WHERE m.TargetId IS NULL)
+ THROW 55410,'Actual-shift actor is outside the approved employee mapping.',1;
 DECLARE @LastShift bigint=(SELECT ISNULL(MAX(ID),0) FROM [__SOURCE__].dbo.ManagementJob);
 SELECT CONVERT(int,@LastShift+ROW_NUMBER() OVER(ORDER BY CONVERT(date,CreatedDate),UserID)) Id,
  CONVERT(date,CreatedDate) SourceDay,UserID,MIN(UtcDate) FirstUtc,MAX(UtcDate) LastUtc
@@ -191,11 +248,18 @@ SELECT CONVERT(int,o.ID) Id,CONVERT(nvarchar(30),CONCAT(N'LEGACY-',o.ID)) OrderN
  CONVERT(nvarchar(500),o.Note) Note,sm.ShiftId POSShiftId,o.UtcDate CompletedAtUtc,
  CONVERT(bit,0) HasReservation,CONVERT(decimal(18,2),0) VoucherDiscountTotal,
  CONVERT(decimal(18,2),0) PromotionDiscountTotal,CONVERT(decimal(18,2),0) ComboDiscountTotal,
+ -- InvoiceHead.Id is the legacy Order ID. No invoice => no route to invent.
+ CONVERT(tinyint,CASE WHEN ih.Id IS NULL THEN 0 WHEN ih.LayHD=1 THEN 2 ELSE 1 END) InvoiceIssuanceRoute,
+ CONVERT(datetime2(7),CASE WHEN ih.Id IS NOT NULL THEN o.UtcDate END) InvoiceIssuanceRouteSelectedAtUtc,
+ CONVERT(int,NULL) InvoiceIssuanceRouteSelectedByUserId,
  o.UtcDate CreatedAtUtc,CONVERT(int,o.UserID) CreatedBy,CONVERT(bit,0) IsDeleted,1 StoreId
 INTO #StageOrders FROM #SourceOrders o JOIN #ActivityShift sm ON sm.ActivityId=o.ID
+LEFT JOIN [__SOURCE__].dbo.InvoiceHead ih ON ih.Id=o.ID
 OUTER APPLY(SELECT SUM(Quantity*UnitPrice) GrossTotal,SUM(LineDiscount) DiscountTotal,SUM(LineTotal) NetTotal FROM #StageOrderLines WHERE OrderId=o.ID)l;
 CREATE UNIQUE CLUSTERED INDEX IX_StageOrders ON #StageOrders(Id);
 CREATE INDEX IX_StageOrders_Shift ON #StageOrders(POSShiftId);
+SELECT N'LEGACY_INVOICE_ROUTES' Report,InvoiceIssuanceRoute,COUNT_BIG(*) Orders
+FROM #StageOrders GROUP BY InvoiceIssuanceRoute;
 IF EXISTS(SELECT 1 FROM #StageOrders WHERE OrderDiscount<0 OR Subtotal-DiscountTotal-OrderDiscount<>GrandTotal)
  THROW 55412,'Order financial equation failed.',1;
 SELECT CONVERT(int,o.ID) OrderId,CONVERT(int,CASE WHEN o.Status=1 THEN 1 ELSE 0 END) Method,
@@ -262,6 +326,18 @@ UPDATE s SET CloseNote=CONCAT(N'Legacy cash flow not fully reconcilable; RawClos
  N'; normalized to 0',CASE WHEN NULLIF(s.CloseNote,N'') IS NOT NULL THEN N' | '+s.CloseNote ELSE N'' END),ClosingCashExpected=0
 FROM #StagePOSShifts s WHERE s.ClosingCashExpected<0;
 
+-- Remap each source actor once, after grouping source shifts and building all contracts.
+UPDATE t SET OpenedByUserId=m.TargetId FROM #StagePOSShifts t JOIN #EmployeeMap m ON m.SourceId=t.OpenedByUserId;
+UPDATE t SET ClosedByUserId=m.TargetId FROM #StagePOSShifts t JOIN #EmployeeMap m ON m.SourceId=t.ClosedByUserId;
+UPDATE t SET CreatedBy=m.TargetId FROM #StageOrders t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+UPDATE t SET CreatedBy=m.TargetId FROM #StageOrderLines t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+UPDATE t SET CreatedBy=m.TargetId FROM #StageOrderPayments t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+UPDATE t SET CreatedByUserId=m.TargetId FROM #StagePOSShiftCashTransactions t JOIN #EmployeeMap m ON m.SourceId=t.CreatedByUserId;
+UPDATE t SET CreatedBy=m.TargetId,CreatedByUserId=m.TargetId,CompletedByUserId=m.TargetId
+FROM #StageSalesReturns t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+UPDATE t SET CreatedBy=m.TargetId FROM #StageSalesReturnLines t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+UPDATE t SET CreatedBy=m.TargetId FROM #StageSalesReturnPayments t JOIN #EmployeeMap m ON m.SourceId=t.CreatedBy;
+
 SELECT N'SALES_PLAN' Report,(SELECT COUNT_BIG(*) FROM #StageOrders) Orders,
  (SELECT COUNT_BIG(*) FROM #StageOrderLines) Lines,(SELECT COUNT_BIG(*) FROM #StageOrderPayments) Payments,
  (SELECT COUNT_BIG(*) FROM #StagePOSShifts) Shifts,(SELECT COUNT_BIG(*) FROM #StagePOSShiftCashTransactions) CashTransactions,
@@ -273,6 +349,12 @@ SELECT N'CUSTOMER_FALLBACK' Report,o.ID LegacyOrderId,o.CustomerID LegacyCustome
 WHERE NOT EXISTS(SELECT 1 FROM dbo.Customers c WHERE c.StoreId=1 AND c.OldCustomerId=o.CustomerID AND c.IsDeleted=0);
 SELECT N'HISTORICAL_NEGATIVE_CASH_NORMALIZED' Report,* FROM #NegativeCashShifts ORDER BY Id;
 IF @Mode='PREVIEW' RETURN;
+
+-- Four new inactive records only. No password import, store assignment or role grant.
+SET IDENTITY_INSERT dbo.Users ON;
+INSERT dbo.Users(Id,UserName,FullName,Email,PasswordHash,IsActive,IsHostAdmin,CreatedAtUtc,CreatedBy,IsDeleted)
+SELECT Id,UserName,FullName,NULL,PasswordHash,0,0,@Now,NULL,0 FROM #HistoricalUsers;
+SET IDENTITY_INSERT dbo.Users OFF;
 
 -- Generic insertion and exact comparison use the explicit columns of each staged contract.
 -- Identity columns of sales/source shifts are supplied, other child IDs are generated by SQL Server.
@@ -297,4 +379,21 @@ BEGIN
  FETCH NEXT FROM target_cursor INTO @Name,@KeepId;
 END;
 CLOSE target_cursor; DEALLOCATE target_cursor;
+IF (SELECT COUNT_BIG(*) FROM dbo.Users)<>(SELECT COUNT_BIG(*) FROM #UsersBefore)+4
+ OR EXISTS(SELECT Id,RowHash FROM #UsersBefore EXCEPT
+ SELECT u.Id,HASHBYTES('SHA2_256',(SELECT u.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER,INCLUDE_NULL_VALUES)) FROM dbo.Users u)
+ THROW 55430,'An existing GaoApp account changed while importing historical employees.',1;
+IF EXISTS(SELECT Id,RowHash FROM #UserInStoresBefore EXCEPT
+ SELECT u.Id,HASHBYTES('SHA2_256',(SELECT u.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER,INCLUDE_NULL_VALUES)) FROM dbo.UserInStores u)
+ OR EXISTS(SELECT u.Id,HASHBYTES('SHA2_256',(SELECT u.* FOR JSON PATH,WITHOUT_ARRAY_WRAPPER,INCLUDE_NULL_VALUES)) FROM dbo.UserInStores u
+ EXCEPT SELECT Id,RowHash FROM #UserInStoresBefore)
+ THROW 55431,'Existing store access changed while importing historical employees.',1;
+IF EXISTS(SELECT 1 FROM #HistoricalUsers h LEFT JOIN dbo.Users u ON u.Id=h.Id
+ WHERE u.Id IS NULL OR u.UserName COLLATE Latin1_General_100_BIN2<>h.UserName COLLATE Latin1_General_100_BIN2
+ OR ISNULL(u.FullName,N'') COLLATE Latin1_General_100_BIN2<>ISNULL(h.FullName,N'') COLLATE Latin1_General_100_BIN2
+ OR u.PasswordHash<>h.PasswordHash OR u.Email IS NOT NULL OR u.IsActive<>0 OR u.IsHostAdmin<>0 OR u.IsDeleted<>0
+ OR EXISTS(SELECT 1 FROM dbo.UserInStores x WHERE x.UserId=h.Id))
+ THROW 55432,'Historical employee is not the exact inactive, unprivileged record reviewed.',1;
+SELECT N'EMPLOYEE_IMPORT_EXACT_PASS' Report,4 HistoricalEmployeesCreated,CONVERT(bit,1) ExistingAccountsUnchanged,
+ CONVERT(bit,1) StoreAccessUnchanged;
 SELECT N'SALES_IMPORT_EXACT_PASS' Report,(SELECT COUNT_BIG(*) FROM dbo.Orders) Orders,(SELECT COUNT_BIG(*) FROM dbo.OrderLines) Lines;

@@ -1,4 +1,4 @@
-﻿@using GaoApp.Application.Common.Security
+@using GaoApp.Application.Common.Security
 @inject Microsoft.AspNetCore.Authorization.IAuthorizationService AuthorizationService
 
 @{
@@ -21,6 +21,7 @@
                 </p>
             </div>
 
+            <a class="btn btn-outline-primary" href="/admin/input-invoices"><i class="bx bx-folder-open me-1"></i> Thư viện hóa đơn XML</a>
             @if (canCreate)
             {
                 <div class="gds-page-header__actions">
@@ -36,12 +37,18 @@
 }
 
 @section VendorStyles {
-    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
+    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div data-gao-ui="modern" data-stock-document-index class="gds-page sd-index-page">
     <section aria-label="Tổng quan phiếu nhập kho">
-        <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-5 g-3">
+            <div class="col">
+                <button type="button" id="sdWaitingInvoiceKpi" class="sd-index-kpi-filter card shadow-sm border-0 gds-kpi-card h-100 w-100" aria-pressed="false">
+                    <span class="gds-kpi-card__icon bg-label-warning text-warning" aria-hidden="true"><i class="bx bx-receipt"></i></span>
+                    <span class="gds-kpi-card__body"><span class="gds-kpi-card__label">Chờ hóa đơn</span><span class="gds-kpi-card__value text-warning" id="sdCountWaitingInvoice">0</span></span>
+                </button>
+            </div>
             <div class="col">
                 <button type="button"
                         class="sd-index-kpi-filter card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100 w-100"
@@ -119,13 +126,26 @@
                 <div class="gds-filter-control">
                     <label for="sdStatusFilter" class="form-label">Trạng thái</label>
                     <select class="form-select" id="sdStatusFilter">
-                        <option value="active" selected>Nháp + Chờ duyệt</option>
+                        <option value="needsAction" selected>Cần xử lý</option>
+                        <option value="active">Nháp + Chờ duyệt</option>
                         <option value="all">Tất cả trạng thái</option>
                         <option value="working">Đang làm + Cần sửa</option>
                         <option value="draft">Nháp</option>
                         <option value="pending">Chờ duyệt</option>
                         <option value="confirmed">Đã duyệt</option>
                         <option value="rejected">Từ chối</option>
+                    </select>
+                </div>
+                <div class="gds-filter-control">
+                    <label for="sdInvoiceFilter" class="form-label">Tình trạng hóa đơn</label>
+                    <select class="form-select" id="sdInvoiceFilter">
+                        <option value="all">Tất cả</option>
+                        <option value="Waiting">Chờ hóa đơn</option>
+                        <option value="NeedsReview">Cần kiểm tra hóa đơn</option>
+                        <option value="Reviewed">Đã kiểm tra hóa đơn</option>
+                        <option value="Complete">Đủ hóa đơn</option>
+                        <option value="NotExpected">Không chờ hóa đơn</option>
+                        <option value="Unclassified">Chưa phân loại (phiếu cũ)</option>
                     </select>
                 </div>
                 <div class="gds-filter-control gds-filter-control--compact">
@@ -148,7 +168,7 @@
                 <thead>
                     <tr>
                         <th class="sd-index-col-document">Phiếu nhập</th>
-                        <th class="sd-index-col-place">Kho / HKD</th>
+                        <th class="sd-index-col-employee" title="Người tạo phiếu và quầy tại thời điểm tạo">Nhân viên / Quầy nhập</th>
                         <th class="sd-index-col-progress">Tiến độ</th>
                         <th class="sd-index-col-products text-end">Loại SP</th>
                         <th class="sd-index-col-amount text-end">Tổng tiền</th>
@@ -246,7 +266,7 @@
                 <div class="mb-3">
                     <label class="form-label fw-semibold">Nguồn nhập <span class="text-danger">*</span></label>
                     <select class="form-select" id="createDirectReceiptReason">
-                        <option value="">-- Chọn nguồn nhập --</option>
+                        <option value="Nhà phân phối giao" selected>Nhà phân phối giao</option>
                         <option value="NCC chào hàng">NCC chào hàng</option>
                         <option value="Mua gấp">Mua gấp</option>
                         <option value="Hàng đổi/trả">Hàng đổi/trả</option>
@@ -325,6 +345,18 @@
                         </div>
                     </div>
 
+                    <div class="col-md-6">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Nhân viên tạo phiếu</div>
+                            <div class="sd-popup-info-value" id="sdInfoCreatedBy">-</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="sd-popup-info-box">
+                            <div class="sd-popup-info-label">Quầy lúc tạo phiếu</div>
+                            <div class="sd-popup-info-value" id="sdInfoEntryTerminal">-</div>
+                        </div>
+                    </div>
                     <div class="col-md-3">
                         <div class="sd-popup-info-box">
                             <div class="sd-popup-info-label">Ngày phiếu</div>
@@ -390,8 +422,12 @@
 </div>
 
 @section PageScripts {
+    @await Html.PartialAsync("_ReceiptDocumentActions")
+    <script src="~/Admin/js/receipt-document-actions.js" asp-append-version="true"></script>
     @if ((await AuthorizationService.AuthorizeAsync(User, null, PermissionCodes.System.ProductLabel.Print)).Succeeded)
     {
+        <link rel="stylesheet" href="~/Admin/css/label-printing.css" asp-append-version="true" />
+        <script src="~/Admin/js/printing/label-print-controls.js" asp-append-version="true"></script>
         <script src="~/Admin/js/printing/label-receipt-links.js" asp-append-version="true"></script>
     }
     <script>
@@ -400,5 +436,6 @@
         };
     </script>
 
+    <script src="~/admin/js/receipt-invoice-follow-up.js" asp-append-version="true"></script>
     <script src="~/admin/js/stock-document-management.js" asp-append-version="true"></script>
 }

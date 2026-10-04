@@ -4,6 +4,7 @@ namespace GaoApp.Application.DTOs.Inventory;
 
 public class StockDocumentLineDto
 {
+    public string RowVersion { get; set; } = string.Empty;
     public int Id { get; set; }
     public int LineNo { get; set; }
 

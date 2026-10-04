@@ -11,6 +11,7 @@
 
         const btnNewCart = document.getElementById('btnNewCart');
         const btnHoldCart = document.getElementById('btnHoldCart');
+        const btnClearCartLines = document.getElementById('btnClearCartLines');
         const btnOpenPayment = document.getElementById('btnOpenPayment');
         const btnFinalizeCart = document.getElementById('btnFinalizeCart');
         const btnCancelCart = document.getElementById('btnCancelCart');
@@ -136,6 +137,7 @@
                 btnFocusBarcode,
                 btnNewCart,
                 btnHoldCart,
+                btnClearCartLines,
                 btnOpenPayment,
                 btnFinalizeCart,
                 btnCancelCart,

@@ -34,7 +34,7 @@ public sealed class ProductLabelTask : BaseStoreEntity, IAuditTrackedEntity
     public int? CompletedByUserId { get; set; }
 }
 
-public enum ProductLabelJobStatus { Queued, Sending, AwaitingConfirmation, NeedsAttention, Confirmed, Cancelled }
+public enum ProductLabelJobStatus { Queued, Sending, AwaitingConfirmation, NeedsAttention, Confirmed, Cancelled, Sent }
 
 public sealed class ProductLabelJob : BaseStoreEntity, IAuditTrackedEntity
 {

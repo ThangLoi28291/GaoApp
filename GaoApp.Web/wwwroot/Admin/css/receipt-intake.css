@@ -68,3 +68,32 @@ tr.rq-selected > td:first-child { box-shadow:inset 3px 0 var(--bs-primary,#7367f
 tr.rq-selected { outline:none; }
 .ri-photo-tools{border:1px dashed #cbd6df;padding:12px;border-radius:12px;margin-top:14px}.ri-photo-tools label{display:block;font-weight:600;margin-bottom:8px}.ri-photo-tools input{max-width:100%;font-size:13px}.ri-photo-preview{display:block;max-width:100%;max-height:190px;margin-top:10px;border-radius:10px}.ri-evidence-photo{display:block;max-width:100%;max-height:350px;border-radius:12px;margin-top:14px}.ri-photo-tools [hidden]{display:none!important}
 .ri-photo-evidence{margin:12px 0;padding:12px 16px;border:1px solid #dce5df;border-radius:12px;background:#f7faf8}.ri-photo-evidence summary{cursor:pointer;font-weight:600;color:#35674f;font-size:13px}.ri-photo-evidence #riPhotoItems{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}.ri-photo-evidence a{display:flex;align-items:center;gap:10px;color:#33483c;max-width:300px;font-size:13px}.ri-photo-evidence img{width:80px;height:60px;object-fit:cover;border-radius:8px}.ri-photo-evidence small{display:block;color:#7b857f}
+
+/* Manager review workspace */
+#receiptIntakeReviewModal .modal-dialog{max-width:1180px;margin:1.25rem auto}
+.ri-review-modal .modal-header{padding:22px 28px;background:linear-gradient(120deg,#f4f5ff,#fff);border-bottom:1px solid #e6e9f2}
+.ri-review-eyebrow{display:block;font-size:11px;font-weight:750;letter-spacing:1.2px;color:#6965db;margin-bottom:8px}
+.ri-review-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;align-items:start}
+.ri-review-original{background:#f6f8fc;border:1px solid #e2e7f0;border-radius:16px;padding:20px;overflow-wrap:anywhere}
+.ri-review-original .ri-evidence-photo{max-height:260px;width:100%;object-fit:contain;cursor:zoom-in}
+.ri-review-section{padding:20px;border:1px solid #e3e7f0;border-radius:16px;margin-bottom:16px;background:#fff}
+.ri-review-section h6{display:flex;align-items:center;gap:10px;font-weight:700;margin-bottom:18px;color:#263651}
+.ri-review-section h6>span{display:inline-grid;place-items:center;background:#efeeff;color:#6965db;border-radius:10px;width:29px;height:29px;font-size:13px}
+.ri-review-section .form-label{font-size:13px;font-weight:600}
+.ri-review-modal .modal-body{padding:24px;background:#fcfcfe}
+.ri-review-modal .modal-footer{background:#fff;box-shadow:0 -4px 20px #20306008;gap:8px;padding:16px 24px}
+.ri-review-message:not(:empty){margin-top:12px;padding:12px 16px;border-radius:10px;background:#fff2ed;color:#a63718}
+.ri-review-modal [hidden]{display:none!important}
+@media(max-width:767px){#receiptIntakeReviewModal .modal-dialog{margin:.5rem}.ri-review-layout{grid-template-columns:1fr;gap:14px}.ri-review-original{padding:14px}.ri-review-modal .modal-body{padding:14px}.ri-review-section{padding:14px}.ri-review-modal .modal-footer{padding:12px}.ri-review-modal .modal-footer .btn{font-size:12px}.ri-review-original .ri-evidence-photo{max-height:150px}}
+
+@media(max-width:767px){.ri-review-modal .modal-footer{display:grid;grid-template-columns:1fr 1fr}.ri-review-modal .modal-footer .me-auto{grid-column:1/-1}.ri-review-modal .modal-footer .btn{width:100%;margin:0}}
+
+.ri-review-sidebar{min-width:0;display:grid;gap:16px}
+.ri-review-upload{margin:0;padding:16px}
+.ri-review-photo-drop{border:2px dashed #d4d8ef;border-radius:12px;background:#f8f9ff;min-height:168px;overflow:hidden;transition:background .15s,border-color .15s}
+.ri-review-photo-drop.is-dragging{border-color:#6965db;background:#efeeff}
+.ri-review-photo-choose{cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:168px;padding:18px 10px;text-align:center;font-size:13px;color:#66718a;margin:0}
+.ri-review-photo-choose i{font-size:32px;color:#6965db}.ri-review-photo-choose strong{color:#4c46cc}
+.ri-review-photo-drop:focus-within{outline:2px solid #6965db;outline-offset:2px}
+.ri-review-photo-preview{width:100%;height:210px;object-fit:contain;background:#fff;display:block}
+.ri-review-photo-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}

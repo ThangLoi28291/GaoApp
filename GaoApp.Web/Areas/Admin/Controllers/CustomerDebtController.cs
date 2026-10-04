@@ -9,13 +9,14 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Route("admin/customer-debt")]
 [Authorize(Policy = PermissionCodes.CustomerDebt.View)]
 [AutoValidateAntiforgeryToken]
-public sealed class CustomerDebtController(ICustomerReceivableService receivables) : Controller
+public sealed partial class CustomerDebtController(ICustomerReceivableService receivables) : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index(int? customerId, string? search, CancellationToken ct)
+    public async Task<IActionResult> Index(int? customerId, string? search, CancellationToken ct, int page = 1, string? status = null)
     {
         ViewBag.Search = search;
-        return View(await receivables.GetAsync(customerId, search, ct));
+        ViewBag.Status = status;
+        return View(await receivables.GetAsync(customerId, search, ct, page, status));
     }
 
     [HttpPost("collect")]

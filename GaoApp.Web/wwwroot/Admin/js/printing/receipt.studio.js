@@ -1,6 +1,7 @@
 (function () {
     'use strict';
     const setup = JSON.parse(document.getElementById('receiptStudioData').textContent), el = id => document.getElementById(id);
+    let receiptDefault = setup.receiptDefault;
     let catalog = setup.templates, current, filter = 'all', dirty = false, editingId, previewWidth;
     let storeInfo = setup.storeInfo || { storeName: 'Cửa hàng của bạn', storeAddress: '', storePhone: '' }, storeInfoDirty = false;
     const previewFrame = el('receiptPreview'), previewStage = previewFrame.parentElement;
@@ -66,14 +67,14 @@
             button.dataset.templateKey = option.key; button.setAttribute('aria-pressed', String(option.key === current?.key));
             const e = ReceiptTemplates.escape;
             const miniItems = option.design.layout === 'itemwide' ? '<i></i><div class="mini-item-columns"><span>SL</span><span>ĐVT</span><span>Đơn giá</span><span>Thành tiền</span></div><i></i>' : '<i></i><i></i><i></i>';
-            button.innerHTML = `<div class="template-thumb"><div class="mini-receipt ${e(option.design.layout)}"><strong>${e(storeFields().storeName || 'Tên tiệm')}</strong><div>${e(option.design.title)}</div>${miniItems}<div class="mini-total">270.000 đ</div><i></i></div></div><div class="template-caption"><strong>${e(option.design.name)}</strong><small>${option.builtIn ? 'Mẫu có sẵn' : 'Mẫu của cửa hàng'} · ${e(option.design.paperSize)}</small></div>`;
+            button.innerHTML = `<div class="template-thumb"><div class="mini-receipt ${e(option.design.layout)}"><strong>${e(storeFields().storeName || 'Tên tiệm')}</strong><div>${e(option.design.title)}</div>${miniItems}<div class="mini-total">270.000 đ</div><i></i></div></div><div class="template-caption"><strong>${e(option.design.name)}</strong><small>${option.key === receiptDefault.template.key ? 'Mặc định cửa hàng' : option.builtIn ? 'Mẫu có sẵn' : 'Mẫu của cửa hàng'} · ${e(option.design.paperSize)}</small></div>`;
             button.addEventListener('click', () => { if (!dirty || confirm('Bỏ thay đổi chưa lưu để chọn mẫu khác?')) choose(option); });
             return button;
         });
         el('templateGallery').replaceChildren(...nodes);
     }
     async function api(path = '', method = 'GET', body) {
-        const url = path === '/store-info' ? '/admin/receipt-templates/store-info' : '/admin/receipt-templates/data' + path;
+        const url = ['/store-info', '/default'].includes(path) ? '/admin/receipt-templates' + path : '/admin/receipt-templates/data' + path;
         const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json',
             RequestVerificationToken: document.querySelector('input[name="__RequestVerificationToken"]').value }, body: body ? JSON.stringify(body) : undefined });
         const data = await response.json();
@@ -83,13 +84,14 @@
     async function busy(button, work) { button.disabled = true; try { await work(); } catch (e) { message(e.message, true); } finally { button.disabled = false; } }
     function localChoice() {
         if (storeInfoDirty) throw new Error('Bấm Lưu thông tin tiệm trước khi áp dụng hoặc in thử.');
-        if (dirty) throw new Error('Lưu các chỉnh sửa thành mẫu trước khi áp dụng cho client.');
+        if (dirty) throw new Error('Lưu các chỉnh sửa thành mẫu trước khi áp dụng.');
         return { mode: el('printMode').value, printer: el('clientPrinter').value, copies: Number(el('printCopies').value),
             color: false, templateKey: current.key, template: current.design };
     }
     function profile() {
         const p = PosPrinting.preferences(setup);
-        el('activePrintProfile').textContent = `Đang dùng: ${p.template?.name || catalog.find(x => x.key === p.templateKey)?.design.name || 'Hiện đại · 80 mm'} · ${p.mode === 'qz' ? p.printer : 'Hộp thoại trình duyệt'}`;
+        el('activePrintProfile').textContent = `Máy in tại quầy: ${p.mode === 'helper' ? 'Linux Print Helper' : p.mode === 'qz' ? p.printer : 'Hộp thoại trình duyệt'}`;
+        el('storeDefaultName').textContent = 'Đang áp dụng: ' + receiptDefault.template.design.name;
     }
     el('paperFilters').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button) return;
         filter = button.dataset.size; el('paperFilters').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === button)); gallery(); });
@@ -101,12 +103,21 @@
         const fields = el('storeIdentityFields'); fields.disabled = true;
         try {
             storeInfo = await api('/store-info', 'PUT', { ...storeFields(), rowVersion: storeInfo.rowVersion });
+            receiptDefault.rowVersion = storeInfo.rowVersion;
             storeInfoDirty = false; fillStoreInfo(); gallery(); preview();
             el('storeIdentityStatus').textContent = 'Đã lưu cho tất cả mẫu. Các quầy đang kết nối sẽ nhận cập nhật sau vài giây.';
             message('Đã lưu thông tin tiệm trên hóa đơn.');
         } finally { fields.disabled = !setup.canManage; }
     }));
-    el('printMode').addEventListener('change', () => { el('qzSettings').hidden = el('printMode').value !== 'qz'; });
+    function printModeChanged() {
+        el('qzSettings').hidden = el('printMode').value !== 'qz';
+        el('helperSettings').hidden = el('printMode').value !== 'helper';
+        el('printCopySettings').hidden = el('printMode').value === 'browser';
+    }
+    el('printMode').addEventListener('change', printModeChanged);
+    el('checkHelper').addEventListener('click', event => busy(event.currentTarget, async () => {
+        await PosPrinting.health(); message('Print Helper sẵn sàng nhận ảnh hóa đơn 80 mm.');
+    }));
     el('connectPrinters').addEventListener('click', event => busy(event.currentTarget, async () => {
         const printers = await PosPrinting.printers(), selected = el('clientPrinter').value;
         el('clientPrinter').replaceChildren(new Option('Chọn máy in', ''), ...printers.map(name => new Option(name, name)));
@@ -114,27 +125,34 @@
         message(printers.length ? `Đã tìm thấy ${printers.length} máy in trên client này.` : 'Chưa có máy in. Cài driver máy in trong hệ điều hành rồi kết nối lại.');
     }));
     el('applyTemplate').addEventListener('click', event => busy(event.currentTarget, async () => {
-        PosPrinting.savePreferences(setup, localChoice()); profile(); message('Đã lưu mẫu và máy in cho client này. Mẫu đã lưu cũng được dùng khi bán offline.');
+        PosPrinting.savePreferences(setup, localChoice()); profile(); message('Đã lưu máy in tại quầy. Mẫu hóa đơn dùng theo mặc định cửa hàng.');
+    }));
+    el('setStoreDefault')?.addEventListener('click', event => busy(event.currentTarget, async () => {
+        if (dirty || storeInfoDirty) throw new Error('Lưu nội dung mẫu và thông tin tiệm trước khi đặt mặc định.');
+        receiptDefault = await api('/default', 'PUT', { key: current.key, rowVersion: receiptDefault.rowVersion, templateVersion: current.rowVersion });
+        storeInfo.rowVersion = receiptDefault.rowVersion;
+        profile(); gallery(); message('Đã đặt mẫu mặc định cho cửa hàng. Các nhân viên tính tiền sẽ tự dùng mẫu này khi in.');
     }));
     el('testPrint').addEventListener('click', () => {
-        try { PosPrinting.savePreferences(setup, localChoice()); profile(); PosPrinting.openLocal({ ...sample, ...storeInfo }, setup, catalog); }
+        try { PosPrinting.savePreferences(setup, localChoice()); profile(); PosPrinting.openLocal({ ...sample, ...storeInfo }, { ...setup, receiptDefault: { template: current } }, catalog); }
         catch (e) { message(e.message, true); }
     });
     el('saveTemplate')?.addEventListener('click', event => busy(event.currentTarget, async () => {
         const saved = await api(editingId ? '/' + editingId : '', editingId ? 'PUT' : 'POST', { design: design(), rowVersion: editingId ? current.rowVersion : null });
-        catalog = await api(); choose(catalog.find(x => x.key === saved.key)); message('Đã lưu mẫu cửa hàng. Bấm Dùng mẫu & máy in này để áp dụng bản vừa lưu cho client.');
+        catalog = await api(); receiptDefault = await api('/default'); storeInfo.rowVersion = receiptDefault.rowVersion;
+        choose(catalog.find(x => x.key === saved.key)); profile(); message(saved.key === receiptDefault.template.key ? 'Đã cập nhật mẫu mặc định. Các quầy đang kết nối sẽ dùng nội dung mới.' : 'Đã lưu mẫu. Bấm Đặt mẫu đang chọn làm mặc định để áp dụng cho mọi nhân viên.');
     }));
     el('duplicateTemplate')?.addEventListener('click', () => { editingId = null; dirty = true; el('designName').value = design().name.slice(0, 80) + ' · Bản sao'; el('saveTemplate').textContent = 'Lưu mẫu mới'; el('deleteTemplate').hidden = true; preview(); });
     el('newTemplate').addEventListener('click', () => { if (dirty && !confirm('Bỏ thay đổi chưa lưu?')) return; choose(catalog.find(x => x.key === 'modern-80')); el('designName').value = 'Mẫu mới của cửa hàng'; dirty = true; preview(); el('designName').focus(); });
     el('deleteTemplate')?.addEventListener('click', event => busy(event.currentTarget, async () => {
-        if (!editingId || !confirm('Xóa mẫu khỏi thư viện cửa hàng? Bản đã chọn trên client được giữ tới khi chọn mẫu khác.')) return;
-        await api('/' + editingId, 'DELETE', { rowVersion: current.rowVersion }); catalog = await api(); choose(catalog[0]); message('Đã xóa mẫu khỏi thư viện.');
+        if (!editingId || !confirm('Xóa mẫu khỏi thư viện cửa hàng? Không thể xóa mẫu đang dùng mặc định.')) return;
+        await api('/' + editingId, 'DELETE', { rowVersion: current.rowVersion }); catalog = await api(); receiptDefault = await api('/default'); storeInfo.rowVersion = receiptDefault.rowVersion; choose(catalog.find(x => x.key === receiptDefault.template.key)); profile(); message('Đã xóa mẫu khỏi thư viện.');
     }));
     try {
         fillStoreInfo();
-        const p = PosPrinting.preferences(setup); el('printMode').value = p.mode; el('qzSettings').hidden = p.mode !== 'qz';
+        const p = PosPrinting.preferences(setup); el('printMode').value = p.mode; printModeChanged();
         if (p.printer) el('clientPrinter').append(new Option(p.printer, p.printer, true, true));
         el('printCopies').value = p.copies;
-        choose(catalog.find(x => x.key === p.templateKey) || catalog.find(x => x.key === 'modern-80')); profile();
+        choose(catalog.find(x => x.key === receiptDefault.template.key) || catalog.find(x => x.key === 'modern-80')); profile();
     } catch (error) { choose(catalog[0]); message(error.message, true); }
 })();

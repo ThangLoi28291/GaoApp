@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Inventory;
@@ -6,6 +6,7 @@ using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Web.Security;
 using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +45,7 @@ public class StockDocumentsController : Controller
     private readonly IStockDocumentSplitService? _stockDocumentSplitService;
     private readonly IInputInvoiceReconciliationService? _inputInvoiceReconciliationService;
     private readonly AppDbContext? _db;
+    private readonly IPurchaseReceiptPricingAllocationService? _pricingAllocation;
 
     public StockDocumentsController(
       IStockDocumentService stockDocumentService,
@@ -55,7 +57,8 @@ public class StockDocumentsController : Controller
       IInputInvoicePickerService? inputInvoicePickerService = null,
       IStockDocumentSplitService? stockDocumentSplitService = null,
       IInputInvoiceReconciliationService? inputInvoiceReconciliationService = null,
-      AppDbContext? db = null)
+      AppDbContext? db = null,
+      IPurchaseReceiptPricingAllocationService? pricingAllocation = null)
     {
         _stockDocumentService = stockDocumentService;
         _stockDocumentLookupService = stockDocumentLookupService;
@@ -67,6 +70,7 @@ public class StockDocumentsController : Controller
         _stockDocumentSplitService = stockDocumentSplitService;
         _inputInvoiceReconciliationService = inputInvoiceReconciliationService;
         _db = db;
+        _pricingAllocation = pricingAllocation;
     }
 
 
@@ -392,7 +396,9 @@ public class StockDocumentsController : Controller
 
         return Ok(new
         {
-            message = "Cập nhật dòng phiếu nhập kho thành công."
+            message = "Cập nhật dòng phiếu nhập kho thành công.",
+            rowVersion = _db == null ? null : Convert.ToBase64String((await _db.StockDocuments.SingleAsync(x => x.Id == documentId, ct)).RowVersion),
+            lineRowVersion = _db == null ? null : Convert.ToBase64String((await _db.StockDocumentLines.SingleAsync(x => x.Id == lineId && x.StockDocumentId == documentId, ct)).RowVersion)
         });
     }
 
@@ -407,6 +413,9 @@ public class StockDocumentsController : Controller
         int lineId,
         CancellationToken ct)
     {
+        var document = await _stockDocumentService.GetDetailAsync(documentId, ct);
+        if (document is null || !document.Lines.Any(x => x.Id == lineId))
+            return NotFound(new { message = "Dòng hàng không còn trong phiếu nhập này. Vui lòng tải lại danh sách." });
         await _stockDocumentService.DeleteLineAsync(lineId, ct);
 
         return Ok(new
@@ -481,6 +490,60 @@ public class StockDocumentsController : Controller
     /// Chốt giá/VAT/công nợ/phí vận chuyển và duyệt phiếu trong một transaction.
     /// Không nhận sản phẩm, đơn vị hoặc số lượng từ trình duyệt.
     /// </summary>
+    [HttpGet("{id:int}/pricing-allocation")]
+    [RequireAnyPermission(PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve)]
+    public Task<IActionResult> GetPricingAllocation(int id, CancellationToken ct)
+        => PricingAllocationAction(id, service => service.GetAsync(id, ct), ct);
+
+    [HttpPost("{id:int}/pricing-allocation/preview")]
+    [RequireAnyPermission(PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve)]
+    public Task<IActionResult> PreviewPricingAllocation(int id, [FromBody] PurchaseReceiptPricingAllocationRequest request, CancellationToken ct)
+        => PricingAllocationAction(id, service => service.PreviewAsync(id, request, ct), ct);
+
+    [HttpPut("{id:int}/pricing-allocation")]
+    [RequireAnyPermission(PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve)]
+    public Task<IActionResult> SavePricingAllocation(int id, [FromBody] PurchaseReceiptPricingAllocationRequest request, CancellationToken ct)
+        => PricingAllocationAction(id, service => service.SaveAsync(id, request, ct), ct);
+
+    [HttpPost("{id:int}/pricing-allocation/apply")]
+    [RequireAnyPermission(PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve)]
+    public Task<IActionResult> ApplyPricingAllocation(int id, [FromBody] PurchaseReceiptPricingApplyRequest request, CancellationToken ct)
+        => PricingAllocationAction(id, service => service.ApplyAsync(id, request, ct), ct);
+
+    private async Task<IActionResult> PricingAllocationAction<T>(int id,
+        Func<IPurchaseReceiptPricingAllocationService, Task<T>> action, CancellationToken ct)
+    {
+        var document = await _stockDocumentService.GetDetailAsync(id, ct);
+        if (document is null) return NotFound(new { message = "Không tìm thấy phiếu nhập." });
+        var authorized = (await _authorizationService.AuthorizeAsync(User, null, PermissionCodes.Purchase.Receipt.Approve)).Succeeded ||
+            (await _authorizationService.AuthorizeAsync(User, null, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded;
+        if (!authorized) return Forbid();
+        if (_pricingAllocation is null) return StatusCode(503, new { message = "Chức năng kế hoạch giá chưa sẵn sàng." });
+        try { return Ok(await action(_pricingAllocation)); }
+        catch (PurchaseReceiptPricingConflictException ex) { return Conflict(new { message = ex.SafeMessage }); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Phiếu hoặc kế hoạch vừa thay đổi. Vui lòng tải lại và đối chiếu." }); }
+        catch (DbUpdateException ex) when (ex.InnerException is Microsoft.Data.SqlClient.SqlException sql && sql.Number is 2601 or 2627 or 1205)
+        { return Conflict(new { message = "Kế hoạch vừa được cập nhật ở nơi khác. Vui lòng tải lại và đối chiếu." }); }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205)
+        { return Conflict(new { message = "Có cập nhật đồng thời. Vui lòng tải lại và thử lại." }); }
+        catch (BusinessRuleException ex) { return BadRequest(new { message = ex.SafeMessage }); }
+        catch (OverflowException) { return BadRequest(new { message = "Giá hoặc thành tiền vượt giới hạn cho phép." }); }
+    }
+
+    [HttpPost("{id:int}/price-draft")]
+    [RequireAnyPermission(PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve)]
+    public async Task<IActionResult> SavePriceDraft(int id, [FromBody] SaveReceiptPriceDraftRequest request, CancellationToken ct)
+    {
+        if (!await HasWorkflowPermissionAsync(id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct)) return Forbid();
+        if (!ModelState.IsValid) return BadRequest(new { message = "Giá nháp không hợp lệ. Giá phải lớn hơn 0 và nằm trong giới hạn cho phép." });
+        try { return Ok(await _stockDocumentService.SavePriceDraftAsync(id, request, ct)); }
+        catch (PurchaseReceiptPricingConflictException ex) { return Conflict(new { message = ex.SafeMessage }); }
+        catch (BusinessRuleException ex) { return BadRequest(new { message = ex.SafeMessage }); }
+        catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Phiếu vừa được thay đổi ở nơi khác. Giá đang nhập chưa được lưu; hãy đối chiếu trước khi tải lại." }); }
+        catch (OverflowException) { return BadRequest(new { message = "Giá hoặc thành tiền vượt giới hạn cho phép." }); }
+    }
+
     [HttpPost("{id:int}/approve-commercial")]
     public async Task<IActionResult> ApproveCommercial(
         int id,
@@ -502,6 +565,14 @@ public class StockDocumentsController : Controller
                 message = "Đã chốt giá và duyệt phiếu nhập kho thành công.",
                 redirectUrl = Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })
             });
+        }
+        catch (PurchaseReceiptPricingConflictException ex)
+        {
+            return Conflict(new { message = ex.SafeMessage });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205)
+        {
+            return Conflict(new { message = "Có cập nhật đồng thời khi duyệt. Vui lòng tải lại và đối chiếu trước khi thử lại." });
         }
         catch (BusinessRuleException ex)
         {
