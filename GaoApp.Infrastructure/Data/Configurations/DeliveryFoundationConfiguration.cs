@@ -46,7 +46,10 @@ public sealed class DeliveryFoundationConfiguration :
     public void Configure(EntityTypeBuilder<DeliveryOrder> b)
     {
         Base(b, "DeliveryOrders");
-        b.ToTable(t => t.HasTrigger("TR_DeliveryOrders_Origin"));
+        b.ToTable(t => {
+            t.HasTrigger("TR_DeliveryOrders_Origin");
+            t.HasTrigger("TR_DeliveryOrders_SourceShift");
+        });
         b.HasAlternateKey(x => new { x.StoreId, x.Id });
         b.HasAlternateKey(x => new { x.StoreId, x.Id, x.SourceCartId });
         b.HasAlternateKey(x => new { x.StoreId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId });
@@ -67,8 +70,8 @@ public sealed class DeliveryFoundationConfiguration :
         });
         b.HasOne<Warehouse>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceWarehouseId, x.SourceLegalEntityId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id, x.LegalEntityId }).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<Order>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceCartId, x.CreatedShiftId })
-            .HasPrincipalKey(x => new { x.StoreId, x.Id, x.POSShiftId }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Order>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceCartId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<POSShift>().WithMany().HasForeignKey(x => new { x.StoreId, x.CreatedShiftId, x.CreatedTerminalId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id, x.TerminalId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<UserInStore>().WithMany().HasForeignKey(x => new { x.StoreId, x.CreatedByUserId })

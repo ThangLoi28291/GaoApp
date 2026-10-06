@@ -16,6 +16,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
 {
     private const string Foundation = "20261006153000_AddDeliveryFoundation";
     private const string Protection = "20261006163000_ProtectDeliverySourceCarts";
+    private const string HeldShift = "20261006170000_PreserveHeldOrderShiftChanges";
     private readonly DeliveryD03SchemaFixture fixture;
     public DeliveryD03SchemaTests(DeliveryD03SchemaFixture fixture) => this.fixture = fixture;
 
@@ -36,7 +37,10 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
             x => x.Name == "ak_orders_storeid_id");
         Assert.True(unique.IsUnique && unique.IsUniqueConstraint && !unique.IsClustered);
         Assert.Equal(new[] { "storeid", "id" }, unique.KeyColumns.Select(x => x.Name));
-        Assert.Equal(10, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
+        var protectionPosition = Array.IndexOf(ids, Protection);
+        Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids[..(protectionPosition + 1)], out var protection));
+        Assert.Equal(10, protection.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(12, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
     }
 
     [Fact]
@@ -47,7 +51,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         var expected = new EfCoreDatabaseSchemaManifestCatalog(db).GetCurrentManifest();
         await db.Database.OpenConnectionAsync();
         var actual = await new SqlServerSchemaSnapshotReader(db).ReadAsync((await db.Database.GetAppliedMigrationsAsync()).ToArray());
-        Assert.Equal(10, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(12, actual.Tables.Sum(x => x.Triggers.Count));
         var expectedRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(expected).All;
         var actualRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(actual).All;
         Assert.True(DatabaseSchemaComparer.Compare(expected, actual).IsMatch,
@@ -63,6 +67,12 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
     [InlineData("ALTER TRIGGER [TR_Orders_DeliverySource] ON [Orders] AFTER UPDATE AS BEGIN SET NOCOUNT ON; RETURN; END;")]
     [InlineData("DROP TRIGGER [TR_DeliveryRevisions_Immutable];")]
     [InlineData("DISABLE TRIGGER [TR_DeliveryRevisions_Immutable] ON [DeliveryRevisions];")]
+    [InlineData("DROP TRIGGER [TR_DeliveryOrders_SourceShift];")]
+    [InlineData("DISABLE TRIGGER [TR_DeliveryOrders_SourceShift] ON [DeliveryOrders];")]
+    [InlineData("ALTER TRIGGER [TR_DeliveryOrders_SourceShift] ON [DeliveryOrders] AFTER INSERT, UPDATE AS BEGIN SET NOCOUNT ON; RETURN; END;")]
+    [InlineData("DROP TRIGGER [TR_Orders_DeliverySourceShift];")]
+    [InlineData("DISABLE TRIGGER [TR_Orders_DeliverySourceShift] ON [Orders];")]
+    [InlineData("ALTER TRIGGER [TR_Orders_DeliverySourceShift] ON [Orders] AFTER UPDATE AS BEGIN SET NOCOUNT ON; RETURN; END;")]
     public async Task Missing_disabled_or_modified_delivery_trigger_is_rejected(string sql)
     {
         await using var db = fixture.Database.CreateHostContext();
@@ -140,6 +150,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
     [Theory]
     [InlineData(Foundation)]
     [InlineData(Protection)]
+    [InlineData(HeldShift)]
     public void Changing_trigger_sql_or_suppressing_transaction_is_rejected(string migrationId)
     {
         using var db = fixture.Database.CreateHostContext();

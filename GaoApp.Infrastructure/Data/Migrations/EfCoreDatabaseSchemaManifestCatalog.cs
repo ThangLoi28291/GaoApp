@@ -168,6 +168,10 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 ApplyAddUniqueConstraint(addUnique, tables, defaultSchema);
                 break;
 
+            case DropUniqueConstraintOperation dropUnique:
+                ApplyDropUniqueConstraint(dropUnique, tables, defaultSchema);
+                break;
+
             case AddColumnOperation addColumn:
                 ApplyAddColumn(addColumn, tables, defaultSchema);
                 break;
@@ -237,6 +241,13 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
         string defaultSchema)
     {
+        if (DeliverySchemaSqlCatalog.IsSourceShiftValidation(migrationId, operation))
+        {
+            if (!tables.ContainsKey(new DatabaseObjectIdentity("dbo", "Orders"))
+                || !tables.ContainsKey(new DatabaseObjectIdentity("dbo", "DeliveryOrders")))
+                throw new InvalidOperationException("Delivery source validation references a missing schema-manifest table.");
+            return true;
+        }
         if (DeliverySchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var deliveryTrigger))
         {
             var deliveryIdentity = new DatabaseObjectIdentity("dbo", deliveryTrigger.Table);
@@ -635,6 +646,33 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
             [], IsUnique: true, IsUniqueConstraint: true,
             IsClustered: GetBooleanAnnotation(operation, SqlServerClustered, defaultValue: false),
             IsDisabled: false, Filter: null));
+    }
+
+    private static void ApplyDropUniqueConstraint(
+        DropUniqueConstraintOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(operation.Schema ?? defaultSchema, operation.Table);
+        if (!tables.TryGetValue(identity, out var table))
+            throw new InvalidOperationException("Migration unique constraint references a table absent from the schema manifest.");
+
+        var name = DatabaseSchemaNormalization.NormalizeIdentifier(operation.Name);
+        var matches = table.Indexes.Where(x => x.Name == name).ToArray();
+        if (matches.Length != 1 || !matches[0].IsUnique || !matches[0].IsUniqueConstraint)
+            throw new InvalidOperationException("Migration unique constraint removal must identify exactly one schema-manifest unique constraint.");
+
+        var columns = matches[0].KeyColumns.Select(x => x.Name).ToArray();
+        if (columns.Length == 0 || columns.Distinct(StringComparer.Ordinal).Count() != columns.Length
+            || columns.Any(x => x != DatabaseSchemaNormalization.NormalizeIdentifier(x)
+                || !table.Columns.Any(column => column.Name == x)))
+            throw new InvalidOperationException("Migration unique constraint has invalid schema-manifest columns.");
+
+        if (tables.Values.SelectMany(x => x.ForeignKeys.Values).Any(x =>
+                x.PrincipalTable == identity && x.PrincipalColumns.SequenceEqual(columns, StringComparer.Ordinal)))
+            throw new InvalidOperationException("Migration unique constraint is still referenced by a schema-manifest foreign key.");
+
+        table.Indexes.Remove(matches[0]);
     }
 
     private static void ApplyCreateIndex(
