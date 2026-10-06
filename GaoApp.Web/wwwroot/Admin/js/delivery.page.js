@@ -1,6 +1,8 @@
 (async function () {
     'use strict';
-    const $ = id => document.getElementById(id), money = n => Number(n).toLocaleString('vi-VN') + ' đ';
+    const $ = id => document.getElementById(id), money = n => Number(n).toLocaleString('vi-VN', { maximumFractionDigits: 0 }) + ' đ';
+    const quantity = n => Number(n).toLocaleString('vi-VN', { maximumFractionDigits: 4 });
+    const price = n => Number(n).toLocaleString('vi-VN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' đ';
     const states = { Created: 'Chờ soạn', Picking: 'Đang soạn', Ready: 'Chờ giao', Delivering: 'Đang giao', Returned: 'Chờ bàn giao', Completed: 'Hoàn thành', Cancelled: 'Đã hủy' };
     function node(tag, text, cls) { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; return e; }
     async function get(path) { const r = await fetch('/admin/api/deliveries' + path, { cache: 'no-store', credentials: 'same-origin' }); const d = await r.json(); if (!r.ok) throw new Error(d.message || 'Không có quyền xem hoặc không tìm thấy đơn.'); return d; }
@@ -14,8 +16,8 @@
                 node('h5', d.recipientName + ' · ' + d.recipientPhone), node('p', d.recipientAddress));
             if (d.note) panel.append(node('p', 'Ghi chú: ' + d.note));
             const table = node('table', '', 'delivery-lines'); const head = document.createElement('thead'), row = document.createElement('tr');
-            ['Hàng', 'SL', 'Thành tiền'].forEach(x => row.append(node('th', x))); head.append(row); table.append(head);
-            const body = document.createElement('tbody'); for (const line of d.lines) { const tr = document.createElement('tr'); [line.itemName, line.orderedQuantity + ' ' + line.unitName, money(line.net)].forEach(x => tr.append(node('td', x))); body.append(tr); } table.append(body);
+            ['Hàng', 'SL', 'Đơn giá', 'Thành tiền'].forEach(x => row.append(node('th', x))); head.append(row); table.append(head);
+            const body = document.createElement('tbody'); for (const line of d.lines) { const tr = document.createElement('tr'); [line.itemName, quantity(line.orderedQuantity) + ' ' + line.unitName, price(line.unitPrice), money(line.net)].forEach(x => tr.append(node('td', x))); body.append(tr); } table.append(body);
             const bill = node('a', 'Mở / in phiếu A5', 'btn btn-primary'); bill.href = '/admin/deliveries/' + d.id + '/bill'; bill.target = '_blank'; bill.rel = 'noopener';
             panel.append(table, node('p', 'Giá trị dự kiến: ' + money(d.quotedTotal), 'delivery-total'), node('p', 'Thanh toán theo lượng thực giao. Đơn mới chưa thu tiền.'), bill); panel.hidden = false;
             $('deliveryPageMessage').textContent = ''; $('deliveryKey').value = d.code;

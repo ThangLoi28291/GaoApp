@@ -1,10 +1,13 @@
 using System.Drawing;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Delivery;
+using GaoApp.Domain.Delivery;
+using Microsoft.EntityFrameworkCore;
 using ZXing;
 using static GaoApp.Tests.Delivery.DeliveryD03Support;
 
@@ -13,6 +16,42 @@ namespace GaoApp.Tests.Delivery;
 [SupportedOSPlatform("windows"), Collection("DeliveryD03"), Trait("Category","DeliveryD03")]
 public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
 {
+    [Theory]
+    [InlineData("1.2345", "1000.25", "1,2345", "1.000,25", "1.235", 1235)]
+    [InlineData("0.0001", "10000.25", "0,0001", "10.000,25", "1", 1)]
+    public async Task Bill_preserves_four_decimal_quantity_and_two_decimal_unit_price_with_whole_dong_totals(
+        string quantityText, string priceText, string expectedQuantity, string expectedPrice, string expectedMoney, int total)
+    {
+        using var c = await fixture.CaseAsync(false);
+        var quantity = decimal.Parse(quantityText, CultureInfo.InvariantCulture);
+        var unitPrice = decimal.Parse(priceText, CultureInfo.InvariantCulture);
+        await using (var db = c.Context())
+        {
+            var cart = await db.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == c.CartId);
+            var line = Assert.Single(cart.Lines);
+            line.ItemName = "Hàng <script>alert('line')</script>";
+            line.Quantity = quantity; line.BaseQuantity = quantity * line.Multiplier; line.UnitPrice = unitPrice;
+            line.OriginalUnitPrice = unitPrice; line.LineTotal = DeliveryValues.PricedAmount(quantity, unitPrice);
+            cart.Subtotal = line.LineTotal; cart.GrandTotal = line.LineTotal; cart.BalanceDue = line.LineTotal;
+            await db.SaveChangesAsync();
+        }
+        var result = await Create(c, await Request(c)); // Fresh server rowversion and fingerprint after the source edits.
+        var savedLine = Assert.Single(result.Delivery.Lines);
+        Assert.Equal(quantity, savedLine.OrderedQuantity); Assert.Equal(unitPrice, savedLine.UnitPrice);
+        Assert.Equal(total, result.Delivery.QuotedTotal); Assert.Equal(total, savedLine.Net);
+        var html = await c.Client.Http.GetStringAsync(result.BillUrl);
+        Assert.Equal(html, await c.Client.Http.GetStringAsync(result.BillUrl));
+        var text = WebUtility.HtmlDecode(html);
+        Assert.Contains($"<td>{expectedQuantity}</td><td>{expectedPrice}</td><td>{expectedMoney}</td>", text);
+        Assert.Contains($"<strong>{expectedMoney} đ</strong>", text);
+        Assert.DoesNotContain("<script>alert('line')</script>", html); Assert.Contains("&lt;script&gt;", html);
+        Assert.Contains("data:image/png;base64,", html); Assert.Contains(result.Delivery.Code, text);
+        Assert.Contains("?key=" + result.Delivery.LookupToken, text);
+        var lookup = await c.Client.Http.GetFromJsonAsync<DeliveryDetailDto>("/admin/api/deliveries/lookup?key=" + result.Delivery.Code);
+        Assert.Equal(result.Delivery.Id, lookup!.Id); Assert.Equal(quantity, Assert.Single(lookup.Lines).OrderedQuantity);
+        Assert.Equal(unitPrice, Assert.Single(lookup.Lines).UnitPrice); Assert.Equal(total, lookup.QuotedTotal);
+    }
+
     [Fact]
     public async Task Bill_QR_decodes_to_persisted_token_and_reprint_is_stable_A5_non_payment_escaped()
     {

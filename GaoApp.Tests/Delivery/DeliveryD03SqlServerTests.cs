@@ -13,6 +13,52 @@ namespace GaoApp.Tests.Delivery;
 [Collection("DeliveryD03"), Trait("Category", "DeliveryD03")]
 public sealed class DeliveryD03SqlServerTests(DeliveryD02Fixture fixture)
 {
+    [Theory]
+    [InlineData(447, false)]
+    [InlineData(448, false)]
+    [InlineData(500, false)]
+    [InlineData(500, true)]
+    public async Task Transfer_preserves_valid_source_note_at_limit_and_replays_one_atomic_transfer(int noteLength, bool whitespaceOnly)
+    {
+        using var c = await fixture.CaseAsync(false);
+        var originalNote = new string(whitespaceOnly ? ' ' : 'N', noteLength);
+        int orderCount, movementCount, paymentCount, cashCount;
+        await using (var before = c.Context())
+        {
+            var cart = await before.Orders.SingleAsync(x => x.Id == c.CartId);
+            cart.Note = originalNote; await before.SaveChangesAsync();
+            orderCount = await before.Orders.CountAsync(); movementCount = await before.InventoryTransactions.CountAsync();
+            paymentCount = await before.OrderPayments.CountAsync(); cashCount = await before.POSShiftCashTransactions.CountAsync();
+        }
+        var request = await Request(c);
+        var result = await Create(c, request);
+        Assert.Equal(JsonSerializer.Serialize(result), JsonSerializer.Serialize(await Create(c, request)));
+        await using var db = c.Context();
+        var source = await db.Orders.SingleAsync(x => x.Id == c.CartId);
+        var candidate = originalNote + Environment.NewLine + "[DELIVERY] Chuyển sang " + result.Delivery.Code;
+        Assert.Equal(candidate.Length <= 500 ? candidate : originalNote, source.Note);
+        Assert.True(source.Note!.Length <= 500); Assert.Equal(OrderStatus.Cancelled, source.Status);
+        Assert.Equal(0, source.PaidTotal); Assert.Equal(40, source.GrandTotal);
+        var next = await db.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == result.NextCartId);
+        Assert.Equal(OrderStatus.Draft, next.Status); Assert.Empty(next.Lines);
+        Assert.Equal(next.Id, (await db.POSShifts.SingleAsync(x => x.Id == result.Delivery.CreatedShiftId)).CurrentOrderId);
+        Assert.Equal(orderCount + 1, await db.Orders.CountAsync());
+        Assert.Equal(movementCount, await db.InventoryTransactions.CountAsync());
+        Assert.Equal(paymentCount, await db.OrderPayments.CountAsync()); Assert.Equal(cashCount, await db.POSShiftCashTransactions.CountAsync());
+        Assert.Equal(1, await db.DeliveryOrders.CountAsync(x => x.SourceCartId == c.CartId));
+        Assert.Equal(1, await db.DeliveryRevisions.CountAsync(x => x.DeliveryOrderId == result.Delivery.Id));
+        Assert.Equal(1, await db.DeliveryCommandReceipts.CountAsync(x => x.DeliveryOrderId == result.Delivery.Id));
+        Assert.Equal(1, await db.DeliveryOutboxMessages.CountAsync(x => x.DeliveryOrderId == result.Delivery.Id));
+        Assert.Equal(1, await db.Set<GaoApp.Domain.Entities.PosOperationReceipt>().CountAsync(x => x.OperationId == request.ClientRequestId));
+        var audit = await db.POSAuditLogs.SingleAsync(x => x.OrderId == c.CartId && x.Action == "DELIVERY_CREATED");
+        Assert.Contains(result.Delivery.Code, audit.Note);
+        using var metadata = JsonDocument.Parse(audit.MetadataJson!);
+        Assert.Equal(result.Delivery.Id, metadata.RootElement.GetProperty("deliveryId").GetInt32());
+        Assert.Equal(result.Delivery.Code, metadata.RootElement.GetProperty("code").GetString());
+        Assert.Equal(c.CartId, metadata.RootElement.GetProperty("sourceCartId").GetInt32());
+        Assert.Equal(result.NextCartId, metadata.RootElement.GetProperty("nextCartId").GetInt32());
+    }
+
     [Fact]
     public async Task Transfer_preserves_source_releases_reservations_creates_empty_cart_without_financial_or_stock_posting()
     {

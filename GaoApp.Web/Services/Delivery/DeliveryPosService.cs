@@ -100,7 +100,10 @@ public sealed class DeliveryPosService(AppDbContext db, ICurrentUser user, ICurr
             await reservations.ReleaseForOrderAsync(cart, "Chuyển sang đơn giao " + delivery.Code, ct);
             cart.Status = OrderStatus.Cancelled;
             var reason = "[DELIVERY] Chuyển sang " + delivery.Code;
-            cart.Note = string.IsNullOrWhiteSpace(cart.Note) ? reason : cart.Note + Environment.NewLine + reason;
+            var noteWithReason = string.IsNullOrEmpty(cart.Note) ? reason : cart.Note + Environment.NewLine + reason;
+            // Preserve the original POS note when the marker would exceed Orders.Note's 500-character limit.
+            // The delivery code/source link is also recorded in the durable POS audit below.
+            if (noteWithReason.Length <= 500) cart.Note = noteWithReason;
             shift.CurrentOrderId = null;
             await db.SaveChangesAsync(ct);
             var nextId = await pos.CreateDraftAsync(ct: ct); // Existing mode capture and empty-cart reuse, same DbContext/transaction.
