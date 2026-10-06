@@ -18,7 +18,8 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
         StoreActivityEnricher.Snapshot? prior = null;
         if (!tenant.IsHostAdmin && tenant.StoreId is > 0 && context.HttpContext.User.Identity?.IsAuthenticated == true &&
             context.ModelState.IsValid && context.ActionDescriptor is ControllerActionDescriptor operation &&
-            StoreActivityEnricher.NeedsBefore(operation.ControllerName, operation.ActionName))
+            StoreActivityEnricher.NeedsBefore(operation.ControllerName, operation.ActionName) &&
+            !StoreActivityEnricher.NeedsSavedOperation(operation.ControllerName, operation.ActionName))
         {
             try { prior = await StoreActivityEnricher.Read(db, tenant.StoreId.Value, operation.ControllerName, operation.ActionName,
                 context.ActionArguments, null, null, context.HttpContext.RequestAborted); }
@@ -34,8 +35,9 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
         using var savedOperation = !tenant.IsHostAdmin && tenant.StoreId is > 0 &&
             context.HttpContext.User.Identity?.IsAuthenticated == true && context.ModelState.IsValid &&
             context.ActionDescriptor is ControllerActionDescriptor saveAction &&
-            StoreActivityEnricher.NeedsSavedLine(saveAction.ControllerName, saveAction.ActionName)
-                ? new StoreActivityEnricher.SavedOperation(db, tenant.StoreId.Value, saveAction.ActionName == "UpdateLine") : null;
+            StoreActivityEnricher.NeedsSavedOperation(saveAction.ControllerName, saveAction.ActionName) &&
+            int.TryParse(context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var savedActor) && savedActor > 0
+                ? new StoreActivityEnricher.SavedOperation(db, tenant.StoreId.Value, includeBefore:true, actor:savedActor) : null;
         var executed = await next();
         if (tenant.IsHostAdmin || tenant.StoreId is not > 0 || context.HttpContext.User.Identity?.IsAuthenticated != true ||
             !int.TryParse(context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) || userId <= 0 ||
@@ -71,7 +73,11 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 StoreActivityCatalog.Mutation(action.ControllerName, action.ActionName) is not { } mutation ||
                 status is < 200 or >= 300 ||
                 Property(value, "success") is false || Property(value, "isSuccess") is false ||
-                Property(value, "duplicate") is true) return;
+                Property(value, "duplicate") is true || savedOperation?.SaveFailed == true) return;
+
+            // Intake replays return a successful current state without saving a new command.
+            if (action.ControllerName == "ReceiptIntake" &&
+                savedOperation?.HasIntake(action.ActionName, context.ActionArguments) != true) return;
 
             var text = mutation.Text;
             if (action.ActionName == "AddPaymentAndMaybeFinalizeCurrentCart" && Property(value, "finalized") is true)
@@ -85,10 +91,8 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 {
                     var saved = await StoreActivityEnricher.Read(db, tenant.StoreId.Value, action.ControllerName, action.ActionName,
                         context.ActionArguments, value, prior, context.HttpContext.RequestAborted, savedOperation);
-                    var savedBefore = savedOperation is not null && saved is not null &&
-                        context.ActionArguments.TryGetValue("lineId", out var changedLine) && changedLine is int changedLineId
-                            ? await savedOperation.Before(action.ControllerName, changedLineId, saved.Parent, context.HttpContext.RequestAborted) : null;
-                    var operationPrior = savedOperation is null ? prior : savedBefore is null ? null : saved! with { Line = savedBefore };
+                    var operationPrior = savedOperation is null ? prior : saved is null ? null :
+                        await savedOperation.Prior(action.ControllerName, action.ActionName, context.ActionArguments, saved, context.HttpContext.RequestAborted);
                     var detailed = saved is not null ? StoreActivityEnricher.Describe(action.ControllerName, action.ActionName, saved, operationPrior,
                         StoreActivityEnricher.Request(context.ActionArguments)) : action.ControllerName == "LabelPrinting"
                         ? await StoreActivityEnricher.Label(db, tenant.StoreId.Value, action.ActionName, context.ActionArguments, value, context.HttpContext.RequestAborted) : null;
@@ -97,7 +101,7 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 }
                 catch (Exception ex) { logger.LogWarning(ex, "Unable to enrich saved store activity; using basic event"); }
             }
-            var workKey = lineWork?.Key ?? description.WorkKey;
+            var workKey = savedOperation is not null ? description.WorkKey ?? lineWork?.Key : lineWork?.Key ?? description.WorkKey;
             if (action.ControllerName == "LabelPrinting" && action.ActionName is "Confirm" or "Cancel" &&
                 context.ActionArguments.TryGetValue("id", out var labelJob) && labelJob is int labelJobId)
                 workKey = (await StoreActivityWorkContext.LabelJob(db, tenant.StoreId.Value, labelJobId, context.HttpContext.RequestAborted))?.Key ?? workKey;

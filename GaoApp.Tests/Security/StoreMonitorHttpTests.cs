@@ -8,15 +8,22 @@ using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Purchases;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Services.Inventory;
+using GaoApp.Application.Services.Purchases;
+using GaoApp.Application.Common.Exceptions;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Printing;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Tenant;
 using GaoApp.Infrastructure.Repositories.Inventory;
+using GaoApp.Infrastructure.Repositories.Purchases;
+using GaoApp.Infrastructure.Services.Products;
 using GaoApp.Tests.Configuration;
 using GaoApp.Web.Services.Printing;
 using GaoApp.Web.Services.StoreMonitor;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -30,6 +37,361 @@ namespace GaoApp.Tests.Security;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class StoreMonitorHttpTests
 {
+    private static AppDbContext ActorDb(InventoryPostingLocalDb database, TenantContext tenant, int actor, params IInterceptor[] interceptors) =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(database.ConnectionString).AddInterceptors(interceptors).Options, tenant, new MonitorActor(actor));
+    private static StockDocumentService ReceiptService(AppDbContext db, TenantContext tenant, int actor)
+    {
+        var repository = new StockDocumentRepository(db);
+        return new(repository, null!, new WarehouseRepository(db), null!, new InventoryUnitResolver(repository),
+            null!, null!, null!, null!, tenant, null!, new MonitorActor(actor));
+    }
+    private static async Task MonitorMutation(AppDbContext db, TenantContext tenant, StoreActivityRegistry registry, int actor,
+        string controller, string action, Dictionary<string,object?> args, Func<Task<IActionResult>> mutate, Controller? page = null)
+    {
+        var http = new DefaultHttpContext(); http.Request.Method="POST";
+        http.User = new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, actor.ToString()), new("full_name", $"Actor {actor}")], "test"));
+        var descriptor = new ControllerActionDescriptor { ControllerName=controller, ActionName=action };
+        var context = new ActionExecutingContext(new ActionContext(http, new RouteData(), descriptor), [], args, (object?)page ?? new object());
+        var filter = new StoreActivityFilter(tenant, registry, new StoreActivityTicket(new EphemeralDataProtectionProvider(), TimeProvider.System), db, NullLogger<StoreActivityFilter>.Instance);
+        await filter.OnActionExecutionAsync(context, async () => new ActionExecutedContext(context, [], context.Controller) { Result=await mutate() });
+    }
+    private sealed class MonitorPage : Controller { }
+    private sealed class MonitorTempData : ITempDataProvider
+    {
+        public IDictionary<string,object> LoadTempData(HttpContext context) => new Dictionary<string,object>();
+        public void SaveTempData(HttpContext context, IDictionary<string,object> values) { }
+    }
+    private sealed class AfterCommitBarrier(Func<Task> barrier) : DbTransactionInterceptor
+    {
+        public override Task TransactionCommittedAsync(System.Data.Common.DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default) => barrier();
+    }
+    private static StockDocumentProvisionalItemService IntakeService(AppDbContext db, TenantContext tenant, int actor) =>
+        new(new StockDocumentProvisionalItemRepository(db), new AppUnitOfWork(db), null!, null!, null!, tenant, new MonitorActor(actor),
+            new ReceiptIntakeCatalog(db,null!,null!,null!,new MonitorActor(actor),null!,null!,null!));
+    private static ProvisionalReceivingMutationRequest CopyIntent(ProvisionalReceivingMutationRequest request) =>
+        (ProvisionalReceivingMutationRequest)JsonSerializer.Deserialize(JsonSerializer.Serialize(request,request.GetType()),request.GetType())!;
+    private static Controller FreightPage()
+    {
+        var http = new DefaultHttpContext();
+        return new MonitorPage { TempData=new TempDataDictionary(http, new MonitorTempData()) };
+    }
+    [Fact]
+    public async Task Real_header_and_freight_saves_keep_each_actors_facts_across_later_commits()
+    {
+        await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync(); int documentId, destination, owner;
+        var day = new DateTime(2026, 10, 1);
+        await using (var db = database.CreateTenantContext(seed.StoreId))
+        {
+            var source = await db.Warehouses.SingleAsync(); source.Name="Warehouse one"; owner=source.LegalEntityId;
+            var second = new Warehouse { StoreId=seed.StoreId, LegalEntityId=owner, Code="MONITOR-W2", Name="Warehouse two", IsActive=true };
+            var receipt = new StockDocument { StoreId=seed.StoreId, WarehouseId=source.Id, DocumentNo="MONITOR-HEADER", DocumentDate=day, Type=StockDocumentType.Receipt };
+            db.AddRange(second, receipt); await db.SaveChangesAsync(); destination=second.Id; documentId=receipt.Id;
+        }
+        var tenant = new TenantContext(); tenant.SetStore(seed.StoreId, "headers"); var registry = new StoreActivityRegistry(TimeProvider.System);
+        var bEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var aSaved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bSaved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var bDb = ActorDb(database, tenant, 202);
+        var b = MonitorMutation(bDb, tenant, registry, 202, "StockDocumentManagement", "UpdateHeader",
+            new() { ["request"]=new UpdateStockDocumentHeaderRequest { StockDocumentId=documentId, WarehouseId=destination, LegalEntityId=owner, Note="PRIVATE B NOTE" } }, async () =>
+            {
+                Assert.Empty(bDb.ChangeTracker.Entries<StockDocument>());
+                // A legacy pre-filter reader sees W1/D1. The service will load W2/D2 after A.
+                var prior = await bDb.StockDocuments.AsNoTracking().SingleAsync(x => x.Id == documentId);
+                Assert.Equal(seed.WarehouseId, prior.WarehouseId); Assert.Equal(day, prior.DocumentDate);
+                bEntered.SetResult(); await aSaved.Task.WaitAsync(TimeSpan.FromSeconds(20));
+                await ReceiptService(bDb, tenant, 202).UpdateHeaderAsync(new() { StockDocumentId=documentId, WarehouseId=destination, LegalEntityId=owner, Note="PRIVATE B NOTE" });
+                await using (var laterDb = ActorDb(database, tenant, 606))
+                    await ReceiptService(laterDb, tenant, 606).UpdateHeaderAsync(new() { StockDocumentId=documentId, WarehouseId=seed.WarehouseId, LegalEntityId=owner, DocumentDate=day.AddDays(2), Note="PRIVATE LATER" });
+                bSaved.SetResult(); return new OkObjectResult(new { success=true });
+            });
+        await bEntered.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await using var aDb = ActorDb(database, tenant, 101);
+        var a = MonitorMutation(aDb, tenant, registry, 101, "StockDocumentManagement", "UpdateHeader",
+            new() { ["request"]=new UpdateStockDocumentHeaderRequest { StockDocumentId=documentId, WarehouseId=destination, LegalEntityId=owner, DocumentDate=day.AddDays(1) } }, async () =>
+            {
+                await ReceiptService(aDb, tenant, 101).UpdateHeaderAsync(new() { StockDocumentId=documentId, WarehouseId=destination, LegalEntityId=owner, DocumentDate=day.AddDays(1), Note="PRIVATE A NOTE" });
+                aSaved.SetResult(); await bSaved.Task.WaitAsync(TimeSpan.FromSeconds(20)); return new OkObjectResult(new { success=true });
+            });
+        await Task.WhenAll(a,b);
+        var eventA = Assert.Single(registry.Snapshot(seed.StoreId).Events, x => x.UserId == 101);
+        var eventB = Assert.Single(registry.Snapshot(seed.StoreId).Events, x => x.UserId == 202);
+        Assert.Contains("Warehouse one → Warehouse two", eventA.Detail); Assert.Contains("01/10/2026 → 02/10/2026", eventA.Detail);
+        Assert.DoesNotContain("Đổi kho", eventB.Detail); Assert.DoesNotContain("Ngày phiếu", eventB.Detail);
+        var freightSaved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var laterFreight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task SaveFreight(int actor, decimal amount, Func<Task>? hold = null)
+        {
+            await using var db = ActorDb(database, tenant, actor); var page=FreightPage();
+            var version=Convert.ToBase64String((await db.StockDocuments.AsNoTracking().SingleAsync(x => x.Id == documentId)).RowVersion);
+            var request=new UpdatePurchaseReceiptApprovalRequest { RowVersion=version, HasFreight=true, FreightTotal=amount, FreightPayeeName="PRIVATE PAYEE", FreightNote="PRIVATE FREIGHT" };
+            await MonitorMutation(db, tenant, registry, actor, "StockDocumentManagement", "UpdateFreight", new() { ["id"]=documentId, ["request"]=request }, async () =>
+            {
+                await ReceiptService(db, tenant, actor).UpdatePurchaseReceiptApprovalAsync(documentId, request);
+                if (hold is not null) await hold(); page.TempData["Success"]="saved"; return new RedirectToActionResult("Edit", null, null);
+            }, page);
+        }
+        var firstFreight = SaveFreight(303,10, async () => { freightSaved.SetResult(); await laterFreight.Task.WaitAsync(TimeSpan.FromSeconds(20)); });
+        await freightSaved.Task.WaitAsync(TimeSpan.FromSeconds(20)); await SaveFreight(404,20); laterFreight.SetResult(); await firstFreight;
+        Assert.Contains("Cước 10 ₫", Assert.Single(registry.Snapshot(seed.StoreId).Events, x => x.UserId == 303).Detail);
+        Assert.Contains("Cước 20 ₫", Assert.Single(registry.Snapshot(seed.StoreId).Events, x => x.UserId == 404).Detail);
+        await using (var db = ActorDb(database, tenant, 505))
+        {
+            var page=FreightPage(); var request=new UpdatePurchaseReceiptApprovalRequest { RowVersion=Convert.ToBase64String((await db.StockDocuments.AsNoTracking().SingleAsync(x => x.Id == documentId)).RowVersion), HasFreight=true, FreightTotal=0 };
+            await MonitorMutation(db, tenant, registry, 505, "StockDocumentManagement", "UpdateFreight", new() { ["id"]=documentId, ["request"]=request }, async () =>
+            {
+                await Assert.ThrowsAsync<BusinessRuleException>(() => ReceiptService(db, tenant, 505).UpdatePurchaseReceiptApprovalAsync(documentId,request));
+                page.TempData["Error"]="rejected"; return new RedirectToActionResult("Edit", null, null);
+            }, page);
+        }
+        Assert.Equal(4, registry.Snapshot(seed.StoreId).Events.Count);
+        Assert.All(registry.Snapshot(seed.StoreId).Events, x => { Assert.Equal($"receipt:{documentId}", x.WorkKey); Assert.DoesNotContain("PRIVATE", x.Detail); });
+    }
+    [Theory]
+    [InlineData("StockDocuments", "receipt")]
+    [InlineData("StockCounts", "count")]
+    [InlineData("StockTransfers", "transfer")]
+    public async Task Real_delete_reports_the_successful_soft_delete_tombstone_and_failed_delete_has_no_event(string controller, string kind)
+    {
+        await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync(); int parentId, lineId, unitId;
+        await using (var db = database.CreateTenantContext(seed.StoreId))
+        {
+            var unit=await db.Units.SingleAsync(); unit.Name="kg"; unitId=unit.Id;
+            if (controller == "StockDocuments")
+            {
+                var parent=new StockDocument { StoreId=seed.StoreId, WarehouseId=seed.WarehouseId, DocumentNo="MONITOR-DELETE", DocumentDate=DateTime.Today, Type=StockDocumentType.Receipt };
+                parent.Lines.Add(new() { ProductVariantId=seed.ProductVariantId, ProductNameSnapshot="Actual goods", UnitId=unitId, UnitNameSnapshot="kg", Quantity=1, BaseQuantity=1, LineNo=1 });
+                db.Add(parent); await db.SaveChangesAsync(); parentId=parent.Id; lineId=parent.Lines.Single().Id;
+            }
+            else if (controller == "StockCounts")
+            {
+                var parent=new StockCountDocument { StoreId=seed.StoreId, WarehouseId=seed.WarehouseId, DocumentNo="MONITOR-DELETE", DocumentDate=DateTime.Today };
+                parent.Lines.Add(new() { StoreId=seed.StoreId, ProductVariantId=seed.ProductVariantId, UnitId=unitId, ProductNameSnapshot="Actual goods", UnitNameSnapshot="kg", CountedQty=1, CountedQtyBase=1, Factor=1, LineNo=1 });
+                db.Add(parent); await db.SaveChangesAsync(); parentId=parent.Id; lineId=parent.Lines.Single().Id;
+            }
+            else
+            {
+                var source=await db.Warehouses.SingleAsync();
+                var destination=new Warehouse { StoreId=seed.StoreId, LegalEntityId=source.LegalEntityId, Code="MONITOR-DELETE-DEST", Name="Destination", IsActive=true };
+                db.Add(destination); await db.SaveChangesAsync();
+                var parent=new StockTransferDocument { StoreId=seed.StoreId, FromWarehouseId=source.Id, ToWarehouseId=destination.Id, DocumentNo="MONITOR-DELETE", DocumentDate=DateTime.Today };
+                parent.Lines.Add(new() { StoreId=seed.StoreId, ProductVariantId=seed.ProductVariantId, UnitId=unitId, ProductNameSnapshot="Actual goods", UnitNameSnapshot="kg", Quantity=1, BaseQuantity=1, Factor=1, LineNo=1 });
+                db.Add(parent); await db.SaveChangesAsync(); parentId=parent.Id; lineId=parent.Lines.Single().Id;
+            }
+        }
+        var tenant=new TenantContext(); tenant.SetStore(seed.StoreId,"delete"); var registry=new StoreActivityRegistry(TimeProvider.System);
+        async Task SetQuantity(AppDbContext db, decimal quantity)
+        {
+            if (controller == "StockDocuments") { var row=await db.StockDocumentLines.SingleAsync(x => x.Id == lineId); row.Quantity=row.BaseQuantity=quantity; }
+            else if (controller == "StockCounts") { var row=await db.StockCountLines.SingleAsync(x => x.Id == lineId); row.CountedQty=row.CountedQtyBase=quantity; }
+            else { var row=await db.StockTransferLines.SingleAsync(x => x.Id == lineId); row.Quantity=row.BaseQuantity=quantity; }
+            await db.SaveChangesAsync();
+        }
+        Task Delete(AppDbContext db) => controller switch {
+            "StockDocuments" => ReceiptService(db,tenant,101).DeleteLineAsync(lineId),
+            "StockCounts" => new StockCountService(new StockCountRepository(db),null!,null!,null!).DeleteLineAsync(lineId),
+            _ => new StockTransferService(new StockTransferRepository(db),null!,null!,null!).DeleteLineAsync(lineId) };
+        var args=new Dictionary<string,object?> { ["documentId"]=parentId, ["lineId"]=lineId };
+        await using (var deleteDb=ActorDb(database,tenant,101))
+        {
+            var prior=await StoreActivityEnricher.Read(deleteDb,seed.StoreId,controller,"UpdateLine",args,null,null,default);
+            Assert.Equal(1m,prior!.Line?.Quantity);
+            await using var staleDb=ActorDb(database,tenant,303);
+            if (controller == "StockDocuments") await staleDb.StockDocumentLines.Include(x => x.StockDocument).SingleAsync(x => x.Id == lineId);
+            else if (controller == "StockCounts") await staleDb.StockCountLines.Include(x => x.StockCountDocument).SingleAsync(x => x.Id == lineId);
+            else await staleDb.StockTransferLines.Include(x => x.StockTransferDocument).SingleAsync(x => x.Id == lineId);
+            await using (var writer=ActorDb(database,tenant,202)) await SetQuantity(writer,2);
+            await MonitorMutation(staleDb,tenant,registry,303,controller,"DeleteLine",args,async () =>
+            {
+                await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Delete(staleDb));
+                return new ConflictObjectResult(new { success=false });
+            });
+            Assert.Empty(registry.Snapshot(seed.StoreId).Events);
+            await MonitorMutation(deleteDb,tenant,registry,101,controller,"DeleteLine",args,async () => { await Delete(deleteDb); return new OkObjectResult(new { success=true }); });
+        }
+        var activity=Assert.Single(registry.Snapshot(seed.StoreId).Events);
+        Assert.Equal(101,activity.UserId); Assert.Equal($"{kind}:{parentId}",activity.WorkKey);
+        Assert.Contains("Actual goods",activity.Text); Assert.Contains("Đã bỏ 2 kg",activity.Detail); Assert.DoesNotContain("1 kg",activity.Detail);
+        await using var inspect=database.CreateTenantContext(seed.StoreId);
+        if (controller == "StockDocuments") { var row=await inspect.StockDocumentLines.IgnoreQueryFilters().SingleAsync(x => x.Id == lineId); Assert.True(row.IsDeleted); Assert.Equal(2m,row.Quantity); }
+        else if (controller == "StockCounts") { var row=await inspect.StockCountLines.IgnoreQueryFilters().SingleAsync(x => x.Id == lineId); Assert.True(row.IsDeleted); Assert.Equal(2m,row.CountedQty); }
+        else { var row=await inspect.StockTransferLines.IgnoreQueryFilters().SingleAsync(x => x.Id == lineId); Assert.True(row.IsDeleted); Assert.Equal(2m,row.Quantity); }
+        // Failed business result and uncommitted capture cannot add a deletion animation.
+        await MonitorMutation(inspect,tenant,registry,303,controller,"DeleteLine",args,() => Task.FromResult<IActionResult>(new ConflictObjectResult(new { success=false })));
+        Assert.Single(registry.Snapshot(seed.StoreId).Events);
+    }
+    [Theory]
+    [InlineData("Quantity")]
+    [InlineData("Review")]
+    public async Task Real_intake_post_commit_response_cannot_replace_saved_quantity_or_draft_outcome(string action)
+    {
+        await using var database=new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed=await database.SeedInventoryCatalogAsync(); int documentId,itemId,unitId,categoryId;
+        await using (var db=database.CreateTenantContext(seed.StoreId))
+        {
+            var unit=await db.Units.SingleAsync(); unit.Name="kg"; unitId=unit.Id; categoryId=(await db.Categories.SingleAsync()).Id;
+            var document=new StockDocument { StoreId=seed.StoreId, WarehouseId=seed.WarehouseId, DocumentNo="MONITOR-INTAKE", DocumentDate=DateTime.Today, Type=StockDocumentType.Receipt };
+            document.ProvisionalItems.Add(new() { StoreId=seed.StoreId, NameSnapshot="Saved intake", UnitId=unitId, UnitNameSnapshot="kg", Quantity=1,
+                ProposedFactor=1, ProposedBaseUnitId=unitId, ProposedBaseUnitName="kg", ProposedCategoryId=categoryId, Note="PRIVATE ITEM NOTE" });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; itemId=document.ProvisionalItems.Single().Id;
+        }
+        var tenant=new TenantContext(); tenant.SetStore(seed.StoreId,"intake"); var registry=new StoreActivityRegistry(TimeProvider.System);
+        var committed=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var laterPublished=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var aDb=ActorDb(database,tenant,101,new AfterCommitBarrier(async () => { committed.SetResult(); await laterPublished.Task.WaitAsync(TimeSpan.FromSeconds(20)); }));
+        var serviceA=IntakeService(aDb,tenant,101); var initial=await serviceA.GetAsync(documentId); var initialItem=Assert.Single(initial.Items);
+        ProvisionalReceivingMutationRequest request=action == "Quantity"
+            ? new UpdateReceiptIntakeQuantityRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=initial.DocumentRowVersion,ItemRowVersion=initialItem.RowVersion,Quantity=2 }
+            : new ReviewReceiptIntakeRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=initial.DocumentRowVersion,ItemRowVersion=initialItem.RowVersion,SaveDraftOnly=true,
+                Completion=new() { Name="PRIVATE DRAFT NAME",UnitId=unitId,BaseUnitId=unitId,Factor=1,Quantity=999,CategoryId=categoryId,PurchasePrice=888,Note="PRIVATE DRAFT NOTE" } };
+        var originalIntent=CopyIntent(request); var originalJson=JsonSerializer.Serialize(originalIntent,originalIntent.GetType());
+        Assert.NotSame(request,originalIntent);
+        if (request is ReviewReceiptIntakeRequest reviewIntent) Assert.NotSame(reviewIntent.Completion,((ReviewReceiptIntakeRequest)originalIntent).Completion);
+        Task<ProvisionalReceivingStateDto> Invoke(StockDocumentProvisionalItemService service, ProvisionalReceivingMutationRequest intent) => intent is UpdateReceiptIntakeQuantityRequest quantity
+            ? service.UpdateQuantityAsync(documentId,itemId,quantity,default)
+            : service.ReviewIntakeAsync(documentId,itemId,(ReviewReceiptIntakeRequest)intent,new(true,true,true,true),default);
+        // Draft saves retain the item's actual quantity; its private completion quantity is not a mutation fact.
+        var savedQuantity=action == "Quantity" ? 2m : 1m;
+        var a=MonitorMutation(aDb,tenant,registry,101,"ReceiptIntake",action,new() { ["documentId"]=documentId,["itemId"]=itemId,["request"]=request },async () =>
+        {
+            var response=await Invoke(serviceA,request); Assert.Equal(3m,Assert.Single(response.Items).Quantity);
+            return new OkObjectResult(response);
+        });
+        await committed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        try
+        {
+            await using var bDb=ActorDb(database,tenant,202); var serviceB=IntakeService(bDb,tenant,202); var current=await serviceB.GetAsync(documentId); var row=Assert.Single(current.Items);
+            Assert.Equal(savedQuantity,row.Quantity);
+            var bRequest=new UpdateReceiptIntakeQuantityRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=current.DocumentRowVersion,ItemRowVersion=row.RowVersion,Quantity=3 };
+            await MonitorMutation(bDb,tenant,registry,202,"ReceiptIntake","Quantity",new() { ["documentId"]=documentId,["itemId"]=itemId,["request"]=bRequest },async () => new OkObjectResult(await serviceB.UpdateQuantityAsync(documentId,itemId,bRequest,default)));
+        }
+        finally { laterPublished.SetResult(); }
+        await a;
+        var eventA=Assert.Single(registry.Snapshot(seed.StoreId).Events,x => x.UserId == 101); var eventB=Assert.Single(registry.Snapshot(seed.StoreId).Events,x => x.UserId == 202);
+        Assert.Contains(action == "Quantity" ? "1 kg → 2 kg" : "Số lượng 1 kg",eventA.Detail);
+        Assert.DoesNotContain("3 kg",eventA.Detail); Assert.Contains($"{savedQuantity} kg → 3 kg",eventB.Detail);
+        if (action == "Review") Assert.Contains("lưu thông tin chờ duyệt Saved intake",eventA.Text);
+        Assert.All(registry.Snapshot(seed.StoreId).Events,x => { Assert.Equal($"receipt:{documentId}",x.WorkKey); Assert.DoesNotContain("PRIVATE",x.Detail); Assert.DoesNotContain("999",x.Detail); Assert.DoesNotContain("888",x.Detail); });
+        Assert.Equal(originalJson,JsonSerializer.Serialize(originalIntent,originalIntent.GetType()));
+        if (request is ReviewReceiptIntakeRequest normalizedReview)
+        {
+            Assert.Equal("kg",normalizedReview.Completion!.UnitName);
+            Assert.Null(((ReviewReceiptIntakeRequest)originalIntent).Completion!.UnitName);
+        }
+        await using var replayDb=ActorDb(database,tenant,101); var replayService=IntakeService(replayDb,tenant,101);
+        var replayIntent=CopyIntent(originalIntent);
+        await MonitorMutation(replayDb,tenant,registry,101,"ReceiptIntake",action,new() { ["documentId"]=documentId,["itemId"]=itemId,["request"]=replayIntent },async () => new OkObjectResult(await Invoke(replayService,replayIntent)));
+        Assert.Equal(2,registry.Snapshot(seed.StoreId).Events.Count);
+        if (request is UpdateReceiptIntakeQuantityRequest original)
+        {
+            await using var conflictDb=ActorDb(database,tenant,101); var conflictService=IntakeService(conflictDb,tenant,101);
+            var conflict=new UpdateReceiptIntakeQuantityRequest { CommandId=original.CommandId,DocumentRowVersion=original.DocumentRowVersion,ItemRowVersion=original.ItemRowVersion,Quantity=4 };
+            await MonitorMutation(conflictDb,tenant,registry,101,"ReceiptIntake","Quantity",new() { ["documentId"]=documentId,["itemId"]=itemId,["request"]=conflict },async () =>
+            { await Assert.ThrowsAsync<BusinessRuleException>(() => conflictService.UpdateQuantityAsync(documentId,itemId,conflict,default)); return new ConflictObjectResult(new { success=false }); });
+            Assert.Equal(2,registry.Snapshot(seed.StoreId).Events.Count);
+        }
+    }
+    [Theory]
+    [InlineData("Capture")]
+    [InlineData("Known")]
+    public async Task Real_accumulation_and_known_link_keep_saved_quantity_when_recent_receipts_read_later_actor(string action)
+    {
+        await using var database=new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed=await database.SeedInventoryCatalogAsync(); int documentId,unitId,categoryId,conversionId,itemId;
+        await using (var db=database.CreateTenantContext(seed.StoreId))
+        {
+            var unit=await db.Units.SingleAsync(); unit.Name="kg"; unitId=unit.Id; categoryId=(await db.Categories.SingleAsync()).Id;
+            var product=await db.Products.SingleAsync(); product.Name="Saved intake";
+            var conversion=new ProductUnitConversion { StoreId=seed.StoreId,ProductVariantId=seed.ProductVariantId,UnitId=unitId,Factor=1,IsActive=true };
+            db.Add(conversion); await db.SaveChangesAsync(); conversionId=conversion.Id;
+            var document=new StockDocument { StoreId=seed.StoreId,WarehouseId=seed.WarehouseId,DocumentNo="MONITOR-RECENT",DocumentDate=DateTime.Today,Type=StockDocumentType.Receipt };
+            document.ProvisionalItems.Add(new() { StoreId=seed.StoreId,NameSnapshot="Saved intake",RawBarcodeSnapshot="MONITOR-NEW",NormalizedBarcode="MONITOR-NEW",UnitId=unitId,UnitNameSnapshot="kg",NormalizedUnitNameSnapshot="KG",Quantity=1,ProposedFactor=1,ProposedBaseUnitId=unitId,ProposedBaseUnitName="kg",ProposedCategoryId=categoryId });
+            if (action == "Known") document.Lines.Add(new() { ProductVariantId=seed.ProductVariantId,ProductUnitConversionId=conversionId,ProductNameSnapshot="Saved intake",UnitId=unitId,UnitNameSnapshot="kg",Quantity=1,BaseQuantity=1,Factor=1,LineNo=1 });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; itemId=document.ProvisionalItems.Single().Id;
+        }
+        var tenant=new TenantContext(); tenant.SetStore(seed.StoreId,"recent"); var registry=new StoreActivityRegistry(TimeProvider.System);
+        await using var aDb=ActorDb(database,tenant,101); var serviceA=IntakeService(aDb,tenant,101); var state=await serviceA.GetAsync(documentId);
+        ProvisionalReceivingMutationRequest request=action == "Capture"
+            ? new CaptureReceiptIntakeRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=state.DocumentRowVersion,Name="Saved intake",Barcode="MONITOR-NEW",UnitId=unitId,BaseUnitId=unitId,Factor=1,Quantity=1,CategoryId=categoryId,Note="PRIVATE CAPTURE" }
+            : new RecordKnownReceiptItemRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=state.DocumentRowVersion,ProductUnitConversionId=conversionId,Factor=1,Quantity=1,Note="PRIVATE KNOWN" };
+        var originalIntent=CopyIntent(request); var originalJson=JsonSerializer.Serialize(originalIntent,originalIntent.GetType());
+        Assert.NotSame(request,originalIntent);
+        Task<ProvisionalReceivingStateDto> Invoke(StockDocumentProvisionalItemService service, ProvisionalReceivingMutationRequest intent) => intent is CaptureReceiptIntakeRequest capture
+            ? service.CaptureIntakeAsync(documentId,capture,new(true,true,true,true),default)
+            : service.RecordKnownAsync(documentId,(RecordKnownReceiptItemRequest)intent,default);
+        await MonitorMutation(aDb,tenant,registry,101,"ReceiptIntake",action,new() { ["documentId"]=documentId,["request"]=request },async () =>
+        {
+            var response=await Invoke(serviceA,request);
+            await using var bDb=ActorDb(database,tenant,202);
+            if (action == "Capture")
+            {
+                var serviceB=IntakeService(bDb,tenant,202); var current=await serviceB.GetAsync(documentId); var row=Assert.Single(current.Items,x => x.Id == itemId); Assert.Equal(2m,row.Quantity);
+                var bRequest=new UpdateReceiptIntakeQuantityRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=current.DocumentRowVersion,ItemRowVersion=row.RowVersion,Quantity=3 };
+                await MonitorMutation(bDb,tenant,registry,202,"ReceiptIntake","Quantity",new() { ["documentId"]=documentId,["itemId"]=itemId,["request"]=bRequest },async () => new OkObjectResult(await serviceB.UpdateQuantityAsync(documentId,itemId,bRequest,default)));
+            }
+            else
+            {
+                var line=await bDb.StockDocumentLines.AsNoTracking().SingleAsync(x => x.StockDocumentId == documentId); Assert.Equal(2m,line.Quantity);
+                var bRequest=new UpdateStockDocumentLineRequest { UnitId=unitId,Quantity=3 };
+                await MonitorMutation(bDb,tenant,registry,202,"StockDocuments","UpdateLine",new() { ["documentId"]=documentId,["lineId"]=line.Id,["request"]=bRequest },async () =>
+                { await ReceiptService(bDb,tenant,202).UpdateLineAsync(line.Id,bRequest); return new OkObjectResult(new { success=true }); });
+            }
+            response.RecentReceipts=await serviceA.GetRecentAsync(documentId,default);
+            Assert.Equal(3m,Assert.Single(response.RecentReceipts,x => x.CommandId == request.CommandId).CurrentQuantity);
+            return new OkObjectResult(response);
+        });
+        var first=Assert.Single(registry.Snapshot(seed.StoreId).Events,x => x.UserId == 101);
+        Assert.Contains("Saved intake",first.Text); Assert.Contains("Số lượng 2 kg",first.Detail); Assert.DoesNotContain("3 kg",first.Detail);
+        Assert.All(registry.Snapshot(seed.StoreId).Events,x => { Assert.Equal($"receipt:{documentId}",x.WorkKey); Assert.DoesNotContain("PRIVATE",x.Detail); });
+        Assert.Equal(originalJson,JsonSerializer.Serialize(originalIntent,originalIntent.GetType()));
+        if (request is CaptureReceiptIntakeRequest normalizedCapture)
+        {
+            Assert.Equal("kg",normalizedCapture.UnitName); Assert.Equal("kg",normalizedCapture.BaseUnitName);
+            Assert.Null(((CaptureReceiptIntakeRequest)originalIntent).UnitName); Assert.Null(((CaptureReceiptIntakeRequest)originalIntent).BaseUnitName);
+        }
+        await using var replayDb=ActorDb(database,tenant,101); var replayService=IntakeService(replayDb,tenant,101);
+        var replayIntent=CopyIntent(originalIntent);
+        await MonitorMutation(replayDb,tenant,registry,101,"ReceiptIntake",action,new() { ["documentId"]=documentId,["request"]=replayIntent },async () =>
+        { var replay=await Invoke(replayService,replayIntent); replay.RecentReceipts=await replayService.GetRecentAsync(documentId,default); return new OkObjectResult(replay); });
+        Assert.Equal(2,registry.Snapshot(seed.StoreId).Events.Count);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Real_review_reports_the_saved_removal_or_resolution_and_replay_has_no_animation(bool approve)
+    {
+        await using var database=new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed=await database.SeedInventoryCatalogAsync(); int documentId,itemId,unitId;
+        await using (var db=database.CreateTenantContext(seed.StoreId))
+        {
+            var unit=await db.Units.SingleAsync(); unit.Name="kg"; unitId=unit.Id;
+            (await db.Products.SingleAsync()).Name="Reviewed rice";
+            var conversion=new ProductUnitConversion { StoreId=seed.StoreId,ProductVariantId=seed.ProductVariantId,UnitId=unitId,Factor=1,IsActive=true };
+            db.Add(conversion); await db.SaveChangesAsync();
+            var document=new StockDocument { StoreId=seed.StoreId,WarehouseId=seed.WarehouseId,DocumentNo="MONITOR-REVIEW",DocumentDate=DateTime.Today,Type=StockDocumentType.Receipt };
+            document.ProvisionalItems.Add(new() { StoreId=seed.StoreId,NameSnapshot="Captured rice",UnitId=unitId,UnitNameSnapshot="kg",Quantity=2,
+                ProposedProductVariantId=seed.ProductVariantId,ProposedBaseUnitId=unitId,ProposedBaseUnitName="kg",ProposedFactor=1,Note="PRIVATE REVIEW NOTE" });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; itemId=document.ProvisionalItems.Single().Id;
+        }
+        var tenant=new TenantContext(); tenant.SetStore(seed.StoreId,"review"); var registry=new StoreActivityRegistry(TimeProvider.System);
+        await using var actorDb=ActorDb(database,tenant,101); var service=IntakeService(actorDb,tenant,101); var initial=await service.GetAsync(documentId); var item=Assert.Single(initial.Items);
+        var request=new ReviewReceiptIntakeRequest { CommandId=Guid.NewGuid(),DocumentRowVersion=initial.DocumentRowVersion,ItemRowVersion=item.RowVersion,Approve=approve };
+        var args=new Dictionary<string,object?> { ["documentId"]=documentId,["itemId"]=itemId,["request"]=request };
+        await MonitorMutation(actorDb,tenant,registry,101,"ReceiptIntake","Review",args,async () => new OkObjectResult(await service.ReviewIntakeAsync(documentId,itemId,request,new(true,true,true,true),default)));
+        var activity=Assert.Single(registry.Snapshot(seed.StoreId).Events);
+        Assert.Contains(approve ? "vừa duyệt mặt hàng Reviewed rice" : "vừa bỏ Captured rice khỏi phiếu nhập",activity.Text);
+        Assert.Contains(approve ? "Số lượng 2 kg" : "Đã bỏ 2 kg",activity.Detail); Assert.DoesNotContain("PRIVATE",activity.Detail);
+        Assert.Equal($"receipt:{documentId}",activity.WorkKey); Assert.Equal("ReceiptIntake.Review",activity.Action);
+        await using var inspect=database.CreateTenantContext(seed.StoreId);
+        var saved=await inspect.StockDocumentProvisionalItems.SingleAsync(x => x.Id == itemId);
+        Assert.Equal(approve ? StockDocumentProvisionalItemStatus.Resolved : StockDocumentProvisionalItemStatus.Removed,saved.Status);
+        Assert.Equal(approve,await inspect.StockDocumentLines.AnyAsync(x => x.StockDocumentId == documentId));
+        await using var replayDb=ActorDb(database,tenant,101); var replay=IntakeService(replayDb,tenant,101);
+        await MonitorMutation(replayDb,tenant,registry,101,"ReceiptIntake","Review",args,async () => new OkObjectResult(await replay.ReviewIntakeAsync(documentId,itemId,request,new(true,true,true,true),default)));
+        Assert.Single(registry.Snapshot(seed.StoreId).Events);
+    }
     [Fact]
     public async Task B_uses_the_original_values_loaded_by_the_real_service_after_its_filter_read()
     {
@@ -82,8 +444,11 @@ public sealed class StoreMonitorHttpTests
         };
         var b = Run(bDb, 202, new() { UnitId=unitId, Quantity=3, UnitCost=null, Note="PRIVATE B NOTE" }, async () =>
         {
-            // The filter has read 1/10, but the service has not yet loaded any tracked line.
+            // Reproduce the old pre-filter snapshot while the service has no tracked line yet.
             Assert.Empty(bDb.ChangeTracker.Entries<StockDocumentLine>());
+            var prior=await StoreActivityEnricher.Read(bDb,seed.StoreId,"StockDocuments","UpdateLine",
+                new Dictionary<string,object?> { ["documentId"]=documentId,["lineId"]=lineId },null,null,default);
+            Assert.Equal(1m,prior!.Line!.Quantity); Assert.Equal(10m,prior.Line.SavedCost);
             bReadPrior.SetResult(); await aCompleted.Task.WaitAsync(TimeSpan.FromSeconds(20));
         });
         await bReadPrior.Task.WaitAsync(TimeSpan.FromSeconds(20));
@@ -224,7 +589,12 @@ public sealed class StoreMonitorHttpTests
         }
         await actor.JsonAsync(HttpMethod.Post, "/admin/stock-documents/update-header", new { stockDocumentId=seed.ReceiptId, warehouseId=store.WarehouseId, legalEntityId=owner, supplierId=supplier, documentDate=oldDate.AddDays(-1), rowVersion=receiptVersion });
         Assert.Contains("Ngày phiếu:", (await Last()).GetProperty("detail").GetString());
-        await using (var db = app.Database.CreateTenantContext(store.StoreId)) receiptVersion = Convert.ToBase64String((await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId)).RowVersion);
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var document=await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            document.HasFreight=true; document.FreightTotal=9; document.FreightPayeeName="Prior payee";
+            await db.SaveChangesAsync(); receiptVersion=Convert.ToBase64String(document.RowVersion);
+        }
         using (var freight = await actor.Http.PostAsync($"/admin/stock-documents/{seed.ReceiptId}/freight", new FormUrlEncodedContent(new Dictionary<string,string> { ["RowVersion"]=receiptVersion, ["HasFreight"]="false" })))
         {
             Assert.Equal(HttpStatusCode.Redirect, freight.StatusCode);

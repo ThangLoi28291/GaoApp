@@ -1,5 +1,7 @@
 using GaoApp.Infrastructure.Printing;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
+using GaoApp.Application.DTOs.Purchases;
 using GaoApp.Tests.Configuration;
 using GaoApp.Web.Services.StoreMonitor;
 using Microsoft.EntityFrameworkCore;
@@ -10,18 +12,91 @@ namespace GaoApp.Tests.Observability;
 public sealed class StoreActivityEnricherTests
 {
     [Fact]
+    public async Task Intake_requires_a_new_saved_journal_with_matching_store_parent_item_command_and_actor()
+    {
+        await using var database=new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed=await database.SeedInventoryCatalogAsync(); int documentId,itemId;
+        await using (var db=database.CreateTenantContext(seed.StoreId))
+        {
+            var document=new StockDocument { StoreId=seed.StoreId,WarehouseId=seed.WarehouseId,DocumentNo="CAPTURE-BOUNDS",DocumentDate=DateTime.Today,Type=StockDocumentType.Receipt };
+            document.ProvisionalItems.Add(new() { StoreId=seed.StoreId,NameSnapshot="Saved rice",UnitNameSnapshot="kg",Quantity=1,Note="PRIVATE NOTE",ReviewDraftJson="PRIVATE DRAFT" });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; itemId=document.ProvisionalItems.Single().Id;
+        }
+        await using var operationDb=database.CreateTenantContext(seed.StoreId);
+        var item=await operationDb.StockDocumentProvisionalItems.Include(x => x.StockDocument).SingleAsync(x => x.Id == itemId);
+        var command=Guid.NewGuid(); var args=new Dictionary<string,object?> { ["documentId"]=documentId,["itemId"]=itemId,["request"]=new { CommandId=command,Quantity=999,Note="PRIVATE REQUEST",PurchasePrice=888 } };
+        using var operation=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,includeBefore:true,actor:101);
+        using var foreign=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId+100000,includeBefore:true,actor:101);
+        using var wrongActor=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,includeBefore:true,actor:202);
+        item.Quantity=2; await operationDb.SaveChangesAsync(); Assert.False(operation.HasIntake("Quantity",args));
+        item.Quantity=3;
+        operationDb.PurchaseReceivingActions.Add(new() { StoreId=seed.StoreId,StockDocument=item.StockDocument,StockDocumentProvisionalItem=item,
+            CommandId=command,ActorUserId=101,ActionType=PurchaseReceivingActionType.ProvisionalEdit,OccurredAtUtc=DateTime.UtcNow,
+            BeforeQuantity=2,AfterQuantity=3,AfterProvisionalStateJson="malformed PRIVATE JSON" });
+        await operationDb.SaveChangesAsync(); Assert.True(operation.HasIntake("Quantity",args));
+        item.Quantity=999; item.NameSnapshot="PRIVATE UNSAVED";
+        var payload=new ProvisionalReceivingStateDto { StockDocumentId=documentId,Items=[new() { Id=itemId,Name="PRIVATE RESPONSE",Quantity=999,UnitName="private unit" }] };
+        var after=await StoreActivityEnricher.Read(operationDb,seed.StoreId,"ReceiptIntake","Quantity",args,payload,null,default,operation);
+        Assert.NotNull(after); Assert.Equal(3m,after.Line!.Quantity); Assert.Equal("Saved rice",after.Line.Name);
+        var before=await operation.Prior("ReceiptIntake","Quantity",args,after,default);
+        Assert.Equal(1m,before!.Line!.Quantity);
+        var activity=StoreActivityEnricher.Describe("ReceiptIntake","Quantity",after,before,StoreActivityEnricher.Request(args));
+        Assert.Contains("1 kg → 3 kg",activity.Detail); Assert.DoesNotContain("PRIVATE",activity.Detail); Assert.DoesNotContain("999",activity.Detail); Assert.DoesNotContain("888",activity.Detail);
+        Assert.False(foreign.HasIntake("Quantity",args)); Assert.False(wrongActor.HasIntake("Quantity",args));
+        foreach (var wrong in new[] {
+            new Dictionary<string,object?>(args) { ["documentId"]=documentId+100000 },
+            new Dictionary<string,object?>(args) { ["itemId"]=itemId+100000 },
+            new Dictionary<string,object?>(args) { ["request"]=new { CommandId=Guid.NewGuid() } } })
+            Assert.False(operation.HasIntake("Quantity",wrong));
+        using var replay=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,actor:101);
+        Assert.False(replay.HasIntake("Quantity",args));
+        operation.Dispose(); item.Quantity=4; item.NameSnapshot="Later rice"; await operationDb.SaveChangesAsync();
+        var frozen=await StoreActivityEnricher.Read(operationDb,seed.StoreId,"ReceiptIntake","Quantity",args,null,null,default,operation);
+        Assert.Equal(3m,frozen!.Line!.Quantity); Assert.Equal("Saved rice",frozen.Line.Name);
+        operationDb.ChangeTracker.Clear();
+        var parent=await operationDb.StockDocuments.SingleAsync(x => x.Id == documentId);
+        var reorderedCommand=Guid.NewGuid();
+        // Track the journal first: entry enumeration must not decide whether the item's original survives.
+        var journal=new PurchaseReceivingAction { StoreId=seed.StoreId,StockDocument=parent,StockDocumentProvisionalItemId=itemId,
+            CommandId=reorderedCommand,ActorUserId=101,ActionType=PurchaseReceivingActionType.ProvisionalEdit,OccurredAtUtc=DateTime.UtcNow,BeforeQuantity=4,AfterQuantity=5 };
+        operationDb.Add(journal);
+        var reorderedItem=await operationDb.StockDocumentProvisionalItems.SingleAsync(x => x.Id == itemId);
+        journal.StockDocumentProvisionalItem=reorderedItem; reorderedItem.Quantity=5;
+        var reorderedArgs=new Dictionary<string,object?> { ["documentId"]=documentId,["itemId"]=itemId,["request"]=new { CommandId=reorderedCommand } };
+        using var reordered=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,includeBefore:true,actor:101);
+        await operationDb.SaveChangesAsync();
+        var reorderedAfter=await StoreActivityEnricher.Read(operationDb,seed.StoreId,"ReceiptIntake","Quantity",reorderedArgs,null,null,default,reordered);
+        Assert.Equal(5m,reorderedAfter!.Line!.Quantity);
+        Assert.Equal(4m,(await reordered.Prior("ReceiptIntake","Quantity",reorderedArgs,reorderedAfter,default))!.Line!.Quantity);
+        var noOpCommand=Guid.NewGuid();
+        using var noOp=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,actor:101);
+        operationDb.PurchaseReceivingActions.Add(new() { StoreId=seed.StoreId,StockDocument=parent,StockDocumentProvisionalItem=reorderedItem,
+            CommandId=noOpCommand,ActorUserId=101,ActionType=PurchaseReceivingActionType.ProvisionalEdit,OccurredAtUtc=DateTime.UtcNow,BeforeQuantity=5,AfterQuantity=5 });
+        await operationDb.SaveChangesAsync();
+        Assert.True(noOp.HasIntake("Quantity",new Dictionary<string,object?>(reorderedArgs) { ["request"]=new { CommandId=noOpCommand } }));
+        await using (var writer=database.CreateTenantContext(seed.StoreId))
+        {
+            var concurrent=await writer.StockDocumentProvisionalItems.SingleAsync(x => x.Id == itemId); concurrent.Quantity=6; await writer.SaveChangesAsync();
+        }
+        reorderedItem.Quantity=7;
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => operationDb.SaveChangesAsync());
+        Assert.True(reordered.SaveFailed); Assert.False(reordered.HasIntake("Quantity",reorderedArgs));
+        var failed=await StoreActivityEnricher.Read(operationDb,seed.StoreId,"ReceiptIntake","Quantity",reorderedArgs,null,null,default,reordered);
+        Assert.Null(failed!.Line);
+    }
+    [Fact]
     public async Task Count_and_transfer_capture_first_original_and_last_saved_values_with_parent_and_store_bounds()
     {
         await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
         var seed = await database.SeedInventoryCatalogAsync();
-        int countId, countLineId, transferId, transferLineId;
+        int countId, countLineId, transferId, transferLineId, destinationId;
         await using (var db = database.CreateTenantContext(seed.StoreId))
         {
             var unit = await db.Units.SingleAsync(); unit.Name="kg";
             var source = await db.Warehouses.SingleAsync();
             var destination = new Warehouse { StoreId=seed.StoreId, LegalEntityId=source.LegalEntityId,
                 Code="MONITOR-DEST", Name="Destination", IsActive=true };
-            db.Add(destination); await db.SaveChangesAsync();
+            db.Add(destination); await db.SaveChangesAsync(); destinationId=destination.Id;
             var count = new StockCountDocument { StoreId=seed.StoreId, WarehouseId=source.Id, DocumentNo="MONITOR-COUNT" };
             count.Lines.Add(new() { StoreId=seed.StoreId, ProductVariantId=seed.ProductVariantId, UnitId=unit.Id,
                 ProductNameSnapshot="Count before", UnitNameSnapshot=null, LineNo=1, Factor=1,
@@ -38,6 +113,11 @@ public sealed class StoreActivityEnricherTests
         var transferLine = await operationDb.StockTransferLines.Include(x => x.StockTransferDocument).SingleAsync(x => x.Id == transferLineId);
         using var operation = new StoreActivityEnricher.SavedOperation(operationDb, seed.StoreId, includeBefore:true);
         using var foreign = new StoreActivityEnricher.SavedOperation(operationDb, seed.StoreId+100000, includeBefore:true);
+        var originalCountDate=countLine.StockCountDocument.DocumentDate;
+        var originalTransferDate=transferLine.StockTransferDocument.DocumentDate;
+        countLine.StockCountDocument.WarehouseId=destinationId; countLine.StockCountDocument.DocumentDate=originalCountDate.AddDays(1);
+        transferLine.StockTransferDocument.FromWarehouseId=destinationId; transferLine.StockTransferDocument.ToWarehouseId=seed.WarehouseId;
+        transferLine.StockTransferDocument.DocumentDate=originalTransferDate.AddDays(1);
         countLine.CountedQty=countLine.CountedQtyBase=2; countLine.DifferenceQtyBase=-3;
         countLine.ProductNameSnapshot="Count saved"; countLine.UnitNameSnapshot="kg";
         transferLine.Quantity=transferLine.BaseQuantity=2; transferLine.ProductNameSnapshot="Transfer saved";
@@ -46,6 +126,19 @@ public sealed class StoreActivityEnricherTests
         transferLine.Quantity=transferLine.BaseQuantity=3; await operationDb.SaveChangesAsync();
         // Later unsaved mutations must not affect either immutable side of the completed operation.
         countLine.CountedQty=transferLine.Quantity=999; countLine.DifferenceQtyBase=999;
+        countLine.StockCountDocument.WarehouseId=seed.WarehouseId;
+        transferLine.StockTransferDocument.FromWarehouseId=seed.WarehouseId;
+        transferLine.StockTransferDocument.DocumentDate=originalTransferDate.AddDays(99);
+        foreach (var controller in new[] { "StockCounts", "StockTransfers" })
+        {
+            var headerArgs=new Dictionary<string,object?> { ["id"]=controller == "StockCounts" ? countId : transferId };
+            var header=await StoreActivityEnricher.Read(operationDb,seed.StoreId,controller,"UpdateHeader",headerArgs,null,null,default,operation);
+            Assert.NotNull(header); Assert.Equal(destinationId,header.WarehouseId);
+            var prior=await operation.Prior(controller,"UpdateHeader",headerArgs,header,default);
+            Assert.NotNull(prior); Assert.Equal(seed.WarehouseId,prior.WarehouseId);
+            var activity=StoreActivityEnricher.Describe(controller,"UpdateHeader",header,prior);
+            Assert.Contains("Đổi kho:",activity.Detail); Assert.Contains("Ngày phiếu:",activity.Detail);
+        }
         var countBefore = await operation.Before("StockCounts", countLineId, countId, default);
         var transferBefore = await operation.Before("StockTransfers", transferLineId, transferId, default);
         Assert.NotNull(countBefore); Assert.Equal("Count before", countBefore.Name); Assert.Equal(1m, countBefore.Quantity);
@@ -130,6 +223,21 @@ public sealed class StoreActivityEnricherTests
     {
         var result = StoreActivityEnricher.Describe("ReceiptIntake", "Review", Receipt(), request: new { SaveDraftOnly=draft, Approve=approve, Note="PRIVATE", PhotoDataUrl="PRIVATE" });
         Assert.Contains(expected, result.Text); Assert.Contains("Gạo ST25", result.Text); Assert.DoesNotContain("PRIVATE", result.Detail);
+    }
+    [Fact]
+    public void Saved_review_outcome_overrides_request_flags_and_warehouse_rename_is_not_a_change_of_warehouse()
+    {
+        var removed=Receipt() with { IntakeStatus=StockDocumentProvisionalItemStatus.Removed };
+        var removal=StoreActivityEnricher.Describe("ReceiptIntake","Review",removed,removed, new { Approve=true,SaveDraftOnly=true });
+        Assert.Contains("vừa bỏ Gạo ST25 khỏi phiếu nhập",removal.Text); Assert.Contains("Đã bỏ 5 kg",removal.Detail);
+        var approved=StoreActivityEnricher.Describe("ReceiptIntake","Review",Receipt() with { IntakeStatus=StockDocumentProvisionalItemStatus.Resolved },request:new { Approve=false,SaveDraftOnly=true });
+        Assert.Contains("duyệt mặt hàng",approved.Text);
+        var original=Receipt() with { Line=null,WarehouseId=1,Date=new DateTime(2026,10,1),Location="Old display" };
+        var renamed=original with { Location="New display" };
+        var header=StoreActivityEnricher.Describe("StockDocumentManagement","UpdateHeader",renamed,original);
+        Assert.DoesNotContain("Đổi kho",header.Detail); Assert.DoesNotContain("Ngày phiếu",header.Detail);
+        var unavailable=StoreActivityEnricher.Describe("StockDocumentManagement","UpdateHeader",original with { WarehouseId=null,Date=null },original);
+        Assert.DoesNotContain("Đổi kho",unavailable.Detail); Assert.DoesNotContain("Ngày phiếu",unavailable.Detail);
     }
     [Fact]
     public void Approval_and_pricing_identify_document_goods_instead_of_generic_update()
