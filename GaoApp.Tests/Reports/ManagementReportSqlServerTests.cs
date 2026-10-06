@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Http.Json;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Reports;
+using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
+using GaoApp.Tests.Inventory;
 using GaoApp.Tests.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +13,50 @@ namespace GaoApp.Tests.Reports;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class ManagementReportSqlServerTests
 {
+    [Fact]
+    public async Task Sql_report_keeps_A_cost_ten_when_B_valuation_is_missing_after_complete_cost_thirty()
+    {
+        await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
+        using var actor = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        int secondVariant, firstCategory, secondCategory;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var first = await db.Products.SingleAsync(); firstCategory=first.CategoryId;
+            var category = new Category { StoreId=store.StoreId, Code="REPORT-B", Name="Category B", IsActive=true };
+            var product = new Product { StoreId=store.StoreId, Name="Product B", Alias="report-b", Category=category,
+                SupplierId=first.SupplierId, BaseUnitId=first.BaseUnitId, BasePrice=20, IsActive=true, IsSellable=true };
+            var variant = new ProductVariant { StoreId=store.StoreId, Product=product, Sku="REPORT-B", CostPrice=10, Price=20, IsActive=true };
+            db.Add(variant); await db.SaveChangesAsync(); secondVariant=variant.Id; secondCategory=category.Id;
+            await InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(
+                new GaoApp.Application.Services.Inventory.InventoryMovementFactory().CreatePurchaseReceipt(
+                    store.WarehouseId, secondVariant, 10, 10, "REPORT-B-STOCK", 1, "Report fixture", 1));
+        }
+        await actor.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash=0, warehouseId=store.WarehouseId });
+        var orderId = (await actor.JsonAsync(HttpMethod.Post, "/admin/pos/draft")).GetProperty("orderId").GetInt32();
+        await actor.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/items?variantId={store.VariantId}&qty=1");
+        await actor.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/items?variantId={secondVariant}&qty=2");
+        await actor.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/payments", new { clientRequestId=Guid.NewGuid(), amount=60, method=0 });
+        await actor.JsonAsync(HttpMethod.Post, $"/admin/pos/{orderId}/finalize");
+        var day = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time")).Date;
+        var url = $"/admin/reports/management/data?fromDate={day:yyyy-MM-dd}&toDate={day:yyyy-MM-dd}&compare=none";
+        var complete = (await actor.Http.GetFromJsonAsync<ManagementReportDto>(url))!.Current;
+        Assert.Equal(30, complete.Summary.Cogs.Value);
+        Assert.Equal(30, complete.Products.Sum(x => x.Summary.Cogs.Value));
+        Assert.Equal(30, complete.Categories.Sum(x => x.Summary.Cogs.Value));
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var missing = await db.InventoryValuationEntries.Include(x => x.CostLayerAllocations)
+                .SingleAsync(x => x.ReferenceType == InventoryReferenceType.Order && x.ReferenceId == orderId.ToString() && x.ProductVariantId == secondVariant);
+            db.InventoryCostLayerAllocations.RemoveRange(missing.CostLayerAllocations);
+            db.InventoryValuationEntries.Remove(missing); await db.SaveChangesAsync();
+        }
+        var incomplete = (await actor.Http.GetFromJsonAsync<ManagementReportDto>(url))!.Current;
+        Assert.Equal(10, Assert.Single(incomplete.Products, x => x.Id == store.VariantId).Summary.Cogs.Value);
+        Assert.Equal(10, Assert.Single(incomplete.Categories, x => x.Id == firstCategory).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(incomplete.Products, x => x.Id == secondVariant).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(incomplete.Categories, x => x.Id == secondCategory).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(incomplete.Customers).Summary.Cogs.Value); Assert.Null(incomplete.Summary.Cogs.Value);
+    }
     [Fact]
     public async Task Real_reports_and_expenses_enforce_permissions_versions_tenants_and_financial_totals()
     {

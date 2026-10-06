@@ -2,19 +2,104 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Security.Claims;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Printing;
+using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Tenant;
+using GaoApp.Tests.Configuration;
 using GaoApp.Web.Services.Printing;
 using GaoApp.Web.Services.StoreMonitor;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GaoApp.Tests.Security;
 
 [Collection("R1FinalDatabasePreflight")]
 public sealed class StoreMonitorHttpTests
 {
+    [Fact]
+    public async Task A_committed_line_is_immutable_when_B_commits_before_A_enrichment_and_rollback_publishes_nothing()
+    {
+        await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        int documentId, lineId;
+        await using (var db = database.CreateTenantContext(seed.StoreId))
+        {
+            var document = new StockDocument { StoreId=seed.StoreId, WarehouseId=seed.WarehouseId,
+                DocumentNo="MONITOR-RACE", DocumentDate=DateTime.Today, Type=GaoApp.Domain.Enums.StockDocumentType.Receipt };
+            document.Lines.Add(new() { ProductVariantId=seed.ProductVariantId, ProductNameSnapshot="Saved rice",
+                UnitNameSnapshot="kg", Quantity=1, BaseQuantity=1, UnitCost=10, LineNo=1 });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; lineId=document.Lines.Single().Id;
+        }
+        var tenant = new TenantContext(); tenant.SetStore(seed.StoreId, "race");
+        var registry = new StoreActivityRegistry(TimeProvider.System);
+        var tickets = new StoreActivityTicket(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        ActionExecutingContext Context(int actor)
+        {
+            var http = new DefaultHttpContext(); http.Request.Method="PUT";
+            http.User = new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, actor.ToString()), new("full_name", $"Actor {actor}")], "test"));
+            var action = new ControllerActionDescriptor { ControllerName="StockDocuments", ActionName="UpdateLine" };
+            return new(new ActionContext(http, new RouteData(), action), [], new Dictionary<string,object?> {
+                ["documentId"]=documentId, ["lineId"]=lineId, ["request"]=new { Quantity=999, UnitCost=888, Note="PRIVATE NOTE", PhotoDataUrl="PRIVATE IMAGE" }
+            }, new object());
+        }
+        async Task Run(AppDbContext db, int actor, Func<Task<IActionResult>> action)
+        {
+            var context = Context(actor);
+            var filter = new StoreActivityFilter(tenant, registry, tickets, db, NullLogger<StoreActivityFilter>.Instance);
+            await filter.OnActionExecutionAsync(context, async () => new ActionExecutedContext(context, [], context.Controller) { Result=await action() });
+        }
+        var aCommitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bPublished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var aDb = database.CreateTenantContext(seed.StoreId);
+        var a = Run(aDb, 101, async () =>
+        {
+            await using var tx = await aDb.Database.BeginTransactionAsync();
+            var line = await aDb.StockDocumentLines.Include(x => x.StockDocument).SingleAsync(x => x.Id == lineId);
+            line.Quantity=line.BaseQuantity=2; await aDb.SaveChangesAsync();
+            Assert.Empty(registry.Snapshot(seed.StoreId).Events);
+            await tx.CommitAsync(); aCommitted.SetResult();
+            await bPublished.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            return new OkObjectResult(new { success=true });
+        });
+        await aCommitted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await using (var bDb = database.CreateTenantContext(seed.StoreId))
+            await Run(bDb, 202, async () =>
+            {
+                var line = await bDb.StockDocumentLines.Include(x => x.StockDocument).SingleAsync(x => x.Id == lineId);
+                Assert.Equal(2, line.Quantity); line.Quantity=line.BaseQuantity=3; await bDb.SaveChangesAsync();
+                return new OkObjectResult(new { success=true });
+            });
+        var bEvent = Assert.Single(registry.Snapshot(seed.StoreId).Events); Assert.Equal(202, bEvent.UserId);
+        bPublished.SetResult(); await a;
+        var events = registry.Snapshot(seed.StoreId).Events;
+        var savedA = Assert.Single(events, x => x.UserId == 101); var savedB = Assert.Single(events, x => x.UserId == 202);
+        Assert.Contains("1 kg → 2 kg", savedA.Detail); Assert.Contains("2 kg → 3 kg", savedB.Detail);
+        Assert.All(events, x => { Assert.Equal($"receipt:{documentId}", x.WorkKey); Assert.Equal($"Phiếu nhập #{documentId}", x.Document);
+            Assert.Equal("StockDocuments.UpdateLine", x.Action); Assert.DoesNotContain("PRIVATE", x.Detail); Assert.DoesNotContain("999", x.Detail); Assert.DoesNotContain("888", x.Detail); });
+        await using var rollbackDb = database.CreateTenantContext(seed.StoreId);
+        await Run(rollbackDb, 303, async () =>
+        {
+            await using var tx = await rollbackDb.Database.BeginTransactionAsync();
+            var line = await rollbackDb.StockDocumentLines.Include(x => x.StockDocument).SingleAsync(x => x.Id == lineId);
+            line.Quantity=line.BaseQuantity=4; await rollbackDb.SaveChangesAsync(); await tx.RollbackAsync();
+            return new ConflictObjectResult(new { success=false });
+        });
+        await Run(rollbackDb, 404, () => Task.FromResult<IActionResult>(new OkObjectResult(new { success=true, duplicate=true })));
+        Assert.Equal(2, registry.Snapshot(seed.StoreId).Events.Count);
+        Assert.Empty(registry.Snapshot(seed.StoreId+100000).Events);
+        await using var finalDb = database.CreateTenantContext(seed.StoreId);
+        Assert.Equal(3, (await finalDb.StockDocumentLines.SingleAsync(x => x.Id == lineId)).Quantity);
+    }
     [Fact]
     public async Task Intake_capture_draft_quantity_and_removal_use_the_correct_saved_item()
     {

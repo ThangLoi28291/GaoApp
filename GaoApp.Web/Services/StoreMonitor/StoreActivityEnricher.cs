@@ -13,7 +13,61 @@ public static class StoreActivityEnricher
 {
     public sealed record Item(string Name, decimal Quantity, string? Unit, decimal? DifferenceBase = null, decimal? SavedCost = null);
     public sealed record Snapshot(int Parent, string? Number, string? Location, Item? Line, int LineCount = 0, string? Goods = null, DateTime? Date = null, decimal? Freight = null);
-    private sealed record SavedLine(int Parent, Item Item);
+    internal sealed record SavedLine(int Parent, Item Item, int? UnitId = null);
+    public static bool NeedsSavedLine(string controller, string action) =>
+        controller is "StockDocuments" or "StockCounts" or "StockTransfers" &&
+        action is "AddLine" or "AddLineByBarcode" or "UpdateLine";
+
+    /// <summary>Request-local copies taken at SaveChanges, never a later reader's mutable line.</summary>
+    public sealed class SavedOperation : IDisposable
+    {
+        private readonly AppDbContext db;
+        private readonly int store;
+        private object[] pending = [];
+        private readonly Dictionary<(string Controller, int Id), SavedLine> lines = [];
+        public SavedOperation(AppDbContext db, int store)
+        {
+            this.db = db; this.store = store;
+            db.SavingChanges += Saving;
+            db.SavedChanges += Saved;
+            db.SaveChangesFailed += Failed;
+        }
+        private void Saving(object? sender, SavingChangesEventArgs args)
+        {
+            pending = db.ChangeTracker.Entries().Where(x => x.State is EntityState.Added or EntityState.Modified &&
+                x.Entity is StockDocumentLine or StockCountLine or StockTransferLine).Select(x => x.Entity).ToArray();
+        }
+        private void Saved(object? sender, SavedChangesEventArgs args)
+        {
+            foreach (var entity in pending)
+            {
+                switch (entity)
+                {
+                    case StockDocumentLine line when !line.IsDeleted && line.StockDocument?.StoreId == store:
+                        lines[("StockDocuments", line.Id)] = new(line.StockDocumentId, new(line.ProductNameSnapshot,
+                            line.Quantity, line.UnitNameSnapshot, null, line.UnitCost), line.UnitId);
+                        break;
+                    case StockCountLine line when !line.IsDeleted && line.StoreId == store && line.StockCountDocument?.StoreId == store:
+                        lines[("StockCounts", line.Id)] = new(line.StockCountDocumentId, new(line.ProductNameSnapshot,
+                            line.CountedQty, line.UnitNameSnapshot, line.DifferenceQtyBase), line.UnitId);
+                        break;
+                    case StockTransferLine line when !line.IsDeleted && line.StoreId == store && line.StockTransferDocument?.StoreId == store:
+                        lines[("StockTransfers", line.Id)] = new(line.StockTransferDocumentId, new(line.ProductNameSnapshot,
+                            line.Quantity, line.UnitNameSnapshot), line.UnitId);
+                        break;
+                }
+            }
+            pending = [];
+        }
+        private void Failed(object? sender, SaveChangesFailedEventArgs args) => pending = [];
+        internal SavedLine? Read(string controller, int id, int? parent) =>
+            lines.TryGetValue((controller, id), out var line) && (!parent.HasValue || line.Parent == parent) ? line : null;
+        public void Dispose()
+        {
+            db.SavingChanges -= Saving; db.SavedChanges -= Saved; db.SaveChangesFailed -= Failed;
+            pending = [];
+        }
+    }
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
     private static string N(decimal value) => value.ToString("#,0.###", Vietnamese);
     private static string Q(Item item) => N(item.Quantity) + (string.IsNullOrWhiteSpace(item.Unit) ? "" : " " + item.Unit);
@@ -26,7 +80,7 @@ public static class StoreActivityEnricher
         ? action is "UpdateLine" or "DeleteLine" or "UpdateHeader" : controller == "StockDocumentManagement" && action == "UpdateHeader" || controller == "ReceiptIntake" && action is "Quantity" or "Remove" or "Review";
 
     public static async Task<Snapshot?> Read(AppDbContext db, int store, string controller, string action,
-        IDictionary<string, object?> args, object? payload, Snapshot? before, CancellationToken ct)
+        IDictionary<string, object?> args, object? payload, Snapshot? before, CancellationToken ct, SavedOperation? operation = null)
     {
         if (controller is not ("StockDocuments" or "StockDocumentManagement" or "WarehouseReceiving" or "ReceiptIntake" or "StockCounts" or "StockTransfers")) return null;
         var request = Request(args);
@@ -35,20 +89,29 @@ public static class StoreActivityEnricher
         if (action is "Create" or "CreateReceipt") parent = Id(P(payload, "id"));
         var lineId = action is "AddLine" or "AddLineByBarcode" ? Id(P(payload, "lineId")) ?? Id(P(payload, "id")) : Arg(args, "lineId");
         SavedLine? saved = null;
-        if (controller == "StockDocuments" && lineId is { } receiptLine)
+        if (operation is not null && NeedsSavedLine(controller, action))
+        {
+            saved = lineId is { } savedId ? operation.Read(controller, savedId, parent) : null;
+            // Legacy lines may lack the unit-name snapshot. Resolve only the captured unit ID,
+            // never a later line's quantity, unit selection, name or price.
+            if (saved?.UnitId is { } unitId && string.IsNullOrEmpty(saved.Item.Unit))
+                saved = saved with { Item = saved.Item with { Unit = await db.Units.AsNoTracking()
+                    .Where(x => x.Id == unitId && x.StoreId == store).Select(x => x.Name).SingleOrDefaultAsync(ct) } };
+        }
+        else if (controller == "StockDocuments" && lineId is { } receiptLine)
             saved = await db.StockDocumentLines.AsNoTracking().Where(x => x.Id == receiptLine && x.StockDocument.StoreId == store && (!parent.HasValue || x.StockDocumentId == parent))
                 .Select(x => new SavedLine(x.StockDocumentId, new Item(x.ProductNameSnapshot, x.Quantity,
-                    !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : x.UnitId != null ? x.Unit!.Name : x.Factor == 1 ? x.ProductVariant.Product.BaseUnit.Name : null, null, x.UnitCost))).SingleOrDefaultAsync(ct);
-        if (controller == "StockCounts" && lineId is { } countLine)
+                    !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : x.UnitId != null ? x.Unit!.Name : x.Factor == 1 ? x.ProductVariant.Product.BaseUnit.Name : null, null, x.UnitCost), null)).SingleOrDefaultAsync(ct);
+        if (operation is null && controller == "StockCounts" && lineId is { } countLine)
             saved = await db.StockCountLines.AsNoTracking().Where(x => x.Id == countLine && x.StoreId == store && x.StockCountDocument.StoreId == store && (!parent.HasValue || x.StockCountDocumentId == parent))
-                .Select(x => new SavedLine(x.StockCountDocumentId, new Item(x.ProductNameSnapshot, x.CountedQty, !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : x.Unit.Name, x.DifferenceQtyBase, null))).SingleOrDefaultAsync(ct);
-        if (controller == "StockTransfers" && lineId is { } transferLine)
+                .Select(x => new SavedLine(x.StockCountDocumentId, new Item(x.ProductNameSnapshot, x.CountedQty, !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : x.Unit.Name, x.DifferenceQtyBase, null), null)).SingleOrDefaultAsync(ct);
+        if (operation is null && controller == "StockTransfers" && lineId is { } transferLine)
             saved = await db.StockTransferLines.AsNoTracking().Where(x => x.Id == transferLine && x.StoreId == store && x.StockTransferDocument.StoreId == store && (!parent.HasValue || x.StockTransferDocumentId == parent))
                 .Select(x => new SavedLine(x.StockTransferDocumentId, new Item(x.ProductNameSnapshot, x.Quantity,
-                    !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : db.Units.Where(u => u.Id == x.UnitId && u.StoreId == store).Select(u => u.Name).FirstOrDefault(), null, null))).SingleOrDefaultAsync(ct);
+                    !string.IsNullOrEmpty(x.UnitNameSnapshot) ? x.UnitNameSnapshot : db.Units.Where(u => u.Id == x.UnitId && u.StoreId == store).Select(u => u.Name).FirstOrDefault(), null, null), null)).SingleOrDefaultAsync(ct);
         if (controller == "ReceiptIntake" && Arg(args, "itemId") is { } itemId)
             saved = await db.StockDocumentProvisionalItems.AsNoTracking().Where(x => x.Id == itemId && x.StoreId == store && x.StockDocument.StoreId == store && (!parent.HasValue || x.StockDocumentId == parent))
-                .Select(x => new SavedLine(x.StockDocumentId, new Item(x.NameSnapshot, x.Quantity, x.UnitNameSnapshot, null, null))).SingleOrDefaultAsync(ct);
+                .Select(x => new SavedLine(x.StockDocumentId, new Item(x.NameSnapshot, x.Quantity, x.UnitNameSnapshot, null, null), null)).SingleOrDefaultAsync(ct);
         parent = saved?.Parent ?? parent;
         if (parent is not { } documentId) return null;
         // A missing line is never resolved through a caller-supplied product name or variant ID.

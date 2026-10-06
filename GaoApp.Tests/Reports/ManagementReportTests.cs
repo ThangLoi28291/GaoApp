@@ -6,6 +6,7 @@ using GaoApp.Application.DTOs.Reports.Sales;
 using GaoApp.Application.Interfaces.Repositories.Reports;
 using GaoApp.Application.Services.Reports;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Services.Reports;
 using GaoApp.Infrastructure.Repositories.Reports;
 using GaoApp.Infrastructure.Tenant;
@@ -17,6 +18,110 @@ namespace GaoApp.Tests.Reports;
 
 public sealed class ManagementReportTests
 {
+    [Fact]
+    public void A_known_line_keeps_cost_and_profit_when_another_product_has_no_valuation()
+    {
+        var source = TwoProducts(false);
+        var data = Build(source);
+        var a = Assert.Single(data.Products, x => x.Id == 1);
+        Assert.Equal(10, a.Summary.Cogs.Value); Assert.Equal(10, a.Summary.GrossProfit.Value);
+        Assert.Equal(ProfitQuality.Finalized, a.Summary.Cogs.Quality);
+        Assert.Equal(10, Assert.Single(data.Categories, x => x.Id == 1).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(data.Products, x => x.Id == 2).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(data.Customers).Summary.Cogs.Value);
+        Assert.Null(data.Summary.Cogs.Value);
+    }
+    [Fact]
+    public void Complete_line_costs_reconcile_to_thirty_across_all_dimensions()
+    {
+        var data = Build(TwoProducts(true));
+        Assert.Equal(30, data.Summary.Cogs.Value);
+        foreach (var dimensions in new[] { data.Products, data.Categories, data.Customers, data.CustomerGroups })
+            Assert.Equal(30, dimensions.Sum(x => x.Summary.Cogs.Value));
+    }
+    [Fact]
+    public void A_customer_with_complete_orders_remains_known_beside_an_unknown_customer()
+    {
+        var source = TwoProducts(false);
+        source.Orders[0].CustomerId = 7;
+        source.Customers.Add(new(7, "Known customer", "RETAIL"));
+        source.Customers.Add(new(8, "Unknown customer", "RETAIL"));
+        source.Lines[1].OrderId = 2;
+        source.Orders[0].Subtotal = 20;
+        source.Orders.Add(new() { Id=2, StoreId=1, CustomerId=8, Status=OrderStatus.Completed,
+            CompletedAtUtc=At, POSShiftId=1, Subtotal=40 });
+        var data = Build(source);
+        Assert.Equal(10, Assert.Single(data.Customers, x => x.Id == 7).Summary.Cogs.Value);
+        Assert.Null(Assert.Single(data.Customers, x => x.Id == 8).Summary.Cogs.Value);
+        Assert.Null(data.Summary.Cogs.Value);
+    }
+    [Fact]
+    public void Line_provisional_and_conflict_quality_survive_dimension_projection()
+    {
+        var provisional = TwoProducts(false);
+        var root = provisional.Entries[0]; root.IsProvisional = true;
+        var allocation = root.CostLayerAllocations.Single();
+        allocation.IsProvisional = true; allocation.IsResolved = false;
+        allocation.ResolvedQuantity = 0; allocation.ResolvedAmount = 0; allocation.ResolvedAtUtc = null;
+        var a = Assert.Single(Build(provisional).Products, x => x.Id == 1);
+        Assert.Equal(ProfitQuality.Provisional, a.Summary.Cogs.Quality);
+        Assert.Equal(10, a.Summary.Cogs.Value); Assert.Equal(10, a.Summary.ProvisionalCogs.Value);
+        var conflict = TwoProducts(true); conflict.Entries[1].ProductVariantId = 999;
+        var data = Build(conflict);
+        Assert.Equal(10, Assert.Single(data.Products, x => x.Id == 1).Summary.Cogs.Value);
+        Assert.Equal(ProfitQuality.DataIntegrityConflict, Assert.Single(data.Products, x => x.Id == 2).Summary.Cogs.Quality);
+        Assert.Equal(ProfitQuality.DataIntegrityConflict, Assert.Single(data.Customers).Summary.Cogs.Quality);
+    }
+    [Fact]
+    public void Orphan_valuation_evidence_invalidates_every_dimension_of_its_order()
+    {
+        var source = TwoProducts(true); source.Entries[1].ReferenceLineId = 999;
+        var data = Build(source);
+        Assert.Equal(ProfitQuality.DataIntegrityConflict, data.Summary.Cogs.Quality);
+        foreach (var dimensions in new[] { data.Products, data.Categories, data.Customers, data.CustomerGroups })
+            Assert.All(dimensions, x => { Assert.Null(x.Summary.Cogs.Value); Assert.Equal(ProfitQuality.DataIntegrityConflict, x.Summary.Cogs.Quality); });
+    }
+    [Fact]
+    public void Restock_changes_original_sale_cost_and_return_event_cost_stays_zero()
+    {
+        var source = Snapshot(); source.Products.Add(new(1, "Rice", "RICE", 1, "Food"));
+        Return(source, 2);
+        var lineCosts = new Dictionary<int, ProfitReportAggregationPolicy.CostResult>();
+        var policy = Policy(); var costs = policy.EvaluateCosts(source, lineCosts);
+        var result = policy.Aggregate(source, Query(), costs);
+        Assert.Equal(80, costs[1].Cost);
+        Assert.Equal(0, Assert.Single(result.Details, x => x.EventKind == "Trả hàng").Summary.Cogs.Value);
+        var data = Service().BuildPeriod(source, Query(), result, lineCosts);
+        Assert.Equal(80, Assert.Single(data.Products).Summary.Cogs.Value);
+        Assert.Equal(result.Summary.Cogs.Value, data.Products.Sum(x => x.Summary.Cogs.Value));
+    }
+    private static ManagementPeriodDto Build(ProfitSourceSnapshot source)
+    {
+        var policy = Policy(); var lineCosts = new Dictionary<int, ProfitReportAggregationPolicy.CostResult>();
+        var result = policy.Aggregate(source, Query(), policy.EvaluateCosts(source, lineCosts));
+        return Service().BuildPeriod(source, Query(), result, lineCosts);
+    }
+    private static ProfitSourceSnapshot TwoProducts(bool complete)
+    {
+        var source = Snapshot(); source.Orders[0].Subtotal = 60;
+        source.Lines[0].Quantity = source.Lines[0].BaseQuantity = 1; source.Lines[0].LineTotal = 20;
+        var root = source.Entries[0]; root.Quantity = root.InventoryTransaction.QuantityChange = -1; root.Amount = -10;
+        var allocation = root.CostLayerAllocations.Single(); allocation.Quantity = allocation.ResolvedQuantity = 1;
+        allocation.Amount = allocation.ResolvedAmount = 10;
+        source.Lines.Add(new() { Id=2, StoreId=1, OrderId=1, VariantId=2, ItemName="B", Quantity=2, BaseQuantity=2, LineTotal=40 });
+        source.Products.Add(new(1, "A", "A", 1, "Category A")); source.Products.Add(new(2, "B", "B", 2, "Category B"));
+        if (complete)
+        {
+            var second = Snapshot().Entries[0]; second.Id = second.InventoryTransactionId = second.InventoryTransaction.Id = 2;
+            second.ReferenceLineId = second.InventoryTransaction.ReferenceLineId = 2;
+            second.ProductVariantId = second.InventoryTransaction.ProductVariantId = second.ProductVariant.Id = 2;
+            second.Quantity = second.InventoryTransaction.QuantityChange = -2; second.Amount = -20;
+            var secondAllocation = second.CostLayerAllocations.Single(); secondAllocation.Id = secondAllocation.InventoryValuationEntryId = 2;
+            secondAllocation.Quantity = secondAllocation.ResolvedQuantity = 2; secondAllocation.Amount = secondAllocation.ResolvedAmount = 20;
+            source.Entries.Add(second);
+        }
+        return source;
+    }
     [Fact]
     public void Allocation_reconciles_every_day_every_partial_range_and_final_cent()
     {

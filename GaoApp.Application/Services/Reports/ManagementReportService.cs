@@ -5,6 +5,7 @@ using GaoApp.Application.DTOs.Reports.Sales;
 using GaoApp.Application.Interfaces.Repositories.Reports;
 using GaoApp.Application.Interfaces.Services.Reports;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Reports;
 
@@ -48,6 +49,10 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
         var products = source.Products.ToDictionary(x => x.VariantId);
         var lines = source.Lines.Where(x => !x.IsDeleted).ToLookup(x => x.OrderId);
         var returns = source.ReturnLines.Where(x => !x.IsDeleted).ToLookup(x => x.SalesReturnId);
+        var orphanCostOrders = source.Entries.Where(x => x.ReferenceType == InventoryReferenceType.Order)
+            .Where(x => int.TryParse(x.ReferenceId, out var id) &&
+                (!x.ReferenceLineId.HasValue || !lines[id].Any(line => line.Id == x.ReferenceLineId.Value)))
+            .Select(x => int.Parse(x.ReferenceId)).ToHashSet();
         string Tier(Order o) => o.CustomerPriceTierSnapshot is "WHOLESALE" or "RETAIL" ? o.CustomerPriceTierSnapshot :
             o.CustomerId is null ? "RETAIL" : customers.GetValueOrDefault(o.CustomerId.Value)?.PriceTier is "WHOLESALE" ? "WHOLESALE" :
             customers.ContainsKey(o.CustomerId.Value) ? "RETAIL" : "UNKNOWN";
@@ -80,9 +85,12 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
                 var revenue = i == parts.Count - 1 ? row.Summary.NetSales.Value - allocated :
                     row.Summary.NetSales.Value is decimal total ? Math.Round(total * (weights == 0 ? 1m / parts.Count : line.Weight / weights), 2) : (decimal?)null;
                 allocated += revenue;
-                var cost = row.EventKind == "Trả hàng" ? Cost(row.Summary) :
-                    !row.Summary.Cogs.Available ? Cost(row.Summary) : lineCosts.GetValueOrDefault(line.LineId) ??
-                        new ProfitReportAggregationPolicy.CostResult(null, null, ProfitQuality.Unavailable, null);
+                // A different line's missing cost cannot erase this line's reliable valuation.
+                // Unassignable order evidence still invalidates every dimension of that order.
+                var cost = row.EventKind == "Trả hàng" || orphanCostOrders.Contains(row.OrderId) ? Cost(row.Summary) :
+                    lineCosts.GetValueOrDefault(line.LineId) ?? new ProfitReportAggregationPolicy.CostResult(null, null,
+                        row.Summary.Cogs.Quality == ProfitQuality.DataIntegrityConflict
+                            ? ProfitQuality.DataIntegrityConflict : ProfitQuality.Unavailable, null);
                 var product = products.GetValueOrDefault(line.VariantId);
                 events.Add(new(line.VariantId, line.ItemName, product?.CategoryId ?? 0, product?.CategoryName ?? "Chưa phân nhóm",
                     product?.Sku, row.OrderId, Tier(order), order.CustomerId ?? 0, CustomerName(order), row.EventKind == "Bán hàng",
