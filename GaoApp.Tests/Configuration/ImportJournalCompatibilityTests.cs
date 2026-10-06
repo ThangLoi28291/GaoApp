@@ -57,7 +57,7 @@ public sealed class ImportJournalCompatibilityTests
         Assert.Equal(DatabaseCompatibilityState.SupportedPendingUpgrade, (await Preflight(db).InspectAsync()).State);
         await db.Database.MigrateAsync();
         Assert.Equal(DatabaseCompatibilityState.CurrentBaseline, (await Preflight(db).InspectAsync()).State);
-        Assert.Equal(60, (await db.Database.GetAppliedMigrationsAsync()).Count());
+        Assert.Equal(69, (await db.Database.GetAppliedMigrationsAsync()).Count());
     }
 
     [Fact]

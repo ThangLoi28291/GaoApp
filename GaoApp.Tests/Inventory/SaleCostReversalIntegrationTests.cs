@@ -273,8 +273,12 @@ public sealed class SaleCostReversalIntegrationTests
         };
         db.LegalEntities.Add(owner);
         await db.SaveChangesAsync();
-        var warehouse = await db.Warehouses.SingleAsync(x => x.Id == fixture.Seed.LegalEntityWarehouseId);
-        warehouse.LegalEntityId = owner.Id;
+        var warehouse = new Warehouse
+        {
+            StoreId = fixture.Seed.StoreId, LegalEntityId = owner.Id,
+            Code = "SECOND-OWNER-WAREHOUSE", Name = "Second owner warehouse", IsActive = true
+        };
+        db.Warehouses.Add(warehouse);
         var line = await db.OrderLines.IgnoreQueryFilters().SingleAsync(x => x.Id == fixture.Seed.LegalEntityOrderLineId);
         line.IsDeleted = false;
         await db.SaveChangesAsync();
@@ -296,6 +300,7 @@ public sealed class SaleCostReversalIntegrationTests
         await fixture.Pos(db).VoidCompletedOrderAsync(fixture.Seed.OrderId, "two legal owners");
         var reversals = await db.OrderLegalEntityAllocationReversals.ToListAsync();
         reversals.Select(x => x.LegalEntityId).Distinct().Should().HaveCount(2);
+        reversals.Select(x => x.WarehouseId).Distinct().Should().HaveCount(2);
         (await db.InventoryValuationEntries.Where(x => x.EntryType == InventoryValuationEntryType.Inbound &&
             x.InventoryTransaction.TransactionType == InventoryTransactionType.SaleVoidIn).SumAsync(x => x.Amount))
             .Should().Be(127);

@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
+using GaoApp.Tests.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Tests.Configuration;
@@ -11,14 +14,25 @@ public sealed class MigratorDevelopmentStartupTests
     {
         await using var database = new InventoryPostingLocalDb();
         await database.MigrateAsync("20261001121734_PreserveInputInvoiceLibrarySource");
-        var root = GaoApp.Tests.Security.FullApplicationFixture.SourceRoot();
-#if DEBUG
-        const string configuration = "Debug";
-#else
-        const string configuration = "Release";
-#endif
-        var executable = Path.Combine(root, "GaoApp.Migrator", "bin", configuration, "net8.0", "GaoApp.Migrator.dll");
-        Assert.True(File.Exists(executable), "Build the solution including Migrator before this entry-point regression.");
+        var root = FullApplicationFixture.SourceRoot();
+        var release = await PublishedTestRelease.GetAsync();
+        var manifestPath = Path.Combine(release, "release-manifest.json");
+        Assert.True(File.Exists(manifestPath), "Verify the paired release before this entry-point regression.");
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        var components = manifest.RootElement.GetProperty("components").EnumerateArray()
+            .Select(x => x.GetString()).ToArray();
+        Assert.Contains("Web", components);
+        Assert.Contains("Migrator", components);
+        var files = manifest.RootElement.GetProperty("files").EnumerateArray().ToArray();
+        foreach (var assembly in new[] { "GaoApp.Migrator.dll", "GaoApp.Application.dll", "GaoApp.Domain.dll", "GaoApp.Infrastructure.dll" })
+        {
+            var assemblyPath = Path.Combine(release, "migrator", assembly);
+            Assert.True(File.Exists(assemblyPath), $"Published Migrator assembly is missing: {assembly}");
+            var recorded = Assert.Single(files, x => x.GetProperty("path").GetString() == "migrator/" + assembly);
+            Assert.Equal(recorded.GetProperty("sha256").GetString(),
+                Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(assemblyPath))));
+        }
+        var executable = Path.Combine(release, "migrator", "GaoApp.Migrator.dll");
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var start = new ProcessStartInfo("dotnet")
@@ -40,7 +54,7 @@ public sealed class MigratorDevelopmentStartupTests
             catch { if (!process.HasExited) process.Kill(true); throw; }
             var diagnostic = await output + await error;
             Assert.True(process.ExitCode == 0, diagnostic);
-            Assert.Contains("SCHEMA_ONLY_VERIFIED; SourceMigrations=60; AppliedMigrations=60", diagnostic);
+            Assert.Contains("SCHEMA_ONLY_VERIFIED; SourceMigrations=69; AppliedMigrations=69", diagnostic);
         }
         await using var db = database.CreateHostContext();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
