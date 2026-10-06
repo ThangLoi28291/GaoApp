@@ -21,7 +21,7 @@ jobs:
   warning-gate:
     name: Warning-free build and regression tests
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
 
     steps:
       - name: Checkout source

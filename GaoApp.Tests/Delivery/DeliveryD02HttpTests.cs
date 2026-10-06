@@ -131,6 +131,34 @@ public sealed class DeliveryD02HttpTests(DeliveryD02Fixture fixture)
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         }
     }
+    [Theory]
+    [InlineData("%%%")]
+    [InlineData("AQ==")]
+    public async Task Invalid_version_returns_domain_error_without_changing_delivery_evidence(string version)
+    {
+        using var c = await fixture.CaseAsync();
+        await using var db = c.Context();
+        async Task<string> SnapshotAsync() => JsonSerializer.Serialize(new
+        {
+            Order = await db.DeliveryOrders.AsNoTracking().SingleAsync(x => x.Id == c.Detail.Id),
+            Revisions = await db.DeliveryRevisions.AsNoTracking().Where(x => x.DeliveryOrderId == c.Detail.Id)
+                .OrderBy(x => x.Id).ToListAsync(),
+            Events = await db.DeliveryOutboxMessages.AsNoTracking().Where(x => x.DeliveryOrderId == c.Detail.Id)
+                .OrderBy(x => x.Id).ToListAsync(),
+            Receipts = await db.DeliveryCommandReceipts.AsNoTracking().Where(x => x.DeliveryOrderId == c.Detail.Id)
+                .OrderBy(x => x.Id).ToListAsync()
+        });
+        var before = await SnapshotAsync();
+
+        using var response = await c.Client.Http.PostAsJsonAsync("/admin/api/deliveries/" + c.Detail.Id + "/recipient",
+            c.Change(version: version));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("VERSION_INVALID", error.GetProperty("code").GetString());
+        Assert.Equal("Phiên bản đơn không hợp lệ.", error.GetProperty("message").GetString());
+        Assert.Equal(before, await SnapshotAsync());
+    }
     [Fact]
     public async Task Same_key_cannot_replay_another_actor_response()
     {

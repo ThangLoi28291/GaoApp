@@ -81,7 +81,7 @@ public sealed class StoreActivityController(ITenantContext tenant, AppDbContext 
                 await Task.Delay(TimeSpan.FromSeconds(1), ct);
             }
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
     }
     private async Task<bool> HasCurrentAccess(CancellationToken ct) =>
         !tenant.IsHostAdmin && tenant.StoreId is > 0 &&

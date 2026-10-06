@@ -22,6 +22,6 @@ public sealed class DeliveryOutboxWorker(IServiceScopeFactory scopes, IConfigura
                 catch (Exception ex) { logger.LogError(ex, "Delivery outbox checkpoint failed; unacknowledged events remain pending."); }
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
     }
 }

@@ -25,8 +25,9 @@ public sealed class ProfitReportReadRepositoryTests
     public async Task Missing_navigation_survives_materialization_and_cost_fails_closed()
     {
         await using var db = Context(1);
+        var shift = await SeedShiftAsync(db, 1);
         var order = new Order { StoreId = 1, OrderNumber = "MISSING", Status = OrderStatus.Completed,
-            CompletedAtUtc = ProfitReportAggregationPolicyTests.At, Subtotal = 200 };
+            CompletedAtUtc = ProfitReportAggregationPolicyTests.At, Subtotal = 200, POSShiftId = shift.Id, POSShift = shift };
         db.Orders.Add(order); await db.SaveChangesAsync();
         var line = new OrderLine { StoreId = 1, OrderId = order.Id, VariantId = 999, Quantity = 10, BaseQuantity = 10 };
         db.OrderLines.Add(line); await db.SaveChangesAsync();
@@ -51,10 +52,14 @@ public sealed class ProfitReportReadRepositoryTests
         await using var db = Context(1, database);
         await using (var foreign = Context(2, database))
         {
-            foreign.Orders.Add(new Order { StoreId = 2, OrderNumber = "FOREIGN", CompletedAtUtc = ProfitReportAggregationPolicyTests.At });
+            var foreignShift = await SeedShiftAsync(foreign, 2);
+            foreign.Orders.Add(new Order { StoreId = 2, OrderNumber = "FOREIGN", CompletedAtUtc = ProfitReportAggregationPolicyTests.At,
+                POSShiftId = foreignShift.Id, POSShift = foreignShift });
             await foreign.SaveChangesAsync();
         }
-        db.Orders.Add(new Order { StoreId = 1, OrderNumber = "OWN", CompletedAtUtc = ProfitReportAggregationPolicyTests.At });
+        var shift = await SeedShiftAsync(db, 1);
+        db.Orders.Add(new Order { StoreId = 1, OrderNumber = "OWN", CompletedAtUtc = ProfitReportAggregationPolicyTests.At,
+            POSShiftId = shift.Id, POSShift = shift });
         // Tenant enforcement on writes is preserved; seed foreign fixture through its own context.
         await db.SaveChangesAsync();
         db.InventoryValuationEntries.Add(new InventoryValuationEntry { StoreId = 1,
@@ -86,14 +91,35 @@ public sealed class ProfitReportReadRepositoryTests
     public async Task Oversized_source_fails_instead_of_returning_truncated_financial_totals()
     {
         await using var db = Context(1);
+        var shift = await SeedShiftAsync(db, 1);
         db.Orders.AddRange(Enumerable.Range(0, 101).Select(i => new Order { StoreId = 1,
-            OrderNumber = "LIMIT-" + i, CompletedAtUtc = ProfitReportAggregationPolicyTests.At }));
+            OrderNumber = "LIMIT-" + i, CompletedAtUtc = ProfitReportAggregationPolicyTests.At,
+            POSShiftId = shift.Id, POSShift = shift }));
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
         var limits = new GaoApp.Application.Common.Options.ProfitReportLimits { MaxSourceRows = 100 };
         await Assert.ThrowsAsync<GaoApp.Application.Common.Exceptions.ValidationAppException>(() =>
             new ProfitReportReadRepository(db, limits).ReadAsync(1, Periods(), false));
         Assert.Empty(db.ChangeTracker.Entries());
     }
+    private static async Task<POSShift> SeedShiftAsync(InMemoryAppDbContext db, int store)
+    {
+        db.Stores.Add(new Store { Id = store, Name = "Profit store " + store,
+            SubDomain = "profit-" + store, SubDomainNormalized = "PROFIT-" + store });
+        var shift = new POSShift
+        {
+            StoreId = store, OpenedByUserId = 1, OpenedAtUtc = ProfitReportAggregationPolicyTests.At.AddHours(-1),
+            Terminal = new POSTerminal { StoreId = store, Code = "POS-PROFIT", Name = "Profit report POS" },
+            Warehouse = new Warehouse
+            {
+                StoreId = store, Code = "WH-PROFIT", Name = "Profit report warehouse",
+                LegalEntity = new LegalEntity { StoreId = store, Code = "LEGAL-PROFIT", Name = "Profit report owner", LegalName = "Profit report owner" }
+            }
+        };
+        db.POSShifts.Add(shift);
+        await db.SaveChangesAsync();
+        return shift;
+    }
+
     private static InMemoryAppDbContext Context(int? store, string? database = null)
     {
         var tenant = new TenantContext();

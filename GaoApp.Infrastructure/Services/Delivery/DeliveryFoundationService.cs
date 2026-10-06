@@ -206,7 +206,7 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
     private static string Version(string? value)
     {
         try { var bytes = Convert.FromBase64String(value ?? ""); if (bytes.Length == 8) return Convert.ToBase64String(bytes); }
-        catch (FormatException) { }
+        catch (FormatException) { throw Error(400, "VERSION_INVALID", "Phiên bản đơn không hợp lệ."); }
         throw Error(400, "VERSION_INVALID", "Phiên bản đơn không hợp lệ.");
     }
     private static void RequireKey(Guid key)
