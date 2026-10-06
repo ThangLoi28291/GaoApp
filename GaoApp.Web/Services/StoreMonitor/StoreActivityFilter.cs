@@ -35,7 +35,7 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
             context.HttpContext.User.Identity?.IsAuthenticated == true && context.ModelState.IsValid &&
             context.ActionDescriptor is ControllerActionDescriptor saveAction &&
             StoreActivityEnricher.NeedsSavedLine(saveAction.ControllerName, saveAction.ActionName)
-                ? new StoreActivityEnricher.SavedOperation(db, tenant.StoreId.Value) : null;
+                ? new StoreActivityEnricher.SavedOperation(db, tenant.StoreId.Value, saveAction.ActionName == "UpdateLine") : null;
         var executed = await next();
         if (tenant.IsHostAdmin || tenant.StoreId is not > 0 || context.HttpContext.User.Identity?.IsAuthenticated != true ||
             !int.TryParse(context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) || userId <= 0 ||
@@ -85,7 +85,11 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 {
                     var saved = await StoreActivityEnricher.Read(db, tenant.StoreId.Value, action.ControllerName, action.ActionName,
                         context.ActionArguments, value, prior, context.HttpContext.RequestAborted, savedOperation);
-                    var detailed = saved is not null ? StoreActivityEnricher.Describe(action.ControllerName, action.ActionName, saved, prior,
+                    var savedBefore = savedOperation is not null && saved is not null &&
+                        context.ActionArguments.TryGetValue("lineId", out var changedLine) && changedLine is int changedLineId
+                            ? await savedOperation.Before(action.ControllerName, changedLineId, saved.Parent, context.HttpContext.RequestAborted) : null;
+                    var operationPrior = savedOperation is null ? prior : savedBefore is null ? null : saved! with { Line = savedBefore };
+                    var detailed = saved is not null ? StoreActivityEnricher.Describe(action.ControllerName, action.ActionName, saved, operationPrior,
                         StoreActivityEnricher.Request(context.ActionArguments)) : action.ControllerName == "LabelPrinting"
                         ? await StoreActivityEnricher.Label(db, tenant.StoreId.Value, action.ActionName, context.ActionArguments, value, context.HttpContext.RequestAborted) : null;
                     description = detailed ?? description;

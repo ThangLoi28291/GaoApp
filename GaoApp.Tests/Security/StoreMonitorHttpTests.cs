@@ -4,11 +4,15 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Security.Claims;
 using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Purchases;
+using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Printing;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Tenant;
+using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Tests.Configuration;
 using GaoApp.Web.Services.Printing;
 using GaoApp.Web.Services.StoreMonitor;
@@ -26,6 +30,103 @@ namespace GaoApp.Tests.Security;
 [Collection("R1FinalDatabasePreflight")]
 public sealed class StoreMonitorHttpTests
 {
+    [Fact]
+    public async Task B_uses_the_original_values_loaded_by_the_real_service_after_its_filter_read()
+    {
+        await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        int documentId, lineId, unitId;
+        await using (var db = database.CreateTenantContext(seed.StoreId))
+        {
+            var unit = await db.Units.SingleAsync(); unit.Name = "kg"; unitId = unit.Id;
+            var document = new StockDocument { StoreId=seed.StoreId, WarehouseId=seed.WarehouseId,
+                DocumentNo="MONITOR-BEFORE", DocumentDate=DateTime.Today, Type=GaoApp.Domain.Enums.StockDocumentType.Receipt };
+            document.Lines.Add(new() { ProductVariantId=seed.ProductVariantId, ProductNameSnapshot="Saved rice",
+                UnitId=unitId, UnitNameSnapshot="kg", Quantity=1, BaseQuantity=1, UnitCost=10, LineNo=1 });
+            db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; lineId=document.Lines.Single().Id;
+        }
+        var tenant = new TenantContext(); tenant.SetStore(seed.StoreId, "before-race");
+        var registry = new StoreActivityRegistry(TimeProvider.System);
+        var tickets = new StoreActivityTicket(new EphemeralDataProtectionProvider(), TimeProvider.System);
+        AppDbContext ActorContext(int actor) => new(new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer(database.ConnectionString).Options, tenant, new MonitorActor(actor));
+        async Task Run(AppDbContext db, int actor, UpdateStockDocumentLineRequest request, Func<Task>? beforeService = null)
+        {
+            var http = new DefaultHttpContext(); http.Request.Method="PUT";
+            http.User = new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, actor.ToString()), new("full_name", $"Actor {actor}")], "test"));
+            var descriptor = new ControllerActionDescriptor { ControllerName="StockDocuments", ActionName="UpdateLine" };
+            var context = new ActionExecutingContext(new ActionContext(http, new RouteData(), descriptor), [],
+                new Dictionary<string,object?> { ["documentId"]=documentId, ["lineId"]=lineId, ["request"]=request }, new object());
+            var repository = new StockDocumentRepository(db);
+            // UpdateLine uses the real repository and unit resolver; unrelated workflows are not invoked.
+            var service = new StockDocumentService(repository, null!, null!, null!, new InventoryUnitResolver(repository),
+                null!, null!, null!, null!, tenant, null!, null!);
+            var filter = new StoreActivityFilter(tenant, registry, tickets, db, NullLogger<StoreActivityFilter>.Instance);
+            await filter.OnActionExecutionAsync(context, async () =>
+            {
+                if (beforeService is not null) await beforeService();
+                await service.UpdateLineAsync(lineId, request);
+                return new ActionExecutedContext(context, [], context.Controller) { Result=new OkObjectResult(new { success=true }) };
+            });
+        }
+        var bReadPrior = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var aCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var bDb = ActorContext(202);
+        var bSaving = false;
+        bDb.SavingChanges += (_, _) =>
+        {
+            var entry = bDb.ChangeTracker.Entries<StockDocumentLine>().Single(x => x.Entity.Id == lineId);
+            Assert.Equal(2m, entry.OriginalValues.GetValue<decimal>(nameof(StockDocumentLine.Quantity)));
+            Assert.Equal(20m, entry.OriginalValues.GetValue<decimal>(nameof(StockDocumentLine.UnitCost)));
+            Assert.Equal(3m, entry.Entity.Quantity); Assert.Equal(20m, entry.Entity.UnitCost); bSaving=true;
+        };
+        var b = Run(bDb, 202, new() { UnitId=unitId, Quantity=3, UnitCost=null, Note="PRIVATE B NOTE" }, async () =>
+        {
+            // The filter has read 1/10, but the service has not yet loaded any tracked line.
+            Assert.Empty(bDb.ChangeTracker.Entries<StockDocumentLine>());
+            bReadPrior.SetResult(); await aCompleted.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        });
+        await bReadPrior.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        try
+        {
+            await using var aDb = ActorContext(101);
+            await Run(aDb, 101, new() { UnitId=unitId, Quantity=2, UnitCost=20, Note="PRIVATE A NOTE" });
+        }
+        finally { aCompleted.SetResult(); }
+        await b; Assert.True(bSaving);
+        var events = registry.Snapshot(seed.StoreId).Events; Assert.Equal(2, events.Count);
+        var savedA = Assert.Single(events, x => x.UserId == 101); var savedB = Assert.Single(events, x => x.UserId == 202);
+        Assert.Contains("1 kg → 2 kg", savedA.Detail); Assert.Contains("Giá nhập đã thay đổi", savedA.Detail);
+        Assert.Contains("2 kg → 3 kg", savedB.Detail); Assert.DoesNotContain("Giá nhập đã thay đổi", savedB.Detail);
+        Assert.All(events, x => { Assert.Equal($"receipt:{documentId}", x.WorkKey); Assert.Equal($"Phiếu nhập #{documentId}", x.Document);
+            Assert.Equal("StockDocuments.UpdateLine", x.Action); Assert.DoesNotContain("PRIVATE", x.Detail);
+            Assert.DoesNotContain("10", x.Detail); Assert.DoesNotContain("20", x.Detail); });
+        await using var finalDb = database.CreateTenantContext(seed.StoreId);
+        var final = await finalDb.StockDocumentLines.SingleAsync(x => x.Id == lineId);
+        Assert.Equal(3m, final.Quantity); Assert.Equal(20m, final.UnitCost);
+        await using var noSaveDb = database.CreateTenantContext(seed.StoreId);
+        var noSaveHttp = new DefaultHttpContext(); noSaveHttp.Request.Method="PUT";
+        noSaveHttp.User = new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier, "303")], "test"));
+        var noSaveDescriptor = new ControllerActionDescriptor { ControllerName="StockDocuments", ActionName="UpdateLine" };
+        var noSaveContext = new ActionExecutingContext(new ActionContext(noSaveHttp, new RouteData(), noSaveDescriptor), [],
+            new Dictionary<string,object?> { ["documentId"]=documentId, ["lineId"]=lineId,
+                ["request"]=new { Quantity=999, UnitCost=888, Note="PRIVATE UNSAVED" } }, new object());
+        var noSaveFilter = new StoreActivityFilter(tenant, registry, tickets, noSaveDb, NullLogger<StoreActivityFilter>.Instance);
+        await noSaveFilter.OnActionExecutionAsync(noSaveContext, () => Task.FromResult(new ActionExecutedContext(noSaveContext, [], noSaveContext.Controller)
+            { Result=new OkObjectResult(new { success=true }) }));
+        var withoutCapture = Assert.Single(registry.Snapshot(seed.StoreId).Events, x => x.UserId == 303);
+        Assert.DoesNotContain("→", withoutCapture.Detail); Assert.DoesNotContain("Giá nhập đã thay đổi", withoutCapture.Detail);
+        Assert.DoesNotContain("999", withoutCapture.Detail); Assert.DoesNotContain("888", withoutCapture.Detail);
+        Assert.DoesNotContain("PRIVATE", withoutCapture.Detail);
+    }
+    private sealed class MonitorActor(int actor) : ICurrentUser
+    {
+        public int? UserId => actor;
+        public string? UserName => $"Actor {actor}";
+        public int? TerminalId => null;
+        public string? TerminalCode => null;
+        public bool IsAuthenticated => true;
+    }
     [Fact]
     public async Task A_committed_line_is_immutable_when_B_commits_before_A_enrichment_and_rollback_publishes_nothing()
     {

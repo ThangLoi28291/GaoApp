@@ -1,10 +1,99 @@
 using GaoApp.Infrastructure.Printing;
+using GaoApp.Domain.Entities;
+using GaoApp.Tests.Configuration;
 using GaoApp.Web.Services.StoreMonitor;
+using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Tests.Observability;
 
+[Collection("R1FinalDatabasePreflight")]
 public sealed class StoreActivityEnricherTests
 {
+    [Fact]
+    public async Task Count_and_transfer_capture_first_original_and_last_saved_values_with_parent_and_store_bounds()
+    {
+        await using var database = new InventoryPostingLocalDb(); await database.MigrateAsync();
+        var seed = await database.SeedInventoryCatalogAsync();
+        int countId, countLineId, transferId, transferLineId;
+        await using (var db = database.CreateTenantContext(seed.StoreId))
+        {
+            var unit = await db.Units.SingleAsync(); unit.Name="kg";
+            var source = await db.Warehouses.SingleAsync();
+            var destination = new Warehouse { StoreId=seed.StoreId, LegalEntityId=source.LegalEntityId,
+                Code="MONITOR-DEST", Name="Destination", IsActive=true };
+            db.Add(destination); await db.SaveChangesAsync();
+            var count = new StockCountDocument { StoreId=seed.StoreId, WarehouseId=source.Id, DocumentNo="MONITOR-COUNT" };
+            count.Lines.Add(new() { StoreId=seed.StoreId, ProductVariantId=seed.ProductVariantId, UnitId=unit.Id,
+                ProductNameSnapshot="Count before", UnitNameSnapshot=null, LineNo=1, Factor=1,
+                SystemQtyBase=5, CountedQty=1, CountedQtyBase=1, DifferenceQtyBase=-4 });
+            var transfer = new StockTransferDocument { StoreId=seed.StoreId, FromWarehouseId=source.Id,
+                ToWarehouseId=destination.Id, DocumentNo="MONITOR-TRANSFER", DocumentDate=DateTime.Today };
+            transfer.Lines.Add(new() { StoreId=seed.StoreId, ProductVariantId=seed.ProductVariantId, UnitId=unit.Id,
+                ProductNameSnapshot="Transfer before", UnitNameSnapshot="kg", LineNo=1, Factor=1, Quantity=1, BaseQuantity=1 });
+            db.AddRange(count, transfer); await db.SaveChangesAsync();
+            countId=count.Id; countLineId=count.Lines.Single().Id; transferId=transfer.Id; transferLineId=transfer.Lines.Single().Id;
+        }
+        await using var operationDb = database.CreateTenantContext(seed.StoreId);
+        var countLine = await operationDb.StockCountLines.Include(x => x.StockCountDocument).SingleAsync(x => x.Id == countLineId);
+        var transferLine = await operationDb.StockTransferLines.Include(x => x.StockTransferDocument).SingleAsync(x => x.Id == transferLineId);
+        using var operation = new StoreActivityEnricher.SavedOperation(operationDb, seed.StoreId, includeBefore:true);
+        using var foreign = new StoreActivityEnricher.SavedOperation(operationDb, seed.StoreId+100000, includeBefore:true);
+        countLine.CountedQty=countLine.CountedQtyBase=2; countLine.DifferenceQtyBase=-3;
+        countLine.ProductNameSnapshot="Count saved"; countLine.UnitNameSnapshot="kg";
+        transferLine.Quantity=transferLine.BaseQuantity=2; transferLine.ProductNameSnapshot="Transfer saved";
+        await operationDb.SaveChangesAsync();
+        countLine.CountedQty=countLine.CountedQtyBase=3; countLine.DifferenceQtyBase=-2;
+        transferLine.Quantity=transferLine.BaseQuantity=3; await operationDb.SaveChangesAsync();
+        // Later unsaved mutations must not affect either immutable side of the completed operation.
+        countLine.CountedQty=transferLine.Quantity=999; countLine.DifferenceQtyBase=999;
+        var countBefore = await operation.Before("StockCounts", countLineId, countId, default);
+        var transferBefore = await operation.Before("StockTransfers", transferLineId, transferId, default);
+        Assert.NotNull(countBefore); Assert.Equal("Count before", countBefore.Name); Assert.Equal(1m, countBefore.Quantity);
+        Assert.Equal("kg", countBefore.Unit); Assert.Equal(-4m, countBefore.DifferenceBase);
+        Assert.NotNull(transferBefore); Assert.Equal("Transfer before", transferBefore.Name); Assert.Equal(1m, transferBefore.Quantity);
+        Assert.Equal("kg", transferBefore.Unit);
+        var countAfter = await StoreActivityEnricher.Read(operationDb, seed.StoreId, "StockCounts", "UpdateLine",
+            new Dictionary<string,object?> { ["lineId"]=countLineId }, null, null, default, operation);
+        var transferAfter = await StoreActivityEnricher.Read(operationDb, seed.StoreId, "StockTransfers", "UpdateLine",
+            new Dictionary<string,object?> { ["lineId"]=transferLineId }, null, null, default, operation);
+        Assert.NotNull(countAfter); Assert.NotNull(transferAfter);
+        Assert.Equal(3m, countAfter.Line!.Quantity); Assert.Equal(-2m, countAfter.Line.DifferenceBase);
+        Assert.Equal("Count saved", countAfter.Line.Name); Assert.Equal(3m, transferAfter.Line!.Quantity);
+        var countActivity = StoreActivityEnricher.Describe("StockCounts", "UpdateLine", countAfter, countAfter with { Line=countBefore });
+        var transferActivity = StoreActivityEnricher.Describe("StockTransfers", "UpdateLine", transferAfter, transferAfter with { Line=transferBefore });
+        Assert.Contains("1 kg → 3 kg", countActivity.Detail); Assert.Contains("Chênh lệch -2 ĐV gốc", countActivity.Detail);
+        Assert.Contains("1 kg → 3 kg", transferActivity.Detail);
+        Assert.Null(await operation.Before("StockCounts", countLineId, countId+100000, default));
+        Assert.Null(await operation.Before("StockDocuments", countLineId, countId, default));
+        Assert.Null(await foreign.Before("StockCounts", countLineId, countId, default));
+        Assert.Null(await foreign.Before("StockTransfers", transferLineId, transferId, default));
+        await using var staleDb = database.CreateTenantContext(seed.StoreId);
+        var staleLine = await staleDb.StockCountLines.Include(x => x.StockCountDocument).SingleAsync(x => x.Id == countLineId);
+        using var failed = new StoreActivityEnricher.SavedOperation(staleDb, seed.StoreId, includeBefore:true);
+        await using (var writer = database.CreateTenantContext(seed.StoreId))
+        {
+            var concurrent = await writer.StockCountLines.SingleAsync(x => x.Id == countLineId);
+            concurrent.CountedQty=concurrent.CountedQtyBase=4; concurrent.DifferenceQtyBase=-1;
+            await writer.SaveChangesAsync();
+        }
+        staleLine.CountedQty=staleLine.CountedQtyBase=5; staleLine.DifferenceQtyBase=0;
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => staleDb.SaveChangesAsync());
+        Assert.Null(await failed.Before("StockCounts", countLineId, countId, default));
+        var failedAfter = await StoreActivityEnricher.Read(staleDb, seed.StoreId, "StockCounts", "UpdateLine",
+            new Dictionary<string,object?> { ["stockCountDocumentId"]=countId, ["lineId"]=countLineId }, null, null, default, failed);
+        Assert.NotNull(failedAfter); Assert.Null(failedAfter.Line);
+        await using var addDb = database.CreateTenantContext(seed.StoreId);
+        var parent = await addDb.StockCountDocuments.SingleAsync(x => x.Id == countId);
+        var added = new StockCountLine { StoreId=seed.StoreId, StockCountDocument=parent, ProductVariantId=seed.ProductVariantId,
+            UnitId=staleLine.UnitId, ProductNameSnapshot="Added", UnitNameSnapshot="kg", LineNo=2,
+            Factor=1, CountedQty=4, CountedQtyBase=4, DifferenceQtyBase=4 };
+        using var addition = new StoreActivityEnricher.SavedOperation(addDb, seed.StoreId, includeBefore:true);
+        addDb.Add(added); await addDb.SaveChangesAsync();
+        Assert.Null(await addition.Before("StockCounts", added.Id, countId, default));
+        var addedAfter = await StoreActivityEnricher.Read(addDb, seed.StoreId, "StockCounts", "AddLine",
+            new Dictionary<string,object?> { ["stockCountDocumentId"]=countId }, new { id=added.Id }, null, default, addition);
+        Assert.Equal(4m, addedAfter!.Line!.Quantity);
+    }
     private static StoreActivityEnricher.Snapshot Receipt(decimal quantity = 5, string unit = "kg") =>
         new(42, "NH-001", "Kho chính", new("Gạo ST25", quantity, unit), 1, "Gạo ST25");
     [Theory]
