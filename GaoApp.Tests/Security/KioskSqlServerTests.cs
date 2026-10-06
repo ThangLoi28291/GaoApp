@@ -53,6 +53,113 @@ public sealed class KioskSqlServerTests
         if (values != null) foreach (var p in JsonSerializer.SerializeToElement(values).EnumerateObject()) result[p.Name] = p.Value.Clone();
         return result;
     }
+    [Theory]
+    [InlineData("scan", "allowed")]
+    [InlineData("add", "allowed")]
+    [InlineData("scan", "no-invoice")]
+    [InlineData("add", "no-invoice")]
+    [InlineData("scan", "inactive")]
+    [InlineData("add", "inactive")]
+    [InlineData("scan", "soft-deleted")]
+    [InlineData("add", "soft-deleted")]
+    [InlineData("scan", "missing")]
+    [InlineData("add", "missing")]
+    [InlineData("scan", "other-store")]
+    [InlineData("add", "other-store")]
+    [InlineData("scan", "deleted-line")]
+    [InlineData("add", "deleted-line")]
+    public async Task Cart_add_requires_an_active_same_store_invoice_variant_for_every_existing_line(string action, string principalState)
+    {
+        await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
+        var account = await app.AddAccountAsync(store, "*"); var seed = await SeedAsync(app, store, account.UserId);
+        using var machine = app.Anonymous(store); await SetTokenAsync(machine);
+        await machine.JsonAsync(HttpMethod.Post, "/kiosk/activate", new { key = seed.Key });
+        var state = await machine.JsonAsync(HttpMethod.Get, "/kiosk/api/state");
+        state = await machine.JsonAsync(HttpMethod.Post, "/kiosk/api/command", Command(state, "start"));
+        var orderId = state.GetProperty("order").GetProperty("id").GetInt32();
+        var revision = state.GetProperty("revision").GetInt64();
+        int existingLineId, originalVariantId;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var productId = await db.ProductVariants.Where(x => x.Id == seed.VariantId).Select(x => x.ProductId).SingleAsync();
+            var variant = new ProductVariant { StoreId = store.StoreId, ProductId = productId,
+                Sku = "KIOSK-GUARD-" + Guid.NewGuid().ToString("N"), Price = 5000, IsActive = true, HasInputInvoice = true };
+            db.ProductVariants.Add(variant); await db.SaveChangesAsync(); originalVariantId = variant.Id;
+            var line = new OrderLine { StoreId = store.StoreId, OrderId = orderId, ProductId = productId,
+                VariantId = variant.Id, ItemName = "Existing kiosk item", Quantity = 2, BaseQuantity = 2,
+                Multiplier = 1, UnitPrice = 5000, OriginalUnitPrice = 5000, LineTotal = 10000 };
+            db.OrderLines.Add(line);
+            var order = await db.Orders.SingleAsync(x => x.Id == orderId);
+            order.Subtotal = order.GrandTotal = principalState == "deleted-line" ? 0 : line.LineTotal;
+            await db.SaveChangesAsync(); existingLineId = line.Id;
+            variant.HasInputInvoice = principalState is not ("no-invoice" or "deleted-line");
+            variant.IsActive = principalState != "inactive";
+            variant.IsDeleted = principalState == "soft-deleted";
+            line.IsDeleted = principalState == "deleted-line";
+            await db.SaveChangesAsync();
+            Assert.Equal(principalState == "deleted-line", await db.OrderLines.IgnoreQueryFilters()
+                .Where(x => x.Id == existingLineId).Select(x => x.IsDeleted).SingleAsync());
+            Assert.True(await db.ProductVariants.AnyAsync(x => x.Id == seed.VariantId && x.IsActive && x.HasInputInvoice));
+        }
+        if (principalState == "other-store")
+        {
+            await using var db = app.Database.CreateHostContext();
+            var foreignVariant = await db.ProductVariants.SingleAsync(x => x.Id == app.Stores[1].VariantId);
+            foreignVariant.HasInputInvoice = true; await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [OrderLines] SET [VariantId] = {foreignVariant.Id} WHERE [Id] = {existingLineId} AND [StoreId] = {store.StoreId} AND [OrderId] = {orderId}");
+        }
+        var missingPrincipal = principalState == "missing";
+        try
+        {
+            if (missingPrincipal)
+            {
+                // Only this fixture's GUID database can contain the deliberately broken legacy FK.
+                await using var db = app.Database.CreateHostContext();
+                Assert.Matches("^GaoApp_R2_InventoryPosting_[A-F0-9]{32}$", db.Database.GetDbConnection().Database);
+                Assert.False(await db.ProductVariants.IgnoreQueryFilters().AnyAsync(x => x.Id == int.MaxValue));
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE [OrderLines] NOCHECK CONSTRAINT [FK_OrderLines_ProductVariant_VariantId]");
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [OrderLines] SET [VariantId] = {int.MaxValue} WHERE [Id] = {existingLineId} AND [StoreId] = {store.StoreId} AND [OrderId] = {orderId}");
+            }
+            var allowed = principalState is "allowed" or "deleted-line";
+            using var response = await machine.Http.PostAsJsonAsync("/kiosk/api/command",
+                Command(state, action, new { barcode = seed.Barcode, variantId = seed.VariantId, quantity = 1 }));
+            var responseText = await response.Content.ReadAsStringAsync();
+            Assert.True(response.StatusCode == (allowed ? HttpStatusCode.OK : HttpStatusCode.BadRequest), responseText);
+            if (!allowed) Assert.Contains("Sản phẩm hoặc quà tặng này chưa hỗ trợ thanh toán QR tự động.",
+                JsonDocument.Parse(responseText).RootElement.GetProperty("message").GetString());
+
+            await using var verify = app.Database.CreateTenantContext(store.StoreId);
+            var savedStation = await verify.Set<KioskStation>().SingleAsync(x => x.Id == seed.StationId);
+            var savedOrder = await verify.Orders.SingleAsync(x => x.Id == orderId);
+            var savedLines = await verify.OrderLines.Where(x => x.OrderId == orderId).ToListAsync();
+            Assert.Equal(orderId, savedStation.OrderId);
+            Assert.Equal(revision + (allowed ? 1 : 0), savedStation.Revision);
+            Assert.Equal(allowed ? (principalState == "allowed" ? 15000 : 5000) : 10000, savedOrder.GrandTotal);
+            Assert.Equal(OrderStatus.Draft, savedOrder.Status);
+            Assert.Equal(0, savedOrder.PaidTotal);
+            Assert.Equal(allowed ? (principalState == "allowed" ? 2 : 1) : 1, savedLines.Count);
+            if (principalState != "deleted-line") Assert.Equal(2, savedLines.Single(x => x.Id == existingLineId).Quantity);
+            if (allowed) Assert.Equal(1, savedLines.Single(x => x.VariantId == seed.VariantId).Quantity);
+            else Assert.DoesNotContain(savedLines, x => x.VariantId == seed.VariantId);
+            Assert.False(await verify.OrderPayments.AnyAsync(x => x.OrderId == orderId));
+            Assert.False(await verify.PosPaymentQrRequests.AnyAsync(x => x.OrderId == orderId));
+            Assert.False(await verify.InventoryTransactions.AnyAsync(x => x.ReferenceType == InventoryReferenceType.Order && x.ReferenceId == orderId.ToString()));
+        }
+        finally
+        {
+            if (missingPrincipal)
+            {
+                await using var db = app.Database.CreateHostContext();
+                await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [OrderLines] SET [VariantId] = {originalVariantId} WHERE [Id] = {existingLineId} AND [StoreId] = {store.StoreId} AND [OrderId] = {orderId}");
+                await db.Database.ExecuteSqlRawAsync("ALTER TABLE [OrderLines] WITH CHECK CHECK CONSTRAINT [FK_OrderLines_ProductVariant_VariantId]");
+                Assert.Equal(1, await db.Database.SqlQuery<int>($"""
+                    SELECT COUNT(*) AS [Value] FROM sys.foreign_keys
+                    WHERE [name] = 'FK_OrderLines_ProductVariant_VariantId'
+                        AND [parent_object_id] = OBJECT_ID('OrderLines') AND [is_disabled] = 0 AND [is_not_trusted] = 0
+                    """).SingleAsync());
+            }
+        }
+    }
     [Fact]
     public async Task Activation_is_one_use_device_and_store_scoped_cart_retries_keep_pack_price_and_do_not_post_stock()
     {
