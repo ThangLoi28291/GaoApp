@@ -209,16 +209,16 @@ public sealed class SalesReportReadRepositoryTests
         Assert.Equal(20m, result.DiscountBreakdown.Voucher);
         Assert.Equal(150m, result.DiscountBreakdown.TotalDiscounts);
 
-        var top = Assert.Single(result.TopProducts.Where(x => x.VariantId == 101));
+        var top = Assert.Single(result.TopProducts, x => x.VariantId == 101);
         Assert.Equal(13m, top.BaseQuantity);
         Assert.Equal(800m, top.GrossSales);
         Assert.Equal("chai", top.BaseUnitName);
 
-        var hour8 = Assert.Single(result.SalesByHour.Where(x => x.Hour == 8));
+        var hour8 = Assert.Single(result.SalesByHour, x => x.Hour == 8);
         Assert.Equal(900m, hour8.SalesAfterDiscount);
         Assert.Equal(1, hour8.SalesOrders);
 
-        var hour13 = Assert.Single(result.SalesByHour.Where(x => x.Hour == 13));
+        var hour13 = Assert.Single(result.SalesByHour, x => x.Hour == 13);
         Assert.Equal(150m, hour13.Returns);
 
         var terminals = await repository.GetTerminalOptionsAsync(1);
@@ -507,11 +507,11 @@ public sealed class SalesReportReadRepositoryTests
         Assert.Equal(150m, executive.Trend.Sum(x => x.Returns));
         Assert.Equal(100m, executive.Trend.Sum(x => x.RefundAmount));
 
-        var hour8 = Assert.Single(executive.SalesByHour.Where(x => x.Hour == 8));
+        var hour8 = Assert.Single(executive.SalesByHour, x => x.Hour == 8);
         Assert.Equal(900m, hour8.SalesAfterDiscount);
         Assert.Equal(1, hour8.SalesOrders);
 
-        var hour13 = Assert.Single(executive.SalesByHour.Where(x => x.Hour == 13));
+        var hour13 = Assert.Single(executive.SalesByHour, x => x.Hour == 13);
         Assert.Equal(150m, hour13.Returns);
 
         var topProduct = Assert.Single(executive.TopProducts);

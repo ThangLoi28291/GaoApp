@@ -165,7 +165,8 @@ public sealed class KioskService(AppDbContext db, IPOSService pos, IPOSShiftServ
                     if (string.IsNullOrWhiteSpace(command.Barcode)) throw new ValidationAppException("Vui lòng quét mã sản phẩm.");
                     await pos.AddItemByBarcodeAsync(station.OrderId!.Value, command.Barcode.Trim(), command.Quantity, ct);
                 } else await pos.AddItemAsync(station.OrderId!.Value, command.VariantId, command.UnitId, command.Quantity, ct);
-                if (await db.OrderLines.AnyAsync(x => x.StoreId == Store && x.OrderId == station.OrderId && !x.IsDeleted && !x.Variant.HasInputInvoice, ct))
+                if (await db.OrderLines.AnyAsync(x => x.StoreId == Store && x.OrderId == station.OrderId && !x.IsDeleted &&
+                    (x.Variant == null || !x.Variant.HasInputInvoice), ct))
                     throw new ValidationAppException("Sản phẩm hoặc quà tặng này chưa hỗ trợ thanh toán QR tự động. Vui lòng mua tại quầy thu ngân.");
                 if (await db.OrderLines.CountAsync(x => x.StoreId == Store && x.OrderId == station.OrderId && !x.IsDeleted && !x.IsPromotionGift, ct) > 100 ||
                     await db.OrderLines.AnyAsync(x => x.StoreId == Store && x.OrderId == station.OrderId && !x.IsDeleted && !x.IsPromotionGift && x.Quantity > 999, ct))

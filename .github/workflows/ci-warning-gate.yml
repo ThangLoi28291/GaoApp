@@ -27,7 +27,19 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+
+      - name: Verify immutable source revision
+        shell: pwsh
+        env:
+          GAOAPP_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actualSourceSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualSourceSha -ne $env:GAOAPP_EXPECTED_SOURCE_SHA) {
+            throw "Checked out source does not match the expected immutable commit."
+          }
+          Write-Host "Verified source commit: $actualSourceSha"
 
       - name: Set up .NET SDK from global.json
         uses: actions/setup-dotnet@v5

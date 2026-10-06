@@ -50,7 +50,7 @@ public sealed class StoreActivityTests
         Assert.Equal(4, people.Count);
         Assert.Equal(new[] { "Q1", "Q2", "Q3" }, people.Where(x => x.Module == "pos").Select(x => x.Terminal));
         Assert.All(people.Where(x => x.Module == "pos"), person => Assert.Equal("editing", person.State));
-        Assert.Equal("viewing", Assert.Single(people.Where(x => x.Module == "receipt")).State);
+        Assert.Equal("viewing", Assert.Single(people, x => x.Module == "receipt").State);
     }
     [Fact]
     public void Workstation_opening_time_survives_heartbeats_and_recorded_details_do_not_create_presence()

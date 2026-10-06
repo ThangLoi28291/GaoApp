@@ -22,6 +22,19 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify immutable source revision
+        shell: pwsh
+        env:
+          GAOAPP_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actualSourceSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualSourceSha -ne $env:GAOAPP_EXPECTED_SOURCE_SHA) {
+            throw "Checked out source does not match the expected immutable commit."
+          }
+          Write-Host "Verified source commit: $actualSourceSha"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

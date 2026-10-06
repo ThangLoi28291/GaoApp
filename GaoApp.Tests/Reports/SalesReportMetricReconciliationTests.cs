@@ -45,7 +45,7 @@ public sealed class SalesReportMetricReconciliationTests
         Assert.Equal(0m, result.Current.DiscountBreakdown.ReconciliationDifference);
 
         Assert.Equal(24, result.Current.SalesByHour.Count);
-        var hour8 = Assert.Single(result.Current.SalesByHour.Where(x => x.Hour == 8));
+        var hour8 = Assert.Single(result.Current.SalesByHour, x => x.Hour == 8);
         Assert.Equal("08:00", hour8.Label);
         Assert.Equal(380m, hour8.NetSales);
 

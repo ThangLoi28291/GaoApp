@@ -111,6 +111,7 @@ public sealed class AutoInvoiceRoutingMigrationTests
             x =>
                 x.PrincipalTable == "Orders" &&
                 x.Columns.SequenceEqual(["OrderId"]) &&
+                x.PrincipalColumns is not null &&
                 x.PrincipalColumns.SequenceEqual(["Id"]) &&
                 x.OnDelete == ReferentialAction.Restrict);
 
@@ -119,6 +120,7 @@ public sealed class AutoInvoiceRoutingMigrationTests
             x =>
                 x.PrincipalTable == "Stores" &&
                 x.Columns.SequenceEqual(["StoreId"]) &&
+                x.PrincipalColumns is not null &&
                 x.PrincipalColumns.SequenceEqual(["Id"]));
 
         var indexes =
@@ -307,8 +309,8 @@ public sealed class AutoInvoiceRoutingMigrationTests
         var migrations =
             db.Database.GetMigrations().ToList();
 
-        Assert.Equal(60, migrations.Count);
-        Assert.Equal("20261003110000_AddPurchaseReceiptBillLines", migrations[^1]);
+        Assert.Equal(68, migrations.Count);
+        Assert.Equal("20261006163000_ProtectDeliverySourceCarts", migrations[^1]);
         Assert.Single(
             migrations,
             x => x == MigrationId);

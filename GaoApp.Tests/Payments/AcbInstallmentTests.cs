@@ -130,7 +130,9 @@ public sealed partial class AcbPaymentTests
 
     private static async Task<POSPaymentQrService> ManualService(Fixture f)
     {
-        f.Order.Lines.Single().Variant.HasInputInvoice = false;
+        var variant = f.Order.Lines.Single().Variant;
+        Assert.NotNull(variant);
+        variant.HasInputInvoice = false;
         var bank = await f.Db.StoreBankAccounts.SingleAsync();
         bank.IsDefault = true; bank.ConfirmMode = BankQrConfirmMode.Manual; bank.QrRenderMode = BankQrRenderMode.LocalEmvQr;
         await f.Db.SaveChangesAsync();

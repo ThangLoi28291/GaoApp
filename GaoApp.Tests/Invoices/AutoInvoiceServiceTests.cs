@@ -567,10 +567,10 @@ public sealed partial class AutoInvoiceServiceTests
 
         var operation =
             Assert.Single(
-                repo.Operations.Where(
-                    x =>
-                        x.Kind ==
-                        AutoInvoiceOperationKind.Group));
+                repo.Operations,
+                x =>
+                    x.Kind ==
+                    AutoInvoiceOperationKind.Group);
 
         Assert.Equal(
             2,
@@ -721,10 +721,10 @@ public sealed partial class AutoInvoiceServiceTests
 
         var groupOperation =
             Assert.Single(
-                repo.Operations.Where(
-                    x =>
-                        x.Kind ==
-                        AutoInvoiceOperationKind.Group));
+                repo.Operations,
+                x =>
+                    x.Kind ==
+                    AutoInvoiceOperationKind.Group);
 
         Assert.Single(
             groupOperation.Sources);
@@ -801,10 +801,10 @@ public sealed partial class AutoInvoiceServiceTests
 
         var groupOperation =
             Assert.Single(
-                repo.Operations.Where(
-                    x =>
-                        x.Kind ==
-                        AutoInvoiceOperationKind.Group));
+                repo.Operations,
+                x =>
+                    x.Kind ==
+                    AutoInvoiceOperationKind.Group);
 
         Assert.Single(
             groupOperation.Sources);
@@ -816,12 +816,12 @@ public sealed partial class AutoInvoiceServiceTests
 
         var blocked =
             Assert.Single(
-                repo.Operations.Where(
-                    x =>
-                        x.Status ==
-                            AutoInvoiceOperationStatus.Blocked &&
-                        x.InvoiceHeadId ==
-                            invalid.Id));
+                repo.Operations,
+                x =>
+                    x.Status ==
+                        AutoInvoiceOperationStatus.Blocked &&
+                    x.InvoiceHeadId ==
+                        invalid.Id);
 
         Assert.Equal(
             "Invoice.UnitMissing",

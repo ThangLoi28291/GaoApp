@@ -338,7 +338,7 @@ internal sealed class LegacyPosCssContractR1
     internal void RequireKeyframes(string name)
     {
         var context = new[] { Normalize("@keyframes " + name, true) };
-        Assert.Single(groups.Where(group => group.SequenceEqual(context, StringComparer.Ordinal)));
+        Assert.Single(groups, group => group.SequenceEqual(context, StringComparer.Ordinal));
         var frames = rules.Where(rule => rule.Context.SequenceEqual(context, StringComparer.Ordinal)).ToArray();
         Assert.True(frames.SelectMany(rule => rule.Selectors).Distinct(StringComparer.Ordinal).Count() >= 2,
             $"@keyframes {name} phải có ít nhất hai mốc với declaration thật.");

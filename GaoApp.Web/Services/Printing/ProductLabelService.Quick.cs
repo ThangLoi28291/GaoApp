@@ -27,7 +27,8 @@ public sealed partial class ProductLabelService
         if (productId.HasValue) catalog = catalog.Where(x => x.ProductVariant.ProductId == productId);
         if (variantId.HasValue) catalog = catalog.Where(x => x.ProductVariantId == variantId);
         if (query.Length > 0) catalog = catalog.Where(x => x.ProductVariant.Product.Name.Contains(query) ||
-            x.ProductVariant.Product.Alias.Contains(query) || x.ProductVariant.ProductVariantName.Contains(query) ||
+            x.ProductVariant.Product.Alias.Contains(query) ||
+            (x.ProductVariant.ProductVariantName != null && x.ProductVariant.ProductVariantName.Contains(query)) ||
             x.ProductVariant.Sku.Contains(query) || x.Barcodes.Any(b => b.StoreId == StoreId && !b.IsDeleted && b.IsActive && b.Barcode == query));
         var ids = await catalog.OrderByDescending(x => x.Barcodes.Any(b => b.StoreId == StoreId && !b.IsDeleted && b.IsActive && b.Barcode == query))
             .ThenBy(x => x.ProductVariant.Product.Name).ThenBy(x => x.ProductVariantId).ThenByDescending(x => x.IsBaseUnit).ThenBy(x => x.Factor)
@@ -51,7 +52,11 @@ public sealed partial class ProductLabelService
             var barcode = x.Barcodes.Where(b => b.StoreId == StoreId).OrderByDescending(b => b.IsPrimary).ThenBy(b => b.Id).FirstOrDefault()?.Barcode ?? "";
             var price = x.Price is > 0 ? x.Price.Value : v.Price is > 0 ? v.Price.Value : v.Product.BasePrice;
             string? problem = null;
-            try { ProductLabelRenderer.EncodeBarcode("AUTO", barcode); }
+            try {
+                if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+                    throw new ValidationAppException("Máy chủ hiện tại không hỗ trợ tạo mã vạch để in tem.");
+                ProductLabelRenderer.EncodeBarcode("AUTO", barcode);
+            }
             catch (ValidationAppException e) { problem = e.Message; }
             if (price <= 0) problem = "Chưa có giá bán hợp lệ cho đơn vị này.";
             var product = new LabelProduct(v.Id, string.IsNullOrWhiteSpace(v.ProductVariantName) ? v.Product.Name : v.ProductVariantName,
