@@ -19,6 +19,7 @@ function harness(post, storage = new Map()) {
         return elements.get(id);
     }
     let reopen;
+    const history = { refresh: noop, invalidate: noop, open: async () => false };
     const state = { business: { currentDraft: { orderId: 15, grandTotal: 9000, paidTotal: 4000, balanceDue: 5000 } }, ui: {} };
     el('payMethod').value = '1'; el('payAmount').value = '5000';
     const context = { console, navigator: {onLine:true}, crypto: { randomUUID }, Option: class { constructor(text,value){this.text=text;this.value=value;} },
@@ -28,7 +29,7 @@ function harness(post, storage = new Map()) {
         window: { addEventListener: (name, action) => listeners.set(name, action),
             PosCommon: { parseMoneyInput, setMoneyInput, bindMoneyInput,
                 clearInlineError: noop, setInlineError: (_, message) => errors.push(message), refreshUiLocks: noop },
-            PosQrHistory: { create: options => { reopen = options.onOpen; return { refresh: noop, invalidate: noop }; } },
+            PosQrHistory: { create: options => { reopen = options.onOpen; return history; } },
             PosAcb: { track: qr => tracked.push(qr.id), check: id => calls.push(['check', id]) } }
     };
     vm.runInNewContext(source, context);
@@ -43,7 +44,7 @@ function harness(post, storage = new Map()) {
             openReceiptPrint: (...args) => { printed.push(args[0]); printCalls.push(args); },
             requestScreenRefresh: async () => { state.business.currentDraft.balanceDue = 3000; }
         } });
-    return { payment, el, calls, errors, printed, printCalls, tracked, reopen, state, listeners, storage, timers };
+    return { payment, el, calls, errors, printed, printCalls, tracked, reopen, history, state, listeners, storage, timers };
 }
 const qr = (id, amount) => ({ id, orderId: 15, amount, requestCode: `QR-${id}`, qrDataUrl: `saved-${id}`, bankName: 'Test', content: `Test-${id}` });
 
@@ -188,6 +189,36 @@ test('pending QR without an image displays the recovery warning and cannot displ
     await h.payment.createPaymentQr();
     assert.equal(h.el('paymentQrImage').src, undefined);
     assert.match(h.errors[0], /chưa được xử lý/);
+});
+
+test('an id-only conflict automatically loads the exact pending QR from saved history', async () => {
+    const h = harness(async () => { throw pendingConflict(null); });
+    const opened = [];
+    h.history.refresh = async () => ({ orderId: 15, latestQrId: 2,
+        items: [{ qrId: 2, canReopen: true }, { qrId: 1, canReopen: true }] });
+    h.history.open = async (id, warning) => {
+        opened.push(id); h.reopen({ ...qr(id, 2000), pendingWarningMessage: warning }); return true;
+    };
+    await h.payment.createPaymentQr();
+    assert.deepEqual(opened, [1]);
+    assert.equal(h.el('paymentQrImage').src, 'saved-1');
+    assert.equal(h.el('paymentQrPendingWarning').hidden, false);
+    assert.equal(h.calls.length, 1);
+});
+
+test('changing carts while saved QR is loading cannot leave a warning on the new order', async () => {
+    let release;
+    const h = harness(async () => { throw pendingConflict(null); });
+    h.history.refresh = async () => ({ orderId: 15, items: [{ qrId: 1, canReopen: true }] });
+    const loading = new Promise(done => { release = done; });
+    h.history.open = async () => {
+        h.state.business.currentDraft = { orderId: 16, balanceDue: 5000 };
+        await loading; return false;
+    };
+    const creating = h.payment.createPaymentQr();
+    release(); await creating;
+    assert.equal(h.el('paymentQrImage').src, undefined);
+    assert.equal(h.errors.length, 0);
 });
 
 test('bank transfer above the order total is recorded in full while card overpayment is blocked', async()=>{

@@ -159,6 +159,26 @@ public sealed class ProfitReportReadRepository(AppDbContext db,
         foreach (var batch in snapshot.LegalAllocations.Select(x => x.LegalEntityId).Distinct().ToArray().Chunk(1000))
             snapshot.LegalEntities.AddRange(await db.LegalEntities.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.StoreId == storeId && batch.Contains(x.Id)).ReadWithinBudgetAsync(budget, ct));
+        if (periods.IncludeManagement)
+        {
+            foreach (var batch in orders.Select(x => x.CustomerId).OfType<int>().Distinct().ToArray().Chunk(1000))
+                snapshot.Customers.AddRange(await db.Customers.IgnoreQueryFilters().AsNoTracking()
+                    .Where(x => x.StoreId == storeId && batch.Contains(x.Id))
+                    .Select(x => new GaoApp.Application.DTOs.Reports.ReportCustomerInfo(x.Id, x.Name, x.PriceTier)).ReadWithinBudgetAsync(budget, ct));
+            foreach (var batch in snapshot.Lines.Select(x => x.VariantId).Concat(snapshot.ReturnLines.Select(x => x.VariantId)).Distinct().ToArray().Chunk(1000))
+                snapshot.Products.AddRange(await (from v in db.ProductVariants.IgnoreQueryFilters().AsNoTracking().Where(x => x.StoreId == storeId && batch.Contains(x.Id))
+                    join p in db.Products.IgnoreQueryFilters().Where(x => x.StoreId == storeId) on v.ProductId equals p.Id into ps
+                    from p in ps.DefaultIfEmpty()
+                    join c in db.Categories.IgnoreQueryFilters().Where(x => x.StoreId == storeId) on (p == null ? 0 : p.CategoryId) equals c.Id into cs
+                    from c in cs.DefaultIfEmpty()
+                    select new GaoApp.Application.DTOs.Reports.ReportProductInfo(v.Id, v.ProductVariantName ?? (p == null ? "Sản phẩm không còn trong danh mục" : p.Name), v.Sku,
+                        c == null ? 0 : c.Id, c == null ? "Chưa phân nhóm" : c.Name)).ReadWithinBudgetAsync(budget, ct));
+            var localFrom = periods.Comparison?.Period.FromDate ?? periods.Current.Period.FromDate;
+            var localTo = periods.Current.Period.ToDate;
+            snapshot.OperatingExpenses = await db.OperatingExpenses.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.StoreId == storeId && !x.IsDeleted && x.RecognitionFrom <= localTo && x.RecognitionTo >= localFrom)
+                .ReadWithinBudgetAsync(budget, ct);
+        }
         return snapshot;
     }
 }

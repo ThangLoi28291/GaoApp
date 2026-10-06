@@ -8,6 +8,7 @@ public static class PermissionDisplayNames
 
     public static string Group(string? group) => (group ?? "").ToLowerInvariant() switch
     {
+        "delivery" => "Giao hàng",
         "admin" => "Tổng quan", "catalog" => "Danh mục & sản phẩm", "customers" => "Chăm sóc khách hàng",
         "inventory" => "Kho hàng", "pos" => "Bán hàng & thu ngân", "purchase" => "Mua & nhập hàng",
         "reports" => "Báo cáo", "security" => "Nhân sự & phân quyền", "system" => "Cấu hình hệ thống",
@@ -16,7 +17,9 @@ public static class PermissionDisplayNames
 
     public static string Feature(string module, string entity) => (module + "." + entity).ToLowerInvariant() switch
     {
+        "delivery.order" => "Đơn giao hàng",
         "admin.dashboard" => "Tổng quan cửa hàng",
+        "admin.storemonitor" => "Giám sát trực tiếp",
         "catalog.category" => "Danh mục sản phẩm", "catalog.brand" => "Thương hiệu", "catalog.unit" => "Đơn vị tính",
         "catalog.product" => "Sản phẩm", "catalog.productvariant" => "Biến thể sản phẩm",
         "catalog.productattribute" => "Thuộc tính sản phẩm", "catalog.attributevalue" => "Giá trị thuộc tính",
@@ -32,6 +35,7 @@ public static class PermissionDisplayNames
         "report.sales" => "Báo cáo bán hàng", "report.profit" => "Báo cáo lợi nhuận", "report.inventory" => "Báo cáo tồn kho",
         "report.purchase" => "Báo cáo mua hàng", "report.receivable" => "Công nợ phải thu", "report.payable" => "Công nợ phải trả",
         "report.shift" => "Báo cáo ca thu ngân",
+        "report.expenses" => "Chi phí vận hành", "report.treasury" => "Thu chi & đối soát",
         "security.user" => "Tài khoản người dùng", "security.role" => "Vai trò nhân viên",
         "security.permission" => "Danh sách quyền", "security.userinstore" => "Nhân viên trong cửa hàng",
         "system.store" => "Cửa hàng", "system.legalentity" => "Hộ kinh doanh", "system.setting" => "Thiết lập chung",

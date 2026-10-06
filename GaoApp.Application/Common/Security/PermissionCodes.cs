@@ -10,6 +10,27 @@ namespace GaoApp.Application.Common.Security;
 /// </summary>
 public static class PermissionCodes
 {
+    public static class Delivery
+    {
+        public const string View = "delivery.order.view";
+        public const string Create = "delivery.order.create";
+        public const string Pick = "delivery.order.pick";
+        public const string ApproveChanges = "delivery.order.approve-changes";
+        public const string Handover = "delivery.order.handover";
+        public const string RecordDeparture = "delivery.order.depart";
+        public const string ReportOwnOutcome = "delivery.order.report-own";
+        public const string ReportOnBehalf = "delivery.order.report-proxy";
+        public const string ReceiveReturns = "delivery.order.receive-returns";
+        public const string ReconcileCash = "delivery.order.reconcile-cash";
+        public const string ConfirmBankTransfer = "delivery.order.confirm-bank";
+        public const string Finalize = "delivery.order.finalize";
+        public const string Credit = "delivery.order.credit";
+        public const string Cancel = "delivery.order.cancel";
+        public const string ApproveExceptions = "delivery.order.approve-exceptions";
+        public const string ResolveShortage = "delivery.order.resolve-shortage";
+        public const string ReassignCourier = "delivery.order.reassign-courier";
+    }
+
     public static class CustomerDeposit
     {
         public const string View = "customer.deposit.view";
@@ -27,6 +48,7 @@ public static class PermissionCodes
     public static class Admin
     {
         public const string DashboardView = "admin.dashboard.view";
+        public const string StoreMonitorView = "admin.storemonitor.view";
     }
 
     public static class Catalog
@@ -367,6 +389,15 @@ public static class PermissionCodes
 
     public static class Report
     {
+        public static class Treasury
+        {
+            public const string Manage = "report.treasury.manage";
+        }
+        public static class Expenses
+        {
+            public const string Manage = "report.expenses.manage";
+            public const string Confirm = "report.expenses.confirm";
+        }
         public static class Sales
         {
             public const string View = "report.sales.view";

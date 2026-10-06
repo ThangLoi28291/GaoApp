@@ -2270,6 +2270,7 @@ ICustomerDepositService? deposits = null)
             order.PaymentStatus = order.BalanceDue <= 0 ? PaymentStatus.Paid : (order.PaidTotal > 0 ? PaymentStatus.PartiallyPaid : PaymentStatus.Unpaid);
             if (_receivables != null) await _receivables.PostSaleAsync(order, ct);
             order.CompletedAtUtc = DateTime.UtcNow;
+            order.CustomerPriceTierSnapshot = ResolveOrderPriceTier(order);
 
             // Đánh dấu voucher đã dùng khi đơn chốt thành công
             MarkRewardVouchersAsUsed(order);

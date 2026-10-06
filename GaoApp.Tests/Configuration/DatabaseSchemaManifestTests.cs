@@ -496,7 +496,15 @@ public sealed class DatabaseSchemaManifestTests
                 "20261001115308_AddInputInvoiceLibrary",
                 "20261001121734_PreserveInputInvoiceLibrarySource",
                 "20261002233000_AddPurchaseReceiptPricingPlans",
-                "20261003110000_AddPurchaseReceiptBillLines");
+                "20261003110000_AddPurchaseReceiptBillLines",
+                "20261003193000_AllowPurchaseReceiptFixedAmountDiscount",
+                "20261004055012_AddPOSPaymentAdjustmentRequests",
+                "20261004103622_AddDepositPaymentAdjustments",
+                "20261004122812_AddPendingSalesReturnRestock",
+                "20261005072402_AddManagementReportsAndOperatingExpenses",
+                "20261005101953_AddOperationsReportsAndTreasury",
+                "20261006153000_AddDeliveryFoundation",
+                "20261006163000_ProtectDeliverySourceCarts");
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(

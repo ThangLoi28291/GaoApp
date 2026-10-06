@@ -57,6 +57,21 @@ test('choosing an earlier active QR opens that exact attempt, not the latest one
     assert.equal(h.opened[0].amount, 4000);
 });
 
+test('automatic reopening uses the pending id and carries its warning into the QR popup', async () => {
+    const calls = [];
+    const h = harness(async (url, options) => {
+        calls.push([url, options.method]);
+        return response(url.endsWith('/qrs')
+            ? { orderId: 15, latestQrId: 6, items: [item(6), item(4)] } : saved(4));
+    });
+    const data = await h.history.refresh();
+    assert.equal(data.orderId, 15);
+    assert.equal(await h.history.open(4, 'Xác nhận hoặc hủy QR trước.'), true);
+    assert.equal(h.opened[0].id, 4);
+    assert.equal(h.opened[0].pendingWarningMessage, 'Xác nhận hoặc hủy QR trước.');
+    assert.deepEqual(calls, [['/admin/acb/payments/orders/15/qrs', 'GET'], ['/admin/acb/payments/orders/15/qrs/4', 'GET']]);
+});
+
 test('reload restores the history without creating a QR or requiring an amount entry', async () => {
     let reads = 0;
     const fetch = async url => {

@@ -13,6 +13,10 @@
     const layoutName = key => layouts.find(x => x.dataset.layout === key)?.dataset.layoutName || 'Cân đối';
     let templates = [], printers = [], tasks = [], task = null, editingTemplate = null, editingPrinter = null;
     let receiptEditor = null;
+    const taskActivityTickets = new Map();
+    const showActivityTask = id => window.dispatchEvent(new CustomEvent('gao:store-activity-ticket', {
+        detail: id ? taskActivityTickets.get(id) || document.body.dataset.storeActivityTicket : document.body.dataset.storeActivityTicket
+    }));
     let templateDirty = false, previewUrl = null, previewSequence = 0, dialogAction = null;
     const statuses = ['Chờ server in', 'Đang gửi máy in', 'Chờ xác nhận tem', 'Cần xử lý', 'Đã xác nhận', 'Đã hủy', 'Đã gửi in'];
     function notice(message, error = false) { $('labelMessage').textContent = message; $('labelMessage').classList.toggle('error', error); $('labelMessage').hidden = false; }
@@ -25,6 +29,9 @@
             const error = new Error(data.message || data.detail || Object.values(data.errors || {}).flat().join(' ') || `Không thực hiện được (${response.status}).`);
             error.status = response.status; throw error;
         }
+        const activityTicket = response.headers.get('X-Gao-Activity-Ticket');
+        const activityTaskId = /^tasks\/(\d+)$/.exec(path)?.[1];
+        if (activityTicket && activityTaskId) taskActivityTickets.set(Number(activityTaskId), activityTicket);
         return binary ? response.blob() : response.status === 204 ? null : response.text().then(t => t ? JSON.parse(t) : null);
     }
     function bind(id, action) {
@@ -38,6 +45,7 @@
         if (![...root.querySelectorAll('[data-panel]')].some(x => x.dataset.panel === name)) return;
         root.querySelectorAll('[data-panel]').forEach(x => x.hidden = x.dataset.panel !== name);
         root.querySelectorAll('[data-tab]').forEach(x => { x.classList.toggle('active', x.dataset.tab === name); x.setAttribute('aria-current', x.dataset.tab === name ? 'page' : 'false'); });
+        showActivityTask(name === 'tasks' ? task?.id : null);
         if (name === 'history') loadHistory().catch(e => notice(e.message, true));
     }
     root.querySelectorAll('[data-tab]').forEach(x => x.addEventListener('click', () => tab(x.dataset.tab)));
@@ -214,6 +222,7 @@
     async function loadTask(id) {
         if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
         task = await api('tasks/' + id); renderTask(); history.replaceState(null, '', '?task=' + id);
+        if (root.querySelector('[data-panel="tasks"]')?.hidden === false) showActivityTask(task.id);
     }
     bind('refreshSource', () => {
         if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
@@ -225,6 +234,7 @@
     bind('closeTask', () => {
         if (receiptEditor?.locked) throw new Error('Chờ kết quả hoặc thử lại lệnh in trước.');
         receiptEditor?.dispose(); receiptEditor = null; task = null; $('labelTaskDetail').hidden = true;
+        showActivityTask(null);
     });
 
     function dialog(title, content, action, accept = 'Xác nhận') {

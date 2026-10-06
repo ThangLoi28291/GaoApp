@@ -164,6 +164,10 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 ApplyDropIndex(dropIndex, tables, defaultSchema);
                 break;
 
+            case AddUniqueConstraintOperation addUnique:
+                ApplyAddUniqueConstraint(addUnique, tables, defaultSchema);
+                break;
+
             case AddColumnOperation addColumn:
                 ApplyAddColumn(addColumn, tables, defaultSchema);
                 break;
@@ -233,6 +237,15 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
         string defaultSchema)
     {
+        if (DeliverySchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var deliveryTrigger))
+        {
+            var deliveryIdentity = new DatabaseObjectIdentity("dbo", deliveryTrigger.Table);
+            if (!tables.TryGetValue(deliveryIdentity, out var deliveryTable)
+                || deliveryTable.Triggers.Any(x => x.Name == deliveryTrigger.Trigger.Name))
+                throw new InvalidOperationException("Delivery trigger references a missing table or duplicate trigger.");
+            deliveryTable.Triggers.Add(deliveryTrigger.Trigger);
+            return true;
+        }
         // This immutable migration contains DDL: accepting it as data-only SQL
         // would omit the index from both current and migration-prefix manifests.
         if (!string.Equals(migrationId, InventoryLedgerTimelineMigrationId,
@@ -607,6 +620,23 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         tables.Add(identity, table);
     }
 
+    private static void ApplyAddUniqueConstraint(
+        AddUniqueConstraintOperation operation,
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables,
+        string defaultSchema)
+    {
+        var identity = new DatabaseObjectIdentity(operation.Schema ?? defaultSchema, operation.Table);
+        var name = DatabaseSchemaNormalization.NormalizeIdentifier(operation.Name);
+        if (!tables.TryGetValue(identity, out var table)
+            || table.Indexes.Any(x => x.Name == name))
+            throw new InvalidOperationException("Migration unique constraint references a missing table or duplicate constraint.");
+        table.Indexes.Add(new DatabaseIndexSchema(name,
+            NormalizeIdentifiers(operation.Columns).Select(x => new DatabaseIndexColumnSchema(x, false)).ToArray(),
+            [], IsUnique: true, IsUniqueConstraint: true,
+            IsClustered: GetBooleanAnnotation(operation, SqlServerClustered, defaultValue: false),
+            IsDisabled: false, Filter: null));
+    }
+
     private static void ApplyCreateIndex(
         CreateIndexOperation operation,
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
@@ -853,6 +883,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         public List<DatabaseIndexSchema> Indexes { get; } = [];
         public List<DatabaseCheckConstraintSchema> CheckConstraints { get; } =
             [];
+        public List<DatabaseTriggerSchema> Triggers { get; } = [];
 
         public DatabaseTableSchema ToSchema()
             => new(
@@ -874,7 +905,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                     .OrderBy(
                         check => check.Name,
                         StringComparer.Ordinal)
-                    .ToArray());
+                    .ToArray()) { Triggers = Triggers.OrderBy(x => x.Name, StringComparer.Ordinal).ToArray() };
     }
 
     private readonly record struct StoreTypeFacets(

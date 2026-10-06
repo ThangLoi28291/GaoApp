@@ -146,6 +146,9 @@ public static class DependencyInjection
         // nên phần này bắt buộc phải được đăng ký ở Infrastructure.
         // =========================================================
         services.AddScoped<TenantContext>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryFoundationService,
+            GaoApp.Infrastructure.Services.Delivery.DeliveryFoundationService>();
+        services.AddScoped<GaoApp.Infrastructure.Services.Delivery.DeliveryOutboxProcessor>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess,
             GaoApp.Infrastructure.Security.StoreAdminAccess>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
@@ -241,6 +244,9 @@ public static class DependencyInjection
         services.AddSingleton(sp => sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GaoApp.Application.Common.Options.ProfitReportLimits>>().Value);
         services.AddSingleton<GaoApp.Application.Services.Reports.ProfitReportExecutionGate>();
         services.AddScoped<IProfitReportReadRepository, ProfitReportReadRepository>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Reports.IOperatingExpenseService, GaoApp.Infrastructure.Services.Reports.OperatingExpenseService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Reports.IOperationsReportService, GaoApp.Infrastructure.Services.Reports.OperationsReportService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Reports.ITreasuryService, GaoApp.Infrastructure.Services.Reports.TreasuryService>();
 
         services.AddScoped<IPOSPaymentQrRequestRepository, POSPaymentQrRequestRepository>();
         services.AddScoped<IDisplayPromotionRepository, DisplayPromotionRepository>();

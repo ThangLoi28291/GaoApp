@@ -1,0 +1,92 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService ReportAuthorization
+@{
+    var section = ViewData["ReportView"]?.ToString() ?? "overview";
+    var canManage = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Expenses.Manage)).Succeeded;
+    var canConfirm = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Expenses.Confirm)).Succeeded;
+    var canTreasury = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Treasury.Manage)).Succeeded;
+    var canSales = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Sales.View)).Succeeded;
+    var canExport = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.Export)).Succeeded;
+}
+<div class="mr-workspace" data-management-report data-section="@(section)" data-url="/admin/reports/management/data"
+     data-can-manage="@canManage.ToString().ToLowerInvariant()" data-can-confirm="@canConfirm.ToString().ToLowerInvariant()"
+     data-can-export="@canExport.ToString().ToLowerInvariant()" data-can-treasury="@canTreasury.ToString().ToLowerInvariant()" aria-busy="true">
+    @Html.AntiForgeryToken()
+    <header class="mr-heading">
+        <div><p class="mr-eyebrow">BÁO CÁO QUẢN TRỊ</p><h1>@(section == "overview" ? "Tổng quan kinh doanh" : ViewData["Title"])</h1>
+            <p>Doanh thu, lợi nhuận và chi phí trong cùng một góc nhìn.</p></div>
+        <div class="mr-actions">
+            <button type="button" class="mr-button mr-menu-button layout-menu-toggle" data-report-menu aria-controls="layout-menu" aria-label="Mở menu điều hướng"><i class="bx bx-menu" aria-hidden="true"></i>Menu</button>
+            @if (canManage) { <button type="button" class="mr-button mr-primary" data-expense-new><i class="bx bx-plus" aria-hidden="true"></i>Nhập chi phí</button> }
+            <button type="button" class="mr-button" data-report-refresh><i class="bx bx-refresh" aria-hidden="true"></i>Làm mới</button>
+        </div>
+    </header>
+    <nav class="mr-nav" aria-label="Các báo cáo">
+        @if (canSales) { <a href="/admin/reports/overview" data-report-nav="overview">Tổng quan</a> }
+        <a href="/admin/reports/profit" data-report-nav="profit">Kết quả kinh doanh</a>
+        <a href="/admin/reports/products" data-report-nav="products">Sản phẩm</a>
+        <a href="/admin/reports/categories" data-report-nav="categories">Nhóm sản phẩm</a>
+        <a href="/admin/reports/groups" data-report-nav="groups">Sỉ & lẻ</a>
+        <a href="/admin/reports/customers" data-report-nav="customers">Khách hàng</a>
+        <a href="/admin/reports/expenses" data-report-nav="expenses">Chi phí vận hành</a>
+        <a href="/admin/reports/cashflow" data-report-nav="cashflow">Thu chi & dòng tiền</a>
+        <a href="/admin/reports/inventory" data-report-nav="inventory">Tồn kho</a>
+        <a href="/admin/reports/debts" data-report-nav="debts">Công nợ</a>
+    </nav>
+    <form class="mr-filters" data-report-filters aria-label="Kỳ báo cáo">
+        <label>Kỳ nhanh<select name="preset"><option value="month">Tháng này</option><option value="last-month">Tháng trước</option><option value="today">Hôm nay</option><option value="week">7 ngày gần đây</option><option value="custom">Tùy chọn</option></select></label>
+        <label>Từ ngày<input type="date" name="fromDate" required /></label>
+        <label>Đến ngày<input type="date" name="toDate" required /></label>
+        <label>So sánh<select name="compare"><option value="previous">Kỳ trước cùng độ dài</option><option value="none">Không so sánh</option></select></label>
+        <label>Quầy bán<select name="terminalId"><option value="">Tất cả quầy</option></select></label>
+        <label>Đơn hàng<select name="customerState"><option value="all">Tất cả</option><option value="linked">Có khách hàng</option><option value="guest">Khách vãng lai</option></select></label>
+        <button type="submit" class="mr-button mr-primary">Áp dụng</button>
+    </form>
+    <p class="mr-context" data-report-context></p>
+    <div class="mr-live" data-report-live role="status" aria-live="polite">Đang tải báo cáo…</div>
+    <div class="mr-error" data-report-error role="alert" hidden><span></span><button type="button" class="mr-button" data-report-retry>Thử lại</button></div>
+    <div data-report-results data-profit-results hidden>
+        <div class="mr-quality" data-report-quality></div>
+        <section class="mr-kpis" data-report-kpis aria-label="Các chỉ số kinh doanh"></section>
+        <div data-report-panels></div>
+    </div>
+    <details class="mr-help"><summary>Cách đọc báo cáo</summary>
+        <p>Doanh thu thuần đã trừ giảm giá và giá trị hàng trả. Tiền hoàn cho khách không bị trừ thêm lần nữa.</p>
+        <p>Lợi nhuận gộp = doanh thu thuần − giá vốn. Lợi nhuận sau chi phí ghi nhận = lợi nhuận gộp − chi phí vận hành đã xác nhận; chưa phải số thuế hay kết quả khóa sổ.</p>
+        <p>Giá vốn dùng lịch sử định giá của dòng bán gốc. Dữ liệu còn tạm tính hoặc chưa xác định được luôn có trạng thái riêng.</p>
+        <p>Chi phí chia đều theo ngày trong kỳ ghi nhận, giữ đủ số tiền đến đồng cuối cùng. Nháp và khoản đã hủy không được tính vào lợi nhuận.</p>
+        <p>Chi phí tính theo kỳ ghi nhận. Thanh toán qua sổ thu chi có ngày và quỹ để theo dõi dòng tiền. Khoản cũ chỉ đánh dấu đã thanh toán cần bổ sung chứng từ tại màn hình Thu chi.</p>
+        <p>Chi phí vận hành thuộc toàn cửa hàng. Khi lọc quầy hoặc loại đơn, chỉ hiển thị lợi nhuận gộp; không tự phân bổ chi phí chung cho sản phẩm hay khách hàng.</p>
+        <p>Giảm giá cấp đơn phân bổ theo tỷ trọng tiền dòng hàng. Loại khách được chụp lúc chốt đơn mới; đơn cũ dùng loại khách hiện tại và có nhãn cảnh báo.</p>
+    </details>
+    <dialog class="mr-dialog" data-expense-dialog aria-labelledby="mr-expense-title">
+        <form data-expense-form>
+            <div class="mr-dialog-heading"><h2 id="mr-expense-title">Nhập chi phí vận hành</h2><button type="button" class="mr-button" data-expense-close aria-label="Đóng">×</button></div>
+            <p class="mr-caption">Lưu nháp để kiểm tra. Chỉ khoản đã ghi nhận được tính vào báo cáo.</p>
+            <input type="hidden" name="id" /><input type="hidden" name="rowVersion" /><input type="hidden" name="clientRequestId" />
+            <div class="mr-form-grid">
+                <label class="mr-span">Tên khoản chi<input name="name" maxlength="200" required placeholder="Ví dụ: Tiền thuê cửa hàng tháng 10" /></label>
+                <label>Số tiền (VND)<input name="amount" type="number" min="0.01" max="1000000000000" step="0.01" inputmode="decimal" required /></label>
+                <label>Nhóm chi phí<select name="category"><option value="rent">Mặt bằng</option><option value="salary">Lương & nhân sự</option><option value="utilities">Điện, nước & dịch vụ</option><option value="transport">Vận chuyển</option><option value="marketing">Marketing</option><option value="other">Vật tư & chi phí khác</option></select></label>
+                <label>Ghi nhận từ ngày<input name="recognitionFrom" type="date" required /></label>
+                <label>Đến ngày<input name="recognitionTo" type="date" required /></label>
+                <label>Thanh toán<select name="isPaid"><option value="false">Chưa thanh toán</option><option value="true">Đã thanh toán</option></select></label>
+                <label>Phương thức<select name="paymentMethod"><option value="cash">Tiền mặt</option><option value="bank">Chuyển khoản</option><option value="other">Khác</option></select></label>
+                <label class="mr-span">Mã / tham chiếu chứng từ<input name="receiptReference" maxlength="200" /></label>
+                <label class="mr-span">Ghi chú<textarea name="note" maxlength="1000" rows="2"></textarea></label>
+            </div>
+            <p class="mr-error" data-expense-error role="alert" hidden></p>
+            <div class="mr-dialog-actions"><button type="button" class="mr-button" data-expense-close>Đóng</button><button type="submit" class="mr-button mr-primary" data-expense-save>Lưu nháp</button></div>
+        </form>
+    </dialog>
+    <dialog class="mr-dialog mr-dialog-small" data-expense-action-dialog aria-labelledby="mr-action-title">
+        <form data-expense-action-form>
+            <div class="mr-dialog-heading"><h2 id="mr-action-title">Ghi nhận khoản chi</h2><button type="button" class="mr-button" data-action-close aria-label="Đóng">×</button></div>
+            <p data-expense-action-description></p>
+            <label data-void-reason hidden>Lý do hủy<textarea name="reason" maxlength="500" rows="3"></textarea></label>
+            <p class="mr-error" data-expense-action-error role="alert" hidden></p>
+            <div class="mr-dialog-actions"><button type="button" class="mr-button" data-action-close>Đóng</button><button type="submit" class="mr-button mr-primary" data-action-submit>Ghi nhận</button></div>
+        </form>
+    </dialog>
+</div>

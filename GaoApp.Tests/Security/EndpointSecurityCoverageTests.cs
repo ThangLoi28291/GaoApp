@@ -16,6 +16,8 @@ public sealed class EndpointSecurityCoverageTests
         // Keep action names explicit so adding an unprotected action fails this audit.
         var resourceChecks = new HashSet<string>(StringComparer.Ordinal)
         {
+            // Presence requires a protected page ticket bound to actor/store/module and a fresh module permission.
+            "StoreActivity.Presence",
             // Store-admin/runtime authorization is enforced by StoreAdminOnly and/or
 // the application service; stock-document completion selects the approve
 // policy dynamically from the receipt source.

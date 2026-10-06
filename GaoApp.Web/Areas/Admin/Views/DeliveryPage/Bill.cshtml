@@ -1,0 +1,18 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.Delivery.DeliveryBillViewModel
+@using System.Globalization
+@{ Layout = null; var d = Model.Delivery; var vi = CultureInfo.GetCultureInfo("vi-VN"); string Money(decimal v) => v.ToString("N0", vi); var no = 0; }
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="referrer" content="no-referrer" /><title>Phiếu giao @d.Code</title><link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" /></head>
+<body class="delivery-bill-body">
+    <nav class="delivery-print-toolbar"><span>Phiếu giao A5 · 148 × 210 mm</span><button id="deliveryPrint" type="button">In phiếu A5</button><a href="@Model.LookupUrl">Xem hồ sơ đơn</a></nav>
+    <main class="delivery-sheet">
+        <header class="delivery-bill-header"><div><strong>@Model.StoreName</strong><h1>PHIẾU GIAO HÀNG</h1><p>@d.Code · Bản @d.Revision</p></div><span class="delivery-badge">@(d.State == "Created" ? "CHỜ SOẠN · CHƯA THU TIỀN" : d.State)</span></header>
+        <div class="delivery-bill-meta"><span>@d.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</span><span>Quầy: @Model.TerminalName · Nhân viên: @Model.EmployeeName</span><span>Kho nguồn: @Model.WarehouseName · Giỏ: #@d.SourceCartId</span></div>
+        <section class="delivery-recipient"><strong>@d.RecipientName</strong><span>Điện thoại: @d.RecipientPhone</span><span>Giao đến: @d.RecipientAddress</span>@if (!string.IsNullOrWhiteSpace(d.Note)) { <span>Ghi chú: @d.Note</span> }</section>
+        <table class="delivery-lines delivery-bill-lines"><thead><tr class="delivery-bill-ident"><th colspan="5">Phiếu giao @d.Code · Bản @d.Revision</th></tr><tr><th>#</th><th>Hàng / ĐVT</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>
+        @foreach (var line in d.Lines) { <tr><td>@(++no)</td><td>@line.ItemName <small>@line.UnitName</small></td><td>@line.OrderedQuantity.ToString("0.###", vi)</td><td>@Money(line.UnitPrice)</td><td>@Money(line.Net)</td></tr> }
+        </tbody></table>
+        <section class="delivery-bill-summary"><div class="delivery-bill-total"><span>Giá trị dự kiến</span><strong>@Money(d.QuotedTotal) đ</strong></div><p class="delivery-payment-note">Thanh toán theo lượng thực giao. Giá trị trên phiếu chưa phải số tiền đã thu.</p>
+        <footer class="delivery-bill-footer"><img id="deliveryQr" src="@Model.QrDataUrl" alt="QR tra hồ sơ đơn giao @d.Code" /><div><strong>Quét QR để tra đơn</strong><p>Dùng cho soạn và giao hàng.<br />Có thể nhập mã đơn khi không quét được.</p><b>@d.Code</b></div></footer>
+        </section>
+    </main><script src="~/Admin/js/delivery.bill.js" asp-append-version="true"></script>
+</body></html>

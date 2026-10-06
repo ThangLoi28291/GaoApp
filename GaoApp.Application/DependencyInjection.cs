@@ -114,6 +114,7 @@ public static class DependencyInjection
         services.AddSingleton<SalesReportingPeriodPolicy>();
         services.AddScoped<ISalesReportReadService, SalesReportReadService>();
         services.AddScoped<IProfitReportReadService, ProfitReportReadService>();
+        services.AddScoped<IManagementReportService, ManagementReportService>();
         services.AddSingleton<ProfitReportAggregationPolicy>();
 
         services.AddScoped<IWarehouseService, WarehouseService>();

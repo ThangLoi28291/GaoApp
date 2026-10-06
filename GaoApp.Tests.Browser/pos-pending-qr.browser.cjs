@@ -14,7 +14,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
     try {
         const page = await browser.newPage({ viewport: { width: 1366, height: 900 }, reducedMotion: 'reduce' });
         const errors = []; page.on('pageerror', error => errors.push(error.message));
-        const qrs = []; let pending = null, paidTotal = 0, createAttempts = 0, confirmCalls = 0, cancelCalls = 0;
+        const qrs = []; let pending = null, paidTotal = 0, createAttempts = 0, confirmCalls = 0, cancelCalls = 0, includeSavedQr = true;
         const saved = qr => ({ qr, status: qr.status === 4 ? 'Cancelled' : qr.status === 5 ? 'ManualConfirmed' : 'Pending',
             canCancel: qr.status === 0, readOnly: qr.status !== 0, message: 'QR đã lưu.' });
         await page.route('https://gao-qr.test/**', async route => {
@@ -27,7 +27,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
                 const input = request.postDataJSON();
                 if (pending) { status = 409; body = { errorCode: 'POS_QR_PENDING', errorType: 'business',
                     message: `QR ${pending.requestCode} của đơn này chưa được xử lý. Xác nhận đã nhận tiền hoặc hủy QR trước khi tạo QR mới.`,
-                    metadata: { orderId: 15, qrId: pending.id, savedQr: saved(pending) } }; }
+                    metadata: { orderId: 15, qrId: pending.id, savedQr: includeSavedQr ? saved(pending) : null } }; }
                 else {
                     pending = { id: qrs.length + 1, orderId: 15, bankAccountId: 1, amount: input.amount,
                         requestCode: `QR-${qrs.length + 1}`, status: 0, content: 'TEST PAYMENT', bankName: 'Ngân hàng thử nghiệm',
@@ -75,7 +75,8 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         });
         const readyQr = async () => {
             await page.locator('#paymentQrModal').waitFor({ state: 'visible' });
-            await page.waitForFunction(() => bootstrap.Modal.getInstance(document.getElementById('paymentQrModal'))?._isTransitioning === false);
+            await page.waitForFunction(() => document.getElementById('paymentQrModal').classList.contains('show') &&
+                bootstrap.Modal.getInstance(document.getElementById('paymentQrModal'))?._isTransitioning === false, null, { timeout: 5000 });
         };
         await page.locator('#paymentModal').waitFor({ state: 'visible' });
         await page.locator('[data-pay-method-value="1"]').click();
@@ -112,14 +113,27 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         await page.locator('#btnCreatePaymentQr').click();
         await readyQr();
         assert.equal(qrs.length, 3); assert.equal(cancelCalls, 1);
+        // Reproduces a quick retry while the old popup is still animating closed.
+        await page.addStyleTag({ content: '#paymentQrModal.fade { transition: opacity .3s linear !important; }' });
+        await page.evaluate(async () => {
+            bootstrap.Modal.getInstance(document.getElementById('paymentQrModal')).hide();
+            await payment.createPaymentQr();
+        });
+        await readyQr();
+        await page.locator('#paymentQrPendingWarning').waitFor({ state: 'visible' });
+        assert.equal(qrs.length, 3, 'Quick retry reopens the pending QR without creating another one');
+        includeSavedQr = false;
         await page.keyboard.press('Escape');
         await page.locator('#paymentQrModal').waitFor({ state: 'hidden' });
         await page.locator('#btnCreatePaymentQr').click();
+        await readyQr();
         await page.locator('#paymentQrPendingWarning').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('#paymentQrRequestCode').innerText(), 'Mã QR: QR-3');
+        assert.equal(qrs.length, 3, 'Id-only conflict automatically reopens the saved pending QR');
         await page.setViewportSize({ width: 390, height: 844 });
         await page.screenshot({ path: path.join(output,'pending-warning-mobile.png'), animations: 'disabled' });
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         assert.deepEqual(errors, []);
-        console.log('PASS: repeated creation reopens one saved QR; confirmation and cancellation release creation; desktop/mobile warnings visible.');
+        console.log('PASS: repeated creation and quick retries automatically reopen the pending QR; id-only conflicts restore its saved image; confirmation and cancellation release creation.');
     } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

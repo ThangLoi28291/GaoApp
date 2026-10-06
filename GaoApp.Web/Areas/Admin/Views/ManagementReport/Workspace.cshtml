@@ -1,0 +1,15 @@
+@{
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/vendor/libs/apex-charts/apex-charts.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports/management-report.css" asp-append-version="true" />
+}
+@await Html.PartialAsync("~/Areas/Admin/Views/Shared/_ManagementReportWorkspace.cshtml")
+@section VendorScripts {
+    <script src="~/vendor/libs/apex-charts/apexcharts.js" asp-append-version="true"></script>
+}
+@section PageScripts {
+    <script src="~/Admin/js/reports/management-report.page.js" asp-append-version="true"></script>
+}

@@ -17,7 +17,18 @@ public sealed record DatabaseTableSchema(
     DatabasePrimaryKeySchema? PrimaryKey,
     IReadOnlyList<DatabaseForeignKeySchema> ForeignKeys,
     IReadOnlyList<DatabaseIndexSchema> Indexes,
-    IReadOnlyList<DatabaseCheckConstraintSchema> CheckConstraints);
+    IReadOnlyList<DatabaseCheckConstraintSchema> CheckConstraints)
+{
+    public IReadOnlyList<DatabaseTriggerSchema> Triggers { get; init; } = [];
+}
+
+public sealed record DatabaseTriggerSchema(
+    string Name,
+    string Definition,
+    bool IsDisabled,
+    bool IsNotForReplication,
+    bool UsesAnsiNulls,
+    bool UsesQuotedIdentifier);
 
 public sealed record DatabaseColumnSchema(
     string Name,
@@ -82,7 +93,8 @@ public sealed record DatabaseSchemaMismatchCounts(
     int ForeignKeys,
     int Indexes,
     int CheckConstraints,
-    int Sequences)
+    int Sequences,
+    int Triggers = 0)
 {
     public int Total =>
         Tables
@@ -91,7 +103,8 @@ public sealed record DatabaseSchemaMismatchCounts(
         + ForeignKeys
         + Indexes
         + CheckConstraints
-        + Sequences;
+        + Sequences
+        + Triggers;
 }
 
 public sealed record DatabaseSchemaComparisonResult(
@@ -148,7 +161,10 @@ public static class DatabaseSchemaComparer
                 actualCategories.CheckConstraints),
             SymmetricDifferenceCount(
                 expectedCategories.Sequences,
-                actualCategories.Sequences));
+                actualCategories.Sequences),
+            SymmetricDifferenceCount(
+                expectedCategories.Triggers,
+                actualCategories.Triggers));
 
         return new DatabaseSchemaComparisonResult(
             expected.Fingerprint,
@@ -214,6 +230,7 @@ public static class DatabaseSchemaCanonicalizer
         var indexes = new HashSet<string>(StringComparer.Ordinal);
         var checks = new HashSet<string>(StringComparer.Ordinal);
         var sequences = new HashSet<string>(StringComparer.Ordinal);
+        var triggers = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var table in manifest.Tables)
         {
@@ -296,6 +313,13 @@ public static class DatabaseSchemaCanonicalizer
                     Bool(check.IsDisabled),
                     Bool(check.IsNotTrusted)));
             }
+            foreach (var trigger in table.Triggers)
+            {
+                triggers.Add(string.Join("|", "trigger", tableId,
+                    trigger.Name, trigger.Definition, Bool(trigger.IsDisabled),
+                    Bool(trigger.IsNotForReplication), Bool(trigger.UsesAnsiNulls),
+                    Bool(trigger.UsesQuotedIdentifier)));
+            }
         }
 
         foreach (var sequence in manifest.Sequences)
@@ -319,7 +343,7 @@ public static class DatabaseSchemaCanonicalizer
             foreignKeys,
             indexes,
             checks,
-            sequences);
+            sequences) { Triggers = triggers };
     }
 
     private static string Identity(DatabaseObjectIdentity identity)
@@ -341,6 +365,8 @@ public sealed record DatabaseSchemaCategoryRecords(
     IReadOnlySet<string> CheckConstraints,
     IReadOnlySet<string> Sequences)
 {
+    public IReadOnlySet<string> Triggers { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
     public IEnumerable<string> All =>
         Tables
             .Concat(Columns)
@@ -348,7 +374,8 @@ public sealed record DatabaseSchemaCategoryRecords(
             .Concat(ForeignKeys)
             .Concat(Indexes)
             .Concat(CheckConstraints)
-            .Concat(Sequences);
+            .Concat(Sequences)
+            .Concat(Triggers);
 }
 
 public static partial class DatabaseSchemaNormalization
@@ -410,6 +437,12 @@ public static partial class DatabaseSchemaNormalization
             return null;
         }
 
+        // SQL Server persists these exact migration predicates in an expanded
+        // form. Match complete expressions; never remove arbitrary arithmetic
+        // or AND/OR parentheses to make a changed constraint pass inspection.
+        var known = NormalizeKnownMigrationCheck(value);
+        if (known is not null) return known;
+
         var rewritten = value;
         if (TryTokenizeCheckExpression(value, out var tokens, out var closing))
         {
@@ -420,6 +453,32 @@ public static partial class DatabaseSchemaNormalization
 
         return NormalizeSqlExpression(rewritten);
     }
+
+    private static string? NormalizeKnownMigrationCheck(string value)
+    {
+        var normalized = NormalizeSqlExpression(value);
+        foreach (var pair in KnownMigrationChecks)
+        {
+            var canonical = NormalizeSqlExpression(pair.Source);
+            if (normalized == canonical || normalized == NormalizeSqlExpression(pair.Persisted))
+                return canonical;
+        }
+        return null;
+    }
+
+    private static readonly (string Source, string Persisted)[] KnownMigrationChecks =
+    [
+        ("[State] BETWEEN 0 AND 10 AND [Revision] > 0",
+         "([State]>=(0) AND [State]<=(10) AND [Revision]>(0))"),
+        ("[Kind] BETWEEN 1 AND 7 AND [MoneyAmount] >= 0 AND [MoneyAmount] = ROUND([MoneyAmount],0)",
+         "([Kind]>=(1) AND [Kind]<=(7) AND [MoneyAmount]>=(0) AND [MoneyAmount]=round([MoneyAmount],(0)))"),
+        ("[OrderedQuantity] > 0 AND [BaseMultiplier] > 0 AND [UnitPrice] >= 0 AND [Gross] >= 0 AND [LineDiscount] >= 0 AND [AllocatedOrderDiscount] >= 0 AND [Net] = [Gross]-[LineDiscount]-[AllocatedOrderDiscount] AND [Net] >= 0 AND [Net] = ROUND([Net],0)",
+         "([OrderedQuantity]>(0) AND [BaseMultiplier]>(0) AND [UnitPrice]>=(0) AND [Gross]>=(0) AND [LineDiscount]>=(0) AND [AllocatedOrderDiscount]>=(0) AND [Net]=(([Gross]-[LineDiscount])-[AllocatedOrderDiscount]) AND [Net]>=(0) AND [Net]=round([Net],(0)))"),
+        ("[Status] IN ('draft','confirmed','voided')",
+         "([Status]='voided' OR [Status]='confirmed' OR [Status]='draft')"),
+        ("[TargetFund] IS NULL OR (([TargetFund] <> [Fund] OR ([Fund] = 'cash' AND [IsVoucherLink] = 1)) AND [OperatingExpenseId] IS NULL AND [PurchasePayableId] IS NULL)",
+         "([TargetFund] IS NULL OR ([TargetFund]<>[Fund] OR [Fund]='cash' AND [IsVoucherLink]=(1)) AND [OperatingExpenseId] IS NULL AND [PurchasePayableId] IS NULL)")
+    ];
 
     private static bool TryNormalizeNullCheckGroups(
         IReadOnlyList<CheckExpressionToken> tokens,

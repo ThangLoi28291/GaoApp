@@ -1,0 +1,16 @@
+<div class="modal fade" id="deliveryModal" tabindex="-1" aria-labelledby="deliveryModalTitle" data-actor-id="@User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><div><h4 id="deliveryModalTitle" class="modal-title">Tạo đơn giao</h4><small>Chuyển giỏ sang chờ soạn · Thu tiền theo lượng thực giao</small></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <form id="deliveryForm"><div class="modal-body">
+            <div id="deliveryMessage" class="alert alert-info" role="status" aria-live="polite">Đang lấy nội dung giỏ…</div>
+            <div id="deliveryCart" class="delivery-cart mb-3"></div>
+            <fieldset id="deliveryFields" class="delivery-fields">
+                <label>Người nhận<input id="deliveryName" class="form-control" required maxlength="200" autocomplete="name" /></label>
+                <label>Số điện thoại<input id="deliveryPhone" class="form-control" type="tel" required maxlength="30" autocomplete="tel" /></label>
+                <label class="delivery-wide">Địa chỉ giao<textarea id="deliveryAddress" class="form-control" required maxlength="1200" rows="2" autocomplete="street-address"></textarea></label>
+                <label class="delivery-wide">Ghi chú<textarea id="deliveryNote" class="form-control" maxlength="1000" rows="2"></textarea></label>
+            </fieldset>
+            <div id="deliveryResult" class="delivery-success" hidden><strong id="deliveryCreatedCode"></strong><p>Đã tạo đơn chờ soạn. Giỏ POS đã chuyển sang giỏ trống.</p><a id="deliveryBillLink" class="btn btn-primary" target="_blank" rel="noopener">Mở phiếu A5 / in lại</a> <a id="deliveryLookupLink" class="btn btn-outline-primary" target="_blank" rel="noopener">Xem đơn giao</a></div>
+        </div><div class="modal-footer"><a href="/admin/deliveries" target="_blank" rel="noopener" class="me-auto">Tra đơn đã tạo / in lại</a><button type="button" class="btn btn-outline-secondary" id="deliveryRefresh">Tải lại giỏ</button><button type="submit" class="btn btn-primary" id="deliverySubmit" disabled>Tạo đơn chờ soạn</button></div></form>
+    </div></div>
+</div>
