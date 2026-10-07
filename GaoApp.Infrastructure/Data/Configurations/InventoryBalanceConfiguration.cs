@@ -8,7 +8,11 @@ public class InventoryBalanceConfiguration : IEntityTypeConfiguration<InventoryB
 {
     public void Configure(EntityTypeBuilder<InventoryBalance> builder)
     {
-        builder.ToTable("InventoryBalances");
+        builder.ToTable("InventoryBalances", t => {
+            t.HasTrigger("TR_InventoryBalances_DeliveryPrecision");
+            t.HasCheckConstraint("CK_InventoryBalances_DeliveryPrecision", "[QuantityPrecisionVersion]=0 OR [QuantityPrecisionVersion]=1");
+        });
+        builder.Property(x => x.QuantityPrecisionVersion).HasDefaultValue((byte)0);
 
         builder.HasKey(x => x.Id);
 

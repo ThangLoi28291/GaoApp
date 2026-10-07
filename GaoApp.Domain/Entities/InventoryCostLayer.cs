@@ -17,6 +17,10 @@ namespace GaoApp.Domain.Entities;
 /// </summary>
 public class InventoryCostLayer : BaseStoreEntity
 {
+    public byte CostBudgetPolicy { get; set; }
+    public decimal? BudgetAnchorQuantity { get; set; }
+    public decimal? BudgetAnchorAmount { get; set; }
+    public decimal? RemainingCostAmount { get; set; }
     /// <summary>
     /// Kho phát sinh layer.
     /// </summary>

@@ -10,8 +10,10 @@ using GaoApp.Domain.Delivery;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Repositories.Inventory;
 using GaoApp.Infrastructure.Repositories.Security;
 using GaoApp.Infrastructure.Services.Delivery;
+using GaoApp.Tests.Inventory;
 using GaoApp.Tests.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,15 +32,49 @@ internal sealed class DeliveryD04Case(DeliveryD02Case source) : IDisposable
     internal string Path(string operation = "") => "/admin/api/deliveries/" + Id + "/picking" + (operation.Length == 0 ? "" : "/" + operation);
     internal static async Task<DeliveryD04Case> CreateAsync(DeliveryD02Fixture fixture, decimal quantity = 2,
         decimal unitPrice = 20, decimal lineDiscount = 0, bool operational = true, bool secondLine = false,
-        string? customerTier = null)
+        string? customerTier = null, IReadOnlyList<(decimal Quantity, decimal Cost)>? stockLayers = null,
+        int? sharedStockVariantId = null)
+        => await CreateAsync(await fixture.CaseAsync(false), quantity, unitPrice, lineDiscount,
+            operational, secondLine, customerTier, stockLayers, sharedStockVariantId);
+
+    internal static async Task<DeliveryD04Case> CreateAsync(DeliveryD02Case source, decimal quantity = 2,
+        decimal unitPrice = 20, decimal lineDiscount = 0, bool operational = true, bool secondLine = false,
+        string? customerTier = null, IReadOnlyList<(decimal Quantity, decimal Cost)>? stockLayers = null,
+        int? sharedStockVariantId = null)
     {
-        var source = await fixture.CaseAsync(false);
         try
         {
             await using (var db = source.Context())
             {
                 var cart = await db.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == source.CartId);
                 var line = Assert.Single(cart.Lines);
+                // Each case owns its stock key. Saved D05 reports remain genuine holds,
+                // so one case cannot consume another case's fixture availability.
+                var template = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == (sharedStockVariantId ?? line.VariantId));
+                var variant = sharedStockVariantId is not null ? template : new ProductVariant { StoreId = cart.StoreId, ProductId = template.ProductId,
+                    Sku = "D04-CASE-" + Guid.NewGuid().ToString("N"), Price = template.Price,
+                    WholesalePrice = template.WholesalePrice, CostPrice = template.CostPrice,
+                    ProductVariantName = template.ProductVariantName, IsActive = true };
+                if (sharedStockVariantId is null) { db.ProductVariants.Add(variant); await db.SaveChangesAsync(); }
+                if (line.ProductUnitConversionId is int conversionId)
+                {
+                    var conversion = await db.ProductUnitConversions.AsNoTracking().SingleAsync(x => x.Id == conversionId);
+                    if (sharedStockVariantId is not null)
+                    {
+                        line.ProductUnitConversionId = (await db.ProductUnitConversions.AsNoTracking().SingleAsync(x =>
+                            x.ProductVariantId == variant.Id && x.UnitId == conversion.UnitId && x.Factor == conversion.Factor)).Id;
+                    }
+                    else
+                    {
+                    var ownedConversion = new ProductUnitConversion { StoreId = cart.StoreId, ProductVariantId = variant.Id,
+                        UnitId = conversion.UnitId, Factor = conversion.Factor, Price = conversion.Price,
+                        WholesalePrice = conversion.WholesalePrice, IsBaseUnit = conversion.IsBaseUnit,
+                        IsDefaultForSale = conversion.IsDefaultForSale, IsActive = true };
+                    db.ProductUnitConversions.Add(ownedConversion); await db.SaveChangesAsync();
+                    line.ProductUnitConversionId = ownedConversion.Id;
+                    }
+                }
+                line.VariantId = variant.Id;
                 line.Quantity = quantity; line.BaseQuantity = quantity * line.Multiplier;
                 line.UnitPrice = unitPrice; line.OriginalUnitPrice = unitPrice; line.LineDiscount = lineDiscount;
                 line.LineTotal = DeliveryValues.PricedAmount(quantity, unitPrice) - lineDiscount;
@@ -55,6 +91,16 @@ internal sealed class DeliveryD04Case(DeliveryD02Case source) : IDisposable
                     db.Customers.Add(customer); await db.SaveChangesAsync(); cart.CustomerId = customer.Id;
                 }
                 await db.SaveChangesAsync();
+                var layers = stockLayers ?? [(100m, 10m)];
+                var part = 0;
+                foreach (var layer in layers)
+                {
+                    part++;
+                    await InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(
+                        new GaoApp.Application.Services.Inventory.InventoryMovementFactory().CreatePurchaseReceipt(
+                            source.Account.Store.WarehouseId, variant.Id, layer.Quantity, layer.Cost,
+                            "D04-CASE-STOCK-" + source.CartId, part, "Owned case stock", part));
+                }
             }
             source.Detail = operational ? (await DeliveryD03Support.Create(source)).Delivery : await source.CreateAsync(Guid.NewGuid());
             return new(source);
@@ -142,14 +188,38 @@ internal sealed class DeliveryD04Case(DeliveryD02Case source) : IDisposable
             Unit = new Unit { StoreId = Account.Store.StoreId, Code = "D04-PACK-" + suffix, Name = "Lốc D04 " + suffix },
             Factor = 6, Price = packPrice, WholesalePrice = wholesalePrice is null ? null : wholesalePrice * 6 };
         db.AddRange(bottle, pack); await db.SaveChangesAsync();
+        await InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(
+            new GaoApp.Application.Services.Inventory.InventoryMovementFactory().CreatePurchaseReceipt(
+                Account.Store.WarehouseId, variant.Id, 100m, 10m, "D04-REPLACEMENT-STOCK-" + suffix,
+                1, "Owned replacement stock", 1));
         return (variant.Id, bottle.Id, pack.Id);
     }
 
     internal DeliveryPickingService Service(AppDbContext db, FullApplicationFixture.Account? actor = null)
     {
         actor ??= Account;
-        return new(db, new D04CurrentUser(actor.UserId, actor.Store.TerminalId),
-            new CurrentStorePermissionService(new UserInStoreRepository(db)));
+        var user = new D04CurrentUser(actor.UserId, actor.Store.TerminalId);
+        var permissions = new CurrentStorePermissionService(new UserInStoreRepository(db));
+        var inventory = new DeliveryInventoryService(db, user, permissions, new InventoryBalanceRepository(db),
+            InventoryPosPostingContractTests.CreateRealMovementService(db));
+        return new(db, user, permissions, inventory);
+    }
+
+    internal async Task<string> FinancialAndPostedStockEffectsAsync()
+    {
+        await using var db = Source.Context();
+        return JsonSerializer.Serialize(new
+        {
+            Stock = await db.InventoryTransactions.CountAsync(),
+            Balance = await db.InventoryBalances.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.OnHandQty, x.InventoryValue }).ToArrayAsync(),
+            Orders = await db.Orders.AsNoTracking().OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.Status, x.GrandTotal, x.PaidTotal }).ToArrayAsync(),
+            Payments = await db.OrderPayments.CountAsync(), Cash = await db.POSShiftCashTransactions.CountAsync(),
+            Debt = await db.Set<CustomerReceivableEntry>().CountAsync(), Deposits = await db.Set<CustomerDepositEntry>().CountAsync(),
+            Rewards = await db.CustomerRewardLedgers.CountAsync(), Invoices = await db.InvoiceHeads.CountAsync(),
+            Journal = await db.DeliveryJournalEntries.CountAsync(), Costs = await db.DeliveryDispatchCostFragments.CountAsync()
+        });
     }
 
     internal async Task<string> NonDeliveryEffectsAsync()

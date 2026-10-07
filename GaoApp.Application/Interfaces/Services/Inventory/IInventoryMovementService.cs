@@ -13,6 +13,14 @@ namespace GaoApp.Application.Interfaces.Services.Inventory;
 /// </summary>
 public interface IInventoryMovementService
 {
+    Task<InventoryMovementResultDto> CreateDeliveryDispatchAsync(InventoryDeliveryDispatchPosting request, CancellationToken ct = default)
+        => throw new NotSupportedException("Typed delivery posting is not implemented.");
+    Task<InventoryMovementResultDto> CreateDeliveryReturnAsync(InventoryDeliveryReturnPosting request, CancellationToken ct = default)
+        => throw new NotSupportedException("Typed delivery receiving is not implemented.");
+    Task<bool> TryCreateSourcePreservingTransferAsync(InventorySourcePreservingTransfer request, CancellationToken ct = default)
+        => throw new NotSupportedException("Typed source transfer is not implemented.");
+    Task<List<ProvisionalRevaluationPlanDto>> ResolveSourceBudgetProvisionalsAsync(int layerId, DateTime occurredAtUtc, CancellationToken ct = default)
+        => throw new NotSupportedException("Source-budget resolution is not implemented.");
     /// <summary>
     /// Ghi một bút toán điều chỉnh giá trị tồn kho, không thay đổi số lượng.
     /// correctedUnitCost là giá vốn đúng trên một đơn vị gốc của phần tồn được chọn.

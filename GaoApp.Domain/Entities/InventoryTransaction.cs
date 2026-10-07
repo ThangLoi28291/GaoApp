@@ -22,6 +22,7 @@ namespace GaoApp.Domain.Entities;
 /// </summary>
 public class InventoryTransaction : BaseStoreEntity
 {
+    public byte PostingPrecisionPolicy { get; set; }
     public int WarehouseId { get; set; }
     public int ProductVariantId { get; set; }
 

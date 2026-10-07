@@ -66,12 +66,12 @@ public class InventoryCostLayerRepository : IInventoryCostLayerRepository
     /// Sau này nếu cần locking mạnh hơn cho SQL Server,
     /// có thể nâng cấp sang raw SQL với UPDLOCK/ROWLOCK/HOLDLOCK.
     /// </summary>
-    public Task<List<InventoryCostLayer>> GetOpenLayersForUpdateAsync(
+    public async Task<List<InventoryCostLayer>> GetOpenLayersForUpdateAsync(
         int warehouseId,
         int productVariantId,
         CancellationToken ct = default)
     {
-        return _db.InventoryCostLayers
+        var rows = await _db.InventoryCostLayers
             .Where(x =>
                 x.WarehouseId == warehouseId &&
                 x.ProductVariantId == productVariantId &&
@@ -79,6 +79,8 @@ public class InventoryCostLayerRepository : IInventoryCostLayerRepository
             .OrderBy(x => x.OccurredAtUtc)
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
+        foreach (var row in rows) await InventoryPostingLockState.RefreshOnceAsync(_db, row, ct);
+        return rows.Where(x => !x.IsDeleted && x.RemainingQuantity > 0).ToList();
     }
 
     /// <summary>

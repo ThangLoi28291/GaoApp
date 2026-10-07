@@ -210,6 +210,53 @@ public sealed class SaleValuationCostPolicyTests
         result.Reason.Should().Contain("precision");
     }
 
+    [Theory]
+    [InlineData(0, .0001)]
+    [InlineData(.0001, 0)]
+    public void Source_budget_cost_uses_actual_debit_including_zero_fragment_and_blocks_generic_reversal(decimal start, decimal amount)
+    {
+        var source = BudgetSource(start, amount);
+        var result = SaleValuationCostPolicy.Evaluate(source, [], []);
+        Assert.Equal(SaleValuationCostPolicy.Quality.Finalized, result.State);
+        Assert.Equal(amount, result.Cost); Assert.True(result.SourceBudgetProtected);
+        var error = Assert.Throws<InvalidOperationException>(() => result.RequireFinalUnitCost());
+        Assert.Contains("SOURCE_BUDGET_REVERSAL_UNSUPPORTED", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("missing-debit")]
+    [InlineData("wrong-amount")]
+    [InlineData("wrong-owner")]
+    [InlineData("wrong-layer")]
+    public void Source_budget_missing_or_corrupt_proof_does_not_become_Final_zero(string fault)
+    {
+        var source = BudgetSource(0, .0001m); var debit = Assert.Single(source.CostBudgetDebits);
+        if (fault == "missing-debit") source.CostBudgetDebits.Clear();
+        if (fault == "wrong-amount") debit.Amount = 0;
+        if (fault == "wrong-owner") debit.SourceLegalEntityId++;
+        if (fault == "wrong-layer") debit.InventoryCostLayerId++;
+        var result = SaleValuationCostPolicy.Evaluate(source, [], []);
+        Assert.NotEqual(SaleValuationCostPolicy.Quality.Finalized, result.State); Assert.Null(result.Cost);
+    }
+
+    private static InventoryValuationEntry BudgetSource(decimal start, decimal amount)
+    {
+        var source = Source(false); source.Warehouse.LegalEntityId = 71;
+        source.Quantity = -.0001m; source.UnitCost = .5m; source.Amount = -amount;
+        source.InventoryTransaction.PostingPrecisionPolicy = 1;
+        var allocation = Assert.Single(source.CostLayerAllocations); allocation.InventoryCostLayerId = 401;
+        allocation.Quantity = .0001m; allocation.UnitCost = .5m; allocation.Amount = amount;
+        var layer = new InventoryCostLayer { Id = 401, StoreId = source.StoreId, WarehouseId = source.WarehouseId,
+            ProductVariantId = source.ProductVariantId, CostBudgetPolicy = 1, BudgetAnchorQuantity = .0002m,
+            BudgetAnchorAmount = .0001m, UnitCost = .5m };
+        source.CostBudgetDebits.Add(new() { Id = 901, StoreId = source.StoreId, WarehouseId = source.WarehouseId,
+            ProductVariantId = source.ProductVariantId, SourceLegalEntityId = 71, InventoryCostLayerId = 401,
+            InventoryTransactionId = source.InventoryTransactionId, InventoryValuationEntryId = source.Id,
+            InventoryCostLayerAllocationId = allocation.Id, AnchorQuantity = .0002m, AnchorAmount = .0001m,
+            StartQuantity = start, EndQuantity = start + .0001m, UnitCost = .5m, Amount = amount, Layer = layer });
+        return source;
+    }
+
     internal static InventoryValuationEntry Source(bool provisional = true)
     {
         var time = new DateTime(2026, 9, 8, 1, 0, 0, DateTimeKind.Utc);

@@ -838,7 +838,9 @@ public sealed class InventoryPosPostingContractTests
             new InventoryCostLayerRepository(context),
             new InventoryCostLayerAllocationRepository(context),
             new WarehouseRepository(context),
-            new InventoryPostingTransactionCoordinator(context));
+            new InventoryPostingTransactionCoordinator(context),
+            new InventoryReservationRepository(context),
+            new InventorySourceCostEvidenceRepository(context));
 
     private sealed class RecordingDelegatingMovementService
         : IInventoryMovementService

@@ -241,6 +241,12 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
         string defaultSchema)
     {
+        if (DeliverySchemaSqlCatalog.IsInventoryPreflight(migrationId, operation))
+        {
+            foreach (var name in new[] { "InventoryBalances", "InventoryReservations", "DeliveryJournalEntries", "DeliveryDispatchCostFragments" })
+                if (!tables.ContainsKey(new DatabaseObjectIdentity("dbo", name))) throw new InvalidOperationException("Delivery inventory preflight references a missing schema-manifest table.");
+            return true;
+        }
         if (DeliverySchemaSqlCatalog.IsSourceShiftValidation(migrationId, operation))
         {
             if (!tables.ContainsKey(new DatabaseObjectIdentity("dbo", "Orders"))

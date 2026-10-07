@@ -20,7 +20,7 @@ async Task<object> Call(object? target, Type type, string method, params object[
     await task; return task.GetType().GetProperty("Result")!.GetValue(task)!;
 }
 var type = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.FullApplicationFixture")!;
-var fixture = await Call(null, type, args.Contains("--delivery-picking") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
+var fixture = await Call(null, type, args.Contains("--delivery-picking") || args.Contains("--delivery-inventory") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
 await using var cleanup = (IAsyncDisposable)fixture;
 var store = ((IEnumerable)Read(fixture, "Stores")).Cast<object>().First();
 var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports")
@@ -29,6 +29,82 @@ var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") |
 var client = await Call(fixture, type, "LoginAsync", account);
 using var clientCleanup = (IDisposable)client;
 var http = (HttpClient)Read(client, "Http");
+if (args.Contains("--delivery-inventory"))
+{
+    var inventoryFixtureType = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Delivery.DeliveryD05BrowserFixture")
+        ?? throw new InvalidOperationException("D05 browser fixture seam is missing.");
+    var inventorySeed = await Call(null, inventoryFixtureType, "PrepareAsync", fixture);
+    var inventoryStoreId = (int)Read(inventorySeed, "StoreId");
+    var inventoryDatabase = Read(fixture, "Database");
+    AppDbContext InventoryContext() => (AppDbContext)inventoryDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(inventoryDatabase, new object?[] { inventoryStoreId, null })!;
+    object InventoryOrder(object value) => new { id = Read(value, "Id"), lookupToken = Read(value, "LookupToken") };
+    object InventoryAccount(object value) => new { name = Read(value, "Name"), password = Read(value, "Password"), userId = Read(value, "UserId") };
+    var inventoryIds = new[] { (int)Read(Read(inventorySeed, "Created"), "Id"), (int)Read(Read(inventorySeed, "Held"), "Id"), (int)Read(Read(inventorySeed, "Posted"), "Id") };
+    int initialReceipts, initialRevisions, initialOutbox, initialTransactions, initialJournals, initialPayments, initialCompleted;
+    Dictionary<int, decimal> initialOnHand;
+    await using (var before = InventoryContext())
+    {
+        initialReceipts = await before.DeliveryCommandReceipts.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId));
+        initialRevisions = await before.DeliveryRevisions.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId));
+        initialOutbox = await before.DeliveryOutboxMessages.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId));
+        initialTransactions = await before.InventoryTransactions.CountAsync(); initialJournals = await before.DeliveryJournalEntries.CountAsync();
+        initialPayments = await before.OrderPayments.CountAsync(); initialCompleted = await before.Orders.CountAsync(x => x.Status == OrderStatus.Completed);
+        initialOnHand = await before.InventoryBalances.ToDictionaryAsync(x => x.Id, x => x.OnHandQty);
+    }
+    var inventorySource = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var inventoryEvidence = Environment.GetEnvironmentVariable("GAO_DELIVERY_INVENTORY_TEST_OUTPUT") ?? Path.Combine(inventorySource, "TestResults", "delivery-inventory");
+    Directory.CreateDirectory(inventoryEvidence);
+    var inventoryStart = new ProcessStartInfo("node") { WorkingDirectory = inventorySource, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    inventoryStart.Environment["NODE_PATH"] = Path.Combine(inventorySource, "Logs", "pos-offline-browser-deps", "node_modules");
+    inventoryStart.ArgumentList.Add(Path.Combine(inventorySource, "GaoApp.Tests.Browser", "delivery-inventory.browser.cjs"));
+    using var inventoryProbe = Process.Start(inventoryStart)!;
+    await inventoryProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}", terminalId = Read(inventorySeed, "TerminalId"),
+        created = InventoryOrder(Read(inventorySeed, "Created")), held = InventoryOrder(Read(inventorySeed, "Held")), posted = InventoryOrder(Read(inventorySeed, "Posted")),
+        creator = InventoryAccount(Read(inventorySeed, "Creator")), viewer = InventoryAccount(Read(inventorySeed, "Viewer")),
+        costViewer = InventoryAccount(Read(inventorySeed, "CostViewer")), cancel = InventoryAccount(Read(inventorySeed, "Cancel")),
+        storeId = inventoryStoreId, sourceWarehouseId = Read(inventorySeed, "SourceWarehouseId"), sourceWarehouseName = Read(inventorySeed, "SourceWarehouseName"),
+        sourceLegalEntityId = Read(inventorySeed, "SourceLegalEntityId"), sourceLegalEntityName = Read(inventorySeed, "SourceLegalEntityName"),
+        expected = Read(inventorySeed, "Expected"), evidenceDirectory = inventoryEvidence
+    }));
+    inventoryProbe.StandardInput.Close(); using var inventoryTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await inventoryProbe.WaitForExitAsync(inventoryTimeout.Token); }
+    catch { if (!inventoryProbe.HasExited) inventoryProbe.Kill(true); throw; }
+    if (inventoryProbe.ExitCode != 0) throw new InvalidOperationException("D05 inventory browser failed.");
+    using var inventoryResult = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(inventoryEvidence, "browser-checks.json")));
+    if (inventoryResult.RootElement.GetProperty("checks").GetArrayLength() != 6) throw new InvalidOperationException("D05 browser groups are incomplete.");
+    var inventoryCommandIds = inventoryResult.RootElement.GetProperty("commandIds").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).Distinct().ToArray();
+    await using var inventoryVerify = InventoryContext();
+    if (inventoryCommandIds.Length != 4 || await inventoryVerify.DeliveryCommandReceipts.CountAsync(x => inventoryCommandIds.Contains(x.ClientRequestId)) != inventoryCommandIds.Length ||
+        await inventoryVerify.DeliveryCommandReceipts.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId)) != initialReceipts + inventoryCommandIds.Length ||
+        await inventoryVerify.DeliveryRevisions.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId)) != initialRevisions + inventoryCommandIds.Length ||
+        await inventoryVerify.DeliveryOutboxMessages.CountAsync(x => inventoryIds.Contains(x.DeliveryOrderId)) != initialOutbox + inventoryCommandIds.Length)
+        throw new InvalidOperationException("D05 browser distinct commands/replay did not match receipts/history/outbox.");
+    var finalOnHand = await inventoryVerify.InventoryBalances.ToDictionaryAsync(x => x.Id, x => x.OnHandQty);
+    if (initialOnHand.Count != finalOnHand.Count || initialOnHand.Any(x => !finalOnHand.TryGetValue(x.Key, out var quantity) || quantity != x.Value) ||
+        await inventoryVerify.InventoryTransactions.CountAsync() != initialTransactions || await inventoryVerify.DeliveryJournalEntries.CountAsync() != initialJournals ||
+        await inventoryVerify.OrderPayments.CountAsync() != initialPayments || await inventoryVerify.Orders.CountAsync(x => x.Status == OrderStatus.Completed) != initialCompleted)
+        throw new InvalidOperationException("D05 report/cancel browser changed physical stock or finance.");
+    var finalInventoryFacts = new List<JsonElement>();
+    foreach (var id in inventoryIds)
+    {
+        using var response = await http.GetAsync($"/admin/api/deliveries/{id}/inventory"); response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var fact = document.RootElement;
+        if (fact.GetProperty("storeId").GetInt32() != inventoryStoreId || fact.GetProperty("sourceWarehouseId").GetInt32() != (int)Read(inventorySeed, "SourceWarehouseId") ||
+            fact.GetProperty("sourceLegalEntityId").GetInt32() != (int)Read(inventorySeed, "SourceLegalEntityId") || fact.GetProperty("inCustodyBaseQuantityText").ValueKind != JsonValueKind.Null)
+            throw new InvalidOperationException("D05 browser source/custody projection changed.");
+        finalInventoryFacts.Add(fact.Clone());
+    }
+    await File.WriteAllTextAsync(Path.Combine(inventoryEvidence, "sql-effects.json"), JsonSerializer.Serialize(new {
+        distinctCommittedCommands = inventoryCommandIds.Length, initialReceipts, initialRevisions, initialOutbox,
+        physicalStockUnchangedByUi = true, stockTransactionsUnchanged = initialTransactions, stockJournalsUnchanged = initialJournals,
+        paymentsUnchanged = initialPayments, completedSalesUnchanged = initialCompleted, finalInventoryFacts,
+        seedUsesInternalStockExecutorOnly = true, noCourierOrOutcomeFixture = true, fixtureOnly = true
+    }, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("D05 INVENTORY BROWSER 6 GROUPS + EXACT SQL EFFECTS PASS — disposable fixture only."); return;
+}
 if (args.Contains("--delivery-picking"))
 {
     var pickingDatabase = Read(fixture, "Database");

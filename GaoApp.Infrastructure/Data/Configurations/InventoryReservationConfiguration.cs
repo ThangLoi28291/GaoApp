@@ -1,5 +1,6 @@
 ﻿using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using GaoApp.Domain.Delivery;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -9,7 +10,10 @@ public class InventoryReservationConfiguration : IEntityTypeConfiguration<Invent
 {
     public void Configure(EntityTypeBuilder<InventoryReservation> builder)
     {
-        builder.ToTable("InventoryReservations");
+        builder.ToTable("InventoryReservations", t => {
+            t.HasTrigger("TR_InventoryReservations_DeliverySource");
+            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", "([ReferenceType]<>11 AND [DeliveryOrderId] IS NULL AND [DeliveryOrderLineId] IS NULL AND [SourceLegalEntityId] IS NULL AND [DeliveryRevision] IS NULL AND [ReportedByUserId] IS NULL AND [ReportedAtUtc] IS NULL) OR ([ReferenceType]=11 AND [IsDeleted]=0 AND [DeliveryOrderId] IS NOT NULL AND [DeliveryOrderLineId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [DeliveryRevision] IS NOT NULL AND [DeliveryRevision]>0 AND [ReportedByUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId] IS NOT NULL AND [ReferenceLineId]=[DeliveryOrderLineId] AND [ReferenceId]=CONVERT(nvarchar(50),[DeliveryOrderId]) AND ([Status]=1 OR [Status]=2 OR [Status]=3))");
+        });
 
         builder.Property(x => x.ReferenceId)
             .HasMaxLength(50)
@@ -22,11 +26,20 @@ public class InventoryReservationConfiguration : IEntityTypeConfiguration<Invent
             .HasMaxLength(500);
 
         builder.Property(x => x.ReservedQty)
-            .HasColumnType("decimal(18,3)")
+            .HasColumnType("decimal(19,4)")
             .HasDefaultValue(0);
 
         builder.Property(x => x.Status)
             .HasConversion<int>();
+        builder.HasIndex(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryOrderLineId }).IsUnique()
+            .HasDatabaseName("UX_InventoryReservations_ActiveDeliveryLine")
+            .HasFilter("[ReferenceType]=11 AND [Status]=1 AND [IsDeleted]=0");
+        builder.HasOne<DeliveryOrder>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.WarehouseId, x.SourceLegalEntityId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId }).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<DeliveryOrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryOrderLineId, x.ProductVariantId })
+            .HasPrincipalKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id, x.VariantId }).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<UserInStore>().WithMany().HasForeignKey(x => new { x.StoreId, x.ReportedByUserId })
+            .HasPrincipalKey(x => new { x.StoreId, x.UserId }).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(x => new
         {

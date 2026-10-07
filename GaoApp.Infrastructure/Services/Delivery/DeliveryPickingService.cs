@@ -16,7 +16,7 @@ using static GaoApp.Domain.Delivery.DeliveryPickingPolicy;
 namespace GaoApp.Infrastructure.Services.Delivery;
 
 public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
-    ICurrentStorePermissionService permissions) : IDeliveryPickingService
+    ICurrentStorePermissionService permissions, IDeliveryInventoryService inventory) : IDeliveryPickingService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private int Store => db.CurrentStoreId ?? throw Error(403, "STORE_REQUIRED", "Cần thao tác trong cửa hàng.");
@@ -31,11 +31,11 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
             !await permissions.HasPermissionAsync(Store, Actor, permission, ct))
             throw Error(403, "DELIVERY_FORBIDDEN", "Không có quyền soạn hàng trong cửa hàng.");
     }
-    private async Task Scope(DeliveryOrder order, CancellationToken ct)
+    private async Task Scope(DeliveryOrder order, CancellationToken ct, bool active = false)
     {
         if (order.StoreId != Store || !await db.Warehouses.AsNoTracking().AnyAsync(x =>
-            x.StoreId == Store && x.Id == order.SourceWarehouseId && x.IsActive && x.LegalEntityId == order.SourceLegalEntityId, ct) ||
-            !await db.LegalEntities.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceLegalEntityId && x.IsActive, ct))
+            x.StoreId == Store && x.Id == order.SourceWarehouseId && (!active || x.IsActive) && x.LegalEntityId == order.SourceLegalEntityId, ct) ||
+            !await db.LegalEntities.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceLegalEntityId && (!active || x.IsActive), ct))
             throw Error(403, "SOURCE_SCOPE_INVALID", "Kho/chủ thể nguồn không còn hợp lệ.");
         if (!await db.Orders.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceCartId &&
             x.POSShiftId == order.CreatedShiftId, ct))
@@ -87,7 +87,7 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
         var options = canManage ? await db.UserInStores.AsNoTracking().Where(x => x.StoreId == Store && x.IsActive && x.User.IsActive)
             .OrderBy(x => x.User.FullName).ThenBy(x => x.UserId)
             .Select(x => new DeliveryPickingPickerOptionDto(x.UserId, x.User.FullName ?? x.User.UserName)).ToListAsync(ct) : [];
-        return Project(order, work, lines, caps, options, names);
+        return Project(order, work, lines, caps, options, names) with { Inventory = await inventory.GetAsync(id, ct) };
     }
     public async Task<IReadOnlyList<DeliveryPickingReplacementOptionDto>> ReplacementOptionsAsync(int id, string? query, int take = 25, CancellationToken ct = default)
     {
@@ -319,6 +319,7 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
             catch (DeliveryRuleException ex) { throw Error(409, ex.Code, ex.Message); }
             if (!await Operational(current, ct)) throw Error(409, "SOURCE_NOT_CONVERTED", "Giỏ chưa được chuyển giao từ POS.");
             var order = await Load(id, true, ct);
+            await Scope(order, ct, active: true);
             var work = await db.DeliveryPickingWorks.SingleOrDefaultAsync(x => x.StoreId == Store && x.DeliveryOrderId == id, ct);
             var lines = await db.DeliveryPickingLines.Include(x => x.Quote)
                 .Where(x => x.StoreId == Store && x.DeliveryOrderId == id).OrderBy(x => x.DeliveryOrderLineId).ToListAsync(ct);
@@ -329,6 +330,7 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
             // Claim created the work/lines during apply; reload the authoritative final facts for history.
             work = await db.DeliveryPickingWorks.SingleAsync(x => x.StoreId == Store && x.DeliveryOrderId == id, ct);
             lines = await db.DeliveryPickingLines.Include(x => x.Quote).Where(x => x.StoreId == Store && x.DeliveryOrderId == id).ToListAsync(ct);
+            await inventory.ReconcilePickedReservationsInTransactionAsync(id, ct);
             var result = new DeliveryPickingCommandAck(key, id, operation, order.Revision, Convert.ToBase64String(order.RowVersion), Utc(now), false);
             var snapshot = JsonSerializer.Serialize(new { delivery = DeliveryFoundationService.Detail(order),
                 picking = new { work.PickerUserId, work.AssignedAtUtc, work.StartedAtUtc, work.SubmittedAtUtc, work.ApprovalRequired,

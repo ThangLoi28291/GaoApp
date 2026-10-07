@@ -380,7 +380,9 @@ public sealed class InventoryMovementSqlServerConcurrencyTests
             new InventoryCostLayerRepository(db),
             new InventoryCostLayerAllocationRepository(db),
             new WarehouseRepository(db),
-            new InventoryPostingTransactionCoordinator(db));
+            new InventoryPostingTransactionCoordinator(db),
+            new InventoryReservationRepository(db),
+            new InventorySourceCostEvidenceRepository(db));
 
     private static async Task<int> AddSecondWarehouseAsync(
         InventoryPostingLocalDb database,

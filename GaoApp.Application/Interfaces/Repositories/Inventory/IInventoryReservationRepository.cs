@@ -13,6 +13,8 @@ namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 /// </summary>
 public interface IInventoryReservationRepository
 {
+    Task<List<InventoryReservation>> GetActiveForBalanceAsync(int storeId, int warehouseId, int variantId, CancellationToken ct = default)
+        => throw new NotSupportedException("Protected reservation evidence is required.");
     Task AddAsync(InventoryReservation entity, CancellationToken ct = default);
 
     Task AddRangeAsync(IEnumerable<InventoryReservation> entities, CancellationToken ct = default);

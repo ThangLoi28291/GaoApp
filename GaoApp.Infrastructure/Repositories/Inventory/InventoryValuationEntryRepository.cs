@@ -37,7 +37,8 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(x => x.StoreId == storeId)
-            .Include(x => x.CostLayerAllocations);
+            .Include(x => x.CostLayerAllocations)
+            .Include(x => x.CostBudgetDebits);
     }
 
     private async Task<List<InventoryValuationEntry>> LoadSaleCostEvidenceAsync(
@@ -50,7 +51,7 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
         var warehouseIds = entries.Select(x => x.WarehouseId).Distinct().ToList();
         var variantIds = entries.Select(x => x.ProductVariantId).Distinct().ToList();
         var layerIds = entries.Where(x => x.InventoryCostLayerId.HasValue)
-            .Select(x => x.InventoryCostLayerId!.Value).Distinct().ToList();
+            .Select(x => x.InventoryCostLayerId!.Value).Concat(entries.SelectMany(x => x.CostBudgetDebits).Select(x => x.InventoryCostLayerId)).Distinct().ToList();
         // Independent lookups preserve a broken root instead of dropping it through
         // an INNER JOIN. Missing/foreign evidence remains null for policy rejection.
         var transactions = await _db.InventoryTransactions.IgnoreQueryFilters().AsNoTracking()
@@ -67,6 +68,12 @@ public class InventoryValuationEntryRepository : IInventoryValuationEntryReposit
             entry.Warehouse = warehouses.GetValueOrDefault(entry.WarehouseId)!;
             entry.ProductVariant = variants.GetValueOrDefault(entry.ProductVariantId)!;
             entry.InventoryCostLayer = entry.InventoryCostLayerId is int layerId ? layers.GetValueOrDefault(layerId) : null;
+            foreach (var debit in entry.CostBudgetDebits)
+            {
+                debit.Layer = layers.GetValueOrDefault(debit.InventoryCostLayerId)!;
+                debit.Allocation = entry.CostLayerAllocations.SingleOrDefault(x => x.Id == debit.InventoryCostLayerAllocationId)!;
+                debit.ValuationEntry = entry;
+            }
         }
         return entries;
     }

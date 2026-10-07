@@ -83,12 +83,12 @@ public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocat
     /// Bản tracked để update/resolve trong transaction.
     /// Hiện tại cùng logic với bản thường, nhưng tách riêng interface để sau này dễ nâng cấp locking.
     /// </summary>
-    public Task<List<InventoryCostLayerAllocation>> GetOpenProvisionalAllocationsForUpdateAsync(
+    public async Task<List<InventoryCostLayerAllocation>> GetOpenProvisionalAllocationsForUpdateAsync(
         int warehouseId,
         int productVariantId,
         CancellationToken ct = default)
     {
-        return _db.InventoryCostLayerAllocations
+        var rows = await _db.InventoryCostLayerAllocations
             .Include(x => x.InventoryValuationEntry)
             .Where(x =>
                 x.IsProvisional &&
@@ -99,6 +99,12 @@ public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocat
             .OrderBy(x => x.InventoryValuationEntry.OccurredAtUtc)
             .ThenBy(x => x.Id)
             .ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            await InventoryPostingLockState.RefreshOnceAsync(_db, row, ct);
+            await InventoryPostingLockState.RefreshOnceAsync(_db, row.InventoryValuationEntry, ct);
+        }
+        return rows.Where(x => !x.IsDeleted && x.IsProvisional && !x.IsResolved).ToList();
     }
 
     /// <summary>

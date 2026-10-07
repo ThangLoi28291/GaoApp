@@ -789,7 +789,9 @@ public sealed class PurchaseToReceiptFinalCoverageSqlServerTests
             layers,
             allocations,
             warehouses,
-            new InventoryPostingTransactionCoordinator(db));
+            new InventoryPostingTransactionCoordinator(db),
+            new InventoryReservationRepository(db),
+            new InventorySourceCostEvidenceRepository(db));
         var revaluation = new InventoryRevaluationService(
             layers,
             allocations,

@@ -7,6 +7,7 @@ using GaoApp.Domain.Enums;
 using GaoApp.Application.Common.Exceptions.Pos;
 using GaoApp.Application.DTOs.Orders.LegalEntityAllocation;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Inventory;
 
@@ -304,7 +305,9 @@ public class InventoryReservationService : IInventoryReservationService
                         $"Thiếu InventoryBalance đã khóa cho kho #{allocation.WarehouseId}, variant #{allocation.ProductVariantId}.");
                 }
 
-                balance.ReservedQty += allocation.BaseQuantity;
+                var normalizedQuantity = InventoryPostingPrecisionPolicy.EffectiveDelta(allocation.BaseQuantity, false);
+                await ValidateProtectedCounterAsync(balance, ct);
+                balance.ReservedQty += normalizedQuantity;
                 var line = plan.LinesById[allocation.OrderLineId];
                 var source = plan.SourcesByWarehouse[allocation.WarehouseId];
                 await _inventoryReservationRepository.AddAsync(
@@ -316,7 +319,7 @@ public class InventoryReservationService : IInventoryReservationService
                         ReferenceType = InventoryReferenceType.Order,
                         ReferenceId = order.Id.ToString(),
                         ReferenceLineId = allocation.OrderLineId,
-                        ReservedQty = allocation.BaseQuantity,
+                        ReservedQty = normalizedQuantity,
                         Status = InventoryReservationStatus.Active,
                         Note =
                             $"Giữ hàng đa HKD cho đơn POS #{order.Id}, dòng {line.Id}. " +
@@ -339,6 +342,7 @@ public class InventoryReservationService : IInventoryReservationService
                     warehouse.Id,
                     line.VariantId,
                     ct);
+                await ValidateProtectedCounterAsync(balance, ct);
                 if (!warehouse.AllowNegativeInventory &&
                     balance.AvailableQty < reserveQty)
                 {
@@ -474,8 +478,9 @@ public class InventoryReservationService : IInventoryReservationService
         await _inventoryMovementService.PreLockBalancesAsync(
             balanceKeys,
             ct);
+        await RefreshActiveRowsAsync(order.StoreId, balanceKeys, ct);
 
-        foreach (var reservation in activeReservations)
+        foreach (var reservation in activeReservations.Where(x => x.Status == InventoryReservationStatus.Active))
         {
             var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
                 reservation.WarehouseId,
@@ -484,7 +489,10 @@ public class InventoryReservationService : IInventoryReservationService
 
             balance.ReservedQty -= reservation.ReservedQty;
             if (balance.ReservedQty < 0)
+            {
+                if (balance.QuantityPrecisionVersion == 1) throw new BusinessRuleException("RESERVATION_DRIFT: bộ đếm giữ hàng không khớp.");
                 balance.ReservedQty = 0;
+            }
 
             reservation.Status = InventoryReservationStatus.Released;
             reservation.ReleasedAtUtc = DateTime.UtcNow;
@@ -524,8 +532,9 @@ public class InventoryReservationService : IInventoryReservationService
         await _inventoryMovementService.PreLockBalancesAsync(
             balanceKeys,
             ct);
+        await RefreshActiveRowsAsync(order.StoreId, balanceKeys, ct);
 
-        foreach (var reservation in activeReservations)
+        foreach (var reservation in activeReservations.Where(x => x.Status == InventoryReservationStatus.Active))
         {
             var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
                 reservation.WarehouseId,
@@ -534,7 +543,10 @@ public class InventoryReservationService : IInventoryReservationService
 
             balance.ReservedQty -= reservation.ReservedQty;
             if (balance.ReservedQty < 0)
+            {
+                if (balance.QuantityPrecisionVersion == 1) throw new BusinessRuleException("RESERVATION_DRIFT: bộ đếm giữ hàng không khớp.");
                 balance.ReservedQty = 0;
+            }
 
             reservation.Status = InventoryReservationStatus.Consumed;
             reservation.ReleasedAtUtc = DateTime.UtcNow;
@@ -570,7 +582,7 @@ public class InventoryReservationService : IInventoryReservationService
     {
         // Reservation luôn tính theo đơn vị gốc.
         var reserveQty = line.BaseQuantity > 0 ? line.BaseQuantity : line.Quantity;
-        return reserveQty < 0 ? 0 : reserveQty;
+        return reserveQty <= 0 ? 0 : InventoryPostingPrecisionPolicy.EffectiveDelta(reserveQty, false);
     }
 
     private static PosAppException BuildLegacyHoldInsufficientInventoryError(
@@ -682,11 +694,12 @@ public class InventoryReservationService : IInventoryReservationService
             await _inventoryMovementService.PreLockBalancesAsync(
                 unionKeys,
                 ct);
+            await RefreshActiveRowsAsync(order.StoreId, unionKeys, ct);
         }
 
         // Release old first, then reserve new, while holding the one canonical
         // old+new union batch acquired above.
-        foreach (var reservation in oldReservations)
+        foreach (var reservation in oldReservations.Where(x => x.Status == InventoryReservationStatus.Active))
         {
             var balance = await _inventoryBalanceRepository.GetOrCreateAsync(
                 reservation.WarehouseId,
@@ -694,7 +707,10 @@ public class InventoryReservationService : IInventoryReservationService
                 ct);
             balance.ReservedQty -= reservation.ReservedQty;
             if (balance.ReservedQty < 0)
+            {
+                if (balance.QuantityPrecisionVersion == 1) throw new BusinessRuleException("RESERVATION_DRIFT: bộ đếm giữ hàng không khớp.");
                 balance.ReservedQty = 0;
+            }
 
             reservation.Status = InventoryReservationStatus.Released;
             reservation.ReleasedAtUtc = DateTime.UtcNow;
@@ -705,5 +721,22 @@ public class InventoryReservationService : IInventoryReservationService
         order.HasReservation = false;
         order.ReservedAtUtc = null;
         await ApplyReservationPlanAsync(order, newPlan, ct);
+    }
+    private async Task RefreshActiveRowsAsync(int storeId, IEnumerable<InventoryPostingLockKey> keys, CancellationToken ct)
+    {
+        foreach (var key in keys.Distinct().OrderBy(x => x.WarehouseId).ThenBy(x => x.ProductVariantId))
+        {
+            var balance = await _inventoryBalanceRepository.GetOrCreateAsync(key.WarehouseId, key.ProductVariantId, ct);
+            var rows = await _inventoryReservationRepository.GetActiveForBalanceAsync(storeId, key.WarehouseId, key.ProductVariantId, ct);
+            if (balance.QuantityPrecisionVersion == 1 && rows.Sum(x => x.ReservedQty) != balance.ReservedQty)
+                throw new BusinessRuleException("RESERVATION_DRIFT: bộ đếm giữ hàng không khớp chứng cứ đang hoạt động.");
+        }
+    }
+    private async Task ValidateProtectedCounterAsync(InventoryBalance balance, CancellationToken ct)
+    {
+        if (balance.QuantityPrecisionVersion != 1) return;
+        var rows = await _inventoryReservationRepository.GetActiveForBalanceAsync(balance.StoreId, balance.WarehouseId, balance.ProductVariantId, ct);
+        if (rows.Sum(x => x.ReservedQty) != balance.ReservedQty)
+            throw new BusinessRuleException("RESERVATION_DRIFT: bộ đếm giữ hàng không khớp chứng cứ đang hoạt động.");
     }
 }

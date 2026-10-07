@@ -123,6 +123,10 @@ public sealed class ProfitReportReadRepository(AppDbContext db,
         var variants = new List<ProductVariant>();
         var layers = new List<InventoryCostLayer>();
         var allocations = new List<InventoryCostLayerAllocation>();
+        var debits = new List<InventoryCostBudgetDebit>();
+        foreach (var batch in snapshot.Entries.Select(x => x.Id).ToArray().Chunk(1000))
+            debits.AddRange(await db.InventoryCostBudgetDebits.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => x.StoreId == storeId && batch.Contains(x.InventoryValuationEntryId)).ReadWithinBudgetAsync(budget, ct));
         foreach (var batch in snapshot.Entries.Select(x => x.Id).ToArray().Chunk(1000))
             allocations.AddRange(await db.InventoryCostLayerAllocations.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.StoreId == storeId && batch.Contains(x.InventoryValuationEntryId)).ReadWithinBudgetAsync(budget, ct));
@@ -136,7 +140,7 @@ public sealed class ProfitReportReadRepository(AppDbContext db,
             variants.AddRange(await db.ProductVariants.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.StoreId == storeId && batch.Contains(x.Id)).ReadWithinBudgetAsync(budget, ct));
         foreach (var batch in snapshot.Entries.Select(x => x.InventoryCostLayerId).OfType<int>()
-                     .Distinct().ToArray().Chunk(1000))
+                     .Concat(debits.Select(x => x.InventoryCostLayerId)).Distinct().ToArray().Chunk(1000))
             layers.AddRange(await db.InventoryCostLayers.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => x.StoreId == storeId && batch.Contains(x.Id)).ReadWithinBudgetAsync(budget, ct));
         var txMap = txs.ToDictionary(x => x.Id);
@@ -151,6 +155,13 @@ public sealed class ProfitReportReadRepository(AppDbContext db,
             entry.ProductVariant = varMap.GetValueOrDefault(entry.ProductVariantId)!;
             entry.InventoryCostLayer = entry.InventoryCostLayerId is int id ? layerMap.GetValueOrDefault(id) : null;
             entry.CostLayerAllocations = allocationMap[entry.Id].ToList();
+            entry.CostBudgetDebits = debits.Where(x => x.InventoryValuationEntryId == entry.Id).ToList();
+            foreach (var debit in entry.CostBudgetDebits)
+            {
+                debit.Layer = layerMap.GetValueOrDefault(debit.InventoryCostLayerId)!;
+                debit.Allocation = entry.CostLayerAllocations.SingleOrDefault(x => x.Id == debit.InventoryCostLayerAllocationId)!;
+                debit.ValuationEntry = entry;
+            }
         }
         foreach (var batch in orders.Select(x => x.POSShiftId).Concat(snapshot.Returns.Select(x => x.POSShiftId))
                      .Distinct().ToArray().Chunk(1000))

@@ -7,6 +7,115 @@ namespace GaoApp.Infrastructure.Data.Migrations;
 internal static class DeliverySchemaSqlCatalog
 {
     internal const string PickingMigrationId = "20261006173000_AddDeliveryPicking";
+    internal const string InventoryMigrationId = "20261007100000_AddDeliveryInventoryPosting";
+    internal const string InventoryPreflightSql = "IF EXISTS (SELECT 1 FROM DeliveryJournalEntries WHERE [Kind]=1 OR [Kind]=2) OR EXISTS (SELECT 1 FROM DeliveryDispatchCostFragments) OR EXISTS (SELECT 1 FROM InventoryReservations WHERE [ReferenceType]=11) THROW 51020, 'Existing delivery stock evidence cannot be fabricated or backfilled.', 1; IF EXISTS (SELECT 1 FROM InventoryBalances b OUTER APPLY (SELECT SUM(r.ReservedQty) Held FROM InventoryReservations r WHERE r.StoreId=b.StoreId AND r.WarehouseId=b.WarehouseId AND r.ProductVariantId=b.ProductVariantId AND r.Status=1 AND r.IsDeleted=0) s WHERE b.ReservedQty<>ISNULL(s.Held,0) OR b.ReservedQty<0) OR EXISTS (SELECT 1 FROM InventoryReservations r LEFT JOIN InventoryBalances b ON b.StoreId=r.StoreId AND b.WarehouseId=r.WarehouseId AND b.ProductVariantId=r.ProductVariantId WHERE r.Status=1 AND r.IsDeleted=0 AND (r.ReservedQty<=0 OR b.Id IS NULL)) THROW 51020, 'Existing reservation counters/source evidence require reconciliation.', 1;";
+    internal const string InventoryDownGuardSql = "IF EXISTS (SELECT 1 FROM InventoryBalances WHERE QuantityPrecisionVersion=1) OR EXISTS (SELECT 1 FROM InventoryCostLayers WHERE CostBudgetPolicy=1) OR EXISTS (SELECT 1 FROM InventoryCostBudgetDebits) OR EXISTS (SELECT 1 FROM DeliveryReturnedCostFragments) OR EXISTS (SELECT 1 FROM DeliveryDispatchCostFragments) OR EXISTS (SELECT 1 FROM DeliveryJournalEntries WHERE Kind=1 OR Kind=2) OR EXISTS (SELECT 1 FROM InventoryReservations WHERE ReferenceType=11 OR ReservedQty<>ROUND(ReservedQty,3)) OR EXISTS (SELECT 1 FROM InventoryTransactions WHERE PostingPrecisionPolicy<>0) THROW 51029, 'Delivery inventory proof or precision is occupied; use a forward fix.', 1;";
+
+    // Integer quotient/remainder implements the same midpoint-away curve as the
+    // BigInteger policy. Never divide an untruncated decimal quotient and FLOOR it:
+    // SQL's six-digit division rounding can cross the next integer near a boundary.
+    private static string PrefixSql(string quantity, string amount, string position)
+    {
+        var q = "NULLIF(CONVERT(decimal(38,0),(" + quantity + ")*10000),0)";
+        var p = "(CONVERT(decimal(38,0),(" + amount + ")*10000)*CONVERT(decimal(38,0),(" + position + ")*10000))";
+        return "CONVERT(decimal(18,4),(((" + p + "-(" + p + "%" + q + "))/" + q + ")+CASE WHEN (" + p + "%" + q + ")*2>=" + q + " THEN 1 ELSE 0 END)/CONVERT(decimal(19,4),10000))";
+    }
+    internal static readonly string InventoryBalanceTriggerSql = "CREATE TRIGGER [TR_InventoryBalances_DeliveryPrecision] ON [InventoryBalances] AFTER UPDATE, DELETE AS BEGIN SET NOCOUNT ON; IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE d.QuantityPrecisionVersion=1 AND (i.Id IS NULL OR i.QuantityPrecisionVersion<>1 OR i.IsDeleted=1 OR i.StoreId<>d.StoreId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId)) THROW 51021, 'Promoted balance scope/precision cannot be downgraded or deleted.', 1; END;";
+    internal static readonly string InventoryReservationTriggerSql = """
+CREATE TRIGGER [TR_InventoryReservations_DeliverySource] ON [InventoryReservations] AFTER INSERT, UPDATE, DELETE AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM deleted d JOIN inserted i ON i.Id=d.Id WHERE d.ReferenceType<>11 AND i.ReferenceType=11)
+ THROW 51022, 'Historical reservations cannot be relabeled as delivery holds.', 1;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE d.ReferenceType=11 AND (i.Id IS NULL OR i.StoreId<>d.StoreId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId OR i.ReferenceType<>d.ReferenceType OR i.ReferenceId<>d.ReferenceId OR i.ReferenceLineId<>d.ReferenceLineId OR i.DeliveryOrderId<>d.DeliveryOrderId OR i.DeliveryOrderLineId<>d.DeliveryOrderLineId OR i.SourceLegalEntityId<>d.SourceLegalEntityId OR i.DeliveryRevision<>d.DeliveryRevision OR i.ReportedByUserId<>d.ReportedByUserId OR i.ReportedAtUtc<>d.ReportedAtUtc OR i.ReservedQty<>d.ReservedQty OR i.ReservedAtUtc<>d.ReservedAtUtc OR i.IsDeleted<>0 OR d.Status<>1 AND i.Status<>d.Status OR d.Status=1 AND i.Status<>1 AND i.Status<>2 AND i.Status<>3))
+ THROW 51022, 'Delivery hold identity/report quantity is immutable; released intervals cannot be restored.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i LEFT JOIN deleted d ON d.Id=i.Id LEFT JOIN DeliveryOrderLines q ON q.StoreId=i.StoreId AND q.DeliveryOrderId=i.DeliveryOrderId AND q.Id=i.DeliveryOrderLineId AND q.VariantId=i.ProductVariantId LEFT JOIN DeliveryOrders o ON o.StoreId=i.StoreId AND o.Id=i.DeliveryOrderId AND o.SourceWarehouseId=i.WarehouseId AND o.SourceLegalEntityId=i.SourceLegalEntityId LEFT JOIN DeliveryPickingLines p ON p.StoreId=i.StoreId AND p.DeliveryOrderId=i.DeliveryOrderId AND p.DeliveryOrderLineId=i.DeliveryOrderLineId WHERE i.ReferenceType=11 AND (i.Status<>1 AND i.ReleasedAtUtc IS NULL OR d.Id IS NULL AND (i.Status<>1 OR o.Id IS NULL OR q.Id IS NULL OR p.Id IS NULL OR p.IsActive=0 OR p.ReportedQuantity IS NULL OR p.ReporterUserId IS NULL OR p.ReportedAtUtc IS NULL OR p.ReporterUserId<>i.ReportedByUserId OR p.ReportedAtUtc<>i.ReportedAtUtc OR i.DeliveryRevision>o.Revision+1 OR o.State<>1 AND o.State<>2 AND o.State<>3 OR o.State=3 AND p.ApprovedQuantity IS NULL OR i.ReservedQty<>CASE WHEN o.State=3 THEN p.ApprovedQuantity ELSE p.ReportedQuantity END*q.BaseMultiplier)))
+ THROW 51022, 'Delivery hold must match the explicit current picking/source facts.', 1;
+END;
+""";
+    internal static readonly string InventoryTransactionTriggerSql = """
+CREATE TRIGGER [TR_InventoryTransactions_DeliveryProof] ON [InventoryTransactions] AFTER UPDATE, DELETE AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM deleted d JOIN inserted i ON i.Id=d.Id WHERE d.PostingPrecisionPolicy=0 AND i.PostingPrecisionPolicy<>0)
+ THROW 51023, 'Historical transactions cannot be relabeled with a posting precision policy.', 1;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE d.PostingPrecisionPolicy<>0 AND (i.Id IS NULL OR i.PostingPrecisionPolicy<>d.PostingPrecisionPolicy OR i.StoreId<>d.StoreId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId OR i.TransactionType<>d.TransactionType OR i.ReferenceType<>d.ReferenceType OR ISNULL(i.ReferenceId,'')<>ISNULL(d.ReferenceId,'') OR ISNULL(i.ReferenceLineId,0)<>ISNULL(d.ReferenceLineId,0) OR ISNULL(i.ReferenceSubKey,'')<>ISNULL(d.ReferenceSubKey,'') OR ISNULL(i.IdempotencyKey,0x)<>ISNULL(d.IdempotencyKey,0x) OR i.QuantityChange<>d.QuantityChange OR i.BeforeQty<>d.BeforeQty OR i.AfterQty<>d.AfterQty OR i.IsDeleted=1 OR d.PostingPrecisionPolicy=2 AND d.CostFinalizedAtUtc IS NOT NULL AND (i.TotalCost<>d.TotalCost OR i.UnitCostSnapshot<>d.UnitCostSnapshot OR i.BeforeInventoryValue<>d.BeforeInventoryValue OR i.AfterInventoryValue<>d.AfterInventoryValue OR i.IsProvisionalCost<>d.IsProvisionalCost OR ISNULL(i.CostFinalizedAtUtc,'19000101')<>d.CostFinalizedAtUtc)))
+ THROW 51023, 'Posted precision/source identity and finalized delivery stock values are immutable.', 1;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE d.CostFinalizedAtUtc IS NOT NULL AND (EXISTS (SELECT 1 FROM InventoryCostBudgetDebits b WHERE b.StoreId=d.StoreId AND b.InventoryTransactionId=d.Id) OR EXISTS (SELECT 1 FROM InventoryCostLayers l WHERE l.StoreId=d.StoreId AND l.InventoryTransactionId=d.Id AND l.CostBudgetPolicy=1) OR EXISTS (SELECT 1 FROM InventoryValuationEntries v WHERE v.StoreId=d.StoreId AND v.InventoryTransactionId=d.Id AND EXISTS (SELECT 1 FROM InventoryCostBudgetDebits b WHERE b.StoreId=v.StoreId AND (b.InventoryValuationEntryId=v.Id OR b.RevaluationEntryId=v.Id)))) AND (i.Id IS NULL OR i.PostingPrecisionPolicy<>d.PostingPrecisionPolicy OR i.StoreId<>d.StoreId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId OR i.TransactionType<>d.TransactionType OR i.ReferenceType<>d.ReferenceType OR ISNULL(i.ReferenceId,'')<>ISNULL(d.ReferenceId,'') OR ISNULL(i.ReferenceLineId,0)<>ISNULL(d.ReferenceLineId,0) OR ISNULL(i.ReferenceSubKey,'')<>ISNULL(d.ReferenceSubKey,'') OR ISNULL(i.IdempotencyKey,0x)<>ISNULL(d.IdempotencyKey,0x) OR i.QuantityChange<>d.QuantityChange OR i.BeforeQty<>d.BeforeQty OR i.AfterQty<>d.AfterQty OR i.IsDeleted=1 OR i.TotalCost<>d.TotalCost OR i.UnitCostSnapshot<>d.UnitCostSnapshot OR i.BeforeInventoryValue<>d.BeforeInventoryValue OR i.AfterInventoryValue<>d.AfterInventoryValue OR i.CostSourceType<>d.CostSourceType OR i.IsProvisionalCost<>d.IsProvisionalCost OR i.RunningAverageUnitCostAfter<>d.RunningAverageUnitCostAfter OR ISNULL(i.CostFinalizedAtUtc,'19000101')<>d.CostFinalizedAtUtc))
+ THROW 51023, 'Finalized budget proof-owner transaction identity and value snapshots are immutable.', 1;
+END;
+""";
+    internal static readonly string InventoryLayerTriggerSql = $$"""
+CREATE TRIGGER [TR_InventoryCostLayers_BudgetSource] ON [InventoryCostLayers] AFTER INSERT, UPDATE, DELETE AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE d.CostBudgetPolicy=1 AND (i.Id IS NULL OR i.CostBudgetPolicy<>1 OR i.StoreId<>d.StoreId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId OR i.InventoryTransactionId<>d.InventoryTransactionId OR i.InventoryValuationEntryId<>d.InventoryValuationEntryId OR i.ReferenceType<>d.ReferenceType OR i.ReferenceId<>d.ReferenceId OR ISNULL(i.ReferenceLineId,0)<>ISNULL(d.ReferenceLineId,0) OR ISNULL(i.ReferenceSubKey,'')<>ISNULL(d.ReferenceSubKey,'') OR i.OriginalQuantity<>d.OriginalQuantity OR i.UnitCost<>d.UnitCost OR i.BudgetAnchorQuantity<>d.BudgetAnchorQuantity OR i.BudgetAnchorAmount<>d.BudgetAnchorAmount OR i.IsProvisionalSource<>d.IsProvisionalSource OR i.IsDeleted=1 OR i.RemainingQuantity>d.RemainingQuantity OR i.RemainingCostAmount>d.RemainingCostAmount))
+ THROW 51024, 'FIFO source/anchors are immutable and debited intervals cannot be restored.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i LEFT JOIN deleted d ON d.Id=i.Id LEFT JOIN InventoryValuationEntries v ON v.StoreId=i.StoreId AND v.Id=i.InventoryValuationEntryId LEFT JOIN InventoryTransactions t ON t.StoreId=i.StoreId AND t.Id=i.InventoryTransactionId WHERE i.CostBudgetPolicy=1 AND (v.Id IS NULL OR t.Id IS NULL OR v.InventoryTransactionId<>t.Id OR v.WarehouseId<>i.WarehouseId OR v.ProductVariantId<>i.ProductVariantId OR t.WarehouseId<>i.WarehouseId OR t.ProductVariantId<>i.ProductVariantId OR v.EntryType<>1 OR v.IsProvisional=1 OR v.CostFinalizedAtUtc IS NULL OR v.IsDeleted=1 OR t.IsDeleted=1 OR i.IsProvisionalSource=1 OR v.Quantity<>i.OriginalQuantity OR v.UnitCost<>i.UnitCost OR v.Amount<0 OR i.RemainingCostAmount<>i.BudgetAnchorAmount-{{PrefixSql("i.BudgetAnchorQuantity", "i.BudgetAnchorAmount", "i.BudgetAnchorQuantity-i.RemainingQuantity")}} OR d.Id IS NULL AND (i.BudgetAnchorQuantity<>i.OriginalQuantity OR i.BudgetAnchorAmount<>v.Amount) OR d.CostBudgetPolicy=0 AND i.BudgetAnchorQuantity<>d.RemainingQuantity))
+ THROW 51024, 'FIFO budget must preserve a Final same-scope source and exact cumulative remainder.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON d.Id=i.Id JOIN InventoryValuationEntries v ON v.StoreId=i.StoreId AND v.Id=i.InventoryValuationEntryId OUTER APPLY (SELECT SUM(CASE WHEN a.IsProvisional=1 THEN a.ResolvedAmount ELSE a.Amount END) UsedAmount,SUM(CASE WHEN a.IsProvisional=1 THEN a.ResolvedQuantity ELSE a.Quantity END) UsedQuantity FROM InventoryCostLayerAllocations a WHERE a.StoreId=i.StoreId AND (a.InventoryCostLayerId=i.Id OR a.ResolvedByInventoryCostLayerId=i.Id)) s WHERE d.CostBudgetPolicy=0 AND i.CostBudgetPolicy=1 AND (i.BudgetAnchorAmount<>v.Amount-ISNULL(s.UsedAmount,0) OR d.OriginalQuantity-d.RemainingQuantity<>ISNULL(s.UsedQuantity,0)))
+ THROW 51024, 'Promoted budget anchors must preserve the existing source consumption history.', 1;
+END;
+""";
+    internal static readonly string InventoryValuationTriggerSql = """
+CREATE TRIGGER [TR_InventoryValuationEntries_BudgetSource] ON [InventoryValuationEntries] AFTER UPDATE, DELETE AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE (EXISTS (SELECT 1 FROM InventoryCostBudgetDebits b WHERE b.StoreId=d.StoreId AND (b.InventoryValuationEntryId=d.Id OR b.RevaluationEntryId=d.Id)) OR EXISTS (SELECT 1 FROM InventoryCostLayers l WHERE l.StoreId=d.StoreId AND l.InventoryValuationEntryId=d.Id AND l.CostBudgetPolicy=1)) AND (i.Id IS NULL OR i.StoreId<>d.StoreId OR i.InventoryTransactionId<>d.InventoryTransactionId OR i.WarehouseId<>d.WarehouseId OR i.ProductVariantId<>d.ProductVariantId OR i.EntryType<>d.EntryType OR i.Quantity<>d.Quantity OR i.Amount<>d.Amount OR i.UnitCost<>d.UnitCost OR i.CostSourceType<>d.CostSourceType OR i.IsProvisional<>d.IsProvisional OR i.ReferenceType<>d.ReferenceType OR i.ReferenceId<>d.ReferenceId OR ISNULL(i.ReferenceLineId,0)<>ISNULL(d.ReferenceLineId,0) OR ISNULL(i.ReferenceSubKey,'')<>ISNULL(d.ReferenceSubKey,'') OR CONVERT(varbinary(max),i.SourceReferenceSubKey)<>CONVERT(varbinary(max),d.SourceReferenceSubKey) OR DATALENGTH(i.SourceReferenceSubKey)<>DATALENGTH(d.SourceReferenceSubKey) OR i.SourceReferenceSubKey IS NULL AND d.SourceReferenceSubKey IS NOT NULL OR i.SourceReferenceSubKey IS NOT NULL AND d.SourceReferenceSubKey IS NULL OR d.CostFinalizedAtUtc IS NOT NULL AND (i.CostFinalizedAtUtc IS NULL OR i.CostFinalizedAtUtc<>d.CostFinalizedAtUtc) OR ISNULL(i.SourceValuationEntryId,0)<>ISNULL(d.SourceValuationEntryId,0) OR ISNULL(i.RevaluationOfEntryId,0)<>ISNULL(d.RevaluationOfEntryId,0) OR i.IsDeleted=1 OR d.InventoryCostLayerId IS NOT NULL AND ISNULL(i.InventoryCostLayerId,0)<>d.InventoryCostLayerId))
+ THROW 51025, 'Budget valuation provenance/quantity/value cannot be edited or deleted.', 1;
+END;
+""";
+    internal static readonly string InventoryAllocationTriggerSql = """
+CREATE TRIGGER [TR_InventoryCostLayerAllocations_BudgetSource] ON [InventoryCostLayerAllocations] AFTER UPDATE, DELETE AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE EXISTS (SELECT 1 FROM InventoryCostBudgetDebits b WHERE b.StoreId=d.StoreId AND b.InventoryCostLayerAllocationId=d.Id) AND (i.Id IS NULL OR i.StoreId<>d.StoreId OR i.InventoryValuationEntryId<>d.InventoryValuationEntryId OR ISNULL(i.InventoryCostLayerId,0)<>ISNULL(d.InventoryCostLayerId,0) OR ISNULL(i.ReverseOfAllocationId,0)<>ISNULL(d.ReverseOfAllocationId,0) OR i.Quantity<>d.Quantity OR i.Amount<>d.Amount OR i.UnitCost<>d.UnitCost OR i.IsProvisional<>d.IsProvisional OR i.IsDeleted=1 OR i.ResolvedQuantity<d.ResolvedQuantity OR i.ResolvedQuantity>i.Quantity OR i.ResolvedAmount<d.ResolvedAmount OR d.IsProvisional=0 AND (i.ResolvedQuantity<>d.ResolvedQuantity OR i.ResolvedAmount<>d.ResolvedAmount OR i.IsResolved<>d.IsResolved OR ISNULL(i.ResolvedByInventoryCostLayerId,0)<>ISNULL(d.ResolvedByInventoryCostLayerId,0))))
+ THROW 51025, 'Budget allocation source/value is immutable; resolution intervals cannot be restored.', 1;
+END;
+""";
+    internal static readonly string InventoryDebitTriggerSql = $$"""
+CREATE TRIGGER [TR_InventoryCostBudgetDebits_Source] ON [InventoryCostBudgetDebits] AFTER INSERT AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN InventoryCostLayers l ON l.StoreId=i.StoreId AND l.Id=i.InventoryCostLayerId JOIN Warehouses w ON w.StoreId=i.StoreId AND w.Id=i.WarehouseId WHERE l.CostBudgetPolicy<>1 OR l.BudgetAnchorQuantity<>i.AnchorQuantity OR l.BudgetAnchorAmount<>i.AnchorAmount OR l.UnitCost<>i.UnitCost OR w.LegalEntityId<>i.SourceLegalEntityId OR i.EndQuantity>l.BudgetAnchorQuantity-l.RemainingQuantity OR i.Amount<>{{PrefixSql("i.AnchorQuantity", "i.AnchorAmount", "i.EndQuantity")}}-{{PrefixSql("i.AnchorQuantity", "i.AnchorAmount", "i.StartQuantity")}})
+ THROW 51026, 'Cost debit is not an exact already-consumed source interval.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN InventoryCostBudgetDebits b WITH (UPDLOCK,HOLDLOCK) ON b.StoreId=i.StoreId AND b.InventoryCostLayerId=i.InventoryCostLayerId AND b.Id<>i.Id AND b.StartQuantity<i.EndQuantity AND b.EndQuantity>i.StartQuantity)
+ THROW 51026, 'Cost layer debit intervals cannot overlap.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i OUTER APPLY (SELECT MAX(b.EndQuantity) PreviousEnd FROM InventoryCostBudgetDebits b WITH (UPDLOCK,HOLDLOCK) WHERE b.StoreId=i.StoreId AND b.InventoryCostLayerId=i.InventoryCostLayerId AND b.Id<>i.Id AND b.EndQuantity<=i.StartQuantity) s WHERE i.StartQuantity<>ISNULL(s.PreviousEnd,0))
+ THROW 51026, 'Cost layer debit proofs must extend the consumed prefix without holes.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN InventoryValuationEntries v ON v.StoreId=i.StoreId AND v.Id=i.InventoryValuationEntryId JOIN InventoryCostLayerAllocations a ON a.StoreId=i.StoreId AND a.Id=i.InventoryCostLayerAllocationId JOIN InventoryTransactions t ON t.StoreId=i.StoreId AND t.Id=i.InventoryTransactionId WHERE v.IsDeleted=1 OR a.IsDeleted=1 OR t.IsDeleted=1 OR i.IsProvisionalResolution=0 AND (v.InventoryTransactionId<>t.Id OR v.EntryType<>2 OR v.IsProvisional=1 OR v.CostFinalizedAtUtc IS NULL OR v.Quantity<>-(i.EndQuantity-i.StartQuantity) OR v.Amount<>-i.Amount OR v.UnitCost<>i.UnitCost OR a.InventoryCostLayerId IS NULL OR a.InventoryCostLayerId<>i.InventoryCostLayerId OR a.IsProvisional=1 OR a.Quantity<>i.EndQuantity-i.StartQuantity OR a.Amount<>i.Amount OR a.UnitCost<>i.UnitCost OR t.QuantityChange>=0) OR i.IsProvisionalResolution=1 AND (v.EntryType<>2 OR v.IsProvisional=0 OR v.Quantity<>-a.Quantity OR v.Amount<>-a.Amount OR a.IsProvisional=0 OR a.ResolvedQuantity<i.ResolutionEndQuantity OR a.ResolvedByInventoryCostLayerId IS NULL OR a.ResolvedByInventoryCostLayerId<>i.InventoryCostLayerId OR i.ResolutionEndQuantity>a.Quantity OR t.TransactionType<>70 OR t.QuantityChange<>0 OR t.TotalCost<>{{PrefixSql("a.Quantity", "a.Amount", "i.ResolutionEndQuantity")}}-{{PrefixSql("a.Quantity", "a.Amount", "i.ResolutionStartQuantity")}}-i.Amount OR i.RevaluationEntryId IS NULL AND t.TotalCost<>0))
+ THROW 51026, 'Cost debit valuation/allocation/transaction subtype chain does not match.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN InventoryCostBudgetDebits b WITH (UPDLOCK,HOLDLOCK) ON b.StoreId=i.StoreId AND b.InventoryCostLayerAllocationId=i.InventoryCostLayerAllocationId AND b.Id<>i.Id AND b.IsProvisionalResolution=1 AND i.IsProvisionalResolution=1 AND b.ResolutionStartQuantity<i.ResolutionEndQuantity AND b.ResolutionEndQuantity>i.ResolutionStartQuantity)
+ THROW 51026, 'Provisional resolution intervals cannot overlap.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i LEFT JOIN InventoryValuationEntries r ON r.StoreId=i.StoreId AND r.Id=i.RevaluationEntryId JOIN InventoryTransactions t ON t.StoreId=i.StoreId AND t.Id=i.InventoryTransactionId WHERE i.RevaluationEntryId IS NOT NULL AND (r.Id IS NULL OR r.InventoryTransactionId<>t.Id OR r.WarehouseId<>i.WarehouseId OR r.ProductVariantId<>i.ProductVariantId OR r.EntryType<>3 OR r.Quantity<>0 OR r.Amount<>t.TotalCost OR ISNULL(r.SourceValuationEntryId,0)<>i.InventoryValuationEntryId OR ISNULL(r.RevaluationOfEntryId,0)<>i.InventoryValuationEntryId OR ISNULL(r.InventoryCostLayerId,0)<>i.InventoryCostLayerId OR r.IsDeleted=1 OR r.IsProvisional=1 OR r.CostFinalizedAtUtc IS NULL))
+ THROW 51026, 'Resolution adjustment must mirror its neutral transaction and original source.', 1;
+END;
+""";
+    internal static readonly string InventoryJournalTriggerSql = """
+CREATE TRIGGER [TR_DeliveryJournalEntries_StockSource] ON [DeliveryJournalEntries] AFTER INSERT AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM inserted i LEFT JOIN InventoryTransactions t ON t.StoreId=i.StoreId AND t.Id=i.InventoryTransactionId LEFT JOIN DeliveryOrderLines q ON q.StoreId=i.StoreId AND q.DeliveryOrderId=i.DeliveryOrderId AND q.Id=i.DeliveryOrderLineId WHERE (i.Kind=1 OR i.Kind=2) AND (t.Id IS NULL OR q.Id IS NULL OR q.VariantId<>i.VariantId OR t.WarehouseId<>i.SourceWarehouseId OR t.ProductVariantId<>i.VariantId OR t.PostingPrecisionPolicy<>2 OR t.ReferenceType<>11 OR t.ReferenceId<>CONVERT(nvarchar(64),i.DeliveryOrderId) OR t.ReferenceLineId<>i.DeliveryOrderLineId OR t.IsProvisionalCost=1 OR t.CostFinalizedAtUtc IS NULL OR t.IsDeleted=1 OR i.Kind=1 AND (t.TransactionType<>80 OR t.QuantityChange<>-i.BaseQuantity OR t.TotalCost<>-i.CostAmount) OR i.Kind=2 AND (t.TransactionType<>81 OR t.QuantityChange<>i.BaseQuantity OR t.TotalCost<>i.CostAmount)))
+ THROW 51027, 'Stock journal must match its original delivery line and genuine Final movement.', 1;
+END;
+""";
+    internal static readonly string InventoryDispatchTriggerSql = """
+CREATE TRIGGER [TR_DeliveryDispatchCostFragments_StockSource] ON [DeliveryDispatchCostFragments] AFTER INSERT AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryJournalEntries j ON j.StoreId=i.StoreId AND j.Id=i.DeliveryJournalEntryId JOIN InventoryCostBudgetDebits b ON b.StoreId=i.StoreId AND b.Id=i.InventoryCostBudgetDebitId WHERE j.Kind<>1 OR j.DeliveryOrderLineId<>i.DeliveryOrderLineId OR j.VariantId<>i.VariantId OR j.InventoryTransactionId<>i.InventoryTransactionId OR b.IsProvisionalResolution=1 OR i.BaseQuantity<>b.EndQuantity-b.StartQuantity OR i.UnitCost<>b.UnitCost OR i.CostAmount<>b.Amount)
+ THROW 51027, 'Dispatch fragment must use its exact ordinary stock debit/source journal.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryJournalEntries j ON j.StoreId=i.StoreId AND j.Id=i.DeliveryJournalEntryId CROSS APPLY (SELECT SUM(f.BaseQuantity) Qty,SUM(f.CostAmount) Amount FROM DeliveryDispatchCostFragments f WITH (UPDLOCK,HOLDLOCK) WHERE f.StoreId=i.StoreId AND f.DeliveryJournalEntryId=j.Id) s WHERE s.Qty>j.BaseQuantity OR s.Amount>j.CostAmount)
+ THROW 51027, 'Dispatch fragment quantity/value exceeds journal budget.', 1;
+END;
+""";
+    internal static readonly string InventoryReturnTriggerSql = $$"""
+CREATE TRIGGER [TR_DeliveryReturnedCostFragments_StockSource] ON [DeliveryReturnedCostFragments] AFTER INSERT AS BEGIN
+ SET NOCOUNT ON;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryDispatchCostFragments f ON f.StoreId=i.StoreId AND f.Id=i.DispatchCostFragmentId JOIN InventoryCostBudgetDebits b ON b.StoreId=f.StoreId AND b.Id=f.InventoryCostBudgetDebitId JOIN DeliveryJournalEntries j ON j.StoreId=i.StoreId AND j.Id=i.DeliveryJournalEntryId JOIN InventoryValuationEntries v ON v.StoreId=i.StoreId AND v.Id=i.InventoryValuationEntryId WHERE i.EndQuantity>f.BaseQuantity OR i.UnitCost<>f.UnitCost OR i.CostAmount<>{{PrefixSql("b.AnchorQuantity", "b.AnchorAmount", "b.StartQuantity+i.EndQuantity")}}-{{PrefixSql("b.AnchorQuantity", "b.AnchorAmount", "b.StartQuantity+i.StartQuantity")}} OR j.Kind<>2 OR j.DeliveryOrderLineId<>i.DeliveryOrderLineId OR j.VariantId<>i.VariantId OR j.InventoryTransactionId<>i.InventoryTransactionId OR j.BaseQuantity<>i.BaseQuantity OR j.CostAmount<>i.CostAmount OR v.EntryType<>1 OR v.SourceValuationEntryId IS NULL OR v.SourceValuationEntryId<>f.InventoryValuationEntryId OR v.Quantity<>i.BaseQuantity OR v.UnitCost<>i.UnitCost OR v.Amount<>i.CostAmount OR v.IsProvisional=1 OR v.CostFinalizedAtUtc IS NULL OR v.IsDeleted=1)
+ THROW 51028, 'Accepted return must preserve its exact dispatch-tail cost and genuine inbound source.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryReturnedCostFragments r WITH (UPDLOCK,HOLDLOCK) ON r.StoreId=i.StoreId AND r.DispatchCostFragmentId=i.DispatchCostFragmentId AND r.Id<>i.Id AND r.StartQuantity<i.EndQuantity AND r.EndQuantity>i.StartQuantity)
+ THROW 51028, 'Accepted return intervals cannot overlap.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryDispatchCostFragments f ON f.StoreId=i.StoreId AND f.Id=i.DispatchCostFragmentId CROSS APPLY (SELECT MIN(r.StartQuantity) Start,SUM(r.BaseQuantity) Qty FROM DeliveryReturnedCostFragments r WITH (UPDLOCK,HOLDLOCK) WHERE r.StoreId=i.StoreId AND r.DispatchCostFragmentId=f.Id) s WHERE s.Start+s.Qty<>f.BaseQuantity)
+ THROW 51028, 'Accepted returns must extend the tail toward the prefix without holes.', 1;
+ IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryDispatchCostFragments later ON later.StoreId=i.StoreId AND later.DeliveryOrderId=i.DeliveryOrderId AND later.DeliveryOrderLineId=i.DeliveryOrderLineId AND later.Id>i.DispatchCostFragmentId OUTER APPLY (SELECT SUM(r.BaseQuantity) Qty FROM DeliveryReturnedCostFragments r WITH (UPDLOCK,HOLDLOCK) WHERE r.StoreId=later.StoreId AND r.DispatchCostFragmentId=later.Id) s WHERE ISNULL(s.Qty,0)<>later.BaseQuantity)
+ THROW 51028, 'Receive the latest dispatch fragment tail before an earlier source fragment.', 1;
+END;
+""";
+    internal const string InventoryDebitImmutableSql = "CREATE TRIGGER [TR_InventoryCostBudgetDebits_Immutable] ON [InventoryCostBudgetDebits] INSTEAD OF UPDATE, DELETE AS BEGIN THROW 51026, 'Cost debit intervals are append only.', 1; END;";
+    internal const string InventoryReturnImmutableSql = "CREATE TRIGGER [TR_DeliveryReturnedCostFragments_Immutable] ON [DeliveryReturnedCostFragments] INSTEAD OF UPDATE, DELETE AS BEGIN THROW 51028, 'Accepted stock-return intervals are append only.', 1; END;";
     internal const string PickingQuoteImmutableSql = "CREATE TRIGGER [TR_DeliveryOrderLines_Immutable] ON [DeliveryOrderLines] INSTEAD OF UPDATE, DELETE AS BEGIN THROW 51002, 'Delivery quotes are immutable.', 1; END;";
     internal const string PickingRootSql = "CREATE TRIGGER [TR_DeliveryOrderLines_Root] ON [DeliveryOrderLines] AFTER INSERT AS BEGIN SET NOCOUNT ON; IF EXISTS (SELECT 1 FROM inserted i LEFT JOIN DeliveryOrderLines r ON r.StoreId=i.StoreId AND r.DeliveryOrderId=i.DeliveryOrderId AND r.Id=i.OriginalRootLineId WHERE i.OriginalRootLineId IS NOT NULL AND (r.Id IS NULL OR r.SourceOrderLineId IS NULL OR r.OriginalRootLineId IS NOT NULL)) THROW 51007, 'Replacement must reference an original delivery root.', 1; END;";
     internal const string PickingBoundsSql = "CREATE TRIGGER [TR_DeliveryPickingLines_Bounds] ON [DeliveryPickingLines] AFTER INSERT, UPDATE, DELETE AS BEGIN SET NOCOUNT ON; IF EXISTS (SELECT 1 FROM deleted d LEFT JOIN inserted i ON i.Id=d.Id WHERE i.Id IS NULL OR i.StoreId<>d.StoreId OR i.DeliveryOrderId<>d.DeliveryOrderId OR i.DeliveryOrderLineId<>d.DeliveryOrderLineId) THROW 51008, 'Picking line identity cannot be changed or deleted.', 1; IF EXISTS (SELECT 1 FROM inserted i JOIN DeliveryOrderLines q ON q.StoreId=i.StoreId AND q.DeliveryOrderId=i.DeliveryOrderId AND q.Id=i.DeliveryOrderLineId WHERE i.PlannedQuantity>q.OrderedQuantity OR q.OriginalRootLineId IS NULL AND i.PlannedOriginalCoverage<>0 OR q.OriginalRootLineId IS NULL AND ISNULL(i.ApprovedOriginalCoverage,0)<>0 OR i.PlannedQuantity=0 AND i.PlannedOriginalCoverage<>0 OR i.PlannedQuantity*q.BaseMultiplier>=100000000000000 OR i.PlannedQuantity*q.BaseMultiplier<>ROUND(i.PlannedQuantity*q.BaseMultiplier,4) OR ISNULL(i.ReportedQuantity,0)*q.BaseMultiplier<>ROUND(ISNULL(i.ReportedQuantity,0)*q.BaseMultiplier,4) OR ISNULL(i.ApprovedQuantity,0)*q.BaseMultiplier<>ROUND(ISNULL(i.ApprovedQuantity,0)*q.BaseMultiplier,4) OR ISNULL(i.ApprovedNet,0)>q.Net) THROW 51008, 'Picking quantities exceed immutable quote or base precision.', 1; IF EXISTS (SELECT 1 FROM DeliveryOrderLines r JOIN (SELECT StoreId,DeliveryOrderId FROM inserted UNION SELECT StoreId,DeliveryOrderId FROM deleted) a ON a.StoreId=r.StoreId AND a.DeliveryOrderId=r.DeliveryOrderId CROSS APPLY (SELECT SUM(CASE WHEN q.OriginalRootLineId IS NULL THEN p.PlannedQuantity ELSE p.PlannedOriginalCoverage END) Planned, SUM(CASE WHEN q.OriginalRootLineId IS NULL THEN ISNULL(p.ApprovedQuantity,0) ELSE ISNULL(p.ApprovedOriginalCoverage,0) END) Approved FROM DeliveryPickingLines p JOIN DeliveryOrderLines q ON q.StoreId=p.StoreId AND q.DeliveryOrderId=p.DeliveryOrderId AND q.Id=p.DeliveryOrderLineId WHERE p.StoreId=r.StoreId AND p.DeliveryOrderId=r.DeliveryOrderId AND p.IsActive=1 AND (q.Id=r.Id OR q.OriginalRootLineId=r.Id)) totals WHERE r.OriginalRootLineId IS NULL AND (totals.Planned>r.OrderedQuantity OR totals.Approved>r.OrderedQuantity)) THROW 51008, 'Picking root coverage exceeds original order.', 1; END;";
@@ -15,6 +124,18 @@ internal static class DeliverySchemaSqlCatalog
     private sealed record Entry(string MigrationId, string Table, string Name, string Sql);
     private static readonly Entry[] Entries =
     [
+        new(InventoryMigrationId, "InventoryBalances", "TR_InventoryBalances_DeliveryPrecision", InventoryBalanceTriggerSql),
+        new(InventoryMigrationId, "InventoryReservations", "TR_InventoryReservations_DeliverySource", InventoryReservationTriggerSql),
+        new(InventoryMigrationId, "InventoryTransactions", "TR_InventoryTransactions_DeliveryProof", InventoryTransactionTriggerSql),
+        new(InventoryMigrationId, "InventoryCostLayers", "TR_InventoryCostLayers_BudgetSource", InventoryLayerTriggerSql),
+        new(InventoryMigrationId, "InventoryValuationEntries", "TR_InventoryValuationEntries_BudgetSource", InventoryValuationTriggerSql),
+        new(InventoryMigrationId, "InventoryCostLayerAllocations", "TR_InventoryCostLayerAllocations_BudgetSource", InventoryAllocationTriggerSql),
+        new(InventoryMigrationId, "InventoryCostBudgetDebits", "TR_InventoryCostBudgetDebits_Immutable", InventoryDebitImmutableSql),
+        new(InventoryMigrationId, "InventoryCostBudgetDebits", "TR_InventoryCostBudgetDebits_Source", InventoryDebitTriggerSql),
+        new(InventoryMigrationId, "DeliveryJournalEntries", "TR_DeliveryJournalEntries_StockSource", InventoryJournalTriggerSql),
+        new(InventoryMigrationId, "DeliveryDispatchCostFragments", "TR_DeliveryDispatchCostFragments_StockSource", InventoryDispatchTriggerSql),
+        new(InventoryMigrationId, "DeliveryReturnedCostFragments", "TR_DeliveryReturnedCostFragments_Immutable", InventoryReturnImmutableSql),
+        new(InventoryMigrationId, "DeliveryReturnedCostFragments", "TR_DeliveryReturnedCostFragments_StockSource", InventoryReturnTriggerSql),
         new(PickingMigrationId, "DeliveryOrderLines", "TR_DeliveryOrderLines_Immutable", PickingQuoteImmutableSql),
         new(PickingMigrationId, "DeliveryOrderLines", "TR_DeliveryOrderLines_Root", PickingRootSql),
         new(PickingMigrationId, "DeliveryPickingLines", "TR_DeliveryPickingLines_Bounds", PickingBoundsSql),
@@ -44,6 +165,13 @@ internal static class DeliverySchemaSqlCatalog
         return true;
     }
 
+    internal static bool IsInventoryPreflight(string migrationId, SqlOperation operation)
+    {
+        if (migrationId != InventoryMigrationId || NormalizeDefinition(operation.Sql) != InventoryPreflightSql) return false;
+        if (operation.SuppressTransaction) throw new InvalidOperationException("Delivery inventory validation must use the migration transaction.");
+        return true;
+    }
+
     internal static bool TryGetTrigger(string migrationId, SqlOperation operation,
         out (string Table, DatabaseTriggerSchema Trigger) result)
     {
@@ -51,11 +179,11 @@ internal static class DeliverySchemaSqlCatalog
         var candidates = Entries.Where(x => x.MigrationId == migrationId).ToArray();
         if (candidates.Length == 0) return false;
         var normalized = NormalizeDefinition(operation.Sql);
-        var entry = candidates.SingleOrDefault(x => x.Sql == normalized);
+        var entry = candidates.SingleOrDefault(x => NormalizeDefinition(x.Sql) == normalized);
         if (operation.SuppressTransaction || entry is null)
             throw new InvalidOperationException("Delivery migration contains an unrecognized trigger SQL operation.");
         result = (entry.Table, new(DatabaseSchemaNormalization.NormalizeIdentifier(entry.Name),
-            entry.Sql, IsDisabled: false, IsNotForReplication: false,
+            NormalizeDefinition(entry.Sql), IsDisabled: false, IsNotForReplication: false,
             UsesAnsiNulls: true, UsesQuotedIdentifier: true));
         return true;
     }

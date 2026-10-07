@@ -77,15 +77,105 @@
             rejectFirstAttempt(intent) { const current = read(); if (intent.uncertain || !current || current.body !== intent.body) return false; storage.removeItem(key); return storage.getItem(key) === null; }
         };
     }
-    const api = { scaledQuantity, displayExact, money, parseUtcDate, canApplyProjection, reportLine, parseLookup, validRevision, createIntentStore };
+    function inventoryProjection(detail, storeId) {
+        const inventory = detail.inventory;
+        if (inventory == null) return null;
+        const d = detail.delivery;
+        if (!Number.isSafeInteger(storeId) || storeId <= 0 || inventory.storeId !== storeId ||
+            inventory.deliveryOrderId !== d.id || inventory.revision !== d.revision || inventory.version !== d.version ||
+            inventory.sourceWarehouseId !== d.sourceWarehouseId || inventory.sourceLegalEntityId !== d.sourceLegalEntityId)
+            throw new Error('Dữ liệu kho không khớp cửa hàng hoặc bản đơn. Tải bản mới trước khi thao tác.');
+        if (!Array.isArray(inventory.lines) || !Array.isArray(inventory.costFragments) || typeof inventory.canViewCosts !== 'boolean' || typeof inventory.canCancelBeforeHandover !== 'boolean')
+            throw new Error('Dữ liệu kho chưa đầy đủ.');
+        parseUtcDate(inventory.serverTimeUtc);
+        const ids = new Set();
+        for (const line of inventory.lines) {
+            if (!Number.isSafeInteger(line.lineId) || line.lineId <= 0 || ids.has(line.lineId)) throw new Error('Dòng kho không hợp lệ.');
+            ids.add(line.lineId);
+            const held = scaledQuantity(line.heldBaseQuantityText), dispatched = scaledQuantity(line.dispatchedBaseQuantityText), returned = scaledQuantity(line.acceptedReturnedBaseQuantityText), outside = scaledQuantity(line.stockOutsideBaseQuantityText);
+            if (held < 0n || returned > dispatched || outside !== dispatched - returned) throw new Error('Lượng kho chưa khớp chứng từ.');
+            if (line.inCustodyBaseQuantityText !== null) scaledQuantity(line.inCustodyBaseQuantityText);
+            if (!inventory.canViewCosts && (line.dispatchedCostText !== null || line.acceptedReturnedCostText !== null)) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
+        }
+        if (!inventory.canViewCosts && inventory.costFragments.length) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
+        return inventory;
+    }
+    function projectionChanged(current, incoming, needsFresh) {
+        const facts = inventory => inventory == null ? null : { ...inventory, serverTimeUtc: null };
+        return needsFresh || incoming.delivery.version !== current.delivery.version ||
+            JSON.stringify(incoming.capabilities) !== JSON.stringify(current.capabilities) ||
+            JSON.stringify(facts(incoming.inventory)) !== JSON.stringify(facts(current.inventory));
+    }
+    function intentPath(intent) {
+        if (!Number.isSafeInteger(intent.deliveryId) || intent.deliveryId <= 0) throw new Error('Đơn trong yêu cầu không hợp lệ.');
+        if (intent.resource === 'inventory' && intent.operation === 'cancel') return '/admin/api/deliveries/' + intent.deliveryId + '/inventory/cancel';
+        if (intent.resource == null && operations.has(intent.operation)) return '/admin/api/deliveries/' + intent.deliveryId + '/picking/' + intent.operation;
+        throw new Error('Thao tác đang lưu không hợp lệ.');
+    }
+    function createInventoryIntentStore(storage, origin, storeId, actorId) {
+        if (!origin || !Number.isSafeInteger(storeId) || storeId <= 0 || !actorId) throw new Error('Không xác định được cửa hàng và nhân viên. Hãy đăng nhập lại.');
+        const key = 'gao.delivery.inventory.v1:' + JSON.stringify([origin, storeId, actorId]);
+        const attempts = new WeakMap();
+        function read() {
+            const raw = storage.getItem(key); if (!raw) return null;
+            let intent, body; try { intent = JSON.parse(raw); body = JSON.parse(intent.body); } catch { throw new Error('Yêu cầu hủy đang lưu không đọc được.'); }
+            if (intent.schema !== 1 || intent.resource !== 'inventory' || intent.storeId !== storeId || intent.actorId !== actorId || intent.operation !== 'cancel' || typeof intent.body !== 'string' ||
+                typeof body.expectedVersion !== 'string' || !body.expectedVersion || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.clientRequestId) ||
+                typeof body.reason !== 'string' || validNote(body.reason, 'Lý do hủy') !== body.reason ||
+                Object.keys(body).sort().join(',') !== 'clientRequestId,expectedVersion,reason') throw new Error('Yêu cầu hủy đang lưu không hợp lệ.');
+            intentPath(intent); return intent;
+        }
+        function write(intent) { const raw = JSON.stringify(intent); storage.setItem(key, raw); if (storage.getItem(key) !== raw) throw new Error('Không lưu được yêu cầu hủy an toàn. Chưa gửi thao tác.'); return intent; }
+        return {
+            read,
+            begin(deliveryId, operation, body) {
+                if (read()) throw new Error('Còn một yêu cầu chưa xác nhận. Cần thử lại yêu cầu cũ trước.');
+                const intent = { schema: 1, resource: 'inventory', storeId, actorId, deliveryId, operation, body: JSON.stringify(body), uncertain: false };
+                intentPath(intent);
+                // Validate the body before writing; a failed validation must not strand an unsendable request.
+                if (operation !== 'cancel' || typeof body.expectedVersion !== 'string' || !body.expectedVersion || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.clientRequestId) ||
+                    typeof body.reason !== 'string' || validNote(body.reason, 'Lý do hủy') !== body.reason || Object.keys(body).sort().join(',') !== 'clientRequestId,expectedVersion,reason') throw new Error('Yêu cầu hủy không hợp lệ.');
+                return write(intent);
+            },
+            sending(intent) {
+                const current = read(); if (!current || current.body !== intent.body || current.deliveryId !== intent.deliveryId || current.resource !== intent.resource || current.storeId !== intent.storeId || current.actorId !== intent.actorId || current.operation !== intent.operation) throw new Error('Yêu cầu đã thay đổi ở tab khác.');
+                const attempt = write({ ...current, uncertain: true }); attempts.set(attempt, current.uncertain === true); return attempt;
+            },
+            acknowledge(ack) {
+                const intent = read(); if (!intent) throw new Error('Không còn yêu cầu đang xác nhận.'); const body = JSON.parse(intent.body);
+                if (ack.clientRequestId !== body.clientRequestId || ack.deliveryOrderId !== intent.deliveryId || ack.operation !== 'cancel' ||
+                    !Number.isSafeInteger(ack.appliedRevision) || ack.appliedRevision <= 0 || ack.appliedRevision > 2147483647 ||
+                    typeof ack.appliedVersion !== 'string' || !/^[A-Za-z0-9+/]{10}[AEIMQUYcgkosw048]=$/.test(ack.appliedVersion) ||
+                    typeof ack.recordedAtUtc !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|\+00:00)$/.test(ack.recordedAtUtc) ||
+                    typeof ack.replayed !== 'boolean') throw new Error('Phản hồi không khớp yêu cầu hủy hoặc thiếu bản xác nhận.');
+                parseUtcDate(ack.recordedAtUtc);
+                storage.removeItem(key); if (storage.getItem(key)) throw new Error('Không xóa được yêu cầu đã xác nhận.');
+            },
+            rejectFirstAttempt(attempt) { const current = read(); if (!attempts.has(attempt) || attempts.get(attempt) || !current || current.body !== attempt.body || current.deliveryId !== attempt.deliveryId) return false; storage.removeItem(key); return storage.getItem(key) === null; }
+        };
+    }
+    function cancellationBody(detail, storeId, reason, clientRequestId, dirty, blocked) {
+        if (dirty) throw new Error('Có chỉnh sửa chưa lưu. Lưu kết quả soạn hoặc tải lại để bỏ chỉnh sửa trước khi hủy.');
+        if (blocked) throw new Error('Xác nhận yêu cầu cũ và tải bản mới trước khi hủy.');
+        const inventory = inventoryProjection(detail, storeId);
+        if (!inventory?.canCancelBeforeHandover) throw new Error('Đơn hiện tại chưa được phép hủy trước bàn giao.');
+        const cancellationReason = reason.trim();
+        if (!cancellationReason || cancellationReason.length > 500) throw new Error('Lý do hủy cần có nội dung, tối đa 500 ký tự.');
+        return { clientRequestId, expectedVersion: detail.delivery.version, reason: cancellationReason };
+    }
+    const api = { scaledQuantity, displayExact, money, parseUtcDate, canApplyProjection, reportLine, parseLookup, validRevision, createIntentStore, inventoryProjection, projectionChanged, intentPath, createInventoryIntentStore, cancellationBody };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (!root.document) return;
     root.DeliveryPickingUi = api;
     const $ = id => document.getElementById(id);
     if (!$('deliverySearch')) return;
     const workspace = document.querySelector('.delivery-workspace');
-    let intents, current = null, currentKey = '', printedRevision = null, busy = false, dirty = false, needsFresh = false, lookingUp = false, sequence = 0, readEpoch = 0;
-    try { intents = createIntentStore(localStorage, workspace.dataset.actor ? location.origin + ':' + workspace.dataset.actor : ''); } catch (e) { message(e.message, true); }
+    const storeId = Number(workspace.dataset.store);
+    let intents, inventoryIntents, cancelReason = '', current = null, currentKey = '', printedRevision = null, busy = false, dirty = false, needsFresh = false, lookingUp = false, sequence = 0, readEpoch = 0;
+    try {
+        intents = createIntentStore(localStorage, workspace.dataset.actor ? location.origin + ':' + workspace.dataset.actor : '');
+        inventoryIntents = createInventoryIntentStore(localStorage, location.origin, storeId, workspace.dataset.actor);
+    } catch (e) { message(e.message, true); }
     function node(tag, text, cls) { const element = document.createElement(tag); if (text != null) element.textContent = text; if (cls) element.className = cls; return element; }
     function button(text, action, cls = 'btn btn-outline-primary') { const element = node('button', text, cls); element.type = 'button'; element.addEventListener('click', action); return element; }
     function message(text, error = false) { const element = $('deliveryPageMessage'); element.textContent = text; element.className = 'delivery-page-message' + (error ? ' is-error' : ''); }
@@ -101,31 +191,36 @@
         const response = await fetch('/admin/api/deliveries' + path, { cache: 'no-store', credentials: 'same-origin' });
         const data = await response.json(); if (!response.ok) throw new Error(data.message || 'Không có quyền xem hoặc không tìm thấy đơn.'); return data;
     }
-    function pending() { try { return intents?.read() ?? null; } catch (e) { message(e.message, true); return { broken: true }; } }
+    function pendingRequests() { try { return [intents?.read(), inventoryIntents?.read()].filter(Boolean); } catch (e) { message(e.message, true); return [{ broken: true }]; } }
+    function pending() { return pendingRequests()[0] ?? null; }
     function pendingPanel(panel) {
-        const intent = pending(); if (!intent) return;
-        const box = node('section', null, 'delivery-pending'); box.append(node('strong', 'Có thao tác chưa xác nhận'), note('Giữ nguyên mã yêu cầu và nội dung. Thử lại để xác nhận kết quả đã lưu, sau đó tải bản mới nhất.'));
-        if (!intent.broken) box.append(button('Thử lại yêu cầu cũ', () => send(intent), 'btn btn-warning'), note('Đơn #' + intent.deliveryId + ' · ' + intent.operation));
-        panel.append(box);
+        for (const intent of pendingRequests()) {
+            const box = node('section', null, 'delivery-pending'); box.append(node('strong', intent.resource === 'inventory' ? 'Có yêu cầu hủy chưa xác nhận' : 'Có thao tác chưa xác nhận'), note('Giữ nguyên mã yêu cầu và nội dung. Thử lại để xác nhận kết quả đã lưu, sau đó tải bản mới nhất.'));
+            if (!intent.broken) box.append(button('Thử lại yêu cầu cũ', () => send(intent), 'btn btn-warning'), note('Đơn #' + intent.deliveryId + ' · ' + intent.operation));
+            panel.append(box);
+        }
     }
     async function send(intent) {
-        if (busy || lookingUp || !intents) return; readEpoch++; busy = true; render(); message('Đang xác nhận thao tác…');
+        const registry = intent.resource === 'inventory' ? inventoryIntents : intents;
+        if (busy || lookingUp || !registry) return; readEpoch++; busy = true; render(); message('Đang xác nhận thao tác…');
         let acknowledged = false;
         try {
-            intents.sending(intent);
+            const attempt = registry.sending(intent);
             const token = document.querySelector('meta[name="request-verification-token"]')?.content || document.querySelector('input[name="__RequestVerificationToken"]')?.value;
             if (!token) throw new Error('Thiếu mã bảo vệ phiên. Hãy tải lại trang và thử lại yêu cầu cũ.');
-            const response = await fetch('/admin/api/deliveries/' + intent.deliveryId + '/picking/' + intent.operation, {
+            const response = await fetch(intentPath(intent), {
                 method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', RequestVerificationToken: token }, body: intent.body
             });
             let data; try { data = await response.json(); } catch { throw new Error('Chưa xác nhận được kết quả. Thử lại yêu cầu cũ.'); }
             if (!response.ok) {
                 // A first received rejection has no preceding uncertain attempt. Retries retain identity after permission or state changes.
-                if ([400, 403, 404, 409, 422].includes(response.status)) intents.rejectFirstAttempt(intent);
+                if ([400, 403, 404, 409, 422].includes(response.status)) registry.rejectFirstAttempt(intent.resource === 'inventory' ? attempt : intent);
+                if (intent.resource === 'inventory') needsFresh = true;
                 throw new Error(data.message || 'Yêu cầu bị từ chối.');
             }
-            intents.acknowledge(data);
+            registry.acknowledge(data);
             acknowledged = true; needsFresh = true; dirty = false;
+            if (intent.resource === 'inventory') cancelReason = '';
             const fresh = current?.delivery.id === intent.deliveryId ? await loadCurrent(intent.deliveryId, true) : await lookup(currentKey, true, intent.deliveryId);
             if (!fresh) throw new Error('Chưa tải được bản hiện hành.');
             message(data.replayed ? 'Đã xác nhận yêu cầu cũ. Đang hiển thị bản mới nhất.' : 'Đã lưu thao tác. Đang hiển thị bản mới nhất.');
@@ -136,6 +231,7 @@
     async function command(operation, fields = {}) {
         if (!current || busy || lookingUp || !intents) return;
         if (needsFresh) { message('Tải bản mới trước khi thao tác tiếp.', true); return; }
+        if (pending()) { message('Còn một yêu cầu chưa xác nhận. Cần thử lại yêu cầu cũ trước.', true); return; }
         if (operation === 'submit' && dirty) { message('Có chỉnh sửa chưa lưu. Lưu kết quả soạn trước khi gửi chốt.', true); return; }
         try {
             const body = { clientRequestId: crypto.randomUUID(), expectedVersion: current.delivery.version, ...fields };
@@ -150,7 +246,8 @@
             const parsed = parseLookup(raw, location.origin);
             const detail = knownId ? { id: knownId, code: currentKey } : await get('/lookup?key=' + encodeURIComponent(parsed.key));
             const data = await get('/' + detail.id + '/picking'); if (ticket !== sequence) return false;
-            current = data; currentKey = knownId ? data.delivery.lookupToken : parsed.key || detail.code;
+            inventoryProjection(data, storeId);
+            current = data; currentKey = knownId ? data.delivery.lookupToken : parsed.key || detail.code; cancelReason = '';
             printedRevision = parsed.revision;
             if (!printedRevision) try { printedRevision = validRevision(sessionStorage.getItem(printedKey(detail.id))); } catch { /* URL remains authoritative. */ }
             if (printedRevision) try { sessionStorage.setItem(printedKey(detail.id), printedRevision); } catch { /* Also retained in URL. */ }
@@ -166,20 +263,21 @@
         try { data = await get('/' + id + '/picking'); }
         catch (e) { if (ticket !== sequence || epoch !== readEpoch || current?.delivery.id !== id) return false; throw e; }
         if (ticket !== sequence || !canApplyProjection(current, data, epoch, readEpoch)) return false;
+        inventoryProjection(data, storeId);
         if (dirty && !force) {
             if (data.delivery.version !== current.delivery.version) message('Đơn đã có thay đổi. Tải bản mới để tiếp tục; nội dung đang nhập vẫn được giữ.'); return false;
         }
-        const changed = needsFresh || data.delivery.version !== current.delivery.version || JSON.stringify(data.capabilities) !== JSON.stringify(current.capabilities);
+        const changed = projectionChanged(current, data, needsFresh);
         current = data; needsFresh = false; if (force) dirty = false; if (changed || force) render(); return true;
     }
     function render() {
         $('deliveryKey').disabled = busy || lookingUp; $('deliverySearch').querySelector('button').disabled = busy || lookingUp;
         const panel = $('deliveryDetail'); if (!current) { panel.hidden = true; return; }
         panel.replaceChildren(); panel.hidden = false;
-        const d = current.delivery, capabilities = current.capabilities, blocked = busy || lookingUp || needsFresh || !!pending() || !intents;
+        const d = current.delivery, capabilities = current.capabilities, blocked = busy || lookingUp || needsFresh || !!pending() || !intents || !inventoryIntents;
         panel.dataset.revision = String(d.revision); panel.dataset.version = d.version; panel.dataset.state = d.state;
         panel.dataset.needsFresh = String(needsFresh);
-        if (needsFresh) panel.append(note('Thao tác đã được xác nhận. Nội dung dưới đây là bản đã xem trước đó; tải bản mới để xem kết quả hiện hành.', 'delivery-revision-warning'));
+        if (needsFresh) panel.append(note('Cần tải bản mới trước khi thao tác. Nội dung dưới đây là bản đã xem trước đó; kiểm tra kết quả hiện hành trên máy chủ.', 'delivery-revision-warning'));
         const header = node('div', null, 'delivery-detail-heading'); header.append(node('h3', d.code), node('span', states[d.state] || d.state, 'delivery-badge state-' + d.state)); panel.append(header);
         panel.append(note('Bản ' + d.revision + ' · Tạo ' + time(d.createdAtUtc) + ' · Quầy #' + d.createdTerminalId + ' · Giỏ #' + d.sourceCartId));
         if (printedRevision && BigInt(printedRevision) < BigInt(d.revision)) panel.append(note('Phiếu đang quét là bản ' + printedRevision + '. Đơn hiện tại là bản ' + d.revision + ' — kiểm tra lượng mới trước khi soạn hoặc giao.', 'delivery-revision-warning'));
@@ -228,6 +326,7 @@
         if (capabilities.canSubmit) { const submit = button('Gửi chốt soạn', () => command('submit'), 'btn btn-success'); submit.id = 'deliverySubmitPicking'; submit.disabled = blocked; panel.append(submit, note('Lưu kết quả trước khi gửi. Tất cả dòng cần có kết quả, kể cả lượng bằng 0.')); }
         const totals = node('div', null, 'delivery-picking-totals'); totals.append(note('Giá trị gốc: ' + money(current.quotedTotalText)), note('Bản soạn dự kiến: ' + money(current.draftTotalText)));
         if (current.approvedTotalText !== null) totals.append(node('strong', 'Lượng được duyệt: ' + money(current.approvedTotalText))); else totals.append(note('Chưa có bản duyệt hiện hành.')); panel.append(totals);
+        renderInventory(panel, blocked);
         const coverage = node('details', null, 'delivery-coverage'); coverage.append(node('summary', 'Lượng còn thiếu theo yêu cầu gốc'));
         for (const rootLine of current.rootCoverage) { const original = current.lines.find(line => line.lineId === rootLine.originalRootLineId); coverage.append(note((original?.itemName || 'Dòng #' + rootLine.originalRootLineId) + ': thiếu dự kiến ' + displayExact(rootLine.draftMissingQuantityText) + ' ' + (original?.unitName || '') + (rootLine.approvedMissingQuantityText !== null ? ' · thiếu sau duyệt ' + displayExact(rootLine.approvedMissingQuantityText) : ''))); } panel.append(coverage);
         if (capabilities.canPlan) renderPlan(panel, effective, blocked);
@@ -241,6 +340,33 @@
             catch (e) { historyBody.textContent = e.message; }
         }); panel.append(historySection);
         panel.append(note('Cập nhật máy chủ: ' + time(current.serverTimeUtc) + '. Kiểm tra lại bản hiện hành trước khi thao tác.', 'delivery-server-time'));
+    }
+    function renderInventory(panel, blocked) {
+        const box = node('section', null, 'delivery-inventory'); box.id = 'deliveryInventory'; box.append(node('h4', 'Hàng tại kho và ngoài kho'));
+        const inventory = inventoryProjection(current, storeId);
+        if (!inventory) { box.append(note('Chưa có dữ liệu chứng từ kho của đơn.')); panel.append(box); return; }
+        box.dataset.version = inventory.version; box.dataset.canCancel = String(inventory.canCancelBeforeHandover);
+        box.append(note('Kho nguồn: ' + inventory.sourceWarehouseName + ' · Chủ hàng: ' + inventory.sourceLegalEntityName, 'delivery-inventory-origin'));
+        for (const line of inventory.lines) {
+            const row = node('article', null, 'delivery-inventory-line'); row.dataset.lineId = String(line.lineId); row.append(node('strong', line.itemName));
+            const facts = node('dl', null, 'delivery-inventory-quantities');
+            for (const [key, label] of [['heldBaseQuantityText', 'Đang giữ cho đơn'], ['dispatchedBaseQuantityText', 'Đã xuất khỏi kho'], ['acceptedReturnedBaseQuantityText', 'Đã nhận trả vào kho'], ['stockOutsideBaseQuantityText', 'Còn ngoài kho nguồn']]) {
+                const value = node('dd', displayExact(line[key]) + ' ' + line.baseUnitName); value.dataset.quantity = key; facts.append(node('dt', label), value);
+            }
+            row.append(facts, note(line.inCustodyBaseQuantityText === null ? 'Trách nhiệm giao: chưa có xác nhận.' : 'Lượng đã xác nhận trách nhiệm giao: ' + displayExact(line.inCustodyBaseQuantityText) + ' ' + line.baseUnitName, 'delivery-inventory-custody')); box.append(row);
+        }
+        box.append(note('Lượng ngoài kho dựa trên chứng từ xuất và nhận trả. Theo dõi người giao và kết quả giao sẽ được kết nối ở bước tiếp theo.'), note('Chứng từ kho cập nhật: ' + time(inventory.serverTimeUtc), 'delivery-server-time'));
+        if (inventory.canCancelBeforeHandover) {
+            const cancellation = node('details', null, 'delivery-cancel-section'); cancellation.append(node('summary', 'Hủy đơn trước bàn giao'));
+            cancellation.append(note('Hủy đơn sẽ giải phóng lượng đang giữ. Hàng đã xuất kho cần quy trình nhận trả.'));
+            const label = node('label', null, 'delivery-input-label'); label.append(node('span', 'Lý do hủy')); const input = node('input'); input.id = 'deliveryCancelReason'; input.className = 'form-control'; input.type = 'text'; input.maxLength = 500; input.value = cancelReason; input.disabled = blocked;
+            input.addEventListener('input', () => { cancelReason = input.value; }); label.append(input); cancellation.append(label);
+            const cancel = button('Xác nhận hủy đơn', async () => {
+                try { const body = cancellationBody(current, storeId, cancelReason, crypto.randomUUID(), dirty, busy || lookingUp || needsFresh || !!pending() || !inventoryIntents); await send(inventoryIntents.begin(current.delivery.id, 'cancel', body)); }
+                catch (e) { message(e.message, true); }
+            }, 'btn btn-outline-danger'); cancel.id = 'deliveryCancel'; cancel.disabled = blocked; cancellation.append(cancel); box.append(cancellation);
+        }
+        panel.append(box);
     }
     function managerSection(panel, title, id) { const details = node('details', null, 'delivery-manager-section'); details.id = id; details.append(node('summary', title)); const body = node('div', null, 'delivery-manager-body'); details.append(body); panel.append(details); return body; }
     function managerNotes(body, prefix, blocked) {

@@ -5,6 +5,7 @@ using System.Text.Json;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Delivery;
 using GaoApp.Domain.Delivery;
+using GaoApp.Domain.Enums;
 using GaoApp.Tests.Configuration;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -490,23 +491,32 @@ public sealed class DeliveryD04SqlServerTests(DeliveryD02Fixture fixture, ITestO
     {
         using var c = await DeliveryD04Case.CreateAsync(fixture, quantity: 10, unitPrice: 100, lineDiscount: 200);
         var replacement = await c.ReplacementAsync();
-        var effects = await c.NonDeliveryEffectsAsync();
-        async Task NoEffects() => Assert.Equal(effects, await c.NonDeliveryEffectsAsync());
-        await c.ClaimAsync(); await NoEffects();
-        await c.ReportAsync("10"); await NoEffects();
+        var effects = await c.FinancialAndPostedStockEffectsAsync();
+        async Task NoEffects(decimal expectedHeld)
+        {
+            Assert.Equal(effects, await c.FinancialAndPostedStockEffectsAsync());
+            await using var verification = c.Source.Context();
+            var reference = c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var held = await verification.InventoryReservations.Where(x =>
+                x.ReferenceType == InventoryReferenceType.Delivery && x.ReferenceId == reference &&
+                x.Status == InventoryReservationStatus.Active).SumAsync(x => x.ReservedQty);
+            Assert.Equal(expectedHeld, held);
+        }
+        await c.ClaimAsync(); await NoEffects(0);
+        await c.ReportAsync("10"); await NoEffects(10);
         var current = await c.GetAsync();
-        await c.CommandAsync("plan", Plan(current, "8", replacement.VariantId, replacement.BottleId, "2", "2")); await NoEffects();
+        await c.CommandAsync("plan", Plan(current, "8", replacement.VariantId, replacement.BottleId, "2", "2")); await NoEffects(0);
         var plan = await c.GetAsync();
         await c.CommandAsync("report", new DeliveryPickingReportRequest(Guid.NewGuid(), plan.Delivery.Version,
-            plan.Lines.Where(x => x.IsActive).Select(x => new DeliveryPickingReportLine(x.LineId, x.PlannedQuantityText, null)).ToArray())); await NoEffects();
-        await c.SubmitAsync(); await NoEffects();
-        var ready = await c.ApproveAsync(); await NoEffects();
-        await c.CommandAsync("reopen", new DeliveryPickingReopenRequest(Guid.NewGuid(), ready.Delivery.Version, "Đếm lại")); await NoEffects();
-        await c.SubmitAsync(); await NoEffects();
-        ready = await c.ApproveAsync(); await NoEffects();
+            plan.Lines.Where(x => x.IsActive).Select(x => new DeliveryPickingReportLine(x.LineId, x.PlannedQuantityText, null)).ToArray())); await NoEffects(10);
+        await c.SubmitAsync(); await NoEffects(10);
+        var ready = await c.ApproveAsync(); await NoEffects(10);
+        await c.CommandAsync("reopen", new DeliveryPickingReopenRequest(Guid.NewGuid(), ready.Delivery.Version, "Đếm lại")); await NoEffects(10);
+        await c.SubmitAsync(); await NoEffects(10);
+        ready = await c.ApproveAsync(); await NoEffects(10);
         var target = await c.ActorAsync(PermissionCodes.Delivery.View, PermissionCodes.Delivery.Pick);
         using var client = target.Client;
-        await c.CommandAsync("reassign", new DeliveryPickingReassignRequest(Guid.NewGuid(), ready.Delivery.Version, target.Account.UserId, "Đổi người")); await NoEffects();
+        await c.CommandAsync("reassign", new DeliveryPickingReassignRequest(Guid.NewGuid(), ready.Delivery.Version, target.Account.UserId, "Đổi người")); await NoEffects(10);
         var latest = await c.GetAsync();
         Assert.Equal("880", latest.ApprovedTotalText);
         await using var db = c.Source.Context();

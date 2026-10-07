@@ -147,6 +147,8 @@ public sealed class InventoryLedgerIndexReadService : IInventoryLedgerIndexReadS
             InventoryTransactionType.AdjustmentDecrease => "Điều chỉnh giảm",
             InventoryTransactionType.TransferIn => "Nhập chuyển kho",
             InventoryTransactionType.TransferOut => "Xuất chuyển kho",
+            InventoryTransactionType.DeliveryDispatchOut => "Xuất bàn giao đơn giao",
+            InventoryTransactionType.DeliveryReturnIn => "Nhận trả đơn giao",
             InventoryTransactionType.StockCountGain => "Kiểm kê tăng",
             InventoryTransactionType.StockCountLoss => "Kiểm kê giảm",
             InventoryTransactionType.Hold => "Giữ hàng",
@@ -167,6 +169,7 @@ public sealed class InventoryLedgerIndexReadService : IInventoryLedgerIndexReadS
             InventoryReferenceType.StockCount => "Phiếu kiểm kê",
             InventoryReferenceType.Hold => "Giữ hàng",
             InventoryReferenceType.StockDocument => "Chứng từ kho",
+            InventoryReferenceType.Delivery => "Đơn giao hàng",
             _ => "Nguồn khác"
         };
     }

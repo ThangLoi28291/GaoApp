@@ -8,6 +8,12 @@ namespace GaoApp.Domain.Entities;
 [Table("InventoryReservations")]
 public class InventoryReservation : BaseStoreEntity
 {
+    public int? DeliveryOrderId { get; set; }
+    public int? DeliveryOrderLineId { get; set; }
+    public int? SourceLegalEntityId { get; set; }
+    public int? DeliveryRevision { get; set; }
+    public int? ReportedByUserId { get; set; }
+    public DateTime? ReportedAtUtc { get; set; }
     public int WarehouseId { get; set; }
     public Warehouse Warehouse { get; set; } = null!;
 

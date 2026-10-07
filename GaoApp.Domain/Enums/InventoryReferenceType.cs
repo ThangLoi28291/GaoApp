@@ -54,5 +54,6 @@ public enum InventoryReferenceType
         /// <summary>
         /// Chứng từ kho: StockDocument
         /// </summary>
-    StockDocument = 10
+    StockDocument = 10,
+    Delivery = 11
 }

@@ -278,7 +278,8 @@ public sealed class ProductionBootstrapTests
                 "20261006163000_ProtectDeliverySourceCarts",
                 "20261006170000_PreserveHeldOrderShiftChanges",
                 "20261006173000_AddDeliveryPicking",
-                "20261007090000_AddMixedQuantityPromotions"
+                "20261007090000_AddMixedQuantityPromotions",
+                "20261007100000_AddDeliveryInventoryPosting"
             ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }

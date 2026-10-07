@@ -36,6 +36,8 @@ public class InventoryMovementService : IInventoryMovementService
     private readonly IInventoryCostLayerRepository _costLayerRepository;
     private readonly IInventoryCostLayerAllocationRepository _allocationRepository;
     private readonly IInventoryPostingTransactionCoordinator _postingCoordinator;
+    private readonly IInventoryReservationRepository _reservationRepository;
+    private readonly IInventorySourceCostEvidenceRepository _sourceEvidence;
 
     public InventoryMovementService(
         IInventoryBalanceRepository balanceRepository,
@@ -44,7 +46,9 @@ public class InventoryMovementService : IInventoryMovementService
         IInventoryCostLayerRepository costLayerRepository,
         IInventoryCostLayerAllocationRepository allocationRepository,
         IWarehouseRepository warehouseRepository,
-        IInventoryPostingTransactionCoordinator postingCoordinator)
+        IInventoryPostingTransactionCoordinator postingCoordinator,
+        IInventoryReservationRepository reservationRepository,
+        IInventorySourceCostEvidenceRepository sourceEvidence)
     {
         _balanceRepository = balanceRepository;
         _transactionRepository = transactionRepository;
@@ -53,6 +57,8 @@ public class InventoryMovementService : IInventoryMovementService
         _allocationRepository = allocationRepository;
         _warehouseRepository = warehouseRepository;
         _postingCoordinator = postingCoordinator;
+        _reservationRepository = reservationRepository ?? throw new ArgumentNullException(nameof(reservationRepository));
+        _sourceEvidence = sourceEvidence ?? throw new ArgumentNullException(nameof(sourceEvidence));
     }
 
     public async Task PreLockBalancesAsync(
@@ -149,6 +155,8 @@ public class InventoryMovementService : IInventoryMovementService
 
         if (request.QuantityChange == 0)
             throw new BusinessRuleException("QuantityChange phải khác 0.");
+        if (request.ReferenceType == InventoryReferenceType.Delivery || request.TransactionType is InventoryTransactionType.DeliveryDispatchOut or InventoryTransactionType.DeliveryReturnIn)
+            throw new BusinessRuleException("TYPED_SOURCE_REQUIRED: bút toán giao hàng phải dùng nguồn xác thực.");
 
         var warehouse = await _warehouseRepository.GetByIdAsync(request.WarehouseId, ct)
             ?? throw new BusinessRuleException("Kho không tồn tại.");
@@ -207,18 +215,20 @@ public class InventoryMovementService : IInventoryMovementService
     {
         var balance = await _balanceRepository.LockAndGetOrCreateAsync(
             warehouse.StoreId, warehouse.Id, productVariantId, ct);
-        var beforeQty = RoundQty(balance.OnHandQty);
+        var beforeQty = balance.QuantityPrecisionVersion == 1 ? InventoryPostingPrecisionPolicy.Quantity(balance.OnHandQty) : RoundQty(balance.OnHandQty);
         if (beforeQty <= 0)
             throw new BusinessRuleException(
                 "Không còn tồn dương để điều chỉnh giá vốn. Nếu hàng đã bán, cần lập nghiệp vụ revaluation theo phần giá vốn đã xuất.");
 
-        var qty = RoundQty(quantityBase);
+        var qty = balance.QuantityPrecisionVersion == 1 ? InventoryPostingPrecisionPolicy.EffectiveDelta(quantityBase, false) : RoundQty(quantityBase);
         if (qty > beforeQty)
             throw new BusinessRuleException(
                 $"Số lượng điều chỉnh giá vốn ({qty:0.###}) không được vượt tồn hiện tại ({beforeQty:0.###}).");
 
-        var oldAverageCost = ResolveBeforeAverageCost(balance, beforeQty, balance.InventoryValue);
-        var targetCost = RoundCost(correctedUnitCost);
+        var oldAverageCost = balance.QuantityPrecisionVersion == 1
+            ? decimal.Round(balance.InventoryValue / beforeQty, 6, MidpointRounding.AwayFromZero)
+            : ResolveBeforeAverageCost(balance, beforeQty, balance.InventoryValue);
+        var targetCost = balance.QuantityPrecisionVersion == 1 ? InventoryPostingPrecisionPolicy.Cost(correctedUnitCost) : RoundCost(correctedUnitCost);
         var amount = RoundValue(qty * (targetCost - oldAverageCost));
         var referenceSubKey = "COST-REVALUATION";
 
@@ -244,15 +254,20 @@ public class InventoryMovementService : IInventoryMovementService
                 IsSkipped = true
             };
 
+        if (balance.QuantityPrecisionVersion == 1)
+            throw new BusinessRuleException(
+                "SOURCE_BUDGET_REVALUATION_UNSUPPORTED: điều chỉnh giá vốn nguồn ngân sách cần adapter chia khoảng nguồn; chưa thay đổi kho/tiền.");
+
         var beforeValue = RoundValue(balance.InventoryValue);
         var afterValue = RoundValue(beforeValue + amount);
-        var afterAverageCost = CalculateAverageCost(beforeQty, afterValue);
+        var afterAverageCost = balance.QuantityPrecisionVersion == 1 ? decimal.Round(afterValue / beforeQty, 6, MidpointRounding.AwayFromZero) : CalculateAverageCost(beforeQty, afterValue);
         var transaction = new InventoryTransaction
         {
             StoreId = warehouse.StoreId,
             WarehouseId = warehouse.Id,
             ProductVariantId = productVariantId,
             TransactionType = InventoryTransactionType.Revaluation,
+            PostingPrecisionPolicy = balance.QuantityPrecisionVersion,
             ReferenceType = InventoryReferenceType.Adjustment,
             ReferenceId = referenceId,
             ReferenceLineId = referenceLineId,
@@ -329,7 +344,9 @@ public class InventoryMovementService : IInventoryMovementService
         CreateInventoryMovementRequest request,
         Warehouse warehouse,
         int storeId,
-        CancellationToken ct)
+        CancellationToken ct,
+        InventoryDeliveryPostingProof? trusted = null,
+        bool strictFinal = false)
     {
         var balance = await _balanceRepository.LockAndGetOrCreateAsync(
             storeId,
@@ -384,6 +401,25 @@ public class InventoryMovementService : IInventoryMovementService
         }
 
         var occurredAtUtc = request.OccurredAtUtc ?? DateTime.UtcNow;
+        if (request.ReferenceType != InventoryReferenceType.Delivery && request.QuantityChange != 0 && RoundQty(request.QuantityChange) == 0)
+            throw new BusinessRuleException("BELOW_LEGACY_STEP: số lượng khác không nhưng nhỏ hơn bước xuất kho cũ.");
+        await _sourceEvidence.RejectUnsupportedMirrorAsync(request, storeId, ct);
+        var protectedRows = await _reservationRepository.GetActiveForBalanceAsync(storeId, request.WarehouseId, request.ProductVariantId, ct);
+        var protectedQuantity = protectedRows.Where(x => x.ReferenceType == InventoryReferenceType.Delivery && x.Id != trusted?.OwnReservationId).Sum(x => x.ReservedQty);
+        if (request.ReferenceType == InventoryReferenceType.Delivery)
+        {
+            if (trusted is null || trusted.StoreId != storeId || trusted.WarehouseId != request.WarehouseId ||
+                trusted.VariantId != request.ProductVariantId || trusted.Quantity != Math.Abs(request.QuantityChange))
+                throw new BusinessRuleException("TYPED_SOURCE_REQUIRED: nguồn giao hàng không khớp.");
+            await _sourceEvidence.EnsurePromotedAsync(balance, ct);
+        }
+        if (balance.QuantityPrecisionVersion == 1)
+        {
+            await _sourceEvidence.EnsurePromotedAsync(balance, ct);
+            return await CreatePromotedAsync(request, warehouse, balance, idempotencyKey, protectedQuantity, trusted, strictFinal, occurredAtUtc, ct);
+        }
+        if (request.QuantityChange < 0 && RoundQty(RoundQty(balance.OnHandQty) + request.QuantityChange) < protectedQuantity && protectedQuantity > 0)
+            throw new BusinessRuleException("DELIVERY_STOCK_PROTECTED: hàng đang được soạn cho đơn giao.");
 
         var beforeQty = RoundQty(balance.OnHandQty);
         var beforeValue = RoundValue(balance.InventoryValue);
@@ -781,8 +817,8 @@ public class InventoryMovementService : IInventoryMovementService
                 existing,
                 storeId,
                 request)
-            || RoundQty(existing.QuantityChange)
-                != RoundQty(request.QuantityChange))
+            || (existing.PostingPrecisionPolicy == 2 ? existing.QuantityChange : RoundQty(existing.QuantityChange))
+                != (existing.PostingPrecisionPolicy == 2 ? request.QuantityChange : RoundQty(request.QuantityChange)))
         {
             throw new ConcurrencyException(
                 "The durable inventory posting identity already exists with a different payload.");
@@ -803,8 +839,8 @@ public class InventoryMovementService : IInventoryMovementService
                     ct);
 
         if (!persistedUnitCost.HasValue
-            || RoundCost(persistedUnitCost.Value)
-                != RoundCost(request.UnitCost.Value))
+            || (existing.PostingPrecisionPolicy == 2 ? persistedUnitCost.Value : RoundCost(persistedUnitCost.Value))
+                != (existing.PostingPrecisionPolicy == 2 ? request.UnitCost.Value : RoundCost(request.UnitCost.Value)))
         {
             throw new ConcurrencyException(
                 "The durable inventory posting identity already exists with a different unit cost.");
@@ -1373,6 +1409,310 @@ public class InventoryMovementService : IInventoryMovementService
             return 0m;
 
         return RoundCost(totalCost / totalQty);
+    }
+
+    public async Task<InventoryMovementResultDto> CreateDeliveryDispatchAsync(InventoryDeliveryDispatchPosting input, CancellationToken ct = default)
+    {
+        if (!_postingCoordinator.HasActiveTransaction) throw new InvalidOperationException("Delivery dispatch requires its caller transaction.");
+        var proof = await _sourceEvidence.GetDeliveryDispatchProofAsync(input, ct);
+        var warehouse = await _warehouseRepository.GetByIdAsync(proof.WarehouseId, ct) ?? throw new BusinessRuleException("Kho nguồn không tồn tại.");
+        var request = new CreateInventoryMovementRequest { WarehouseId = proof.WarehouseId, ProductVariantId = proof.VariantId,
+            ReferenceType = InventoryReferenceType.Delivery, ReferenceId = input.DeliveryOrderId.ToString(), ReferenceLineId = input.LineId,
+            ReferenceSubKey = "dispatch:" + input.RequestId.ToString("N"), TransactionType = InventoryTransactionType.DeliveryDispatchOut,
+            QuantityChange = -proof.Quantity, ForceProvisionalWhenNegative = false };
+        return await CreateWithinTransactionAsync(request, warehouse, proof.StoreId, ct, proof, true);
+    }
+    public async Task<InventoryMovementResultDto> CreateDeliveryReturnAsync(InventoryDeliveryReturnPosting input, CancellationToken ct = default)
+    {
+        if (!_postingCoordinator.HasActiveTransaction) throw new InvalidOperationException("Delivery receiving requires its caller transaction.");
+        var proof = await _sourceEvidence.GetDeliveryReturnProofAsync(input, ct);
+        if (proof.DeliveryOrderLineId is not > 0) throw new BusinessRuleException("COST_NOT_READY: thiếu dòng giao gốc đã được xác minh.");
+        var warehouse = await _warehouseRepository.GetByIdAsync(proof.WarehouseId, ct) ?? throw new BusinessRuleException("Kho nguồn không tồn tại.");
+        var request = new CreateInventoryMovementRequest { WarehouseId = proof.WarehouseId, ProductVariantId = proof.VariantId,
+            ReferenceType = InventoryReferenceType.Delivery, ReferenceId = input.DeliveryOrderId.ToString(), ReferenceLineId = proof.DeliveryOrderLineId.Value,
+            ReferenceSubKey = "return:" + input.RequestId.ToString("N") + ":" + input.DispatchFragmentId,
+            TransactionType = InventoryTransactionType.DeliveryReturnIn, QuantityChange = proof.Quantity };
+        return await CreateWithinTransactionAsync(request, warehouse, proof.StoreId, ct, proof);
+    }
+    public async Task<bool> TryCreateSourcePreservingTransferAsync(InventorySourcePreservingTransfer input, CancellationToken ct = default)
+    {
+        if (!_postingCoordinator.HasActiveTransaction) throw new InvalidOperationException("Source transfer requires its caller transaction.");
+        var proof = await _sourceEvidence.GetTransferProofAsync(input, ct);
+        await PreLockBalancesAsync([new(proof.StoreId, proof.SourceWarehouseId, proof.VariantId), new(proof.StoreId, proof.DestinationWarehouseId, proof.VariantId)], ct);
+        var source = await _balanceRepository.LockAndGetOrCreateAsync(proof.StoreId, proof.SourceWarehouseId, proof.VariantId, ct);
+        var destination = await _balanceRepository.LockAndGetOrCreateAsync(proof.StoreId, proof.DestinationWarehouseId, proof.VariantId, ct);
+        if (source.QuantityPrecisionVersion == 0 && destination.QuantityPrecisionVersion == 0) return false;
+        await _sourceEvidence.EnsurePromotedAsync(source, ct); await _sourceEvidence.EnsurePromotedAsync(destination, ct);
+        var from = await _warehouseRepository.GetByIdAsync(proof.SourceWarehouseId, ct) ?? throw new BusinessRuleException("Kho nguồn không tồn tại.");
+        var to = await _warehouseRepository.GetByIdAsync(proof.DestinationWarehouseId, ct) ?? throw new BusinessRuleException("Kho đích không tồn tại.");
+        var outgoing = new CreateInventoryMovementRequest { WarehouseId = from.Id, ProductVariantId = proof.VariantId,
+            ReferenceType = InventoryReferenceType.StockTransfer, ReferenceId = proof.DocumentId.ToString(), ReferenceLineId = proof.LineId,
+            ReferenceSubKey = "source-budget", TransactionType = InventoryTransactionType.TransferOut, QuantityChange = -proof.Quantity };
+        var outResult = await CreateWithinTransactionAsync(outgoing, from, proof.StoreId, ct, null, true);
+        var transactionId = outResult.InventoryTransactionId;
+        if (transactionId is null)
+        {
+            var existing = await _transactionRepository.GetByIdempotencyKeyAsync(proof.StoreId,
+                InventoryIdempotencyKeyFactory.Create(proof.StoreId, outgoing), ct)
+                ?? await _transactionRepository.GetByLegacyIdentityAsync(proof.StoreId, from.Id, proof.VariantId,
+                    outgoing.TransactionType, outgoing.ReferenceType, outgoing.ReferenceId!, outgoing.ReferenceLineId,
+                    outgoing.ReferenceSubKey, ct)
+                ?? throw new BusinessRuleException("COST_NOT_READY: thiếu bút toán xuất nguồn bền vững.");
+            await VerifyIdempotentPayloadAsync(existing, proof.StoreId, outgoing, ct);
+            transactionId = existing.Id;
+        }
+        var parts = await _sourceEvidence.GetPostingPartsAsync(proof.StoreId, transactionId.Value, ct);
+        var quantity = InventoryPostingPrecisionPolicy.EffectiveDelta(proof.Quantity, false);
+        if (parts.Sum(x => x.Quantity) != quantity || parts.Sum(x => x.Amount) != -outResult.ValueChange)
+            throw new BusinessRuleException("COST_NOT_READY: mảnh chuyển nguồn không đủ.");
+        var incoming = new CreateInventoryMovementRequest { WarehouseId = to.Id, ProductVariantId = proof.VariantId,
+            ReferenceType = InventoryReferenceType.StockTransfer, ReferenceId = proof.DocumentId.ToString(), ReferenceLineId = proof.LineId,
+            ReferenceSubKey = "source-budget", TransactionType = InventoryTransactionType.TransferIn, QuantityChange = quantity };
+        var mirror = new InventoryDeliveryPostingProof(proof.StoreId, to.Id, proof.VariantId, to.LegalEntityId, quantity, null, parts);
+        var inResult = await CreateWithinTransactionAsync(incoming, to, proof.StoreId, ct, mirror);
+        if (inResult.ValueChange != -outResult.ValueChange) throw new BusinessRuleException("COST_BUDGET_INVALID: chuyển kho không bảo toàn giá trị.");
+        return true;
+    }
+
+    private async Task<InventoryMovementResultDto> CreatePromotedAsync(CreateInventoryMovementRequest request, Warehouse warehouse,
+        InventoryBalance balance, byte[]? identity, decimal protectedQuantity, InventoryDeliveryPostingProof? trusted,
+        bool strictFinal, DateTime now, CancellationToken ct)
+    {
+        var delivery = request.ReferenceType == InventoryReferenceType.Delivery;
+        var delta = InventoryPostingPrecisionPolicy.EffectiveDelta(request.QuantityChange, delivery);
+        var beforeQty = InventoryPostingPrecisionPolicy.Quantity(balance.OnHandQty);
+        var beforeValue = InventoryPostingPrecisionPolicy.Amount(balance.InventoryValue);
+        var after = InventoryPostingPrecisionPolicy.Quantity(checked(beforeQty + delta));
+        if (delta < 0 && protectedQuantity > 0 && after < protectedQuantity)
+            throw new BusinessRuleException("DELIVERY_STOCK_PROTECTED: hàng đang được soạn cho đơn giao.");
+        if (after < 0 && !request.AllowNegativeBalance && !warehouse.AllowNegativeInventory)
+            throw new BusinessRuleException("INSUFFICIENT_INVENTORY: kho không cho âm tồn.");
+        if (strictFinal && after < 0) throw new BusinessRuleException("COST_NOT_READY: xuất nguồn yêu cầu đủ hàng FIFO thực tế.");
+        List<InventoryCostLayer>? validatedLayers = null;
+        if (delta < 0 && beforeQty > 0)
+        {
+            validatedLayers = await _costLayerRepository.GetOpenLayersForUpdateAsync(warehouse.Id, request.ProductVariantId, ct);
+            decimal sourceQuantity = 0, sourceAmount = 0;
+            foreach (var layer in validatedLayers)
+            {
+                if (layer.StoreId != warehouse.StoreId || layer.WarehouseId != warehouse.Id ||
+                    layer.ProductVariantId != request.ProductVariantId || layer.IsProvisionalSource)
+                    throw new BusinessRuleException("COST_NOT_READY: nguồn layer không khớp hoặc tạm tính.");
+                await _sourceEvidence.PromoteLayerAsync(layer, ct);
+                sourceQuantity = checked(sourceQuantity + layer.RemainingQuantity);
+                sourceAmount = checked(sourceAmount + layer.RemainingCostAmount!.Value);
+            }
+            if (sourceQuantity != beforeQty || sourceAmount != beforeValue)
+                throw new BusinessRuleException("COST_NOT_READY: lượng/giá trị tồn dương không khớp toàn bộ nguồn FIFO đã xác định; cần đối chiếu riêng.");
+        }
+        var tx = new InventoryTransaction { StoreId = warehouse.StoreId, WarehouseId = warehouse.Id, ProductVariantId = request.ProductVariantId,
+            PostingPrecisionPolicy = delivery ? (byte)2 : (byte)1, IdempotencyKey = identity, TransactionType = request.TransactionType,
+            ReferenceType = request.ReferenceType, ReferenceId = request.ReferenceId ?? "", ReferenceLineId = request.ReferenceLineId,
+            ReferenceSubKey = request.ReferenceSubKey, QuantityChange = delta, BeforeQty = beforeQty, AfterQty = after,
+            BeforeInventoryValue = beforeValue, OccurredAtUtc = now, Note = request.Note };
+        await _transactionRepository.AddAsync(tx, ct); await _transactionRepository.SaveChangesAsync(ct);
+        var entries = new List<InventoryValuationEntry>();
+        var runningQty = beforeQty; var runningValue = beforeValue;
+        InventoryValuationEntry Entry(decimal qty, decimal unit, decimal amount, string subkey)
+        {
+            runningQty = InventoryPostingPrecisionPolicy.Quantity(checked(runningQty + qty));
+            runningValue = InventoryPostingPrecisionPolicy.Amount(checked(runningValue + amount));
+            return new() { StoreId = warehouse.StoreId, InventoryTransactionId = tx.Id, WarehouseId = warehouse.Id,
+                ProductVariantId = request.ProductVariantId, EntryType = qty > 0 ? InventoryValuationEntryType.Inbound : InventoryValuationEntryType.Outbound,
+                ReferenceType = request.ReferenceType, ReferenceId = request.ReferenceId ?? "", ReferenceLineId = request.ReferenceLineId,
+                ReferenceSubKey = subkey, Quantity = qty, UnitCost = unit, Amount = amount, RunningQtyAfter = runningQty,
+                RunningValueAfter = runningValue, RunningAverageUnitCostAfter = runningQty == 0 ? 0 : decimal.Round(runningValue / runningQty, 6, MidpointRounding.AwayFromZero),
+                CostSourceType = InventoryCostSourceType.Manual, CostFinalizedAtUtc = now, OccurredAtUtc = now, Note = request.Note };
+        }
+        if (delta < 0)
+        {
+            var required = -delta; var actual = Math.Min(required, Math.Max(beforeQty, 0));
+            var layers = validatedLayers ?? await _costLayerRepository.GetOpenLayersForUpdateAsync(warehouse.Id, request.ProductVariantId, ct);
+            if (layers.Sum(x => x.RemainingQuantity) < actual) throw new BusinessRuleException("COST_NOT_READY: chưa đủ layer FIFO.");
+            var remaining = actual;
+            foreach (var layer in layers.OrderBy(x => x.OccurredAtUtc).ThenBy(x => x.Id))
+            {
+                if (remaining == 0) break;
+                if (layer.StoreId != warehouse.StoreId || layer.WarehouseId != warehouse.Id || layer.ProductVariantId != request.ProductVariantId || layer.IsProvisionalSource)
+                    throw new BusinessRuleException("COST_NOT_READY: nguồn layer không khớp hoặc tạm tính.");
+                if (validatedLayers is null) await _sourceEvidence.PromoteLayerAsync(layer, ct);
+                var qty = Math.Min(remaining, layer.RemainingQuantity);
+                var start = layer.BudgetAnchorQuantity!.Value - layer.RemainingQuantity;
+                var amount = InventoryCostBudgetPolicy.Debit(layer, qty);
+                var entry = Entry(-qty, layer.UnitCost, -amount, (request.ReferenceSubKey ?? "") + ":L" + layer.Id);
+                entry.InventoryCostLayerId = layer.Id;
+                await _valuationRepository.AddRangeAsync([entry], ct); await _transactionRepository.SaveChangesAsync(ct);
+                var allocation = new InventoryCostLayerAllocation { StoreId = warehouse.StoreId, InventoryValuationEntryId = entry.Id,
+                    InventoryCostLayerId = layer.Id, Quantity = qty, UnitCost = layer.UnitCost, Amount = amount, IsResolved = true,
+                    ResolvedQuantity = qty, ResolvedAmount = amount, ResolvedAtUtc = now, ResolvedByInventoryCostLayerId = layer.Id };
+                await _allocationRepository.AddAsync(allocation, ct); await _allocationRepository.SaveChangesAsync(ct);
+                await _sourceEvidence.AddDebitAsync(new() { StoreId = warehouse.StoreId, WarehouseId = warehouse.Id,
+                    ProductVariantId = request.ProductVariantId, SourceLegalEntityId = warehouse.LegalEntityId,
+                    InventoryCostLayerId = layer.Id, InventoryTransactionId = tx.Id, InventoryValuationEntryId = entry.Id,
+                    InventoryCostLayerAllocationId = allocation.Id, AnchorQuantity = layer.BudgetAnchorQuantity.Value,
+                    AnchorAmount = layer.BudgetAnchorAmount!.Value, StartQuantity = start, EndQuantity = start + qty,
+                    UnitCost = layer.UnitCost, Amount = amount }, ct);
+                await _sourceEvidence.SaveChangesAsync(ct);
+                entries.Add(entry); remaining -= qty;
+            }
+            var provisional = required - actual;
+            if (provisional > 0)
+            {
+                if (strictFinal) throw new BusinessRuleException("COST_NOT_READY: thiếu nguồn đã xác định.");
+                if (!request.ForceProvisionalWhenNegative) throw new BusinessRuleException("COST_NOT_READY: yêu cầu không cho ghi giá vốn tạm tính.");
+                var unit = InventoryPostingPrecisionPolicy.Cost(request.ProvisionalUnitCost is > 0 ? request.ProvisionalUnitCost.Value :
+                    balance.LastInboundUnitCost is > 0 ? balance.LastInboundUnitCost.Value : balance.AverageUnitCost > 0 ? balance.AverageUnitCost : request.UnitCost is > 0 ? request.UnitCost.Value : 0);
+                var entry = Entry(-provisional, unit, -decimal.Round(provisional * unit, 4, MidpointRounding.AwayFromZero), (request.ReferenceSubKey ?? "") + ":PROV");
+                entry.CostSourceType = unit == 0 ? InventoryCostSourceType.Unknown : request.ProvisionalUnitCost is > 0 ? InventoryCostSourceType.Manual :
+                    balance.LastInboundUnitCost is > 0 ? InventoryCostSourceType.LastInboundCost : InventoryCostSourceType.MovingAverage;
+                entry.IsProvisional = true; entry.CostFinalizedAtUtc = null;
+                await _valuationRepository.AddRangeAsync([entry], ct); await _transactionRepository.SaveChangesAsync(ct);
+                await _allocationRepository.AddAsync(new() { StoreId = warehouse.StoreId, InventoryValuationEntryId = entry.Id,
+                    Quantity = provisional, UnitCost = unit, Amount = -entry.Amount, IsProvisional = true }, ct);
+                await _allocationRepository.SaveChangesAsync(ct); entries.Add(entry);
+            }
+        }
+        else
+        {
+            var parts = trusted?.Parts;
+            if (parts is null || parts.Count == 0)
+            {
+                if (request.UnitCost is not > 0) throw new BusinessRuleException("Movement nhập phải có UnitCost hợp lệ.");
+                var unit = InventoryPostingPrecisionPolicy.Cost(request.UnitCost.Value);
+                parts = [new(0, null, 0, delta, unit, decimal.Round(delta * unit, 4, MidpointRounding.AwayFromZero))];
+            }
+            if (parts.Sum(x => x.Quantity) != delta) throw new BusinessRuleException("COST_BUDGET_INVALID: lượng nguồn nhập không khớp.");
+            var partNo = 0;
+            foreach (var part in parts)
+            {
+                InventoryPostingPrecisionPolicy.Cost(part.UnitCost); InventoryPostingPrecisionPolicy.Amount(part.Amount);
+                var entry = Entry(part.Quantity, part.UnitCost, part.Amount, (request.ReferenceSubKey ?? "") + ":PART:" + ++partNo);
+                entry.SourceValuationEntryId = part.SourceValuationEntryId > 0 ? part.SourceValuationEntryId : null;
+                entry.SourceReferenceSubKey = part.SourceReferenceSubKey;
+                await _valuationRepository.AddRangeAsync([entry], ct); await _transactionRepository.SaveChangesAsync(ct);
+                var layer = new InventoryCostLayer { StoreId = warehouse.StoreId, WarehouseId = warehouse.Id, ProductVariantId = request.ProductVariantId,
+                    InventoryTransactionId = tx.Id, InventoryValuationEntryId = entry.Id, ReferenceType = request.ReferenceType,
+                    ReferenceId = request.ReferenceId ?? "", ReferenceLineId = request.ReferenceLineId, ReferenceSubKey = entry.ReferenceSubKey,
+                    OriginalQuantity = part.Quantity, RemainingQuantity = part.Quantity, RemainingOpenProvisionalQty = part.Quantity, UnitCost = part.UnitCost,
+                    CostBudgetPolicy = 1, BudgetAnchorQuantity = part.Quantity, BudgetAnchorAmount = part.Amount,
+                    RemainingCostAmount = part.Amount, OccurredAtUtc = now };
+                await _costLayerRepository.AddAsync(layer, ct); await _costLayerRepository.SaveChangesAsync(ct);
+                entry.InventoryCostLayerId = layer.Id;
+                runningValue += await ResolvePromotedProvisionalsAsync(layer, warehouse, now, runningQty, runningValue, ct);
+                entries.Add(entry);
+            }
+        }
+        if (runningQty != after || entries.Sum(x => x.Quantity) != delta) throw new BusinessRuleException("INVENTORY_PRECISION: tổng mảnh không khớp bút toán.");
+        // Resolution records are value-only; their adjustment is included in the current balance below.
+        balance.OnHandQty = after;
+        balance.InventoryValue = InventoryPostingPrecisionPolicy.Amount(runningValue);
+        balance.AverageUnitCost = after == 0 ? 0 : decimal.Round(balance.InventoryValue / after, 6, MidpointRounding.AwayFromZero);
+        balance.LastValuationAtUtc = now;
+        if (delta > 0) { balance.LastInboundUnitCost = entries[^1].UnitCost; balance.LastInboundAtUtc = now; }
+        tx.TotalCost = entries.Sum(x => x.Amount); tx.AfterInventoryValue = balance.InventoryValue;
+        tx.UnitCostSnapshot = entries.Select(x => x.UnitCost).Distinct().Count() == 1 ? entries[0].UnitCost : 0;
+        tx.CostSourceType = entries[^1].CostSourceType;
+        tx.RunningAverageUnitCostAfter = balance.AverageUnitCost; tx.IsProvisionalCost = entries.Any(x => x.IsProvisional);
+        tx.CostFinalizedAtUtc = tx.IsProvisionalCost ? null : now;
+        await _balanceRepository.SaveChangesAsync(ct);
+        return new() { WarehouseId = warehouse.Id, ProductVariantId = request.ProductVariantId, BeforeQty = beforeQty, QuantityChange = delta,
+            AfterQty = after, BeforeValue = beforeValue, ValueChange = tx.TotalCost, AfterValue = balance.InventoryValue,
+            BeforeAverageCost = beforeQty == 0 ? 0 : decimal.Round(beforeValue / beforeQty, 6, MidpointRounding.AwayFromZero),
+            AfterAverageCost = balance.AverageUnitCost, InventoryTransactionId = tx.Id, InventoryValuationEntryIds = entries.Select(x => x.Id).ToList(),
+            IsCreated = true, IsNegativeAfterTransaction = after < 0, HasProvisionalValuation = tx.IsProvisionalCost,
+            ProvisionalQuantity = entries.Where(x => x.IsProvisional).Sum(x => -x.Quantity),
+            ProvisionalValueChange = entries.Where(x => x.IsProvisional).Sum(x => x.Amount),
+            ActualQuantity = entries.Where(x => !x.IsProvisional).Sum(x => Math.Abs(x.Quantity)),
+            ActualValueChange = entries.Where(x => !x.IsProvisional).Sum(x => x.Amount) };
+    }
+    public async Task<List<ProvisionalRevaluationPlanDto>> ResolveSourceBudgetProvisionalsAsync(int layerId, DateTime occurredAtUtc, CancellationToken ct = default)
+    {
+        if (!_postingCoordinator.HasActiveTransaction) throw new BusinessRuleException("TRANSACTION_REQUIRED: giải quyết ngân sách cần giao dịch đang mở.");
+        var original = await _costLayerRepository.GetByIdAsync(layerId, ct) ?? throw new BusinessRuleException("COST_NOT_READY: nguồn nhập không tồn tại.");
+        var warehouse = await _warehouseRepository.GetByIdAsync(original.WarehouseId, ct) ?? throw new BusinessRuleException("COST_NOT_READY: kho nhập không tồn tại.");
+        if (original.StoreId != warehouse.StoreId) throw new BusinessRuleException("COST_NOT_READY: nguồn nhập khác cửa hàng.");
+        var balance = await _balanceRepository.LockAndGetOrCreateAsync(warehouse.StoreId, warehouse.Id, original.ProductVariantId, ct);
+        await _sourceEvidence.EnsurePromotedAsync(balance, ct);
+        var layer = (await _costLayerRepository.GetOpenLayersForUpdateAsync(warehouse.Id, original.ProductVariantId, ct)).SingleOrDefault(x => x.Id == layerId);
+        if (layer is null) return [];
+        await _sourceEvidence.PromoteLayerAsync(layer, ct);
+        var allocations = await _allocationRepository.GetOpenProvisionalAllocationsForUpdateAsync(warehouse.Id, layer.ProductVariantId, ct);
+        var before = allocations.ToDictionary(x => x.Id, x => (x.ResolvedQuantity, x.ResolvedAmount));
+        var adjustment = await ResolvePromotedProvisionalsAsync(layer, warehouse, occurredAtUtc, balance.OnHandQty, balance.InventoryValue, ct);
+        balance.InventoryValue = InventoryPostingPrecisionPolicy.Amount(balance.InventoryValue + adjustment);
+        balance.AverageUnitCost = balance.OnHandQty == 0 ? 0 : decimal.Round(balance.InventoryValue / balance.OnHandQty, 6, MidpointRounding.AwayFromZero);
+        balance.LastValuationAtUtc = occurredAtUtc;
+        await _balanceRepository.SaveChangesAsync(ct);
+        return allocations.Where(x => x.ResolvedQuantity > before[x.Id].ResolvedQuantity).Select(x => new ProvisionalRevaluationPlanDto
+        {
+            ProvisionalEntryId = x.InventoryValuationEntryId, ProvisionalAllocationId = x.Id, InboundLayerId = layer.Id,
+            QuantityAbs = x.ResolvedQuantity - before[x.Id].ResolvedQuantity, ProvisionalUnitCost = x.UnitCost, FinalUnitCost = layer.UnitCost,
+            UnitCostDelta = layer.UnitCost - x.UnitCost,
+            RevaluationAmount = InventoryCostBudgetPolicy.Slice(x.Quantity, x.Amount, before[x.Id].ResolvedQuantity, x.ResolvedQuantity - before[x.Id].ResolvedQuantity)
+                - (x.ResolvedAmount - before[x.Id].ResolvedAmount)
+        }).ToList();
+    }
+    private async Task<decimal> ResolvePromotedProvisionalsAsync(InventoryCostLayer layer, Warehouse warehouse, DateTime now,
+        decimal quantityAfter, decimal valueAfterInbound, CancellationToken ct)
+    {
+        decimal totalAdjustment = 0;
+        var allocations = await _allocationRepository.GetOpenProvisionalAllocationsForUpdateAsync(layer.WarehouseId, layer.ProductVariantId, ct);
+        foreach (var allocation in allocations)
+        {
+            if (layer.RemainingQuantity == 0) break;
+            if (allocation.StoreId != layer.StoreId || allocation.Quantity < allocation.ResolvedQuantity) throw new BusinessRuleException("COST_NOT_READY: nguồn tạm tính không khớp.");
+            var open = allocation.Quantity - allocation.ResolvedQuantity;
+            if (open == 0) continue;
+            var qty = Math.Min(open, layer.RemainingQuantity);
+            var start = layer.BudgetAnchorQuantity!.Value - layer.RemainingQuantity;
+            var actual = InventoryCostBudgetPolicy.Debit(layer, qty);
+            var provisional = InventoryCostBudgetPolicy.Slice(allocation.Quantity, allocation.Amount, allocation.ResolvedQuantity, qty);
+            var source = allocation.InventoryValuationEntry;
+            if (source.Quantity != -allocation.Quantity || source.Amount != -allocation.Amount || source.StoreId != layer.StoreId ||
+                source.WarehouseId != layer.WarehouseId || source.ProductVariantId != layer.ProductVariantId || source.EntryType != InventoryValuationEntryType.Outbound)
+                throw new BusinessRuleException("COST_NOT_READY: nguồn tạm tính đã thay đổi/không còn đủ chứng cứ.");
+            var difference = provisional - actual;
+            InventoryValuationEntry? revaluation = null;
+            var identityRequest = new CreateInventoryMovementRequest { WarehouseId = layer.WarehouseId, ProductVariantId = layer.ProductVariantId,
+                TransactionType = InventoryTransactionType.Revaluation, ReferenceType = source.ReferenceType, ReferenceId = source.ReferenceId,
+                ReferenceLineId = source.ReferenceLineId, ReferenceSubKey = $"BUDGET:L{layer.Id}:A{allocation.Id}:S{allocation.ResolvedQuantity.ToString(System.Globalization.CultureInfo.InvariantCulture)}" };
+            var resolutionTx = new InventoryTransaction { StoreId = layer.StoreId, WarehouseId = layer.WarehouseId, ProductVariantId = layer.ProductVariantId,
+                TransactionType = InventoryTransactionType.Revaluation, PostingPrecisionPolicy = 1,
+                IdempotencyKey = InventoryIdempotencyKeyFactory.Create(layer.StoreId, identityRequest),
+                ReferenceType = source.ReferenceType, ReferenceId = source.ReferenceId, ReferenceLineId = source.ReferenceLineId,
+                ReferenceSubKey = identityRequest.ReferenceSubKey, QuantityChange = 0, BeforeQty = quantityAfter, AfterQty = quantityAfter,
+                BeforeInventoryValue = valueAfterInbound + totalAdjustment, AfterInventoryValue = valueAfterInbound + totalAdjustment + difference,
+                TotalCost = difference, UnitCostSnapshot = layer.UnitCost, OccurredAtUtc = now, CostFinalizedAtUtc = now };
+            await _transactionRepository.AddAsync(resolutionTx, ct); await _transactionRepository.SaveChangesAsync(ct);
+            if (difference != 0)
+            {
+                revaluation = new() { StoreId = layer.StoreId, InventoryTransactionId = resolutionTx.Id,
+                    WarehouseId = layer.WarehouseId, ProductVariantId = layer.ProductVariantId, EntryType = InventoryValuationEntryType.Revaluation,
+                    ReferenceType = source.ReferenceType, ReferenceId = source.ReferenceId, ReferenceLineId = source.ReferenceLineId,
+                    ReferenceSubKey = source.ReferenceSubKey, SourceValuationEntryId = source.Id, SourceReferenceSubKey = source.ReferenceSubKey,
+                    RevaluationOfEntryId = source.Id, InventoryCostLayerId = layer.Id, Quantity = 0, UnitCost = layer.UnitCost,
+                    Amount = difference, CostSourceType = InventoryCostSourceType.RevaluationAdjustment, CostFinalizedAtUtc = now, OccurredAtUtc = now,
+                    RunningQtyAfter = quantityAfter, RunningValueAfter = resolutionTx.AfterInventoryValue,
+                    RunningAverageUnitCostAfter = quantityAfter == 0 ? 0 : decimal.Round(resolutionTx.AfterInventoryValue / quantityAfter, 6, MidpointRounding.AwayFromZero) };
+                await _valuationRepository.AddRangeAsync([revaluation], ct); await _transactionRepository.SaveChangesAsync(ct);
+            }
+            var debit = new InventoryCostBudgetDebit { StoreId = layer.StoreId, WarehouseId = layer.WarehouseId, ProductVariantId = layer.ProductVariantId,
+                SourceLegalEntityId = warehouse.LegalEntityId, InventoryCostLayerId = layer.Id, InventoryTransactionId = resolutionTx.Id,
+                InventoryValuationEntryId = source.Id, InventoryCostLayerAllocationId = allocation.Id, AnchorQuantity = layer.BudgetAnchorQuantity.Value,
+                AnchorAmount = layer.BudgetAnchorAmount!.Value, StartQuantity = start, EndQuantity = start + qty, UnitCost = layer.UnitCost,
+                Amount = actual, IsProvisionalResolution = true, ResolutionStartQuantity = allocation.ResolvedQuantity,
+                ResolutionEndQuantity = allocation.ResolvedQuantity + qty, RevaluationEntryId = revaluation?.Id };
+            allocation.ResolvedQuantity += qty; allocation.ResolvedAmount += actual; allocation.IsResolved = allocation.ResolvedQuantity == allocation.Quantity;
+            allocation.ResolvedAtUtc = allocation.IsResolved ? now : null; allocation.ResolvedByInventoryCostLayerId = layer.Id;
+            source.CostFinalizedAtUtc = allocation.IsResolved ? now : null; layer.ResolvedProvisionalQty += qty;
+            layer.RemainingOpenProvisionalQty = layer.RemainingQuantity;
+            totalAdjustment += difference;
+            // Persist resolved facts first; the immutable debit trigger observes their final state.
+            await _allocationRepository.SaveChangesAsync(ct);
+            await _sourceEvidence.AddDebitAsync(debit, ct);
+            await _sourceEvidence.SaveChangesAsync(ct);
+        }
+        return totalAdjustment;
     }
 
     private static bool InboundLikeLastEntryIsProvisional(List<InventoryValuationEntry> entries)

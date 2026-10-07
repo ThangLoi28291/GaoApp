@@ -2344,7 +2344,9 @@ public sealed class InventoryNonPosPostingContractTests
             new InventoryCostLayerRepository(db),
             new InventoryCostLayerAllocationRepository(db),
             new WarehouseRepository(db),
-            new InventoryPostingTransactionCoordinator(db));
+            new InventoryPostingTransactionCoordinator(db),
+            new InventoryReservationRepository(db),
+            new InventorySourceCostEvidenceRepository(db));
 
     private static InventoryAdjustmentDocumentService
         CreateRealAdjustmentService(
@@ -2375,7 +2377,9 @@ public sealed class InventoryNonPosPostingContractTests
             null!,
             null!,
             warehouses,
-            new FakePostingCoordinator(hasActiveTransaction));
+            new FakePostingCoordinator(hasActiveTransaction),
+            GaoApp.Tests.Delivery.D05UnusedRepositoryProxy.Create<IInventoryReservationRepository>(),
+            GaoApp.Tests.Delivery.D05UnusedRepositoryProxy.Create<IInventorySourceCostEvidenceRepository>());
 
     private static InventoryAdjustmentDocumentService
         CreateAdjustmentService(

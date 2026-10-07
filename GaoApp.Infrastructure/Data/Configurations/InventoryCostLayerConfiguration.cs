@@ -11,7 +11,15 @@ public class InventoryCostLayerConfiguration : IEntityTypeConfiguration<Inventor
 {
     public void Configure(EntityTypeBuilder<InventoryCostLayer> builder)
     {
-        builder.ToTable("InventoryCostLayers");
+        builder.ToTable("InventoryCostLayers", t => {
+            t.HasTrigger("TR_InventoryCostLayers_BudgetSource");
+            t.HasCheckConstraint("CK_InventoryCostLayers_Budget", "([CostBudgetPolicy]=0 AND [BudgetAnchorQuantity] IS NULL AND [BudgetAnchorAmount] IS NULL AND [RemainingCostAmount] IS NULL) OR ([CostBudgetPolicy]=1 AND [BudgetAnchorQuantity] IS NOT NULL AND [BudgetAnchorQuantity]>0 AND [BudgetAnchorAmount] IS NOT NULL AND [BudgetAnchorAmount]>=0 AND [RemainingCostAmount] IS NOT NULL AND [RemainingCostAmount]>=0 AND [RemainingCostAmount]<=[BudgetAnchorAmount] AND [RemainingQuantity]>=0 AND [RemainingQuantity]<=[BudgetAnchorQuantity] AND [UnitCost]>=0)");
+        });
+        builder.Property(x => x.CostBudgetPolicy).HasDefaultValue((byte)0);
+        builder.Property(x => x.BudgetAnchorQuantity).HasPrecision(18, 4);
+        builder.Property(x => x.BudgetAnchorAmount).HasPrecision(18, 4);
+        builder.Property(x => x.RemainingCostAmount).HasPrecision(18, 4);
+        builder.HasAlternateKey(x => new { x.StoreId, x.Id, x.WarehouseId, x.ProductVariantId });
 
         builder.HasKey(x => x.Id);
 

@@ -136,13 +136,28 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
 
+                    b.Property<int>("DeliveryJournalEntryId")
+                        .HasColumnType("int");
+
                     b.Property<int>("DeliveryOrderId")
                         .HasColumnType("int");
 
                     b.Property<int>("DeliveryOrderLineId")
                         .HasColumnType("int");
 
+                    b.Property<int>("InventoryCostBudgetDebitId")
+                        .HasColumnType("int");
+
                     b.Property<int>("InventoryCostLayerAllocationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryCostLayerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryValuationEntryId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
@@ -173,7 +188,13 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("int");
 
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "InventoryCostBudgetDebitId")
+                        .IsUnique();
 
                     b.HasIndex("StoreId", "InventoryCostLayerAllocationId");
 
@@ -182,13 +203,21 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
 
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryJournalEntryId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "InventoryCostBudgetDebitId", "SourceWarehouseId", "VariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId");
+
                     b.ToTable("DeliveryDispatchCostFragments", null, t =>
                         {
                             t.HasTrigger("TR_DeliveryDispatchCostFragments_Immutable");
 
+                            t.HasTrigger("TR_DeliveryDispatchCostFragments_StockSource");
+
                             t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Cost", "[BaseQuantity] >= 0 AND [UnitCost] >= 0 AND [CostAmount] >= 0");
 
                             t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Positive", "[BaseQuantity]>0");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -228,6 +257,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int?>("DeliveryOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("InventoryTransactionId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
@@ -273,11 +305,16 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("UpdatedBy")
                         .HasColumnType("int");
 
+                    b.Property<int?>("VariantId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("StoreId", "DeliveryOrderId")
                         .IsUnique()
                         .HasFilter("[Kind] = 6");
+
+                    b.HasIndex("StoreId", "InventoryTransactionId");
 
                     b.HasIndex("StoreId", "PostingKey")
                         .IsUnique();
@@ -286,7 +323,11 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[Kind] = 6 AND [SaleOrderId] IS NOT NULL");
 
-                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId");
+                    b.HasIndex("StoreId", "VariantId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId")
+                        .IsUnique()
+                        .HasFilter("[Kind]=1");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
 
@@ -294,11 +335,15 @@ namespace GaoApp.Infrastructure.Migrations
                         {
                             t.HasTrigger("TR_DeliveryJournalEntries_Immutable");
 
+                            t.HasTrigger("TR_DeliveryJournalEntries_StockSource");
+
                             t.HasCheckConstraint("CK_DeliveryJournalEntries_Cost", "[BaseQuantity] >= 0 AND [UnitCost] >= 0 AND [CostAmount] >= 0");
 
                             t.HasCheckConstraint("CK_DeliveryJournalEntries_Live", "[IsDeleted] = 0");
 
                             t.HasCheckConstraint("CK_DeliveryJournalEntries_Money", "[Kind] BETWEEN 1 AND 7 AND [MoneyAmount] >= 0 AND [MoneyAmount] = ROUND([MoneyAmount],0)");
+
+                            t.HasCheckConstraint("CK_DeliveryJournalEntries_StockSource", "([Kind]<>1 AND [Kind]<>2) OR ([DeliveryOrderLineId] IS NOT NULL AND [VariantId] IS NOT NULL AND [InventoryTransactionId] IS NOT NULL AND [BaseQuantity]>0 AND [MoneyAmount]=0 AND [SaleOrderId] IS NULL)");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -924,6 +969,116 @@ namespace GaoApp.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_DeliveryPickingWorks_Live", "[IsDeleted]=0");
                         });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryReturnedCostFragment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("CostAmount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryJournalEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DispatchCostFragmentId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("EndQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("InventoryTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryValuationEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("StartQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "DispatchCostFragmentId", "StartQuantity")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryJournalEntryId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "InventoryValuationEntryId", "InventoryTransactionId", "SourceWarehouseId", "VariantId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "DispatchCostFragmentId", "SourceWarehouseId", "SourceLegalEntityId", "VariantId");
+
+                    b.ToTable("DeliveryReturnedCostFragments", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryReturnedCostFragments_Immutable");
+
+                            t.HasTrigger("TR_DeliveryReturnedCostFragments_StockSource");
+
+                            t.HasCheckConstraint("CK_DeliveryReturnedCostFragments_Interval", "[IsDeleted]=0 AND [StartQuantity]>=0 AND [EndQuantity]>[StartQuantity] AND [BaseQuantity]=[EndQuantity]-[StartQuantity] AND [UnitCost]>=0 AND [CostAmount]>=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryRevision", b =>
@@ -4017,6 +4172,11 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("ProductVariantId")
                         .HasColumnType("int");
 
+                    b.Property<byte>("QuantityPrecisionVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint")
+                        .HasDefaultValue((byte)0);
+
                     b.Property<decimal>("ReservedQty")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(18, 4)
@@ -4054,7 +4214,146 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId")
                         .IsUnique();
 
-                    b.ToTable("InventoryBalances", (string)null);
+                    b.ToTable("InventoryBalances", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryBalances_DeliveryPrecision");
+
+                            t.HasCheckConstraint("CK_InventoryBalances_DeliveryPrecision", "[QuantityPrecisionVersion]=0 OR [QuantityPrecisionVersion]=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostBudgetDebit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("AnchorAmount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("AnchorQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("EndQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("InventoryCostLayerAllocationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryCostLayerId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryValuationEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsProvisionalResolution")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ProductVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ResolutionEndQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("ResolutionStartQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("RevaluationEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("StartQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "RevaluationEntryId");
+
+                    b.HasIndex("StoreId", "InventoryCostLayerAllocationId", "InventoryValuationEntryId");
+
+                    b.HasIndex("StoreId", "InventoryCostLayerAllocationId", "ResolutionStartQuantity")
+                        .IsUnique()
+                        .HasFilter("[IsProvisionalResolution]=1");
+
+                    b.HasIndex("StoreId", "InventoryCostLayerId", "StartQuantity")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "WarehouseId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "InventoryCostLayerId", "WarehouseId", "ProductVariantId");
+
+                    b.HasIndex("StoreId", "InventoryTransactionId", "WarehouseId", "ProductVariantId");
+
+                    b.HasIndex("StoreId", "InventoryValuationEntryId", "WarehouseId", "ProductVariantId");
+
+                    b.ToTable("InventoryCostBudgetDebits", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryCostBudgetDebits_Immutable");
+
+                            t.HasTrigger("TR_InventoryCostBudgetDebits_Source");
+
+                            t.HasCheckConstraint("CK_InventoryCostBudgetDebits_Interval", "[IsDeleted]=0 AND [AnchorQuantity]>0 AND [AnchorAmount]>=0 AND [StartQuantity]>=0 AND [EndQuantity]>[StartQuantity] AND [EndQuantity]<=[AnchorQuantity] AND [UnitCost]>=0 AND [Amount]>=0 AND (([IsProvisionalResolution]=0 AND [ResolutionStartQuantity] IS NULL AND [ResolutionEndQuantity] IS NULL AND [RevaluationEntryId] IS NULL) OR ([IsProvisionalResolution]=1 AND [ResolutionStartQuantity] IS NOT NULL AND [ResolutionEndQuantity] IS NOT NULL AND [ResolutionStartQuantity]>=0 AND [ResolutionEndQuantity]>[ResolutionStartQuantity] AND [ResolutionEndQuantity]-[ResolutionStartQuantity]=[EndQuantity]-[StartQuantity]))");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostLayer", b =>
@@ -4064,6 +4363,19 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("BudgetAnchorAmount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("BudgetAnchorQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<byte>("CostBudgetPolicy")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint")
+                        .HasDefaultValue((byte)0);
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -4118,6 +4430,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("ReferenceType")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("RemainingCostAmount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("RemainingOpenProvisionalQty")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
@@ -4171,7 +4487,14 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "OccurredAtUtc", "Id")
                         .HasDatabaseName("IX_InventoryCostLayers_FIFO");
 
-                    b.ToTable("InventoryCostLayers", (string)null);
+                    b.ToTable("InventoryCostLayers", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryCostLayers_BudgetSource");
+
+                            t.HasCheckConstraint("CK_InventoryCostLayers_Budget", "([CostBudgetPolicy]=0 AND [BudgetAnchorQuantity] IS NULL AND [BudgetAnchorAmount] IS NULL AND [RemainingCostAmount] IS NULL) OR ([CostBudgetPolicy]=1 AND [BudgetAnchorQuantity] IS NOT NULL AND [BudgetAnchorQuantity]>0 AND [BudgetAnchorAmount] IS NOT NULL AND [BudgetAnchorAmount]>=0 AND [RemainingCostAmount] IS NOT NULL AND [RemainingCostAmount]>=0 AND [RemainingCostAmount]<=[BudgetAnchorAmount] AND [RemainingQuantity]>=0 AND [RemainingQuantity]<=[BudgetAnchorQuantity] AND [UnitCost]>=0)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostLayerAllocation", b =>
@@ -4274,7 +4597,12 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "IsProvisional", "IsResolved", "Id")
                         .HasDatabaseName("IX_InventoryCostLayerAllocations_OpenProvisional");
 
-                    b.ToTable("InventoryCostLayerAllocations", (string)null);
+                    b.ToTable("InventoryCostLayerAllocations", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryCostLayerAllocations_BudgetSource");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryReservation", b =>
@@ -4295,6 +4623,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DeliveryOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DeliveryRevision")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
@@ -4325,12 +4662,18 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<DateTime?>("ReleasedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("ReportedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReportedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("ReservedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("ReservedQty")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("decimal(18,3)")
+                        .HasColumnType("decimal(19,4)")
                         .HasDefaultValue(0m);
 
                     b.Property<byte[]>("RowVersion")
@@ -4338,6 +4681,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<int?>("SourceLegalEntityId")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -4360,13 +4706,31 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("WarehouseId");
 
+                    b.HasIndex("StoreId", "ReportedByUserId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InventoryReservations_ActiveDeliveryLine")
+                        .HasFilter("[ReferenceType]=11 AND [Status]=1 AND [IsDeleted]=0");
+
                     b.HasIndex("StoreId", "ReferenceType", "ReferenceId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "ProductVariantId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "WarehouseId", "SourceLegalEntityId");
 
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "Status");
 
                     b.HasIndex("StoreId", "ReferenceType", "ReferenceId", "ReferenceLineId", "WarehouseId", "ProductVariantId", "Status");
 
-                    b.ToTable("InventoryReservations", (string)null);
+                    b.ToTable("InventoryReservations", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryReservations_DeliverySource");
+
+                            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", "([ReferenceType]<>11 AND [DeliveryOrderId] IS NULL AND [DeliveryOrderLineId] IS NULL AND [SourceLegalEntityId] IS NULL AND [DeliveryRevision] IS NULL AND [ReportedByUserId] IS NULL AND [ReportedAtUtc] IS NULL) OR ([ReferenceType]=11 AND [IsDeleted]=0 AND [DeliveryOrderId] IS NOT NULL AND [DeliveryOrderLineId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [DeliveryRevision] IS NOT NULL AND [DeliveryRevision]>0 AND [ReportedByUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId] IS NOT NULL AND [ReferenceLineId]=[DeliveryOrderLineId] AND [ReferenceId]=CONVERT(nvarchar(50),[DeliveryOrderId]) AND ([Status]=1 OR [Status]=2 OR [Status]=3))");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryTransaction", b =>
@@ -4432,6 +4796,11 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<byte>("PostingPrecisionPolicy")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint")
+                        .HasDefaultValue((byte)0);
 
                     b.Property<int>("ProductVariantId")
                         .HasColumnType("int");
@@ -4523,7 +4892,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "OccurredAtUtc", "Id");
 
-                    b.ToTable("InventoryTransactions", (string)null);
+                    b.ToTable("InventoryTransactions", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryTransactions_DeliveryProof");
+
+                            t.HasCheckConstraint("CK_InventoryTransactions_DeliveryPosting", "[PostingPrecisionPolicy]<>2 OR ([ReferenceType]=11 AND [ReferenceLineId] IS NOT NULL AND [IdempotencyKey] IS NOT NULL AND (([TransactionType]=80 AND [QuantityChange]<0) OR ([TransactionType]=81 AND [QuantityChange]>0)))");
+
+                            t.HasCheckConstraint("CK_InventoryTransactions_PostingPrecision", "[PostingPrecisionPolicy]=0 OR [PostingPrecisionPolicy]=1 OR [PostingPrecisionPolicy]=2");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryValuationEntry", b =>
@@ -4686,7 +5064,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "EntryType", "IsProvisional", "CostFinalizedAtUtc", "OccurredAtUtc", "Id");
 
-                    b.ToTable("InventoryValuationEntries", (string)null);
+                    b.ToTable("InventoryValuationEntries", null, t =>
+                        {
+                            t.HasTrigger("TR_InventoryValuationEntries_BudgetSource");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceBuyerProfile", b =>
@@ -10480,6 +10863,14 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("ComboBaseUnitId")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("ComboFixedPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ComboNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<byte>("ComboPricingMode")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint")
@@ -10488,14 +10879,6 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<decimal?>("ComboQuantity")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
-
-                    b.Property<decimal?>("ComboFixedPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("ComboNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -15299,6 +15682,20 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryJournalEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryJournalEntryId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryCostBudgetDebit", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryCostBudgetDebitId", "SourceWarehouseId", "VariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId")
+                        .HasPrincipalKey("StoreId", "Id", "WarehouseId", "ProductVariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Store");
                 });
 
@@ -15310,9 +15707,21 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.InventoryTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryTransactionId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.Order", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "SaleOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId")
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -15535,6 +15944,38 @@ namespace GaoApp.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("StoreId", "PickerUserId")
                         .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryReturnedCostFragment", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryJournalEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryJournalEntryId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryValuationEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryValuationEntryId", "InventoryTransactionId", "SourceWarehouseId", "VariantId")
+                        .HasPrincipalKey("StoreId", "Id", "InventoryTransactionId", "WarehouseId", "ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryDispatchCostFragment", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "DispatchCostFragmentId", "SourceWarehouseId", "SourceLegalEntityId", "VariantId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "Id", "SourceWarehouseId", "SourceLegalEntityId", "VariantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -16272,6 +16713,64 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Warehouse");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostBudgetDebit", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryValuationEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "RevaluationEntryId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryCostLayerAllocation", "Allocation")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryCostLayerAllocationId", "InventoryValuationEntryId")
+                        .HasPrincipalKey("StoreId", "Id", "InventoryValuationEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Warehouse", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "WarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryCostLayer", "Layer")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryCostLayerId", "WarehouseId", "ProductVariantId")
+                        .HasPrincipalKey("StoreId", "Id", "WarehouseId", "ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryTransactionId", "WarehouseId", "ProductVariantId")
+                        .HasPrincipalKey("StoreId", "Id", "WarehouseId", "ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryValuationEntry", "ValuationEntry")
+                        .WithMany("CostBudgetDebits")
+                        .HasForeignKey("StoreId", "InventoryValuationEntryId", "WarehouseId", "ProductVariantId")
+                        .HasPrincipalKey("StoreId", "Id", "WarehouseId", "ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Allocation");
+
+                    b.Navigation("Layer");
+
+                    b.Navigation("Store");
+
+                    b.Navigation("ValuationEntry");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryCostLayer", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.InventoryTransaction", "InventoryTransaction")
@@ -16374,6 +16873,24 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReportedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "ProductVariantId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id", "VariantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "WarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ProductVariant");
 
@@ -19186,6 +19703,8 @@ namespace GaoApp.Infrastructure.Migrations
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InventoryValuationEntry", b =>
                 {
+                    b.Navigation("CostBudgetDebits");
+
                     b.Navigation("CostLayerAllocations");
 
                     b.Navigation("RevaluationChildren");

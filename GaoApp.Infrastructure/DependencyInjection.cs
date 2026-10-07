@@ -150,6 +150,8 @@ public static class DependencyInjection
             GaoApp.Infrastructure.Services.Delivery.DeliveryFoundationService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryPickingService,
             GaoApp.Infrastructure.Services.Delivery.DeliveryPickingService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryInventoryService,
+            GaoApp.Infrastructure.Services.Delivery.DeliveryInventoryService>();
         services.AddScoped<GaoApp.Infrastructure.Services.Delivery.DeliveryOutboxProcessor>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess,
             GaoApp.Infrastructure.Security.StoreAdminAccess>();
@@ -394,6 +396,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderInventoryIssueRepository, OrderInventoryIssueRepository>();
         services.AddScoped<IStockTransferRepository, StockTransferRepository>();
         services.AddScoped<IInventoryReservationRepository, InventoryReservationRepository>();
+        services.AddScoped<IInventorySourceCostEvidenceRepository, InventorySourceCostEvidenceRepository>();
         services.AddScoped<IDocumentNumberSequenceRepository, DocumentNumberSequenceRepository>();
         services.AddScoped<IInventoryCostLayerRepository, InventoryCostLayerRepository>();
         services.AddScoped<IInventoryCostLayerAllocationRepository, InventoryCostLayerAllocationRepository>();

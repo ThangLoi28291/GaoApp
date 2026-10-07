@@ -17,6 +17,7 @@ namespace GaoApp.Domain.Entities;
 /// </summary>
 public class InventoryBalance : BaseStoreEntity
 {
+    public byte QuantityPrecisionVersion { get; set; }
     /// <summary>
     /// Kho chứa hàng.
     /// </summary>

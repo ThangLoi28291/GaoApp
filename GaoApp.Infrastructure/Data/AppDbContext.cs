@@ -87,6 +87,8 @@ public class AppDbContext : DbContext
     public DbSet<DeliveryRevision> DeliveryRevisions => Set<DeliveryRevision>();
     public DbSet<DeliveryJournalEntry> DeliveryJournalEntries => Set<DeliveryJournalEntry>();
     public DbSet<DeliveryDispatchCostFragment> DeliveryDispatchCostFragments => Set<DeliveryDispatchCostFragment>();
+    public DbSet<DeliveryReturnedCostFragment> DeliveryReturnedCostFragments => Set<DeliveryReturnedCostFragment>();
+    public DbSet<InventoryCostBudgetDebit> InventoryCostBudgetDebits => Set<InventoryCostBudgetDebit>();
     public DbSet<DeliveryCommandReceipt> DeliveryCommandReceipts => Set<DeliveryCommandReceipt>();
     public DbSet<DeliveryOutboxMessage> DeliveryOutboxMessages => Set<DeliveryOutboxMessage>();
     public DbSet<DeliveryOutboxReceipt> DeliveryOutboxReceipts => Set<DeliveryOutboxReceipt>();
@@ -345,6 +347,26 @@ public class AppDbContext : DbContext
         {
             if (entry.Entity is IDeliveryImmutableRecord && entry.State is EntityState.Modified or EntityState.Deleted)
                 throw new InvalidOperationException("Không sửa/xóa lịch sử giao hàng đã ghi.");
+            if (entry.Entity is InventoryCostLayer && entry.State == EntityState.Modified &&
+                Convert.ToByte(entry.Property("CostBudgetPolicy").OriginalValue) == 1)
+            {
+                if ((decimal)entry.Property("RemainingQuantity").CurrentValue! > (decimal)entry.Property("RemainingQuantity").OriginalValue! ||
+                    (decimal)entry.Property("RemainingCostAmount").CurrentValue! > (decimal)entry.Property("RemainingCostAmount").OriginalValue!)
+                    throw new InvalidOperationException("Không phục hồi khoảng ngân sách FIFO đã tiêu thụ.");
+                foreach (var name in new[] { "StoreId", "WarehouseId", "ProductVariantId", "InventoryTransactionId",
+                    "InventoryValuationEntryId", "OriginalQuantity", "UnitCost", "CostBudgetPolicy", "BudgetAnchorQuantity", "BudgetAnchorAmount" })
+                    if (entry.Property(name).IsModified) throw new InvalidOperationException("Không thay nguồn/ngân sách FIFO đã chốt.");
+            }
+            if (entry.Entity is InventoryBalance && entry.State == EntityState.Modified &&
+                Convert.ToByte(entry.Property("QuantityPrecisionVersion").OriginalValue) == 1 &&
+                Convert.ToByte(entry.Property("QuantityPrecisionVersion").CurrentValue) != 1)
+                throw new InvalidOperationException("Không hạ cấp độ chính xác của tồn kho đã giữ hàng giao.");
+            if (entry.Entity is InventoryReservation && entry.State == EntityState.Modified &&
+                entry.Property("DeliveryOrderId").OriginalValue is not null)
+                foreach (var name in new[] { "StoreId", "WarehouseId", "ProductVariantId", "ReferenceType", "ReferenceId",
+                    "ReferenceLineId", "ReservedQty", "DeliveryOrderId", "DeliveryOrderLineId", "SourceLegalEntityId",
+                    "DeliveryRevision", "ReportedByUserId", "ReportedAtUtc", "IsDeleted" })
+                    if (entry.Property(name).IsModified) throw new InvalidOperationException("Không thay nguồn/số lượng giữ hàng giao đã ghi.");
             if (entry.Entity is DeliveryOrder && entry.State == EntityState.Modified)
                 foreach (var name in new[] { "Code", "LookupToken", "SourceWarehouseId", "SourceLegalEntityId", "SourceCartId",
                     "CreatedTerminalId", "CreatedShiftId", "CreatedByUserId", "CustomerId" })

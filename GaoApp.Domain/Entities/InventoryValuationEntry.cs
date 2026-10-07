@@ -25,6 +25,7 @@ namespace GaoApp.Domain.Entities;
 /// </summary>
 public class InventoryValuationEntry : BaseStoreEntity
 {
+    public ICollection<InventoryCostBudgetDebit> CostBudgetDebits { get; set; } = new List<InventoryCostBudgetDebit>();
     [Range(1, int.MaxValue)]
     public int InventoryTransactionId { get; set; }
 

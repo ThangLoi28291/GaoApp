@@ -89,7 +89,10 @@ public sealed class OrderLegalEntityAllocationRepository
                 .SingleOrDefaultAsync(ct);
 
             if (balance != null)
+            {
+                await InventoryPostingLockState.RefreshOnceAsync(_db, balance, ct);
                 result.Add(balance);
+            }
         }
 
         return result;

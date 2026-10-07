@@ -98,6 +98,8 @@ public enum DeliveryJournalKind { Dispatch = 1, Return = 2, CashReceipt = 3, Ban
 // Executors in D05/D08 own posting. D02 creates no stock or money entries.
 public sealed class DeliveryJournalEntry : BaseStoreEntity, IDeliveryImmutableRecord
 {
+    public int? VariantId { get; set; }
+    public int? InventoryTransactionId { get; set; }
     public int DeliveryOrderId { get; set; }
     public int? DeliveryOrderLineId { get; set; }
     public int SourceWarehouseId { get; set; }
@@ -113,11 +115,35 @@ public sealed class DeliveryJournalEntry : BaseStoreEntity, IDeliveryImmutableRe
 
 public sealed class DeliveryDispatchCostFragment : BaseStoreEntity, IDeliveryImmutableRecord
 {
+    public int DeliveryJournalEntryId { get; set; }
+    public int VariantId { get; set; }
+    public int InventoryTransactionId { get; set; }
+    public int InventoryValuationEntryId { get; set; }
+    public int InventoryCostLayerId { get; set; }
+    public int InventoryCostBudgetDebitId { get; set; }
     public int DeliveryOrderId { get; set; }
     public int DeliveryOrderLineId { get; set; }
     public int SourceWarehouseId { get; set; }
     public int SourceLegalEntityId { get; set; }
     public int InventoryCostLayerAllocationId { get; set; }
+    public decimal BaseQuantity { get; set; }
+    public decimal UnitCost { get; set; }
+    public decimal CostAmount { get; set; }
+}
+
+public sealed class DeliveryReturnedCostFragment : BaseStoreEntity, IDeliveryImmutableRecord
+{
+    public int DeliveryOrderId { get; set; }
+    public int DeliveryOrderLineId { get; set; }
+    public int SourceWarehouseId { get; set; }
+    public int SourceLegalEntityId { get; set; }
+    public int VariantId { get; set; }
+    public int DeliveryJournalEntryId { get; set; }
+    public int DispatchCostFragmentId { get; set; }
+    public int InventoryTransactionId { get; set; }
+    public int InventoryValuationEntryId { get; set; }
+    public decimal StartQuantity { get; set; }
+    public decimal EndQuantity { get; set; }
     public decimal BaseQuantity { get; set; }
     public decimal UnitCost { get; set; }
     public decimal CostAmount { get; set; }

@@ -17,6 +17,16 @@ namespace GaoApp.Infrastructure.Repositories.Inventory;
 /// </summary>
 public class InventoryReservationRepository : IInventoryReservationRepository
 {
+    public async Task<List<InventoryReservation>> GetActiveForBalanceAsync(int storeId, int warehouseId, int variantId, CancellationToken ct = default)
+    {
+        var rows = await _context.InventoryReservations.IgnoreQueryFilters().Where(x => !x.IsDeleted &&
+            x.StoreId == storeId && x.WarehouseId == warehouseId && x.ProductVariantId == variantId &&
+            x.Status == InventoryReservationStatus.Active).ToListAsync(ct);
+        foreach (var row in rows) await InventoryPostingLockState.RefreshOnceAsync(_context, row, ct);
+        return rows.Concat(_context.InventoryReservations.Local.Where(x => x.StoreId == storeId &&
+            x.WarehouseId == warehouseId && x.ProductVariantId == variantId && !x.IsDeleted &&
+            _context.Entry(x).State == EntityState.Added)).Distinct().Where(x => x.Status == InventoryReservationStatus.Active).ToList();
+    }
     private readonly AppDbContext _context;
 
     public InventoryReservationRepository(AppDbContext context)

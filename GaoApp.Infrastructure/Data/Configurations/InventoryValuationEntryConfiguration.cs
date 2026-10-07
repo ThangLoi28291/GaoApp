@@ -8,7 +8,9 @@ public class InventoryValuationEntryConfiguration : IEntityTypeConfiguration<Inv
 {
     public void Configure(EntityTypeBuilder<InventoryValuationEntry> builder)
     {
-        builder.ToTable("InventoryValuationEntries");
+        builder.ToTable("InventoryValuationEntries", t => t.HasTrigger("TR_InventoryValuationEntries_BudgetSource"));
+        builder.HasAlternateKey(x => new { x.StoreId, x.Id, x.WarehouseId, x.ProductVariantId });
+        builder.HasAlternateKey(x => new { x.StoreId, x.Id, x.InventoryTransactionId, x.WarehouseId, x.ProductVariantId });
 
         builder.HasKey(x => x.Id);
         builder.HasIndex(x => new { x.StoreId, x.EntryType, x.OccurredAtUtc });

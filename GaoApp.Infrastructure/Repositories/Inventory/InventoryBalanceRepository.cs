@@ -116,6 +116,7 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
 
         if (entity is not null)
         {
+            await InventoryPostingLockState.RefreshOnceAsync(_db, entity, ct);
             if (entity.IsDeleted)
             {
                 throw new ConcurrencyException(
@@ -137,6 +138,7 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
         };
 
         await _db.InventoryBalances.AddAsync(entity, ct);
+        InventoryPostingLockState.MarkOwned(_db, entity);
         await _db.SaveChangesAsync(ct);
         return entity;
     }

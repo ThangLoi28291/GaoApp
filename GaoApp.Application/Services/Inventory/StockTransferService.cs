@@ -402,6 +402,8 @@ public class StockTransferService : IStockTransferService
 
             foreach (var line in movementLines)
             {
+                if (await _inventoryMovementService.TryCreateSourcePreservingTransferAsync(
+                    new InventorySourcePreservingTransfer(document.Id, line.Id), ct)) continue;
                 // =====================================================
                 // 🔥 FIX QUAN TRỌNG NHẤT
                 // Nếu chưa có cost snapshot → lấy từ tồn kho hiện tại

@@ -237,6 +237,19 @@ Việc đóng foundation findings không có nghĩa R2 feature expansion đã ho
 - **Status:** Open — source-only finding; runtime reproduction pending
 - **Scope decision:** Chỉ ghi backlog trong D04 r23, không sửa promotion source, migration hoặc assertion. D03 hiện từ chối giỏ có voucher/product/combo promotion bằng `PRICE_FEATURE_UNSUPPORTED`; finding này không phải blocker trực tiếp của luồng D04 đã khóa. Task promotion tiếp theo cần chốt rejection/normalization policy và kiểm tra giá trị sát0, over-scale và ngoài giới hạn, bảo vệ dữ liệu đã lưu.
 
+### INVENTORY-LEGACY-NEGATIVE-RESOLUTION-20261007 — Unequal-cost resolution value gap
+
+- **Date:** 2026-10-07
+- **Classification:** Pre-existing defect
+- **Severity:** High
+- **Module:** Inventory source0 / negative-stock cost resolution
+- **Description:** Đường AUTO revaluation legacy cộng `actualAmount - provisionalAmount` vào giá trị kho khi nhận hàng bù âm. Với xuất âm2 giá10 rồi nhận4 giá12, `-20 + 48 + 4` tạo số dư lượng2/giá trị32, trong khi nguồn FIFO Final còn2 có ngân sách24. Điều chỉnh giá trị này cần hướng ngược để bảo toàn phần nguồn còn lại; D05 không sửa hoặc relabel lịch sử.
+- **Evidence (finalized 2026-10-08):** `InventoryMovementService.CreateWithinTransactionAsync`, nhánh AUTO REVALUATION dòng549–556, cùng dấu tính/cộng trong parent `ebf474511a993beab29171084576b78c461d87a2`. [Read-only source diagnosis](../../Logs/delivery-roadmap/D05/run-20261007-01/implementation/core/runtime-assessment-r12/proposal.json), SHA256 `3B163FA25F50D3D8EDBD2DE09B9FFF604C41D5BB61024780B02C6240884EC56E`. Lượt r12 B04 none thực bị `COST_NOT_READY`; [closure lỗi gốc](../../Logs/delivery-roadmap/D05/run-20261007-01/implementation/tests/focused-runtime-r12/closed-handoff.json) giữ nguyên. R13 quan sát bằng SQL thật số dư lượng2/giá trị32 so với nguồn Final còn2/ngân sách24, dispatch bị từ chối; control cùng giá10 xuất hết về lượng/giá trị0. [R14 facts9/9](../../Logs/delivery-roadmap/D05/run-20261007-01/implementation/tests/focused-runtime-r14/trx-facts.json) và [closure](../../Logs/delivery-roadmap/D05/run-20261007-01/implementation/tests/focused-runtime-r14/closed-handoff.json) xác nhận toàn bộ diagnostic và snapshot không hiệu ứng B04 đạt sau sửa kỳ vọng Tests; guard, AUTO sign và application không đổi. Chưa đối chiếu hoặc sửa dữ liệu GaoAppDb gốc.
+- **Impact:** Tồn dương legacy có thể không khớp ngân sách FIFO còn lại. Xuất mới policy1 bị D05 chặn atomic, không tự sửa số dư, anchor hoặc bút toán nguồn; lịch sử source0 hiện hữu vẫn giữ nguyên.
+- **Target task:** Audited inventory forward fix và data reconciliation; dependency D11, bắt buộc hoàn tất trước phát hành D12. Chứng minh adjustment/source intervals, cách đọc dữ liệu cũ, rollback/replay và bảo toàn lượng/giá trị trước khi mở đường xuất nguồn đã lệch.
+- **Status:** Open — actual SQL observed32 vs24 and atomic dispatch refusal; forward fix/reconciliation not implemented
+- **Scope decision:** R13 chỉ ghi nhận, giữ check bảo toàn D05. Không đổi writer source0/AUTO sign, không sửa dữ liệu gốc hoặc backfill tự động trong D05. Fixture khác giá giữ lịch sử và phải chứng minh từ chối không hiệu ứng; control cùng giá10 dùng writer thật có chênh lệch0/số dư20/ngân sách20. Promoted source-preserving transfer có neutral adjustment riêng, không dùng nó để giả lịch sử source0 đã sửa.
+
 ## 4. Maintenance
 
 - Finding mới phải có file/method evidence trước khi thêm.

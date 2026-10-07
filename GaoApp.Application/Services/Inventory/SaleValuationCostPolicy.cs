@@ -13,7 +13,7 @@ public static class SaleValuationCostPolicy
 
     public sealed record Result(
         Quality State, decimal? Cost, decimal? ProvisionalExposure,
-        decimal? FinalUnitCost, decimal InventoryReversedQuantity, string? Reason)
+        decimal? FinalUnitCost, decimal InventoryReversedQuantity, string? Reason, bool SourceBudgetProtected = false)
     {
         public string DisplayState => State switch
         {
@@ -24,6 +24,7 @@ public static class SaleValuationCostPolicy
 
         public decimal RequireFinalUnitCost()
         {
+            if (SourceBudgetProtected) throw new InvalidOperationException("SOURCE_BUDGET_REVERSAL_UNSUPPORTED: nguồn ngân sách cần adapter đảo nguồn trước khi thay đổi kho/tiền.");
             if (State != Quality.Finalized || FinalUnitCost is not > 0)
                 throw new InvalidOperationException(
                     $"Không đủ lịch sử giá vốn đã xác định để đảo an toàn. {Reason}");
@@ -43,6 +44,8 @@ public static class SaleValuationCostPolicy
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(revaluations);
         ArgumentNullException.ThrowIfNull(linkedEntries);
+        if (source.InventoryTransaction?.PostingPrecisionPolicy is 1 or 2 || source.CostBudgetDebits.Count > 0)
+            return EvaluateBudget(source, revaluations, linkedEntries);
 
         if (source.Id <= 0 || source.StoreId <= 0 || source.IsDeleted ||
             source.EntryType != InventoryValuationEntryType.Outbound || source.Quantity >= 0 ||
@@ -207,6 +210,92 @@ public static class SaleValuationCostPolicy
         return new(Quality.Finalized, remaining, 0, unitCost, reversedQuantity, null);
     }
 
+    private static Result EvaluateBudget(InventoryValuationEntry source, IReadOnlyCollection<InventoryValuationEntry> revaluations,
+        IReadOnlyCollection<InventoryValuationEntry> linkedEntries)
+    {
+        var tx = source.InventoryTransaction;
+        if (source.Id <= 0 || source.StoreId <= 0 || source.IsDeleted || source.Quantity >= 0 ||
+            source.ReferenceType != InventoryReferenceType.Order || source.ReferenceLineId is null || source.EntryType != InventoryValuationEntryType.Outbound ||
+            tx is null || tx.IsDeleted || tx.Id != source.InventoryTransactionId || tx.StoreId != source.StoreId ||
+            tx.WarehouseId != source.WarehouseId || tx.ProductVariantId != source.ProductVariantId || tx.TransactionType != InventoryTransactionType.SaleIssue ||
+            tx.ReferenceType != source.ReferenceType || tx.ReferenceId != source.ReferenceId || tx.ReferenceLineId != source.ReferenceLineId ||
+            source.Warehouse is not { } wh || wh.IsDeleted || wh.StoreId != source.StoreId || wh.Id != source.WarehouseId ||
+            source.ProductVariant is not { } variant || variant.IsDeleted || variant.StoreId != source.StoreId || variant.Id != source.ProductVariantId)
+            return Conflict("Budget sale source/scope is missing or invalid.");
+        var allocations = source.CostLayerAllocations.Where(x => !x.IsDeleted).ToArray();
+        var proofs = source.CostBudgetDebits.OrderBy(x => x.StartQuantity).ThenBy(x => x.Id).ToArray();
+        if (allocations.Length == 0 || allocations.Any(x => x.StoreId != source.StoreId || x.InventoryValuationEntryId != source.Id || x.Quantity <= 0 || x.Amount < 0) ||
+            allocations.Sum(x => x.Quantity) != -source.Quantity || allocations.Sum(x => x.Amount) != -source.Amount)
+            return Conflict("Budget sale allocation quantities/amounts do not reconcile.");
+        foreach (var proof in proofs)
+        {
+            if (proof.IsDeleted || proof.StoreId != source.StoreId || proof.WarehouseId != source.WarehouseId || proof.ProductVariantId != source.ProductVariantId ||
+                proof.InventoryValuationEntryId != source.Id || proof.Layer is not { } layer || layer.IsDeleted || layer.Id != proof.InventoryCostLayerId ||
+                layer.StoreId != source.StoreId || layer.WarehouseId != source.WarehouseId || layer.ProductVariantId != source.ProductVariantId || layer.CostBudgetPolicy != 1 ||
+                layer.BudgetAnchorQuantity != proof.AnchorQuantity || layer.BudgetAnchorAmount != proof.AnchorAmount || proof.UnitCost != layer.UnitCost ||
+                proof.SourceLegalEntityId != wh.LegalEntityId || proof.EndQuantity <= proof.StartQuantity || proof.StartQuantity < 0 || proof.EndQuantity > proof.AnchorQuantity ||
+                !allocations.Any(x => x.Id == proof.InventoryCostLayerAllocationId))
+                return Conflict("Budget sale layer/debit source chain does not match.");
+            try { if (proof.Amount != InventoryCostBudgetPolicy.Slice(proof.AnchorQuantity, proof.AnchorAmount, proof.StartQuantity, proof.EndQuantity - proof.StartQuantity)) return Conflict("Budget debit amount is invalid."); }
+            catch (GaoApp.Application.Common.Exceptions.BusinessRuleException) { return Conflict("Budget debit interval is invalid."); }
+        }
+        var children = revaluations.Concat(linkedEntries).GroupBy(x => x.Id).ToArray();
+        if (children.Any(x => x.Key <= 0 || x.Any(y => !SameEvent(x.First(), y)))) return Conflict("Budget child identity conflicts.");
+        var events = children.Select(x => x.First()).ToArray();
+        if (events.Any(x => x.EntryType != InventoryValuationEntryType.Revaluation))
+            return Unknown("Budget-source reversal requires the separately scoped source adapter.");
+        if (!source.IsProvisional)
+        {
+            if (proofs.Length == 0 || proofs.Any(x => x.IsProvisionalResolution || x.InventoryTransactionId != source.InventoryTransactionId) || events.Length != 0 ||
+                allocations.Any(x => x.IsProvisional) || proofs.Sum(x => x.EndQuantity - x.StartQuantity) != -source.Quantity || proofs.Sum(x => x.Amount) != -source.Amount)
+                return Unknown("Final budget debit proof is incomplete.");
+            foreach (var allocation in allocations)
+            {
+                var parts = proofs.Where(x => x.InventoryCostLayerAllocationId == allocation.Id).ToArray();
+                if (parts.Length != 1 || allocation.InventoryCostLayerId != parts[0].InventoryCostLayerId || allocation.Quantity != parts[0].EndQuantity - parts[0].StartQuantity ||
+                    allocation.Amount != parts[0].Amount || allocation.UnitCost != parts[0].UnitCost) return Conflict("Final budget allocation/debit mismatch.");
+            }
+            return new(Quality.Finalized, -source.Amount, 0, decimal.Round(-source.Amount / -source.Quantity, 6, MidpointRounding.AwayFromZero), 0, null, true);
+        }
+        if (allocations.Any(x => !x.IsProvisional) || proofs.Any(x => !x.IsProvisionalResolution)) return Conflict("Budget provisional subtype conflicts.");
+        decimal finalCost = 0, exposure = 0, resolvedTotal = 0;
+        var revaluationIds = new HashSet<int>();
+        foreach (var allocation in allocations)
+        {
+            decimal cursor = 0, actualCost = 0;
+            foreach (var proof in proofs.Where(x => x.InventoryCostLayerAllocationId == allocation.Id).OrderBy(x => x.ResolutionStartQuantity))
+            {
+                if (proof.ResolutionStartQuantity != cursor || proof.ResolutionEndQuantity is not decimal end || end <= cursor || end > allocation.Quantity ||
+                    end - cursor != proof.EndQuantity - proof.StartQuantity) return Conflict("Budget resolution intervals have gaps/overlaps.");
+                var provisional = InventoryCostBudgetPolicy.Slice(allocation.Quantity, allocation.Amount, cursor, end - cursor);
+                var difference = provisional - proof.Amount;
+                if (proof.RevaluationEntryId is int id)
+                {
+                    var entry = events.SingleOrDefault(x => x.Id == id);
+                    if (entry is null || !SameScope(source, entry) || entry.Quantity != 0 || entry.Amount != difference || difference == 0 ||
+                        entry.InventoryTransactionId != proof.InventoryTransactionId || entry.RevaluationOfEntryId != source.Id || entry.SourceValuationEntryId != source.Id ||
+                        entry.InventoryCostLayerId != proof.InventoryCostLayerId || entry.InventoryTransaction is not { } owner ||
+                        owner.TransactionType != InventoryTransactionType.Revaluation || owner.QuantityChange != 0 || owner.PostingPrecisionPolicy != 1 ||
+                        owner.StoreId != source.StoreId || owner.WarehouseId != source.WarehouseId || owner.ProductVariantId != source.ProductVariantId || owner.TotalCost != difference)
+                        return Conflict("Budget neutral revaluation does not match resolution.");
+                    revaluationIds.Add(id);
+                }
+                else if (difference != 0) return Unknown("Budget nonzero resolution adjustment is missing.");
+                cursor = end; actualCost += proof.Amount;
+            }
+            if (cursor != allocation.ResolvedQuantity || actualCost != allocation.ResolvedAmount || cursor > allocation.Quantity)
+                return Unknown("Budget cumulative resolution proof is incomplete.");
+            var open = InventoryCostBudgetPolicy.Slice(allocation.Quantity, allocation.Amount, cursor, allocation.Quantity - cursor);
+            finalCost += actualCost + open; exposure += open; resolvedTotal += cursor;
+            if (cursor == allocation.Quantity && (!allocation.IsResolved || allocation.ResolvedAtUtc is null)) return Unknown("Budget final resolution timestamp is missing.");
+        }
+        if (events.Any(x => !revaluationIds.Contains(x.Id))) return Conflict("Unproved budget revaluation child.");
+        var state = resolvedTotal == -source.Quantity ? Quality.Finalized : resolvedTotal == 0 ? Quality.Provisional : Quality.PartiallyFinalized;
+        if (state != Quality.Finalized && source.CostSourceType == InventoryCostSourceType.Unknown)
+            return new(resolvedTotal == 0 ? Quality.Unavailable : Quality.PartiallyFinalized, null, null, null, 0, "Open provisional source cost is unknown.", true);
+        return new(state, finalCost, exposure, state == Quality.Finalized ? decimal.Round(finalCost / -source.Quantity, 6, MidpointRounding.AwayFromZero) : null,
+            0, state == Quality.Finalized ? null : "Cost remains provisional.", true);
+    }
     private static bool SameScope(InventoryValuationEntry source, InventoryValuationEntry entry) =>
         !entry.IsDeleted && entry.StoreId == source.StoreId && entry.WarehouseId == source.WarehouseId &&
         entry.ProductVariantId == source.ProductVariantId;

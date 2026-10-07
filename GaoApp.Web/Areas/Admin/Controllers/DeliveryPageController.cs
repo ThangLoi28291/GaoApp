@@ -19,6 +19,7 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
     public IActionResult Index()
     {
         Response.Headers.CacheControl = "no-store";
+        ViewData["DeliveryStoreId"] = db.CurrentStoreId;
         return View();
     }
     [HttpGet("{id:int}/bill")]

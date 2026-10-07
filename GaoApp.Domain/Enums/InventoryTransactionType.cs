@@ -118,4 +118,6 @@ public enum InventoryTransactionType
     /// Điều chỉnh lại giá trị cho provisional cost mà không đổi số lượng.
     /// </summary>
     Revaluation = 70,
+    DeliveryDispatchOut = 80,
+    DeliveryReturnIn = 81,
 }

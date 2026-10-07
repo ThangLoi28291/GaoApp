@@ -40,9 +40,6 @@ public class InventoryRevaluationService : IInventoryRevaluationService
         var inboundLayer = await _layerRepository.GetByIdAsync(inboundLayerId, ct)
             ?? throw new InvalidOperationException("Inbound layer không tồn tại.");
 
-        if (inboundLayer.RemainingQuantity <= 0)
-            return new List<ProvisionalRevaluationPlanDto>();
-
         await _inventoryMovementService.PreLockBalancesAsync(
             [
                 new InventoryPostingLockKey(
@@ -56,6 +53,11 @@ public class InventoryRevaluationService : IInventoryRevaluationService
             inboundLayer.WarehouseId,
             inboundLayer.ProductVariantId,
             ct);
+        inboundLayer = (await _layerRepository.GetOpenLayersForUpdateAsync(inboundLayer.WarehouseId, inboundLayer.ProductVariantId, ct))
+            .SingleOrDefault(x => x.Id == inboundLayerId)!;
+        if (inboundLayer is null) return [];
+        if (balance.QuantityPrecisionVersion == 1 || inboundLayer.CostBudgetPolicy == 1)
+            return await _inventoryMovementService.ResolveSourceBudgetProvisionalsAsync(inboundLayerId, occurredAtUtc, ct);
 
         var openProvisionals = await _allocationRepository.GetOpenProvisionalAllocationsForUpdateAsync(
             inboundLayer.WarehouseId,
