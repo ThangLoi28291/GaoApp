@@ -273,8 +273,24 @@
                             </div>
 
                             <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-semibold">Cách tính combo</label>
+                                    <select id="promoComboPricingMode" class="form-select">
+                                        <option value="1">Mua đủ từng món</option>
+                                        <option value="2">Ghép nhiều vị, áp giá thùng</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 d-none" id="promoComboQuantityPanel">
+                                    <label class="form-label fw-semibold">Số lượng gốc mỗi thùng</label>
+                                    <input id="promoComboQuantity" type="number" min="0.0001" step="0.0001" class="form-control" value="48" />
+                                </div>
+                                <div class="col-12 d-none" id="promoMixedQuantityHelp">
+                                    Cộng số lượng tất cả vị đã chọn về cùng đơn vị gốc. Khi đạt từ số lượng một thùng trở lên,
+                                    toàn bộ số lượng được tính theo giá thùng chia số lượng gốc mỗi thùng.
+                                    Ví dụ: thùng 48 hộp giá 400.000đ, lấy 50 hộp tính 50 × (400.000 / 48).
+                                </div>
                                 <div class="col-md-4">
-                                    <label class="form-label fw-semibold">Giá combo</label>
+                                    <label class="form-label fw-semibold" id="promoComboPriceLabel">Giá combo</label>
                                     <input id="promoComboFixedPrice" type="number" min="0" class="form-control" value="0" />
                                 </div>
 

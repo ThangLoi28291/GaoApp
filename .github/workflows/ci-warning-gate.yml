@@ -21,7 +21,7 @@ jobs:
   warning-gate:
     name: Warning-free build and regression tests
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
 
     steps:
       - name: Checkout source
@@ -45,6 +45,28 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install locked browser test dependencies
+        working-directory: GaoApp.Tests.Browser
+        run: npm ci
+
+      - name: Verify required Chrome browser channel
+        working-directory: GaoApp.Tests.Browser
+        shell: pwsh
+        run: |
+          $chromeProbe = "const {chromium}=require('playwright'); (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});await b.close();})().catch(()=>process.exit(1));"
+          & node -e $chromeProbe
+          if ($LASTEXITCODE -ne 0) {
+            & npx playwright install chrome
+            if ($LASTEXITCODE -ne 0) { throw "Required Chrome installation failed." }
+            & node -e $chromeProbe
+            if ($LASTEXITCODE -ne 0) { throw "Required Chrome channel is unavailable." }
+          }
 
       - name: Run restore audit, warning gate, and full tests
         shell: pwsh

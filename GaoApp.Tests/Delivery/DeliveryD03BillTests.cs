@@ -66,7 +66,7 @@ public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
         var pixels=new byte[bitmap.Width*bitmap.Height*3]; var i=0; for(var y=0;y<bitmap.Height;y++) for(var x=0;x<bitmap.Width;x++){var p=bitmap.GetPixel(x,y);pixels[i++]=p.R;pixels[i++]=p.G;pixels[i++]=p.B;}
         var decoded=new BarcodeReaderGeneric{Options=new(){TryHarder=true,PossibleFormats=[BarcodeFormat.QR_CODE]}}.Decode(new RGBLuminanceSource(pixels,bitmap.Width,bitmap.Height,RGBLuminanceSource.BitmapFormat.RGB24));
         Assert.NotNull(decoded); var url=new Uri(decoded.Text); Assert.Equal(c.Account.Store.Host,url.Host); Assert.Equal("/admin/deliveries",url.AbsolutePath);
-        Assert.Equal("?key="+result.Delivery.LookupToken,url.Query);
+        Assert.Equal("?key="+result.Delivery.LookupToken+"&revision="+result.Delivery.Revision,url.Query);
         var detail=await c.Client.Http.GetFromJsonAsync<DeliveryDetailDto>("/admin/api/deliveries/lookup"+url.Query); Assert.Equal(result.Delivery.Id,detail!.Id);
     }
     [Fact]

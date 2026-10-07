@@ -25,12 +25,16 @@ public sealed class DeliveryOrder : BaseStoreEntity
     public ICollection<DeliveryOrderLine> Lines { get; set; } = new List<DeliveryOrderLine>();
 }
 
-public sealed class DeliveryOrderLine : BaseStoreEntity
+public sealed class DeliveryOrderLine : BaseStoreEntity, IDeliveryImmutableRecord
 {
     public int DeliveryOrderId { get; set; }
     public DeliveryOrder DeliveryOrder { get; set; } = null!;
     public int SourceCartId { get; set; }
-    public int SourceOrderLineId { get; set; }
+    public int? SourceOrderLineId { get; set; }
+    public int? OriginalRootLineId { get; set; }
+    public int? ProductUnitConversionId { get; set; }
+    public int? SellingUnitId { get; set; }
+    public int? BaseUnitId { get; set; }
     public int VariantId { get; set; }
     public string ItemName { get; set; } = "";
     public string UnitName { get; set; } = "";
@@ -42,6 +46,40 @@ public sealed class DeliveryOrderLine : BaseStoreEntity
     public decimal LineDiscount { get; set; }
     public decimal AllocatedOrderDiscount { get; set; }
     public decimal Net { get; set; }
+}
+
+public sealed class DeliveryPickingWork : BaseStoreEntity
+{
+    public int DeliveryOrderId { get; set; }
+    public int PickerUserId { get; set; }
+    public DateTime AssignedAtUtc { get; set; }
+    public DateTime StartedAtUtc { get; set; }
+    public DateTime? SubmittedAtUtc { get; set; }
+    public bool ApprovalRequired { get; set; }
+    public int? ApprovedRevision { get; set; }
+    public int? ApprovedByUserId { get; set; }
+    public DateTime? ApprovedAtUtc { get; set; }
+    public decimal? ApprovedTotal { get; set; }
+    public string? Reason { get; set; }
+    public string? CustomerConfirmationNote { get; set; }
+}
+
+public sealed class DeliveryPickingLine : BaseStoreEntity
+{
+    public int DeliveryOrderId { get; set; }
+    public int DeliveryOrderLineId { get; set; }
+    public DeliveryOrderLine Quote { get; set; } = null!;
+    public bool IsActive { get; set; } = true;
+    public decimal PlannedQuantity { get; set; }
+    public decimal PlannedOriginalCoverage { get; set; }
+    public decimal? ReportedQuantity { get; set; }
+    public int? ReporterUserId { get; set; }
+    public DateTime? ReportedAtUtc { get; set; }
+    public string? ShortageReason { get; set; }
+    public string ReportFactKind { get; set; } = "unreported";
+    public decimal? ApprovedQuantity { get; set; }
+    public decimal? ApprovedOriginalCoverage { get; set; }
+    public decimal? ApprovedNet { get; set; }
 }
 
 public sealed class DeliveryRevision : BaseStoreEntity, IDeliveryImmutableRecord

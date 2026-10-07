@@ -20,7 +20,7 @@ async Task<object> Call(object? target, Type type, string method, params object[
     await task; return task.GetType().GetProperty("Result")!.GetValue(task)!;
 }
 var type = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.FullApplicationFixture")!;
-var fixture = await Call(null, type, args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
+var fixture = await Call(null, type, args.Contains("--delivery-picking") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
 await using var cleanup = (IAsyncDisposable)fixture;
 var store = ((IEnumerable)Read(fixture, "Stores")).Cast<object>().First();
 var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports")
@@ -29,6 +29,131 @@ var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") |
 var client = await Call(fixture, type, "LoginAsync", account);
 using var clientCleanup = (IDisposable)client;
 var http = (HttpClient)Read(client, "Http");
+if (args.Contains("--delivery-picking"))
+{
+    var pickingDatabase = Read(fixture, "Database");
+    var pickingStoreId = (int)Read(store, "StoreId");
+    var pickingWarehouseId = (int)Read(store, "WarehouseId");
+    AppDbContext PickingContext() => (AppDbContext)pickingDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(pickingDatabase, new object?[] { pickingStoreId, null })!;
+    var picker = await Call(fixture, type, "AddAccountAsync", store, new[] { PermissionCodes.Delivery.View, PermissionCodes.Delivery.Pick });
+    int originalVariantId = (int)Read(store, "VariantId"), replacementVariantId, missingVariantId;
+    await using (var seed = PickingContext())
+    {
+        var original = await seed.ProductVariants.SingleAsync(x => x.Id == originalVariantId);
+        original.Price = 80; original.ProductVariantName = "Gạo gốc <script>alert(1)</script>";
+        var replacement = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
+            Sku = "D04-REPLACEMENT", ProductVariantName = "Gạo thay thế", Price = 120, IsActive = true };
+        var missing = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
+            Sku = "D04-MISSING", ProductVariantName = "Hàng hết", Price = 30, IsActive = true };
+        seed.AddRange(replacement, missing); await seed.SaveChangesAsync();
+        replacementVariantId = replacement.Id; missingVariantId = missing.Id;
+    }
+    async Task<JsonElement> PickingPost(string path, object? body = null)
+    {
+        using var response = body is null ? await http.PostAsync(path, null) : await http.PostAsJsonAsync(path, body);
+        var text = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(path + ": " + (int)response.StatusCode + " " + text);
+        return JsonDocument.Parse(text).RootElement.Clone();
+    }
+    (await http.PostAsJsonAsync("/admin/pos/shift/open", new { openingCash = 0, warehouseId = Read(store, "WarehouseId") })).EnsureSuccessStatusCode();
+    async Task<int> PickingDraft(int variantId, string quantity)
+    {
+        var draft = await PickingPost("/admin/pos/draft"); var id = draft.GetProperty("orderId").GetInt32();
+        await PickingPost($"/admin/pos/{id}/items?variantId={variantId}&qty={quantity}"); return id;
+    }
+    async Task<JsonElement> PickingTransfer()
+    {
+        var snapshot = await http.GetFromJsonAsync<JsonElement>("/admin/api/deliveries/current-cart");
+        return await PickingPost("/admin/api/deliveries/from-current-cart", new {
+            clientRequestId = Guid.NewGuid(), sourceCartId = snapshot.GetProperty("sourceCartId").GetInt32(),
+            expectedVersion = snapshot.GetProperty("version").GetString(), expectedFingerprint = snapshot.GetProperty("fingerprint").GetString(),
+            recipientName = "Khách D04 <img src=x onerror=alert(1)>", recipientPhone = "0901234567",
+            recipientAddress = "Địa chỉ thử nghiệm", note = "Chỉ dữ liệu fixture"
+        });
+    }
+    var mainCart = await PickingDraft(originalVariantId, "10");
+    await PickingPost($"/admin/pos/{mainCart}/items?variantId={missingVariantId}&qty=1");
+    var main = (await PickingTransfer()).GetProperty("delivery").Clone();
+    var exactCart = await PickingDraft(originalVariantId, "1");
+    await using (var seed = PickingContext())
+    {
+        var cart = await seed.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == exactCart);
+        var line = cart.Lines.Single(); line.Quantity = 99999999999999.9999m; line.BaseQuantity = line.Quantity;
+        line.Multiplier = 1; line.UnitPrice = .01m; line.OriginalUnitPrice = .01m;
+        line.LineTotal = GaoApp.Domain.Delivery.DeliveryValues.PricedAmount(line.Quantity, line.UnitPrice);
+        cart.Subtotal = line.LineTotal; cart.GrandTotal = line.LineTotal; cart.BalanceDue = line.LineTotal;
+        await seed.SaveChangesAsync();
+    }
+    var exact = (await PickingTransfer()).GetProperty("delivery").Clone();
+    var handedCart = await PickingDraft(originalVariantId, "1");
+    var handed = (await PickingTransfer()).GetProperty("delivery").Clone();
+    await using (var seed = PickingContext())
+    {
+        var delivery = await seed.DeliveryOrders.SingleAsync(x => x.Id == handed.GetProperty("id").GetInt32());
+        // Fixture-only downstream state to prove D04 guards; no operational handover or inventory executor is invoked.
+        delivery.State = GaoApp.Domain.Delivery.DeliveryState.HandedOver; await seed.SaveChangesAsync();
+    }
+    var legacyCartId = await PickingDraft(originalVariantId, "1");
+    int legacyId;
+    await using (var seed = PickingContext())
+    {
+        var source = await seed.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == legacyCartId);
+        var sourceLine = source.Lines.Single();
+        var owner = await seed.Warehouses.Where(x => x.Id == pickingWarehouseId).Select(x => x.LegalEntityId).SingleAsync();
+        var legacy = new GaoApp.Domain.Delivery.DeliveryOrder {
+            StoreId = pickingStoreId, Code = "GH-D04-LEGACY", LookupToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)),
+            SourceCartId = source.Id, SourceWarehouseId = (int)Read(store, "WarehouseId"), SourceLegalEntityId = owner,
+            CreatedTerminalId = (int)Read(store, "TerminalId"), CreatedShiftId = source.POSShiftId, CreatedByUserId = (int)Read(account, "UserId"),
+            RecipientName = "Hồ sơ Draft lịch sử", RecipientPhone = "0901234567", RecipientAddress = "Fixture", QuotedTotal = source.GrandTotal
+        };
+        legacy.Lines.Add(new GaoApp.Domain.Delivery.DeliveryOrderLine {
+            StoreId = pickingStoreId, SourceCartId = source.Id, SourceOrderLineId = sourceLine.Id, VariantId = sourceLine.VariantId,
+            ItemName = sourceLine.ItemName, UnitName = sourceLine.SellingUnitName ?? sourceLine.UnitName ?? "", BaseUnitName = sourceLine.BaseUnitName ?? "",
+            OrderedQuantity = sourceLine.Quantity, BaseMultiplier = sourceLine.Multiplier, UnitPrice = sourceLine.UnitPrice,
+            Gross = sourceLine.LineTotal, Net = sourceLine.LineTotal
+        });
+        seed.Add(legacy); await seed.SaveChangesAsync(); legacyId = legacy.Id;
+    }
+    var pickingSource = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var pickingEvidence = Environment.GetEnvironmentVariable("GAO_DELIVERY_PICKING_TEST_OUTPUT") ??
+        Path.Combine(pickingSource, "TestResults", "delivery-picking");
+    Directory.CreateDirectory(pickingEvidence);
+    var pickingStart = new ProcessStartInfo("node") { WorkingDirectory = pickingSource, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    pickingStart.Environment["NODE_PATH"] = Path.Combine(pickingSource, "Logs", "pos-offline-browser-deps", "node_modules");
+    pickingStart.ArgumentList.Add(Path.Combine(pickingSource, "GaoApp.Tests.Browser", "delivery-picking.browser.cjs"));
+    using var pickingProbe = Process.Start(pickingStart)!;
+    await pickingProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"), actorId = Read(account, "UserId"),
+        pickerUser = Read(picker, "Name"), pickerPassword = Read(picker, "Password"), pickerId = Read(picker, "UserId"),
+        terminalId = Read(store, "TerminalId"), main, exact, handed, legacyId, replacementVariantId,
+        evidenceDirectory = pickingEvidence
+    }));
+    pickingProbe.StandardInput.Close(); using var pickingTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await pickingProbe.WaitForExitAsync(pickingTimeout.Token); } catch { if (!pickingProbe.HasExited) pickingProbe.Kill(true); throw; }
+    if (pickingProbe.ExitCode != 0) throw new InvalidOperationException("D04 picking browser failed.");
+    var probeResult = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(pickingEvidence, "browser-checks.json")));
+    var ackIds = probeResult.RootElement.GetProperty("commandIds").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).Distinct().ToArray();
+    await using var verify = PickingContext();
+    var operationalIds = new[] { main.GetProperty("id").GetInt32(), exact.GetProperty("id").GetInt32(), handed.GetProperty("id").GetInt32() };
+    var orders = await verify.DeliveryOrders.Where(x => operationalIds.Contains(x.Id)).ToListAsync();
+    var expectedEvents = orders.Sum(x => x.Revision);
+    if (await verify.DeliveryRevisions.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != expectedEvents ||
+        await verify.DeliveryOutboxMessages.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != expectedEvents ||
+        await verify.DeliveryCommandReceipts.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != 3 + ackIds.Length ||
+        await verify.DeliveryCommandReceipts.CountAsync(x => ackIds.Contains(x.ClientRequestId)) != ackIds.Length)
+        throw new InvalidOperationException("D04 revisions/receipts/outbox did not match actual distinct committed intents.");
+    if (await verify.InventoryTransactions.CountAsync() != 1 || await verify.InventoryReservations.AnyAsync() ||
+        await verify.DeliveryJournalEntries.AnyAsync() || await verify.DeliveryDispatchCostFragments.AnyAsync() ||
+        await verify.OrderPayments.AnyAsync() || await verify.Orders.AnyAsync(x => x.Status == OrderStatus.Completed))
+        throw new InvalidOperationException("D04 browser changed stock or finance.");
+    await File.WriteAllTextAsync(Path.Combine(pickingEvidence, "sql-effects.json"), JsonSerializer.Serialize(new {
+        distinctPickingIntents = ackIds.Length, expectedEvents, revisions = expectedEvents, receipts = 3 + ackIds.Length,
+        openingStockOnly = true, noReservations = true, noPayments = true, noCompletedSale = true, fixtureOnly = true
+    }, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("D04 PICKING BROWSER + EXACT SQL EFFECTS PASS — disposable fixture only."); return;
+}
 if (args.Contains("--delivery"))
 {
     var deliveryDatabase = Read(fixture, "Database");

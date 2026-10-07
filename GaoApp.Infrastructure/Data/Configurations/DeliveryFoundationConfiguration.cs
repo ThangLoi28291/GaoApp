@@ -82,6 +82,20 @@ public sealed class DeliveryFoundationConfiguration :
     public void Configure(EntityTypeBuilder<DeliveryOrderLine> b)
     {
         Base(b, "DeliveryOrderLines");
+        b.ToTable(t => {
+            t.HasTrigger("TR_DeliveryOrderLines_Immutable");
+            t.HasTrigger("TR_DeliveryOrderLines_Root");
+            t.HasCheckConstraint("CK_DeliveryOrderLines_Identity",
+                "([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0)");
+        });
+        b.HasOne<DeliveryOrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.OriginalRootLineId })
+            .HasPrincipalKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<ProductUnitConversion>().WithMany().HasForeignKey(x => new { x.StoreId, x.VariantId, x.ProductUnitConversionId, x.SellingUnitId })
+            .HasPrincipalKey(x => new { x.StoreId, x.ProductVariantId, x.Id, x.UnitId }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Unit>().WithMany().HasForeignKey(x => new { x.StoreId, x.SellingUnitId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<Unit>().WithMany().HasForeignKey(x => new { x.StoreId, x.BaseUnitId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasAlternateKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id });
         b.HasOne(x => x.DeliveryOrder).WithMany(x => x.Lines)
             .HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.SourceCartId })
@@ -97,7 +111,7 @@ public sealed class DeliveryFoundationConfiguration :
         b.Property(x => x.BaseMultiplier).HasPrecision(18, 6);
         b.Property(x => x.UnitPrice).HasPrecision(18, 2);
         foreach (var name in new[] { "Gross", "LineDiscount", "AllocatedOrderDiscount", "Net" }) b.Property<decimal>(name).HasPrecision(18, 2);
-        b.HasIndex(x => new { x.StoreId, x.DeliveryOrderId, x.SourceOrderLineId }).IsUnique();
+        b.HasIndex(x => new { x.StoreId, x.DeliveryOrderId, x.SourceOrderLineId }).IsUnique().HasFilter("[SourceOrderLineId] IS NOT NULL");
         b.ToTable(t => t.HasCheckConstraint("CK_DeliveryOrderLines_Quote",
             "[OrderedQuantity] > 0 AND [BaseMultiplier] > 0 AND [UnitPrice] >= 0 AND [Gross] >= 0 AND [LineDiscount] >= 0 AND [AllocatedOrderDiscount] >= 0 AND [Net] = [Gross]-[LineDiscount]-[AllocatedOrderDiscount] AND [Net] >= 0 AND [Net] = ROUND([Net],0)"));
     }

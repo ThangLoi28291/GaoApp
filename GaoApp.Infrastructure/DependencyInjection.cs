@@ -148,6 +148,8 @@ public static class DependencyInjection
         services.AddScoped<TenantContext>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryFoundationService,
             GaoApp.Infrastructure.Services.Delivery.DeliveryFoundationService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryPickingService,
+            GaoApp.Infrastructure.Services.Delivery.DeliveryPickingService>();
         services.AddScoped<GaoApp.Infrastructure.Services.Delivery.DeliveryOutboxProcessor>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess,
             GaoApp.Infrastructure.Security.StoreAdminAccess>();

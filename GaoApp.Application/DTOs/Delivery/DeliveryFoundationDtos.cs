@@ -10,7 +10,7 @@ public sealed record DeliveryRecipientRequest(Guid ClientRequestId, string Expec
 public sealed record DeliveryFoundationCreate(Guid ClientRequestId, int SourceCartId,
     string RecipientName, string RecipientPhone, string RecipientAddress, string? Note);
 
-public sealed record DeliveryLineDto(int Id, int SourceOrderLineId, string ItemName, string UnitName,
+public sealed record DeliveryLineDto(int Id, int? SourceOrderLineId, string ItemName, string UnitName,
     string BaseUnitName, decimal OrderedQuantity, decimal BaseMultiplier, decimal UnitPrice,
     decimal Gross, decimal LineDiscount, decimal AllocatedOrderDiscount, decimal Net);
 

@@ -1,4 +1,4 @@
-﻿using GaoApp.Infrastructure.Data.Migrations;
+using GaoApp.Infrastructure.Data.Migrations;
 using GaoApp.Infrastructure.Migrations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -309,8 +309,8 @@ public sealed class AutoInvoiceRoutingMigrationTests
         var migrations =
             db.Database.GetMigrations().ToList();
 
-        Assert.Equal(69, migrations.Count);
-        Assert.Equal("20261006170000_PreserveHeldOrderShiftChanges", migrations[^1]);
+        Assert.Equal(71, migrations.Count);
+        Assert.Equal("20261007090000_AddMixedQuantityPromotions", migrations[^1]);
         Assert.Single(
             migrations,
             x => x == MigrationId);

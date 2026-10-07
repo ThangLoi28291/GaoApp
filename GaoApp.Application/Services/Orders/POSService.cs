@@ -2714,7 +2714,11 @@ ICustomerDepositService? deposits = null)
         // 2. TỔNG TIỀN HÀNG
         // =========================
         var subtotal = Math.Round(
-            lines.Sum(x => x.Quantity * x.UnitPrice),
+            // Mixed-group discounts reconcile whole dong on each sale line.
+            // Use the same gross basis so the bill and refunds share its total.
+            lines.Sum(x => x.PromotionType == PromotionType.ComboFixedPrice
+                ? Math.Round(x.Quantity * x.UnitPrice, 0, MidpointRounding.AwayFromZero)
+                : x.Quantity * x.UnitPrice),
             0,
             MidpointRounding.AwayFromZero);
 

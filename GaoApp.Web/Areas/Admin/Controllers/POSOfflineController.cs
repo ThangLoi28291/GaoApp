@@ -117,7 +117,8 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
         var now = DateTime.UtcNow;
         return Ok(await db.Promotions.AsNoTracking().Where(x => x.StoreId == runtime.StoreId && x.IsActive && x.StartAtUtc <= now && x.EndAtUtc >= now)
             .Select(x => new { x.Id, x.Name, x.Type, x.Priority, x.DiscountType, x.DiscountValue, x.CustomerPriceTier,
-                x.ComboFixedPrice, x.ComboNote, x.BuyQuantity, x.GetQuantity, x.StartAtUtc, x.EndAtUtc,
+                x.ComboFixedPrice, x.ComboNote, x.ComboPricingMode, x.ComboQuantity, x.ComboBaseUnitId,
+                x.BuyQuantity, x.GetQuantity, x.StartAtUtc, x.EndAtUtc,
                 items = x.Items.Where(i => !i.IsDeleted).Select(i => new { i.ProductId, i.VariantId, i.ProductUnitConversionId, i.MinQuantity }).ToList(),
                 comboRules = x.ComboRules.Where(i => !i.IsDeleted).Select(i => new { i.ProductId, i.VariantId, i.ProductUnitConversionId, i.RequiredQuantity }).ToList()
             }).ToListAsync(ct));

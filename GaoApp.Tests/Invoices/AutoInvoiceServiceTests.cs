@@ -49,6 +49,7 @@ public sealed partial class AutoInvoiceServiceTests
     [Fact]
     public async Task Insufficient_input_invoice_stock_blocks_each_group_member_with_shortage_details()
     {
+        var nowUtc = new DateTime(2026, 10, 7, 12, 0, 0, DateTimeKind.Utc);
         var repo =
             CreateRepository(enabled: true);
 
@@ -59,13 +60,13 @@ public sealed partial class AutoInvoiceServiceTests
             Invoice(
                 20,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-2));
+                    nowUtc.AddHours(-2));
 
         var second =
             Invoice(
                 21,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-1));
+                    nowUtc.AddHours(-1));
 
         first.GrandTotal = 60_000m;
         second.GrandTotal = 60_000m;
@@ -77,7 +78,8 @@ public sealed partial class AutoInvoiceServiceTests
             CreateService(
                 repo,
                 issue,
-                new InsufficientStockRepository());
+                new InsufficientStockRepository(),
+                nowUtc: nowUtc);
 
         await service.RunOnceAsync();
 
@@ -459,18 +461,19 @@ public sealed partial class AutoInvoiceServiceTests
     [Fact]
     public async Task Failed_group_marks_all_sources_and_is_not_submitted_again()
     {
+        var nowUtc = new DateTime(2026, 10, 7, 12, 0, 0, DateTimeKind.Utc);
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService
         {
             Result = Result<ViettelInvoiceIssueResultDto>.Failure(
                 Error.Validation("InvoiceProvider.CredentialKeyUnavailable", "Key không đọc được."))
         };
-        var first = Invoice(34, completedAtUtc: DateTime.UtcNow.AddHours(-2));
-        var second = Invoice(35, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var first = Invoice(34, completedAtUtc: nowUtc.AddHours(-2));
+        var second = Invoice(35, completedAtUtc: nowUtc.AddHours(-1));
         first.GrandTotal = 60_000m;
         second.GrandTotal = 60_000m;
         repo.Candidates.AddRange([first, second]);
-        var service = CreateService(repo, issue);
+        var service = CreateService(repo, issue, nowUtc: nowUtc);
 
         await service.RunOnceAsync();
         await service.RunOnceAsync(force: true);
@@ -482,6 +485,7 @@ public sealed partial class AutoInvoiceServiceTests
     [Fact]
     public async Task Automatic_route_with_retained_buyer_info_still_uses_group_lane()
     {
+        var nowUtc = new DateTime(2026, 10, 7, 12, 0, 0, DateTimeKind.Utc);
         var repo = CreateRepository(enabled: true);
 
         repo.Settings.SeparateAmountThreshold =
@@ -497,13 +501,13 @@ public sealed partial class AutoInvoiceServiceTests
             Invoice(
                 40,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-2));
+                    nowUtc.AddHours(-2));
 
         var second =
             Invoice(
                 41,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-1));
+                    nowUtc.AddHours(-1));
 
         first.GrandTotal = 60_000m;
         first.SubTotal = 60_000m;
@@ -557,7 +561,8 @@ public sealed partial class AutoInvoiceServiceTests
         var service =
             CreateService(
                 repo,
-                issue);
+                issue,
+                nowUtc: nowUtc);
 
         await service.RunOnceAsync();
 
@@ -759,7 +764,7 @@ public sealed partial class AutoInvoiceServiceTests
             new FakeIssueService();
 
         var now =
-            DateTime.UtcNow;
+            new DateTime(2026, 10, 7, 12, 0, 0, DateTimeKind.Utc);
 
         var valid =
             Invoice(
@@ -791,7 +796,8 @@ public sealed partial class AutoInvoiceServiceTests
         var service =
             CreateService(
                 repo,
-                issue);
+                issue,
+                nowUtc: now);
 
         await service.RunOnceAsync();
 
@@ -1386,7 +1392,8 @@ public sealed partial class AutoInvoiceServiceTests
     FakeIssueService issue,
     IInvoiceInputStockRepository? stock = null,
     IViettelInvoiceSyncService? sync = null,
-    ITenantContext? tenant = null)
+    ITenantContext? tenant = null,
+    DateTime? nowUtc = null)
     => new(
         repo,
         stock ?? new SufficientStockRepository(),
@@ -1395,7 +1402,7 @@ public sealed partial class AutoInvoiceServiceTests
         new NoopUnitOfWork(),
         tenant ?? new StoreTenant(1),
         new TestCurrentUser(),
-        new FixedTimeProvider(DateTime.UtcNow));
+        new FixedTimeProvider(nowUtc ?? DateTime.UtcNow));
 
     private static FakeAutoInvoiceRepository CreateRepository(bool enabled)
         => new()

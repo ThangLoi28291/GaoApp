@@ -40,7 +40,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         var protectionPosition = Array.IndexOf(ids, Protection);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids[..(protectionPosition + 1)], out var protection));
         Assert.Equal(10, protection.Tables.Sum(x => x.Triggers.Count));
-        Assert.Equal(12, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(15, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         var expected = new EfCoreDatabaseSchemaManifestCatalog(db).GetCurrentManifest();
         await db.Database.OpenConnectionAsync();
         var actual = await new SqlServerSchemaSnapshotReader(db).ReadAsync((await db.Database.GetAppliedMigrationsAsync()).ToArray());
-        Assert.Equal(12, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(15, actual.Tables.Sum(x => x.Triggers.Count));
         var expectedRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(expected).All;
         var actualRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(actual).All;
         Assert.True(DatabaseSchemaComparer.Compare(expected, actual).IsMatch,

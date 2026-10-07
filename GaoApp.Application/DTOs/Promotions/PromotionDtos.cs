@@ -4,6 +4,10 @@ namespace GaoApp.Application.DTOs.Promotions;
 
 public sealed class PromotionListItemDto
 {
+    public ComboPricingMode ComboPricingMode { get; set; } = ComboPricingMode.RequiredItems;
+    public decimal? ComboQuantity { get; set; }
+    public int? ComboBaseUnitId { get; set; }
+
     public int Id { get; set; }
 
     public string Name { get; set; } = "";
@@ -41,6 +45,10 @@ public sealed class PromotionListItemDto
 
 public sealed class PromotionEditDto
 {
+    public ComboPricingMode ComboPricingMode { get; set; } = ComboPricingMode.RequiredItems;
+    public decimal? ComboQuantity { get; set; }
+    public int? ComboBaseUnitId { get; set; }
+
     public int Id { get; set; }
 
     public string Name { get; set; } = "";
@@ -120,6 +128,10 @@ public sealed class PromotionComboRuleEditDto
 
 public sealed class SavePromotionRequest
 {
+    public ComboPricingMode ComboPricingMode { get; set; } = ComboPricingMode.RequiredItems;
+    public decimal? ComboQuantity { get; set; }
+    public int? ComboBaseUnitId { get; set; }
+
     public int Id { get; set; }
 
     public string Name { get; set; } = "";

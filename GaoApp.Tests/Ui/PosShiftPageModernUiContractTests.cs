@@ -237,6 +237,9 @@ public sealed class PosShiftPageModernUiContractTests
 
     private static string ExtractBetween(string source, string startMarker, string endMarker)
     {
+        source = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        startMarker = startMarker.Replace("\r\n", "\n", StringComparison.Ordinal);
+        endMarker = endMarker.Replace("\r\n", "\n", StringComparison.Ordinal);
         var start = source.IndexOf(startMarker, StringComparison.Ordinal);
         Assert.True(start >= 0, $"Start marker was not found: {startMarker}");
 

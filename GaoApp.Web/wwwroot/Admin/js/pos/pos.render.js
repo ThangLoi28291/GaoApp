@@ -1395,7 +1395,7 @@ window.PosRender = (function () {
 
         const isProductDiscountPromotion =
             hasPromotion &&
-            promotionType === 1;
+            (promotionType === 1 || promotionType === 2);
 
         const isBuyXGetYPromotion =
             hasPromotion &&
@@ -1469,8 +1469,8 @@ window.PosRender = (function () {
         );
 
         const hasComboPromotion =
-            comboAllocatedDiscount > 0 ||
-            comboPromotionName.length > 0;
+            promotionType !== 2 &&
+            (comboAllocatedDiscount > 0 || comboPromotionName.length > 0);
 
         const unitNameForGift =
             line.sellingUnitName ||
@@ -1691,7 +1691,7 @@ window.PosRender = (function () {
 
                     <div class="pos-line-promo-badge"
                          title="${escapeHtml(
-                    promoLabel
+                    promotionType === 2 ? (comboPromotionNote || promoLabel) : promoLabel
                 )}">
                         <i class="bx bx-purchase-tag"></i>
                         <span>

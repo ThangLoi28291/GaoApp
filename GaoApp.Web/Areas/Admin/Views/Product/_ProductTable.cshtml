@@ -15,7 +15,8 @@
         if (units.All(x => !x.WholesalePrice.HasValue)) return "Theo giá lẻ";
         var prices = units.Select(x => x.WholesalePrice ?? x.RetailPrice).Where(x => x.HasValue).Select(x => x!.Value).ToList();
         if (prices.Count == 0) return "Chưa có giá";
-        return prices.Min() == prices.Max() ? $"{prices.Min():n0} ₫" : $"{prices.Min():n0} – {prices.Max():n0} ₫";
+        var vi = System.Globalization.CultureInfo.GetCultureInfo("vi-VN");
+        return prices.Min() == prices.Max() ? prices.Min().ToString("N0", vi) + " ₫" : prices.Min().ToString("N0", vi) + " – " + prices.Max().ToString("N0", vi) + " ₫";
     }
     var items = Model.Paged.Items;
     var totalItems = Model.Paged.TotalItems;

@@ -457,6 +457,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 6)
                         .HasColumnType("decimal(18,6)");
 
+                    b.Property<int?>("BaseUnitId")
+                        .HasColumnType("int");
+
                     b.Property<string>("BaseUnitName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -503,16 +506,25 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<int?>("OriginalRootLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<int?>("SellingUnitId")
+                        .HasColumnType("int");
+
                     b.Property<int>("SourceCartId")
                         .HasColumnType("int");
 
-                    b.Property<int>("SourceOrderLineId")
+                    b.Property<int?>("SourceOrderLineId")
                         .HasColumnType("int");
 
                     b.Property<int>("StoreId")
@@ -538,21 +550,36 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StoreId", "VariantId");
+                    b.HasIndex("StoreId", "BaseUnitId");
+
+                    b.HasIndex("StoreId", "SellingUnitId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "OriginalRootLineId");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceCartId");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceOrderLineId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[SourceOrderLineId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "SourceCartId", "SourceOrderLineId");
 
+                    b.HasIndex("StoreId", "VariantId", "ProductUnitConversionId", "SellingUnitId");
+
                     b.ToTable("DeliveryOrderLines", null, t =>
                         {
+                            t.HasTrigger("TR_DeliveryOrderLines_Immutable");
+
+                            t.HasTrigger("TR_DeliveryOrderLines_Root");
+
+                            t.HasCheckConstraint("CK_DeliveryOrderLines_Identity", "([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0)");
+
                             t.HasCheckConstraint("CK_DeliveryOrderLines_Live", "[IsDeleted] = 0");
 
                             t.HasCheckConstraint("CK_DeliveryOrderLines_Quote", "[OrderedQuantity] > 0 AND [BaseMultiplier] > 0 AND [UnitPrice] >= 0 AND [Gross] >= 0 AND [LineDiscount] >= 0 AND [AllocatedOrderDiscount] >= 0 AND [Net] = [Gross]-[LineDiscount]-[AllocatedOrderDiscount] AND [Net] >= 0 AND [Net] = ROUND([Net],0)");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryOutboxMessage", b =>
@@ -691,6 +718,212 @@ namespace GaoApp.Infrastructure.Migrations
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryPickingLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("ApprovedNet")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ApprovedOriginalCoverage")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("ApprovedQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("PlannedOriginalCoverage")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("PlannedQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("ReportFactKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("ReportedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("ReportedQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("ReporterUserId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ShortageReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ReporterUserId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId")
+                        .IsUnique();
+
+                    b.ToTable("DeliveryPickingLines", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryPickingLines_Bounds");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingLines_Approval", "([ApprovedQuantity] IS NULL AND [ApprovedOriginalCoverage] IS NULL AND [ApprovedNet] IS NULL) OR ([ApprovedQuantity] IS NOT NULL AND [ApprovedOriginalCoverage] IS NOT NULL AND [ApprovedNet] IS NOT NULL AND [ApprovedNet]>=0 AND [ApprovedNet]=ROUND([ApprovedNet],0) AND ([ApprovedQuantity]>0 OR [ApprovedOriginalCoverage]=0 AND [ApprovedNet]=0))");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingLines_Inactive", "[IsActive]=1 OR [PlannedQuantity]=0 AND [PlannedOriginalCoverage]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingLines_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingLines_Quantities", "[PlannedQuantity]>=0 AND [PlannedOriginalCoverage]>=0 AND ([ReportedQuantity] IS NULL OR [ReportedQuantity]>=0 AND [ReportedQuantity]<=[PlannedQuantity]) AND ([ApprovedQuantity] IS NULL OR [ReportedQuantity] IS NOT NULL AND [ApprovedQuantity]>=0 AND [ApprovedQuantity]<=[ReportedQuantity]) AND ([ApprovedOriginalCoverage] IS NULL OR [ApprovedOriginalCoverage]>=0 AND [ApprovedOriginalCoverage]<=[PlannedOriginalCoverage])");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingLines_Report", "([ReportedQuantity] IS NULL AND [ReporterUserId] IS NULL AND [ReportedAtUtc] IS NULL AND [ReportFactKind]='unreported') OR ([ReportedQuantity] IS NOT NULL AND [ReporterUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND ([ReportFactKind]='picker-report' OR [ReportFactKind]='plan-removal' AND [ReportedQuantity]=0) AND ([ReportedQuantity]>0 AND [ReportedQuantity]=[PlannedQuantity] OR NULLIF(LTRIM(RTRIM([ShortageReason])), '') IS NOT NULL))");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryPickingWork", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("ApprovalRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ApprovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ApprovedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ApprovedRevision")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ApprovedTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CustomerConfirmationNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PickerUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ApprovedByUserId");
+
+                    b.HasIndex("StoreId", "PickerUserId");
+
+                    b.ToTable("DeliveryPickingWorks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DeliveryPickingWorks_Approval", "([ApprovedRevision] IS NULL AND [ApprovedByUserId] IS NULL AND [ApprovedAtUtc] IS NULL AND [ApprovedTotal] IS NULL) OR ([ApprovedRevision] IS NOT NULL AND [ApprovedRevision]>0 AND [ApprovedByUserId] IS NOT NULL AND [ApprovedAtUtc] IS NOT NULL AND [ApprovedTotal] IS NOT NULL AND [ApprovedTotal]>0 AND [ApprovedTotal]=ROUND([ApprovedTotal],0))");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingWorks_Live", "[IsDeleted]=0");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryRevision", b =>
@@ -10244,6 +10477,18 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<int?>("ComboBaseUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("ComboPricingMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint")
+                        .HasDefaultValue((byte)1);
+
+                    b.Property<decimal?>("ComboQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("ComboFixedPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -15140,12 +15385,30 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BaseUnitId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SellingUnitId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.ProductVariant", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "VariantId")
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "OriginalRootLineId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", "DeliveryOrder")
                         .WithMany("Lines")
@@ -15158,8 +15421,13 @@ namespace GaoApp.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("StoreId", "SourceCartId", "SourceOrderLineId")
                         .HasPrincipalKey("StoreId", "OrderId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId", "ProductUnitConversionId", "SellingUnitId")
+                        .HasPrincipalKey("StoreId", "ProductVariantId", "Id", "UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("DeliveryOrder");
 
@@ -15196,6 +15464,77 @@ namespace GaoApp.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("StoreId", "EventId")
                         .HasPrincipalKey("StoreId", "EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryPickingLine", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryPickingWork", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReporterUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrderLine", "Quote")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryOrderLineId")
+                        .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Quote");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryPickingWork", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ApprovedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PickerUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 

@@ -81,6 +81,8 @@ public class AppDbContext : DbContext
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+    public DbSet<DeliveryPickingWork> DeliveryPickingWorks => Set<DeliveryPickingWork>();
+    public DbSet<DeliveryPickingLine> DeliveryPickingLines => Set<DeliveryPickingLine>();
     public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
     public DbSet<DeliveryRevision> DeliveryRevisions => Set<DeliveryRevision>();
     public DbSet<DeliveryJournalEntry> DeliveryJournalEntries => Set<DeliveryJournalEntry>();

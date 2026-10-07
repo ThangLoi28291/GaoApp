@@ -26,6 +26,7 @@ namespace GaoApp.Tests.Delivery;
 public sealed class DeliveryHeldOrderShiftSqlServerTests(DeliveryD02Fixture fixture)
 {
     private const string HeldShift = "20261006170000_PreserveHeldOrderShiftChanges";
+    private const string Latest = "20261007090000_AddMixedQuantityPromotions";
     private const string Protection = "20261006163000_ProtectDeliverySourceCarts";
     private const string Foundation = "20261006153000_AddDeliveryFoundation";
     private const string OldSourceFk = "FK_DeliveryOrders_Orders_StoreId_SourceCartId_CreatedShiftId";
@@ -365,15 +366,15 @@ public sealed class DeliveryHeldOrderShiftSqlServerTests(DeliveryD02Fixture fixt
     private static async Task AssertSchema(AppDbContext db, bool latest)
     {
         var ids = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(latest ? 69 : 68, ids.Length);
-        Assert.Equal(latest ? HeldShift : Protection, ids[^1]);
+        Assert.Equal(latest ? 71 : 68, ids.Length);
+        Assert.Equal(latest ? Latest : Protection, ids[^1]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids, out var expected));
         await db.Database.OpenConnectionAsync();
         var actual = await new SqlServerSchemaSnapshotReader(db).ReadAsync(ids);
         var comparison = DatabaseSchemaComparer.Compare(expected, actual);
         Assert.True(comparison.IsMatch, JsonSerializer.Serialize(comparison.Mismatches));
-        Assert.Equal(latest ? 12 : 10, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(latest ? 15 : 10, actual.Tables.Sum(x => x.Triggers.Count));
         var orders = actual.Tables.Single(x => x.Identity.Name == "orders");
         var source = Assert.Single(actual.Tables.Single(x => x.Identity.Name == "deliveryorders").ForeignKeys,
             x => x.PrincipalTable.Name == "orders");
@@ -412,12 +413,16 @@ public sealed class DeliveryHeldOrderShiftSqlServerTests(DeliveryD02Fixture fixt
             var delivery = new DeliveryOrder { StoreId = catalog.StoreId, Code = "OLD-DELIVERY", LookupToken = "OLD-LOOKUP",
                 SourceCartId = sourceId, SourceWarehouseId = catalog.WarehouseId, SourceLegalEntityId = legal,
                 CreatedShiftId = shiftA.Id, CreatedTerminalId = terminalA.Id, CreatedByUserId = user.Id,
-                RecipientName = "Historical recipient", RecipientPhone = "0901234567", RecipientAddress = "Historical address", QuotedTotal = 20,
-                Lines = [new() { StoreId = catalog.StoreId, SourceCartId = sourceId, SourceOrderLineId = sourceLineId,
-                    VariantId = variant.Id, ItemName = "Historical cart", UnitName = "Pack", BaseUnitName = "Pack", OrderedQuantity = 1,
-                    BaseMultiplier = 1, UnitPrice = 20, Gross = 20, Net = 20 }] };
+                RecipientName = "Historical recipient", RecipientPhone = "0901234567", RecipientAddress = "Historical address", QuotedTotal = 20 };
             db.DeliveryOrders.Add(delivery);
             await db.SaveChangesAsync();
+            // Prefix67/68 contain only the original quote columns; current EF also emits D04 replacement columns.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO DeliveryOrderLines (StoreId,DeliveryOrderId,SourceCartId,SourceOrderLineId,VariantId,
+                    ItemName,UnitName,BaseUnitName,OrderedQuantity,BaseMultiplier,UnitPrice,Gross,LineDiscount,AllocatedOrderDiscount,Net,IsDeleted)
+                VALUES ({catalog.StoreId},{delivery.Id},{sourceId},{sourceLineId},{variant.Id},
+                    N'Historical cart',N'Pack',N'Pack',1,1,20,20,0,0,20,0);
+                """);
             db.DeliveryRevisions.Add(new() { StoreId = catalog.StoreId, DeliveryOrderId = delivery.Id, Revision = 1,
                 ActorUserId = user.Id, Action = "Created", AggregateVersion = "fixture", SnapshotJson = "{\"fixture\":true}", SnapshotHash = new string('A', 64) });
             await db.SaveChangesAsync();

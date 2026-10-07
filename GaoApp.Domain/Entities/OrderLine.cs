@@ -161,6 +161,7 @@ public class OrderLine : BaseStoreEntity
     /// <summary>
     /// Loại khuyến mãi sản phẩm đang áp trên dòng.
     /// 1 = ProductDiscount
+    /// 2 = ComboFixedPrice, mixed-quantity group allocated to this line
     /// 3 = BuyXGetY
     /// Null = không có khuyến mãi dòng.
     /// </summary>

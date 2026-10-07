@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Interfaces.Repositories.Promotions;
+using GaoApp.Application.Interfaces.Repositories.Promotions;
 using GaoApp.Application.Interfaces.Services.Promotions;
 using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
@@ -6,7 +6,7 @@ using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Promotions;
 
-public sealed class PromotionEngine : IPromotionEngine
+public sealed partial class PromotionEngine : IPromotionEngine
 {
     private readonly IPromotionRepository _promotionRepository;
 
@@ -157,80 +157,24 @@ public sealed class PromotionEngine : IPromotionEngine
             return;
 
         ClearComboSnapshot(order);
+        foreach (var line in order.Lines.Where(x => x.PromotionType == PromotionType.ComboFixedPrice))
+            ClearProductPromotionSnapshot(line);
 
         if (order.StoreId <= 0)
             return;
 
-        var lines = order.Lines
-            .Where(x =>
-                !x.IsDeleted &&
-                x.Quantity > 0 &&
-                x.UnitPrice > 0 &&
-                x.ProductId > 0 &&
-                x.VariantId > 0)
-            .ToList();
-
-        if (!lines.Any())
-            return;
-
-        var promotions = await _promotionRepository
-            .GetActiveComboPromotionsAsync(order.StoreId, ct);
-
-        if (!promotions.Any())
-            return;
-
-        var bestCombo = promotions
-            .Where(p => IsCustomerTierMatched(p, order))
-            .Select(p => CalculateComboResult(p, lines))
-            .Where(x => x != null && x.DiscountAmount > 0)
-            .OrderByDescending(x => x!.Promotion.Priority)
-            .ThenByDescending(x => x!.DiscountAmount)
-            .ThenByDescending(x => x!.Promotion.Id)
-            .FirstOrDefault();
-
-        if (bestCombo == null)
-            return;
-        var note =
-    string.IsNullOrWhiteSpace(bestCombo.Promotion.ComboNote)
-        ? $"{bestCombo.Promotion.Name} giảm {bestCombo.DiscountAmount:#,##0}"
-        : bestCombo.Promotion.ComboNote;
-
-        order.ComboDiscountTotal = bestCombo.DiscountAmount;
-        order.ComboPromotionId = bestCombo.Promotion.Id;
-        order.ComboPromotionName = bestCombo.Promotion.Name;
-        order.ComboPromotionNote = note;
-
-        var involvedLines = bestCombo.MatchedParts
-            .SelectMany(x => x.MatchedLines)
-            .DistinctBy(x => x.Id)
-            .ToList();
-
-        var discountPerLine = involvedLines.Count > 0
-            ? RoundVnd(bestCombo.DiscountAmount / involvedLines.Count)
-            : 0m;
-
-        foreach (var line in involvedLines)
-        {
-            line.ComboPromotionId = bestCombo.Promotion.Id;
-            line.ComboPromotionName = bestCombo.Promotion.Name;
-            line.ComboPromotionNote = note;
-            line.ComboAllocatedDiscount = discountPerLine;
-        }
-
-        order.ComboDiscountTotal = bestCombo.DiscountAmount;
-        order.ComboPromotionId = bestCombo.Promotion.Id;
-        order.ComboPromotionName = bestCombo.Promotion.Name;
-        order.ComboPromotionNote =
-            string.IsNullOrWhiteSpace(bestCombo.Promotion.ComboNote)
-                ? $"{bestCombo.Promotion.Name} giảm {bestCombo.DiscountAmount:#,##0}"
-                : bestCombo.Promotion.ComboNote;
+        var promotions = await _promotionRepository.GetActiveComboPromotionsAsync(order.StoreId, ct);
+        ApplyMixedQuantityPromotions(order, promotions);
+        ApplyComboPromotionFromLoadedPromotions(order, promotions);
     }
-
     private static ComboResult? CalculateComboResult(
         Promotion promotion,
         List<OrderLine> lines)
     {
         if (promotion.Type != PromotionType.ComboFixedPrice)
+            return null;
+
+        if (promotion.ComboPricingMode != ComboPricingMode.RequiredItems)
             return null;
 
         if (!promotion.ComboFixedPrice.HasValue || promotion.ComboFixedPrice.Value <= 0)
@@ -501,6 +445,8 @@ public sealed class PromotionEngine : IPromotionEngine
         // 4. ÁP TYPE 2 COMBO
         // Combo cũng chỉ tính dòng mua thật, không tính hàng tặng.
         // =========================================================
+        ApplyMixedQuantityPromotions(order, comboPromotions);
+
         ApplyComboPromotionFromLoadedPromotions(
             order,
             comboPromotions);
@@ -958,6 +904,17 @@ public sealed class PromotionEngine : IPromotionEngine
     {
         ClearComboSnapshot(order);
 
+        foreach (var line in order.Lines.Where(x => !x.IsDeleted && x.PromotionType == PromotionType.ComboFixedPrice))
+        {
+            var group = promotions?.FirstOrDefault(p => p.Id == line.PromotionId &&
+                p.ComboPricingMode == ComboPricingMode.MixedQuantity);
+            if (group == null) continue;
+            line.ComboPromotionId = group.Id;
+            line.ComboPromotionName = group.Name;
+            line.ComboPromotionNote = group.ComboNote;
+            // The monetary allocation is already in PromotionDiscount.
+        }
+
         if (order.StoreId <= 0)
             return;
 
@@ -965,6 +922,7 @@ public sealed class PromotionEngine : IPromotionEngine
      .Where(x =>
          !x.IsDeleted &&
          !x.IsPromotionGift &&
+         x.PromotionType != PromotionType.ComboFixedPrice &&
          x.Quantity > 0 &&
          x.UnitPrice > 0 &&
          x.ProductId > 0 &&

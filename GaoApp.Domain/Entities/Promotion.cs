@@ -39,6 +39,13 @@ public class Promotion : BaseStoreEntity
     /// </summary>
     public decimal? ComboFixedPrice { get; set; }
 
+    public ComboPricingMode ComboPricingMode { get; set; } = ComboPricingMode.RequiredItems;
+
+    /// <summary>MixedQuantity: pack size in the common inventory base unit.</summary>
+    public decimal? ComboQuantity { get; set; }
+
+    public int? ComboBaseUnitId { get; set; }
+
     /// <summary>
     /// Ghi chú hiển thị trên POS / bill.
     /// Ví dụ: Combo 3 sản phẩm giảm.

@@ -505,7 +505,9 @@ public sealed class DatabaseSchemaManifestTests
                 "20261005101953_AddOperationsReportsAndTreasury",
                 "20261006153000_AddDeliveryFoundation",
                 "20261006163000_ProtectDeliverySourceCarts",
-                "20261006170000_PreserveHeldOrderShiftChanges");
+                "20261006170000_PreserveHeldOrderShiftChanges",
+                "20261006173000_AddDeliveryPicking",
+                "20261007090000_AddMixedQuantityPromotions");
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(

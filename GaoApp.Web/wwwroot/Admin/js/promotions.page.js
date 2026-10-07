@@ -151,7 +151,7 @@
             productId: toNumber(data.productId ?? data.ProductId),
             variantId: toNumber(data.variantId ?? data.VariantId ?? data.id ?? data.Id),
             text: data.text ?? data.Text ?? data.productName ?? data.ProductName ?? '',
-            productName: data.productName ?? data.ProductName ?? data.text ?? data.Text ?? '',
+            productName: (data.variantName ?? data.VariantName) || (data.productName ?? data.ProductName ?? data.text ?? data.Text ?? ''),
             barcode: data.barcode ?? data.Barcode ?? '',
             sku: data.sku ?? data.Sku ?? data.SKU ?? '',
             baseUnitName: data.baseUnitName ?? data.BaseUnitName ?? '',
@@ -188,12 +188,27 @@
 
         const helper = document.getElementById('promoRuleHelper');
         if (helper) {
-            helper.textContent = type === 2
-                ? 'Combo dùng danh sách sản phẩm bắt buộc. Mỗi dòng là một món trong combo.'
+            helper.textContent = isMixedQuantity()
+                ? 'Chọn các vị được phép ghép, có cùng đơn vị gốc. Khách có thể chọn bất kỳ tỉ lệ nào; hộp, lốc và thùng đều được quy đổi để cộng tổng.'
+                : type === 2 ? 'Combo dùng danh sách sản phẩm bắt buộc. Mỗi dòng là một món trong combo.'
                 : 'Gõ tên sản phẩm hoặc barcode để chọn. Hệ thống tự lưu ProductId / VariantId / đơn vị quy đổi.';
         }
 
+        const mixed = isMixedQuantity();
+        ['promoComboQuantityPanel', 'promoMixedQuantityHelp'].forEach(id =>
+            document.getElementById(id)?.classList.toggle('d-none', !mixed));
+        const priceLabel = document.getElementById('promoComboPriceLabel');
+        if (priceLabel) priceLabel.textContent = mixed ? 'Giá một thùng' : 'Giá combo';
+        document.querySelectorAll('#promoRuleBody .promo-rule-unit-area, #promoRuleBody .promo-rule-qty-area')
+            .forEach(el => el.classList.toggle('d-none', mixed));
+        document.querySelectorAll('#promoRuleBody .promo-rule-card')
+            .forEach(card => card.classList.toggle('is-mixed-quantity', mixed));
+
         updatePreview();
+    }
+
+    function isMixedQuantity() {
+        return Number(val('promoType')) === 2 && Number(val('promoComboPricingMode')) === 2;
     }
 
     function updatePreview() {
@@ -210,7 +225,9 @@
         const ruleCountEl = document.getElementById('promoPreviewRuleCount');
 
         if (nameEl) nameEl.textContent = name;
-        if (typeEl) typeEl.textContent = typeText(type);
+        if (typeEl) typeEl.textContent = isMixedQuantity()
+            ? `Ghép vị từ ${val('promoComboQuantity')} đơn vị gốc · ${formatMoney(val('promoComboFixedPrice'))} / thùng`
+            : typeText(type);
         if (tierEl) tierEl.textContent = tierText(tier);
         if (priorityEl) priorityEl.textContent = priority;
         if (ruleCountEl) ruleCountEl.textContent = ruleCount;
@@ -688,7 +705,7 @@
             hydrateExistingRuleRow(tr, variantId, conversionId);
         }
 
-        updatePreview();
+        refreshTypePanels();
     }
 
     function clearForm() {
@@ -709,6 +726,8 @@
         setVal('promoItemMinQtyDefault', '1');
 
         setVal('promoComboFixedPrice', '0');
+        setVal('promoComboPricingMode', '1');
+        setVal('promoComboQuantity', '48');
         setVal('promoComboNote', '');
 
         setVal('promoBuyQuantity', '10');
@@ -770,6 +789,8 @@
         setVal('promoDiscountValue', d.discountValue ?? d.DiscountValue ?? 0);
 
         setVal('promoComboFixedPrice', d.comboFixedPrice ?? d.ComboFixedPrice ?? 0);
+        setVal('promoComboPricingMode', d.comboPricingMode ?? d.ComboPricingMode ?? 1);
+        setVal('promoComboQuantity', d.comboQuantity ?? d.ComboQuantity ?? 48);
         setVal('promoComboNote', d.comboNote ?? d.ComboNote ?? '');
 
         setVal('promoBuyQuantity', d.buyQuantity ?? d.BuyQuantity ?? 10);
@@ -809,8 +830,8 @@
                 rows.push({
                     productId: productId,
                     variantId: variantId > 0 ? variantId : null,
-                    productUnitConversionId: conversionId > 0 ? conversionId : null,
-                    requiredQuantity: qty
+                    productUnitConversionId: !isMixedQuantity() && conversionId > 0 ? conversionId : null,
+                    requiredQuantity: isMixedQuantity() ? 1 : qty
                 });
             } else {
                 rows.push({
@@ -839,6 +860,8 @@
             discountType: toNumber(val('promoDiscountType') || 1),
             discountValue: toNumber(val('promoDiscountValue')),
             comboFixedPrice: type === 2 ? toNumber(val('promoComboFixedPrice')) : null,
+            comboPricingMode: type === 2 ? toNumber(val('promoComboPricingMode') || 1) : 1,
+            comboQuantity: isMixedQuantity() ? toNumber(val('promoComboQuantity')) : null,
             comboNote: type === 2 ? (val('promoComboNote').trim() || null) : null,
             buyQuantity: type === 3 ? toNumber(val('promoBuyQuantity')) : null,
             getQuantity: type === 3 ? toNumber(val('promoGetQuantity')) : null,
@@ -871,6 +894,13 @@
         if (req.type === 2) {
             if ((req.comboFixedPrice || 0) <= 0) return 'Giá combo phải lớn hơn 0.';
             if (req.comboRules.length < 2) return 'Combo phải có ít nhất 2 sản phẩm.';
+            if (req.comboPricingMode === 2) {
+                if (!(req.comboQuantity > 0)) return 'Số lượng gốc mỗi thùng phải lớn hơn 0.';
+                const variants = req.comboRules.map(row => row.variantId);
+                if (variants.some(id => !id) || new Set(variants).size !== variants.length) {
+                    return 'Chọn ít nhất 2 mã hàng khác nhau để ghép vị.';
+                }
+            }
         }
 
         if (req.type === 3) {
@@ -1072,6 +1102,11 @@
     });
 
     document.addEventListener('change', function (e) {
+        if (e.target.matches('#promoComboPricingMode')) {
+            refreshTypePanels();
+            return;
+        }
+
         if (e.target.matches('#promoType')) {
             refreshTypePanels();
             return;

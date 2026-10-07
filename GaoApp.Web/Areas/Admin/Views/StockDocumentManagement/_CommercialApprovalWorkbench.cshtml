@@ -653,7 +653,7 @@
                                     @if (retailPrices.TryGetValue(line.Id, out var retail))
                                     {
                                         <div class="fw-semibold text-nowrap" data-retail-variant="@retail.VariantId" data-retail-unit="@retail.UnitId">
-                                            @(retail.Price.HasValue ? $"{retail.Price.Value:N0} đ/{retail.UnitName}" : "Chưa có giá bán")
+                                            @(retail.Price.HasValue ? retail.Price.Value.ToString("N0", CultureInfo.GetCultureInfo("vi-VN")) + $" đ/{retail.UnitName}" : "Chưa có giá bán")
                                         </div>
                                     }
                                     else { <span class="text-muted">Chưa có giá bán</span> }

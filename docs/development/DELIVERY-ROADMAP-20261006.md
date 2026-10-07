@@ -1,6 +1,6 @@
 # Roadmap giao hàng và giám sát thời gian thực
 
-Ngày lập và cập nhật: 06/10/2026. Dự án: GaoApp. Phương án đã chốt: **Web cập nhật theo các mốc trước, app và GPS bổ sung sau**.
+Ngày lập: 06/10/2026; cập nhật: 07/10/2026. Dự án: GaoApp. Phương án đã chốt: **Web cập nhật theo các mốc trước, app và GPS bổ sung sau**.
 
 Mục tiêu đợt đầu là nối trọn luồng **POS tạo đơn giao → quét QR hoặc nhập mã để soạn → xử lý thiếu hàng → phân công và ghi nhận xuất phát → ghi nhận thực giao, hàng mang về và tiền thu → quầy bất kỳ đối soát và chốt → theo dõi hàng còn thiếu**, rồi đưa các lần cập nhật lên màn hình quản lý tại văn phòng.
 
@@ -10,7 +10,7 @@ Mục tiêu đợt đầu là nối trọn luồng **POS tạo đơn giao → qu
 
 Mỗi bước có sản phẩm cụ thể, test bắt buộc và cổng kiểm tra. **Test thuộc bước đang làm chưa chạy, lỗi hoặc thiếu bằng chứng thì chưa được qua bước kế tiếp trong cùng đợt.** Không lấy thời gian đã làm hoặc giao diện đã đẹp làm điều kiện hoàn thành.
 
-Trạng thái hiện tại: **D00 tự động đạt, thiết bị/in giấy vẫn CHƯA ĐỦ ĐIỀU KIỆN; D01 đã triển khai model/contract, local policy TEST PASS 259/259; D02–D12 CHƯA THỰC HIỆN; M00–M03 ĐỂ SAU**. [Báo cáo D00](DELIVERY-D00-20261006.md) giữ kết quả lịch sử 155/155 case nền và 5/5 phân quyền; không sửa thành đã in thực. Theo yêu cầu mới “Giờ quay lại bước cũ làm tiếp d01 theo roadmap đã thảo luận trước”, tiếp tục D01 thiết kế/executable policies, không coi điều kiện thiết bị D00 đã đạt. [Báo cáo D01](DELIVERY-D01-20261006.md) khóa mô hình/quyền/API/kho-tiền-ngày và evidence; chưa có endpoint/giao hàng vận hành, review/CI/integration còn chờ. User đã cho phép toàn bộ GaoAppDb phục vụ phát triển; D01 không ghi DB. [Quyết định D01](DECISION-LOG.md#delivery-20261006-b--independent-delivery-and-actual-delivery-settlement).
+Trạng thái tại thời điểm chốt nguồn tài liệu 07/10/2026: **D00 kiểm tra tự động đạt, thiết bị/in giấy còn chờ; D01–D03 có nguồn và bằng chứng local; D04 đã được Coordinator nghiệm thu toàn bộ cổng local; D05–D12 CHƯA THỰC HIỆN; M00–M03 ĐỂ SAU**. [Báo cáo D04](DELIVERY-D04-20261006.md) ghi luồng nhận soạn/báo thiếu/thay/duyệt, các kết quả thật và giới hạn của bằng chứng. Review độc lập và hai required full CI trên cùng commit cuối chưa có ở thời điểm này; [cổng cuối do Coordinator cập nhật](../../Logs/delivery-roadmap/D04/run-20261007-01/coordinator-final-gates.json) giữ trạng thái hiện hành. Chưa merge hoặc triển khai tại tiệm. Dữ liệu thật được dùng qua COPY_ONLY/clone GUID; GaoAppDb gốc không migrate hoặc sửa dữ liệu/quyền.
 
 ## 1 Phạm vi nghiệp vụ đã thống nhất
 
@@ -214,6 +214,8 @@ Chốt ngày 06/10/2026: phiếu giao dùng **A5 portrait**, in bằng trình du
 - D04 T06: toàn bộ nhận/soạn/báo thiếu/hoàn tất chạy bằng bàn phím và trình duyệt trên máy tại tiệm; QR và nhập mã dùng cùng kiểm tra quyền/phiên bản. Mã không tồn tại hoặc thuộc store khác không lộ nội dung đơn.
 
 **Cổng:** browser/API/SQL và tranh nhận việc đạt. Đến đây chỉ kiểm chứng soạn; chưa bàn giao hàng thật trước D05.
+
+Local D04 được nghiệm thu theo READY r22/r23: 798/798 affected SQL/HTTP/schema, 31 semantic/metadata guards trong M01, Node239 giữ lại với đúng49 inputs không đổi; browser D03 8 nhóm và D04 10 nhóm, đủ8 trang A5 đã xem; deployment11 và published Production2. Hai tình huống đủ và thiếu/thay/duyệt/replay/reassign chạy đạt trên clone dữ liệu thật. Bằng chứng bảo toàn151 bảng/7.731.232 rows khi upgrade68→71 được nghiệm thu riêng từ lượt đã giữ, không gọi là whole fingerprint chạy lại trong lượt business thành công. Build Release/Browser/paired publisher không có compiler warning/error; EF runtime warnings và giới hạn stock-child environment giữ nguyên trong [báo cáo D04](DELIVERY-D04-20261006.md). Máy in/đầu đọc thật vẫn chờ thiết bị; luồng giao giỏ có voucher/product/combo promotion vẫn bị D03 từ chối rõ. Những kết quả local này chưa mở D05 hoặc thay review/CI.
 
 ### D05 Giữ hàng và xuất trả kho đúng một lần
 
@@ -490,7 +492,7 @@ Chỉ sửa trạng thái khi có evidence của bước. Khi test fail, giữ b
 | D01 | Khóa nghiệp vụ kiến trúc | ĐÃ TRIỂN KHAI MODEL/CONTRACT | LOCAL POLICY TEST PASS 259/259 | [Contract/kiến trúc/tests](DELIVERY-D01-20261006.md); READY FOR COORDINATOR REVIEW, chưa review/CI; thiết bị D00 vẫn pending |
 | D02 | Dữ liệu API và chống trùng | ĐÃ TRIỂN KHAI FOUNDATION | LOCAL SQL/HTTP TEST PASS 29/29; hồi quy 302/302 | [Contract/schema/API/evidence](DELIVERY-D02-20261006.md); READY FOR COORDINATOR REVIEW, recovery plan chờ review độc lập/CI; chưa deploy hoặc nối POS |
 | D03 | POS và bill QR giao A5 | ĐÃ TRIỂN KHAI; CÓ GÓI PREVIEW MÁY CODE | LOCAL AUTO PASS 38/38; delivery/security 369/369; schema mới 17/17 + hồi quy 80/80; published Production 2/2; JS 202/202; browser release 8 nhóm; POS 48/48 + bank QR 10/10 từ lượt trước; T05 in giấy pending | [Contract/POS/A5/release/evidence](DELIVERY-D03-20261006.md); preview 7051 đã dừng để chạy F5, helper mặc định 17051; chưa deploy tại tiệm; READY FOR COORDINATOR REVIEW, chưa full gate/review/CI |
-| D04 | QR hoặc nhập mã soạn và báo thiếu | CHƯA THỰC HIỆN | CHƯA CHẠY | Chưa có |
+| D04 | QR hoặc nhập mã soạn, báo thiếu, thay và duyệt | ĐÃ TRIỂN KHAI; COORDINATOR NGHIỆM THU LOCAL r22; CHỐT TÀI LIỆU r23 | LOCAL ĐẠT: affected798/798, M01+31 guards; Node239/239 có49-input equivalence; browser8+10/A5 đủ8pages; deployment11/11; Production2/2; actual-data business2/2 và whole-migration qualification riêng | [Luồng/API/schema/receipt và giới hạn](DELIVERY-D04-20261006.md), [cổng cuối hiện hành](../../Logs/delivery-roadmap/D04/run-20261007-01/coordinator-final-gates.json); tại lúc chốt nguồn chưa có immutable review/hai full CI, chưa mở D05; in giấy/đầu đọc thật chờ thiết bị |
 | D05 | Giữ xuất trả kho và cost | CHƯA THỰC HIỆN | CHƯA CHẠY | Chưa có |
 | D06 | Phân công bàn giao xuất phát | CHƯA THỰC HIỆN | CHƯA CHẠY | Chưa có |
 | D07 | Nhập hộ kết quả và trở về | CHƯA THỰC HIỆN | CHƯA CHẠY | Chưa có |
@@ -515,4 +517,4 @@ Bắt đầu ở D00, lần lượt đến D12. Mỗi lượt tiếp tục đọ
 
 Khi kết thúc một bước, báo ngắn gọn: đã làm gì, test nào chạy/số đạt, sai lệch tiền/kho nếu có, evidence và bước kế tiếp. Nếu còn test chưa thể chạy, ghi điều kiện còn thiếu cụ thể và giữ cổng chưa đạt. Những quyết định thay đổi tiền/kho/phân quyền phải quay lại contract theo workflow, không tự đổi tiêu chí để vượt test.
 
-Thời lượng đợt Web được ước tính lại sau D00/D01; đợt app/GPS ước tính riêng sau M00. Tiến độ tính bằng số bước qua cổng với bằng chứng. Đợt một hoàn thành triển khai khi D12 nghiệm thu/phát hành đạt; đợt hai hoàn thành khi M03 đạt. D00 còn thiếu kiểm chứng thiết bị; D01 có 259 policy tests, D02 có 29 kiểm tra SQL/HTTP. D03 đã nối POS vào foundation, form/lookup và phiếu A5/QR, sửa preflight release, có gói phát hành kiểm tra và preview trên máy code localhost:7051; kết quả và physical gate ở báo cáo D03. D04–D12 chưa thực hiện; review/CI và gate thiết bị vẫn theo bảng, chưa triển khai tại tiệm.
+Thời lượng đợt Web được ước tính lại sau D00/D01; đợt app/GPS ước tính riêng sau M00. Tiến độ tính bằng số bước qua cổng với bằng chứng. Đợt một hoàn thành triển khai khi D12 nghiệm thu/phát hành đạt; đợt hai hoàn thành khi M03 đạt. D00 còn thiếu kiểm chứng thiết bị; D01 có259 policy tests, D02 có29 kiểm tra SQL/HTTP. D03 đã nối POS vào foundation, form/lookup và phiếu A5/QR. D04 đã triển khai nhận soạn/báo thiếu/thay/duyệt và đạt các cổng local đã nghiệm thu; trạng thái review/CI cuối tra ở biên bản Coordinator liên kết phía trên. D05 **Giữ xuất trả kho và cost** là bước tiếp theo, chưa bắt đầu; D06–D12 chưa thực hiện. Thiết bị/UAT và triển khai tại tiệm vẫn theo các cổng riêng.
