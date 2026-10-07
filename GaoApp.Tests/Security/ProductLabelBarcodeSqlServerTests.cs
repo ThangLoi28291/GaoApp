@@ -46,7 +46,7 @@ public sealed partial class ProductLabelSqlServerTests
         var largePlan = (await staff.JsonAsync(HttpMethod.Post, Url + "barcodes/check", request with { TemplateId = Id(large), TemplateVersion = Version(large) })).Deserialize<LabelBarcodePlan>(LabelJson.Options)!;
         Assert.Empty(largePlan.Issues); // A barcode already fitting the selected paper must not be changed.
         var plan = (await staff.JsonAsync(HttpMethod.Post, Url + "barcodes/check", request)).Deserialize<LabelBarcodePlan>(LabelJson.Options)!;
-        Assert.Equal(2, plan.Issues.Count); Assert.Single(plan.Issues.Where(x => x.Reuse));
+        Assert.Equal(2, plan.Issues.Count); Assert.Single(plan.Issues, x => x.Reuse);
         Assert.Equal("8938505974194", plan.Issues.Single(x => x.Reuse).NewBarcode);
         Assert.Equal("EAN13", ProductLabelRenderer.DetectBarcodeFormat(plan.Issues.Single(x => !x.Reuse).NewBarcode));
         await using (var db = app.Database.CreateTenantContext(store.StoreId))
@@ -65,8 +65,8 @@ public sealed partial class ProductLabelSqlServerTests
         staff.Http.DefaultRequestHeaders.Add("RequestVerificationToken", token);
         // Two cashiers confirming the same snapshot must allocate only once.
         var attempts = await Task.WhenAll(staff.Http.PostAsJsonAsync(Url + "barcodes/prepare", request), staff.Http.PostAsJsonAsync(Url + "barcodes/prepare", request));
-        Assert.Single(attempts.Where(x => x.StatusCode == HttpStatusCode.OK));
-        Assert.Single(attempts.Where(x => x.StatusCode == HttpStatusCode.Conflict));
+        Assert.Single(attempts, x => x.StatusCode == HttpStatusCode.OK);
+        Assert.Single(attempts, x => x.StatusCode == HttpStatusCode.Conflict);
         var result = await attempts.Single(x => x.IsSuccessStatusCode).Content.ReadFromJsonAsync<JsonElement>();
         foreach (var response in attempts) response.Dispose();
         task = result.GetProperty("task");

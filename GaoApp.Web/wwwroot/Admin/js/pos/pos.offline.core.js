@@ -67,7 +67,8 @@
             line.promotionDiscount = Math.min(gross - line.lineDiscount, Math.max(0, Number(line.promotionDiscount || 0)));
             line.lineTotal = Math.max(0, round(gross - line.lineDiscount - line.promotionDiscount));
         }
-        draft.subtotal = round(draft.lines.reduce((sum, x) => sum + x.quantity * x.unitPrice, 0));
+        draft.subtotal = round(draft.lines.reduce((sum, x) => sum +
+            (x.promotionType === 2 ? round(x.quantity * x.unitPrice) : x.quantity * x.unitPrice), 0));
         const lineDiscount = round(draft.lines.reduce((sum, x) => sum + x.lineDiscount, 0));
         draft.promotionDiscountTotal = round(draft.lines.reduce((sum, x) => sum + x.promotionDiscount, 0));
         draft.comboDiscountTotal = Math.min(draft.comboDiscountTotal || 0, Math.max(0, draft.subtotal - lineDiscount - draft.promotionDiscountTotal));
@@ -127,8 +128,18 @@
         }
         draft.lines = [...normal, ...gifts];
         draft.comboDiscountTotal = 0; draft.comboPromotionId = null; draft.comboPromotionName = null; draft.comboPromotionNote = null;
+        applyMixedQuantityPromotions(normal, promotions, catalog, matches);
+        const best = requiredItemCombos(normal.filter(line => line.promotionType !== 2), promotions, matches)[0];
+        if (best) {
+            draft.comboDiscountTotal = best.discount; draft.comboPromotionId = best.promotion.id; draft.comboPromotionName = best.promotion.name;
+            draft.comboPromotionNote = best.promotion.comboNote || `${best.promotion.name} giảm ${best.discount.toLocaleString('vi-VN')}`;
+            for (const line of best.involved) { line.comboPromotionId = best.promotion.id; line.comboPromotionName = best.promotion.name;
+                line.comboPromotionNote = draft.comboPromotionNote; line.comboAllocatedDiscount = round(best.discount / best.involved.size); }
+        }
+    }
+    function requiredItemCombos(normal, promotions, matches) {
         const combos = [];
-        for (const promotion of promotions.filter(p => p.type === 2 && p.comboFixedPrice > 0 && p.comboRules.length)) {
+        for (const promotion of promotions.filter(p => p.type === 2 && (p.comboPricingMode || 1) === 1 && p.comboFixedPrice > 0 && p.comboRules.length)) {
             let count = Infinity, price = 0; const involved = new Set();
             for (const rule of promotion.comboRules) {
                 const lines = normal.filter(l => l.unitPrice > 0 && matches(rule, l, false));
@@ -140,12 +151,43 @@
             const discount = round((round(price) - round(promotion.comboFixedPrice)) * count);
             if (Number.isFinite(discount) && discount > 0) combos.push({ promotion, discount, involved });
         }
-        const best = combos.sort((a, b) => b.promotion.priority - a.promotion.priority || b.discount - a.discount || b.promotion.id - a.promotion.id)[0];
-        if (best) {
-            draft.comboDiscountTotal = best.discount; draft.comboPromotionId = best.promotion.id; draft.comboPromotionName = best.promotion.name;
-            draft.comboPromotionNote = best.promotion.comboNote || `${best.promotion.name} giảm ${best.discount.toLocaleString('vi-VN')}`;
-            for (const line of best.involved) { line.comboPromotionId = best.promotion.id; line.comboPromotionName = best.promotion.name;
-                line.comboPromotionNote = draft.comboPromotionNote; line.comboAllocatedDiscount = round(best.discount / best.involved.size); }
+        return combos.sort((a, b) => b.promotion.priority - a.promotion.priority || b.discount - a.discount || b.promotion.id - a.promotion.id);
+    }
+    function applyMixedQuantityPromotions(normal, promotions, catalog, matches) {
+        const claimed = new Set();
+        const candidates = promotions.filter(p => p.type === 2 && p.comboPricingMode === 2 &&
+            p.comboQuantity > 0 && p.comboFixedPrice > 0 && p.comboBaseUnitId > 0)
+            .sort((a, b) => b.priority - a.priority ||
+                a.comboFixedPrice / a.comboQuantity - b.comboFixedPrice / b.comboQuantity || b.id - a.id);
+        for (const promotion of candidates) {
+            const lines = normal.filter(line => !claimed.has(line) && line.quantity > 0 && line.unitPrice > 0 && line.multiplier > 0 &&
+                line.baseUnitId === promotion.comboBaseUnitId && promotion.comboRules.some(member =>
+                    member.productId === catalog.products.find(p => p.id === line.variantId)?.productId && member.variantId === line.variantId))
+                .sort((a, b) => a.lineId - b.lineId || a.variantId - b.variantId);
+            const total = lines.reduce((sum, line) => sum + line.quantity * line.multiplier, 0);
+            if (total < promotion.comboQuantity) continue;
+            const basePrice = promotion.comboFixedPrice / promotion.comboQuantity;
+            const gross = lines.reduce((sum, line) => sum + round(line.quantity * line.unitPrice), 0);
+            const capacities = lines.map(line => Math.max(0, round(line.quantity * line.unitPrice) - (line.lineDiscount || 0)));
+            const discount = Math.min(Math.max(0, round(gross) - round(total * basePrice)), capacities.reduce((sum, value) => sum + value, 0));
+            if (discount <= 0 || discount <= lines.reduce((sum, line) => sum + line.promotionDiscount, 0)) continue;
+            const competing = requiredItemCombos(normal.filter(line => !claimed.has(line)), promotions, matches)[0];
+            if (competing && [...competing.involved].some(line => lines.includes(line)) &&
+                (competing.promotion.priority > promotion.priority ||
+                    (competing.promotion.priority === promotion.priority && competing.discount >= discount))) continue;
+            const allocations = lines.map((line, index) => Math.min(capacities[index], Math.max(0,
+                round(line.quantity * line.unitPrice) - round(line.quantity * line.multiplier * basePrice))));
+            let remainder = discount - allocations.reduce((sum, value) => sum + value, 0);
+            for (let index = 0; index < lines.length && remainder !== 0; index++) {
+                const adjustment = remainder > 0 ? Math.min(remainder, capacities[index] - allocations[index]) : -Math.min(-remainder, allocations[index]);
+                allocations[index] += adjustment; remainder -= adjustment;
+            }
+            lines.forEach((line, index) => {
+                line.originalUnitPrice = line.unitPrice; line.promotionDiscount = allocations[index];
+                line.promotionId = promotion.id; line.promotionName = promotion.name; line.promotionType = 2;
+                line.comboPromotionId = promotion.id; line.comboPromotionName = promotion.name; line.comboPromotionNote = promotion.comboNote || null;
+                claimed.add(line);
+            });
         }
     }
     function summary(state, order) {

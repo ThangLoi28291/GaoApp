@@ -70,7 +70,7 @@ public sealed class MigrationExecutionPipeline
             ?? DatabaseSecurityMetadataCounts.Empty;
 
         Console.WriteLine(
-            "Database preflight: {0}; SourceMigrations={1}; AppliedMigrations={2}; UserTables={3}; StructuralObjects={4}; SchemaMismatchCategories={5}; SchemaMismatchTables={6}; SchemaMismatchColumns={7}; SchemaMismatchPrimaryKeys={8}; SchemaMismatchForeignKeys={9}; SchemaMismatchIndexes={10}; SchemaMismatchChecks={11}; SchemaMismatchSequences={12}; ReasonCode={13}",
+            "Database preflight: {0}; SourceMigrations={1}; AppliedMigrations={2}; UserTables={3}; StructuralObjects={4}; SchemaMismatchCategories={5}; SchemaMismatchTables={6}; SchemaMismatchColumns={7}; SchemaMismatchPrimaryKeys={8}; SchemaMismatchForeignKeys={9}; SchemaMismatchIndexes={10}; SchemaMismatchChecks={11}; SchemaMismatchSequences={12}; ReasonCode={13}; SchemaMismatchTriggers={14}",
             compatibility.State,
             compatibility.SourceMigrationCount,
             compatibility.AppliedMigrationCount,
@@ -84,7 +84,8 @@ public sealed class MigrationExecutionPipeline
             schemaMismatches.Indexes,
             schemaMismatches.CheckConstraints,
             schemaMismatches.Sequences,
-            compatibility.SafeReasonCode);
+            compatibility.SafeReasonCode,
+            schemaMismatches.Triggers);
         Console.WriteLine(
             "Database security metadata audit: Users={0}; CustomRoles={1}; RoleMemberships={2}; Certificates={3}; AsymmetricKeys={4}; SymmetricKeys={5}; DatabaseScopedCredentials={6}.",
             securityMetadata.DatabaseUsers,

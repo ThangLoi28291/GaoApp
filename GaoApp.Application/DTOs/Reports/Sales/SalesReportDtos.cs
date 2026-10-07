@@ -57,6 +57,7 @@ public sealed class SalesResolvedExecutiveQueryDto
 
 public sealed class SalesResolvedPeriodSet
 {
+    public bool IncludeManagement { get; set; }
     public string ComparisonMode { get; set; } = SalesComparisonModes.PreviousPeriod;
     public SalesResolvedExecutiveQueryDto Current { get; set; } = new();
     public SalesResolvedExecutiveQueryDto? Comparison { get; set; }

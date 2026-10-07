@@ -1,5 +1,6 @@
 @model GaoApp.Application.DTOs.Inventory.StockDocumentDto
 @using System.Globalization
+@using GaoApp.Application.Common.Exceptions
 @using GaoApp.Application.DTOs.Inventory
 @using GaoApp.Domain.Enums
 @inject GaoApp.Application.Interfaces.Services.Inventory.IReceiptSellingPriceService ReceiptPrices
@@ -12,6 +13,21 @@
         ?? Enumerable.Empty<StockReceiptTaxOptionDto>();
     var readOnly = Model.Status == StockDocumentStatus.Confirmed;
     var allocationApplied = await PricingAllocation.HasAppliedPlanAsync(Model.Id, Context.RequestAborted);
+    var quickPriceLines = new Dictionary<int, PurchaseReceiptPricingPhysicalLine>();
+    string? quickPriceUnavailable = null;
+    if (!readOnly)
+    {
+        try
+        {
+            var quickPriceWorkspace = await PricingAllocation.GetAsync(Model.Id, Context.RequestAborted);
+            quickPriceLines = quickPriceWorkspace.PhysicalLines.ToDictionary(x => x.StockDocumentLineId);
+        }
+        catch (BusinessRuleException error)
+        {
+            // Invalid catalog conversions must not stop the existing receipt review.
+            quickPriceUnavailable = error.SafeMessage;
+        }
+    }
     var canApproveOutsidePo = ViewData["CanApproveOutsidePo"] as bool? == true;
     var canCompleteCatalogProduct =
         ViewData["CanCompleteCatalogProduct"] as bool? == true;
@@ -451,6 +467,7 @@
                             var editableUnitPriceBeforeVat = line.EditableUnitPriceBeforeVat;
                             var isOutside = line.ReceiptAllocationKind == ReceiptAllocationKind.OutsidePo;
                             var isOverdelivery = line.ProjectedOverdeliveryQuantity > 0m;
+                            var quickPriceLine = quickPriceLines.GetValueOrDefault(line.Id);
                             <tr class="commercial-line"
                                 data-line-id="@line.Id"
                                 data-line-no="@line.LineNo"
@@ -508,6 +525,7 @@
                                     }
                                 </td>
                                 <td data-label="Giá nhập">
+                                    <div class="receipt-quick-price-entry">
                                     <div class="input-group input-group-sm">
                                         <input class="form-control text-end commercial-unit-price" type="number"
                                                readonly="@readOnly"
@@ -517,6 +535,83 @@
                                                disabled="@readOnly" aria-label="Giá nhập chưa VAT của @line.CatalogDisplayName" />
                                         <span class="input-group-text">đ/@line.UnitName</span>
                                     </div>
+                                    @if (!readOnly)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                data-qprice-open disabled="@(quickPriceLine is null)"
+                                                aria-expanded="false" aria-controls="receiptQuickPrice-@line.Id"
+                                                aria-label="Tính nhanh giá nhập của @line.CatalogDisplayName"
+                                                title="@quickPriceUnavailable">
+                                            <i class="bx bx-calculator" aria-hidden="true"></i><span>Tính nhanh</span>
+                                        </button>
+                                    }
+                                    </div>
+                                    @if (!readOnly && quickPriceLine is not null)
+                                    {
+                                        <section id="receiptQuickPrice-@line.Id" class="receipt-quick-price"
+                                                 data-qprice-panel hidden
+                                                 data-qprice-product-name="@line.CatalogDisplayName"
+                                                 data-qprice-unit-id="@quickPriceLine.UnitId"
+                                                 data-qprice-unit-name="@line.UnitName"
+                                                 data-qprice-base-unit-name="@line.BaseUnitName"
+                                                 data-qprice-factor="@line.Factor.ToString(CultureInfo.InvariantCulture)"
+                                                 aria-label="Tính nhanh giá nhập của @line.CatalogDisplayName">
+                                            <div class="receipt-quick-price-heading">
+                                                <div><strong>Tính nhanh · @line.CatalogDisplayName</strong><div class="small text-muted">Chỉ điền giá khi bấm Duyệt hoặc Enter</div></div>
+                                                <button type="button" class="btn btn-sm btn-link" data-qprice-close aria-label="Đóng phần tính nhanh"><i class="bx bx-x" aria-hidden="true"></i></button>
+                                            </div>
+                                            <div class="receipt-quick-price-fields">
+                                                <label>Số lượng mua
+                                                    <div class="receipt-quick-price-quantity">
+                                                        <input class="form-control" data-qprice-buy type="number" min="0" step="any" inputmode="decimal"
+                                                               value="@line.Quantity.ToString(CultureInfo.InvariantCulture)" aria-label="Số lượng mua" />
+                                                        <select class="form-select" data-qprice-buy-unit aria-label="Đơn vị hàng mua">
+                                                            @foreach (var priceUnit in quickPriceLine.Units)
+                                                            {
+                                                                <option value="@priceUnit.UnitId" selected="@(priceUnit.UnitId == quickPriceLine.UnitId)"
+                                                                        data-factor="@priceUnit.Factor.ToString(CultureInfo.InvariantCulture)"
+                                                                        data-name="@priceUnit.Name">@priceUnit.Name ×@priceUnit.Factor.ToString("0.####")</option>
+                                                            }
+                                                        </select>
+                                                    </div>
+                                                </label>
+                                                <label>Tổng tiền hàng trước VAT
+                                                    <div class="input-group">
+                                                        <input class="form-control" data-qprice-money type="text" inputmode="decimal" placeholder="Nhập tổng tiền đã trả" aria-label="Tổng tiền hàng trước VAT" />
+                                                        <span class="input-group-text">đ</span>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                            <label class="receipt-quick-price-gift-toggle">
+                                                <input class="form-check-input" data-qprice-has-gift type="checkbox" />
+                                                Có tặng thêm cùng sản phẩm
+                                            </label>
+                                            <div data-qprice-gift-fields class="receipt-quick-price-gift-fields" hidden>
+                                                <label>Số lượng được tặng
+                                                    <div class="receipt-quick-price-quantity">
+                                                        <input class="form-control" data-qprice-gift type="number" min="0" step="any" inputmode="decimal" value="0" aria-label="Số lượng được tặng" />
+                                                        <select class="form-select" data-qprice-gift-unit aria-label="Đơn vị hàng tặng">
+                                                            @foreach (var priceUnit in quickPriceLine.Units)
+                                                            {
+                                                                <option value="@priceUnit.UnitId" selected="@(priceUnit.UnitId == quickPriceLine.UnitId)"
+                                                                        data-factor="@priceUnit.Factor.ToString(CultureInfo.InvariantCulture)"
+                                                                        data-name="@priceUnit.Name">@priceUnit.Name ×@priceUnit.Factor.ToString("0.####")</option>
+                                                            }
+                                                        </select>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                            <div class="small text-danger mt-2" data-qprice-error role="alert" hidden></div>
+                                            <div data-qprice-results aria-live="polite" hidden>
+                                                <div class="receipt-quick-price-total"><span>Tổng mua + tặng sau quy đổi</span><strong data-qprice-total></strong></div>
+                                                <div class="receipt-quick-price-result"><span>Giá nhập tính được</span><strong data-qprice-result></strong><small class="text-muted" data-qprice-base></small></div>
+                                            </div>
+                                            <div class="receipt-quick-price-actions">
+                                                <button type="button" class="btn btn-outline-secondary" data-qprice-cancel>Hủy <kbd>Esc</kbd></button>
+                                                <button type="button" class="btn btn-primary" data-qprice-approve disabled>Duyệt <kbd>Enter</kbd></button>
+                                            </div>
+                                        </section>
+                                    }
                                     @if (!readOnly) { <div class="small mt-1 commercial-price-save-state" role="status"></div> }
                                     @if (!editableUnitPriceBeforeVat.HasValue)
                                     {
@@ -558,7 +653,7 @@
                                     @if (retailPrices.TryGetValue(line.Id, out var retail))
                                     {
                                         <div class="fw-semibold text-nowrap" data-retail-variant="@retail.VariantId" data-retail-unit="@retail.UnitId">
-                                            @(retail.Price.HasValue ? $"{retail.Price.Value:N0} đ/{retail.UnitName}" : "Chưa có giá bán")
+                                            @(retail.Price.HasValue ? retail.Price.Value.ToString("N0", CultureInfo.GetCultureInfo("vi-VN")) + $" đ/{retail.UnitName}" : "Chưa có giá bán")
                                         </div>
                                     }
                                     else { <span class="text-muted">Chưa có giá bán</span> }

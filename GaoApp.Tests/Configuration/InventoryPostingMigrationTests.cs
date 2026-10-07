@@ -109,7 +109,18 @@ public sealed class InventoryPostingMigrationTests
                 "20261001115308_AddInputInvoiceLibrary",
                 "20261001121734_PreserveInputInvoiceLibrarySource",
                 "20261002233000_AddPurchaseReceiptPricingPlans",
-                "20261003110000_AddPurchaseReceiptBillLines");
+                "20261003110000_AddPurchaseReceiptBillLines",
+                "20261003193000_AllowPurchaseReceiptFixedAmountDiscount",
+                "20261004055012_AddPOSPaymentAdjustmentRequests",
+                "20261004103622_AddDepositPaymentAdjustments",
+                "20261004122812_AddPendingSalesReturnRestock",
+                "20261005072402_AddManagementReportsAndOperatingExpenses",
+                "20261005101953_AddOperationsReportsAndTreasury",
+                "20261006153000_AddDeliveryFoundation",
+                "20261006163000_ProtectDeliverySourceCarts",
+                "20261006170000_PreserveHeldOrderShiftChanges",
+                "20261006173000_AddDeliveryPicking",
+                "20261007090000_AddMixedQuantityPromotions");
         db.Database.HasPendingModelChanges().Should().BeFalse();
         var manifest = new EfCoreDatabaseSchemaManifestCatalog(db)
             .GetCurrentManifest();
@@ -290,7 +301,18 @@ public sealed class InventoryPostingMigrationTests
                 "20261001115308_AddInputInvoiceLibrary",
                 "20261001121734_PreserveInputInvoiceLibrarySource",
                 "20261002233000_AddPurchaseReceiptPricingPlans",
-                "20261003110000_AddPurchaseReceiptBillLines");
+                "20261003110000_AddPurchaseReceiptBillLines",
+                "20261003193000_AllowPurchaseReceiptFixedAmountDiscount",
+                "20261004055012_AddPOSPaymentAdjustmentRequests",
+                "20261004103622_AddDepositPaymentAdjustments",
+                "20261004122812_AddPendingSalesReturnRestock",
+                "20261005072402_AddManagementReportsAndOperatingExpenses",
+                "20261005101953_AddOperationsReportsAndTreasury",
+                "20261006153000_AddDeliveryFoundation",
+                "20261006163000_ProtectDeliverySourceCarts",
+                "20261006170000_PreserveHeldOrderShiftChanges",
+                "20261006173000_AddDeliveryPicking",
+                "20261007090000_AddMixedQuantityPromotions");
         var afterRowCount = await ReadLegacyRowCountAsync(database);
         afterRowCount.Should().Be(beforeRowCount);
         var afterSignature = await ReadLegacySignatureAsync(database);

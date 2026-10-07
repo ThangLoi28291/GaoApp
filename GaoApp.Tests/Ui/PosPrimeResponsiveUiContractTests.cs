@@ -28,7 +28,7 @@ public sealed class PosPrimeResponsiveUiContractTests
         var prime = BracedBlock(section, "@if (isPrime)", out var endOfPrime);
         var legacy = BracedBlock(section[endOfPrime..], "else", out _);
 
-        Assert.Equal(new[] { "~/Admin/css/pos/pos.checkout-feedback.css", "~/Admin/css/pos/pos.scan-feedback.css", "~/Admin/css/pos/pos.qr-history.css", SharedStyle }, StyleLinks(common));
+        Assert.Equal(new[] { "~/Admin/css/delivery.css", "~/Admin/css/pos/pos.checkout-feedback.css", "~/Admin/css/pos/pos.scan-feedback.css", "~/Admin/css/pos/pos.qr-history.css", SharedStyle }, StyleLinks(common));
         Assert.Equal(new[] { PrimeStyle }, StyleLinks(prime));
         Assert.Equal(new[] { LegacyStyle }, StyleLinks(legacy));
         Assert.Equal(1, StyleLinks(section).Count(path => path == PrimeStyle));
@@ -57,7 +57,7 @@ public sealed class PosPrimeResponsiveUiContractTests
         var scripts = Regex.Matches(index, "<script\\s+src=\"~/Admin/js/pos/([^\"]+)\"")
             .Cast<Match>().Select(x => x.Groups[1].Value).ToArray();
         Assert.Equal(new[] {
-            "qrcodegen.js", "pos.offline.core.js", "pos.offline.js",
+            "pos.delivery.js", "qrcodegen.js", "pos.offline.core.js", "pos.offline.js",
             "pos.state.js", "pos.dom.js", "pos.common.js", "pos.error.js", "pos.render.js", "pos.scan-feedback.js", "pos.scan-guard.js", "pos.customer.js",
             "pos.acb.js", "pos.qr-history.js", "pos.payment.js", "pos.checkout-feedback.js", "pos.barcode.js", "pos.order.js",
             "pos.keyboard.js", "pos.cockpit.js", "pos.app.js", "pos.prime.js"
@@ -229,7 +229,7 @@ public sealed class PosPrimeResponsiveUiContractTests
     {
         var shell = Read("GaoApp.Web/Areas/Admin/Views/POS/_POSPrimeShell.cshtml");
         foreach (var partial in new[] { "_Toolbar", "_CartTable", "_CustomerBox", "_DraftMetaPanel", "_SummaryPanel", "_SummaryActionsPanel" })
-            Assert.Equal(1, Regex.Matches(shell, "<partial\\s+name=\"" + partial + "\"", RegexOptions.CultureInvariant).Count);
+            Assert.Single(Regex.Matches(shell, "<partial\\s+name=\"" + partial + "\"", RegexOptions.CultureInvariant));
         foreach (var id in new[]
         {
             "posPrimeContextContent", "posPrimeContextSheet", "posPrimeContextSheetHost",
@@ -237,7 +237,7 @@ public sealed class PosPrimeResponsiveUiContractTests
             "posPrimeMoneySheet", "posPrimeMoneyLauncher", "posPrimeMoneySheetHost",
             "posPrimeMoneyActions", "posPrimeDockActions", "posPrimeDockBalance"
         })
-            Assert.Equal(1, Regex.Matches(shell, "id=\"" + id + "\"", RegexOptions.CultureInvariant).Count);
+            Assert.Single(Regex.Matches(shell, "id=\"" + id + "\"", RegexOptions.CultureInvariant));
         Assert.DoesNotContain("id=\"paymentModal\"", shell, StringComparison.Ordinal);
         Assert.DoesNotContain("id=\"btnAddPayment\"", shell, StringComparison.Ordinal);
         Assert.DoesNotContain("<form", shell, StringComparison.OrdinalIgnoreCase);

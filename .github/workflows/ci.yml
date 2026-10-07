@@ -22,11 +22,46 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify immutable source revision
+        shell: pwsh
+        env:
+          GAOAPP_EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actualSourceSha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actualSourceSha -ne $env:GAOAPP_EXPECTED_SOURCE_SHA) {
+            throw "Checked out source does not match the expected immutable commit."
+          }
+          Write-Host "Verified source commit: $actualSourceSha"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install locked browser test dependencies
+        working-directory: GaoApp.Tests.Browser
+        run: npm ci
+
+      - name: Verify required Chrome browser channel
+        working-directory: GaoApp.Tests.Browser
+        shell: pwsh
+        run: |
+          $chromeProbe = "const {chromium}=require('playwright'); (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});await b.close();})().catch(()=>process.exit(1));"
+          & node -e $chromeProbe
+          if ($LASTEXITCODE -ne 0) {
+            & npx playwright install chrome
+            if ($LASTEXITCODE -ne 0) { throw "Required Chrome installation failed." }
+            & node -e $chromeProbe
+            if ($LASTEXITCODE -ne 0) { throw "Required Chrome channel is unavailable." }
+          }
 
       - name: Restore dependencies
         run: dotnet restore GaoApp.sln

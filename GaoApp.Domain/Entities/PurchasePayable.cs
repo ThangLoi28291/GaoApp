@@ -24,6 +24,8 @@ public sealed class PurchasePayable : BaseStoreEntity, IAuditTrackedEntity
     public PurchasePayableStatus Status { get; set; } = PurchasePayableStatus.Outstanding;
     public DateTime RecognizedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? PaidAtUtc { get; set; }
+    [Column(TypeName = "date")]
+    public DateTime? DueDate { get; set; }
     [StringLength(1000)]
     public string? Note { get; set; }
 }

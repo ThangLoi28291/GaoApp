@@ -79,6 +79,10 @@ public sealed class PromotionAdminService : IPromotionAdminService
         if (!valid.IsSuccess)
             return Result.Failure<int>(valid.Error);
 
+        var membersValid = await ValidateMixedMembersAsync(storeId, request, ct);
+        if (!membersValid.IsSuccess)
+            return Result.Failure<int>(membersValid.Error);
+
         if (await _repo.ExistsNameAsync(storeId, request.Name, null, ct))
             return Result.Failure<int>(PromotionErrors.DuplicateName);
 
@@ -91,6 +95,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
             DiscountType = request.DiscountType,
             DiscountValue = request.DiscountValue,
             ComboFixedPrice = request.ComboFixedPrice,
+            ComboPricingMode = request.ComboPricingMode,
+            ComboQuantity = request.ComboQuantity,
+            ComboBaseUnitId = request.ComboBaseUnitId,
             ComboNote = request.ComboNote,
             BuyQuantity = request.BuyQuantity,
             GetQuantity = request.GetQuantity,
@@ -127,6 +134,10 @@ public sealed class PromotionAdminService : IPromotionAdminService
         if (!valid.IsSuccess)
             return Result.Failure(valid.Error);
 
+        var membersValid = await ValidateMixedMembersAsync(storeId, request, ct);
+        if (!membersValid.IsSuccess)
+            return Result.Failure(membersValid.Error);
+
         var entity = await _repo.GetByIdForUpdateAsync(storeId, request.Id, ct);
         if (entity == null)
             return Result.Failure(PromotionErrors.NotFound);
@@ -143,6 +154,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
         entity.DiscountType = request.DiscountType;
         entity.DiscountValue = request.DiscountValue;
         entity.ComboFixedPrice = request.ComboFixedPrice;
+        entity.ComboPricingMode = request.ComboPricingMode;
+        entity.ComboQuantity = request.ComboQuantity;
+        entity.ComboBaseUnitId = request.ComboBaseUnitId;
         entity.ComboNote = request.ComboNote;
         entity.BuyQuantity = request.BuyQuantity;
         entity.GetQuantity = request.GetQuantity;
@@ -241,6 +255,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
 
     private static Result ValidateRequest(SavePromotionRequest request)
     {
+        if (!Enum.IsDefined(request.Type) || !Enum.IsDefined(request.ComboPricingMode))
+            return Result.Failure(PromotionErrors.InvalidInput);
+
         if (string.IsNullOrWhiteSpace(request.Name))
             return Result.Failure(PromotionErrors.InvalidInput);
 
@@ -272,8 +289,38 @@ public sealed class PromotionAdminService : IPromotionAdminService
 
             if (request.ComboRules.Count < 2)
                 return Result.Failure(PromotionErrors.ComboRuleRequired);
+
+            if (request.ComboPricingMode == ComboPricingMode.MixedQuantity &&
+                (request.ComboQuantity ?? 0m) <= 0m)
+                return Result.Failure(PromotionErrors.InvalidMixedQuantity);
         }
 
+        return Result.Success();
+    }
+
+    private async Task<Result> ValidateMixedMembersAsync(
+        int storeId, SavePromotionRequest request, CancellationToken ct)
+    {
+        if (request.Type != PromotionType.ComboFixedPrice ||
+            request.ComboPricingMode != ComboPricingMode.MixedQuantity)
+            return Result.Success();
+
+        var variantIds = request.ComboRules.Select(x => x.VariantId ?? 0).ToList();
+        if (variantIds.Any(x => x <= 0) || variantIds.Distinct().Count() != variantIds.Count)
+            return Result.Failure(PromotionErrors.InvalidMixedMembers);
+
+        int? baseUnitId = null;
+        foreach (var rule in request.ComboRules)
+        {
+            var product = await _repo.GetProductForPromotionAsync(storeId, rule.VariantId!.Value, ct);
+            if (product == null || product.ProductId != rule.ProductId ||
+                product.BaseUnitId is not > 0 ||
+                (baseUnitId.HasValue && baseUnitId != product.BaseUnitId))
+                return Result.Failure(PromotionErrors.InvalidMixedMembers);
+            baseUnitId = product.BaseUnitId;
+        }
+
+        request.ComboBaseUnitId = baseUnitId;
         return Result.Success();
     }
 
@@ -352,10 +399,14 @@ public sealed class PromotionAdminService : IPromotionAdminService
             Id = x.Id,
             Name = x.Name,
             Type = x.Type,
-            TypeText = GetTypeText(x.Type),
+            TypeText = x.Type == PromotionType.ComboFixedPrice && x.ComboPricingMode == ComboPricingMode.MixedQuantity
+                ? "Ghép vị giá thùng" : GetTypeText(x.Type),
             DiscountType = x.DiscountType,
             DiscountValue = x.DiscountValue,
             ComboFixedPrice = x.ComboFixedPrice,
+            ComboPricingMode = x.ComboPricingMode,
+            ComboQuantity = x.ComboQuantity,
+            ComboBaseUnitId = x.ComboBaseUnitId,
             BuyQuantity = x.BuyQuantity,
             GetQuantity = x.GetQuantity,
             StartAtUtc = x.StartAtUtc,
@@ -380,6 +431,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
             DiscountType = x.DiscountType,
             DiscountValue = x.DiscountValue,
             ComboFixedPrice = x.ComboFixedPrice,
+            ComboPricingMode = x.ComboPricingMode,
+            ComboQuantity = x.ComboQuantity,
+            ComboBaseUnitId = x.ComboBaseUnitId,
             ComboNote = x.ComboNote,
             BuyQuantity = x.BuyQuantity,
             GetQuantity = x.GetQuantity,
@@ -422,6 +476,9 @@ public sealed class PromotionAdminService : IPromotionAdminService
             DiscountType = dto.DiscountType,
             DiscountValue = dto.DiscountValue,
             ComboFixedPrice = dto.ComboFixedPrice,
+            ComboPricingMode = dto.ComboPricingMode,
+            ComboQuantity = dto.ComboQuantity,
+            ComboBaseUnitId = dto.ComboBaseUnitId,
             ComboNote = dto.ComboNote,
             BuyQuantity = dto.BuyQuantity,
             GetQuantity = dto.GetQuantity,
@@ -453,6 +510,24 @@ public sealed class PromotionAdminService : IPromotionAdminService
         request.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         request.ComboNote = string.IsNullOrWhiteSpace(request.ComboNote) ? null : request.ComboNote.Trim();
         request.CustomerPriceTier = NormalizeTierOrNull(request.CustomerPriceTier);
+
+        if (request.Type != PromotionType.ComboFixedPrice)
+            request.ComboPricingMode = ComboPricingMode.RequiredItems;
+
+        if (request.ComboPricingMode != ComboPricingMode.MixedQuantity)
+        {
+            request.ComboQuantity = null;
+            request.ComboBaseUnitId = null;
+        }
+        else
+        {
+            // Every selling unit is eligible; quantities are pooled in the base unit.
+            foreach (var rule in request.ComboRules)
+            {
+                rule.ProductUnitConversionId = null;
+                rule.RequiredQuantity = 1m;
+            }
+        }
 
         if (request.Type == PromotionType.ProductDiscount)
         {

@@ -223,7 +223,8 @@ public sealed class PromotionRepository : IPromotionRepository
                 v.Product != null &&
                 !v.Product.IsDeleted &&
                 v.Product.IsActive &&
-                v.Product.Name.Contains(keyword))
+                (v.Product.Name.Contains(keyword) || v.Sku.Contains(keyword) ||
+                    (v.ProductVariantName != null && v.ProductVariantName.Contains(keyword))))
             .OrderBy(v => v.Product.Name)
             .ThenBy(v => v.Id)
             .Take(take)
@@ -233,9 +234,8 @@ public sealed class PromotionRepository : IPromotionRepository
                 VariantId = v.Id,
                 ProductName = v.Product.Name,
 
-                // Tạm thời không lấy các field entity chưa chắc có
-                VariantName = null,
-                Sku = null,
+                VariantName = v.ProductVariantName,
+                Sku = v.Sku,
                 Barcode = null,
                 Price = 0m,
 
@@ -244,7 +244,7 @@ public sealed class PromotionRepository : IPromotionRepository
                     ? v.Product.BaseUnit.Name
                     : null,
 
-                Text = v.Product.Name + " | VariantId: " + v.Id
+                Text = v.Product.Name + " · " + (v.ProductVariantName ?? v.Sku) + " | " + v.Sku + " | #" + v.Id
             })
             .ToListAsync(ct);
 
@@ -334,19 +334,20 @@ public sealed class PromotionRepository : IPromotionRepository
                 !v.IsDeleted &&
                 v.Id == variantId &&
                 v.Product != null &&
-                !v.Product.IsDeleted)
+                !v.Product.IsDeleted &&
+                v.IsActive && v.Product.IsActive && v.Product.StoreId == storeId)
             .Select(v => new PromotionProductLookupDto
             {
                 ProductId = v.ProductId,
                 VariantId = v.Id,
                 ProductName = v.Product.Name,
-                VariantName = null,
-                Sku = null,
+                VariantName = v.ProductVariantName,
+                Sku = v.Sku,
                 Barcode = null,
                 Price = 0m,
                 BaseUnitId = v.Product.BaseUnitId,
                 BaseUnitName = v.Product.BaseUnit != null ? v.Product.BaseUnit.Name : null,
-                Text = v.Product.Name + " | VariantId: " + v.Id
+                Text = v.Product.Name + " · " + (v.ProductVariantName ?? v.Sku) + " | " + v.Sku + " | #" + v.Id
             })
             .FirstOrDefaultAsync(ct);
 

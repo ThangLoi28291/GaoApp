@@ -10,6 +10,20 @@ namespace GaoApp.Tests.Ui;
 public sealed class ProfitReportUiContractTests
 {
     [Fact]
+    public void Management_workspace_preserves_accessible_states_and_shared_financial_views()
+    {
+        var html=Read("GaoApp.Web/Areas/Admin/Views/Shared/_ManagementReportWorkspace.cshtml");
+        Assert.Contains("role=\"alert\"",html);Assert.Contains("aria-live=\"polite\"",html);
+        Assert.Contains("data-report-results data-profit-results hidden",html);
+        Assert.Contains("PermissionCodes.Report.Expenses.Manage",html);Assert.Contains("PermissionCodes.Report.Expenses.Confirm",html);
+        Assert.Contains("@Html.AntiForgeryToken()",html);
+        foreach(var view in new[]{"ProfitReport/Index","ManagementReport/Workspace","SalesExecutiveReport/Index"})
+            Assert.Contains("_ManagementReportWorkspace",Read("GaoApp.Web/Areas/Admin/Views/"+view+".cshtml"));
+        var js=Read("GaoApp.Web/wwwroot/Admin/js/reports/management-report.page.js");
+        Assert.Contains("data-profit-trend-table",js);Assert.Contains("data-profit-detail-table",js);Assert.Contains("Xem bảng số liệu",js);
+        Assert.Contains("RequestVerificationToken",js);
+    }
+    [Fact]
     public void Sales_overview_profit_navigation_preserves_permission_and_shared_filters()
     {
         var view = Read("GaoApp.Web/Areas/Admin/Views/SalesExecutiveReport/Index.cshtml");
@@ -54,7 +68,6 @@ public sealed class ProfitReportUiContractTests
     }
 
     [Theory]
-    [InlineData("ProfitReport/Index")]
     [InlineData("ProfitReport/Detail")]
     [InlineData("CostAdjustmentReport/Index")]
     public void Every_view_has_error_live_state_filters_and_table_alternative(string view)
@@ -126,7 +139,6 @@ vm.runInThisContext(fs.readFileSync(process.argv[1],'utf8'));
     }
 
     [Theory]
-    [InlineData("ProfitReport/Index")]
     [InlineData("ProfitReport/Detail")]
     public void Ux_remediation_views_expose_live_metric_heading(string view)
     {

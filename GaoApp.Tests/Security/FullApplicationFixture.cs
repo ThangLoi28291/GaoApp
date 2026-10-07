@@ -33,13 +33,15 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
     }
 
     internal static Task<FullApplicationFixture> StartAsync() => StartWithSecurityAsync(initializeSecurity: true);
+    internal static Task<FullApplicationFixture> StartDeliveryAsync()
+        => StartConfiguredAsync(true, false, enableDeliveryOutbox: false);
     internal static Task<FullApplicationFixture> StartWithInvoiceLibraryAsync() => StartConfiguredAsync(true, true);
     internal string InvoiceLibraryRoot => Path.Combine(runtimeRoot, "uploads", "XML");
 
     internal static Task<FullApplicationFixture> StartWithSecurityAsync(bool initializeSecurity)
         => StartConfiguredAsync(initializeSecurity, false);
 
-    private static async Task<FullApplicationFixture> StartConfiguredAsync(bool initializeSecurity, bool enableInvoiceLibrary)
+    private static async Task<FullApplicationFixture> StartConfiguredAsync(bool initializeSecurity, bool enableInvoiceLibrary, bool enableDeliveryOutbox = true)
     {
         var fixture = new FullApplicationFixture();
         try
@@ -83,6 +85,7 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
                 DataProtection = new { KeysPath = Path.Combine(fixture.runtimeRoot, "keys") },
                 SeedData = new { EnableDemoSeed = false, EnableDefaultAdminSeed = false },
                 TaxCodeLookup = new { Enabled = false },
+                DeliveryOutbox = new { Enabled = enableDeliveryOutbox },
                 Proxy = new { EnableForwardedHeaders = false },
                 Serilog = new { MinimumLevel = new { Default = "Warning" }, WriteTo = new[] { new { Name = "Console" } } }
             };
@@ -91,7 +94,7 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
             var webDll = TestApplicationBuild.WebAssemblyPath();
             var start = new ProcessStartInfo("dotnet") { WorkingDirectory = contentRoot, UseShellExecute = false,
                 CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "InputInvoiceLibrary", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting" };
+            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "InputInvoiceLibrary", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting", "DeliveryOutbox" };
             foreach (var key in start.Environment.Keys.ToArray())
                 if (configurationPrefixes.Any(prefix => key.StartsWith(prefix + "__", StringComparison.OrdinalIgnoreCase) || key.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase)))
                     start.Environment.Remove(key);
@@ -123,6 +126,36 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
     }
 
     internal async Task<Account> AddAccountAsync(StoreSeed store, params string[] permissions)
+    {
+        return await AddAccountCoreAsync(store, permissions);
+    }
+
+    // Restart only the Web process owned by this fixture, preserving SQL, address and cookie keys.
+    internal async Task RestartAsync(bool enableDeliveryOutbox)
+    {
+        var previous = process ?? throw new InvalidOperationException("Fixture Web not started.");
+        var start = previous.StartInfo;
+        if (!previous.HasExited) { previous.Kill(entireProcessTree: true); await previous.WaitForExitAsync(); }
+        previous.Dispose();
+        start.Environment["DeliveryOutbox__Enabled"] = enableDeliveryOutbox.ToString();
+        process = new Process { StartInfo = start };
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) output.Enqueue(e.Data); };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) output.Enqueue(e.Data); };
+        process.Start(); process.BeginOutputReadLine(); process.BeginErrorReadLine();
+        using var probe = new HttpClient { BaseAddress = Address, Timeout = TimeSpan.FromSeconds(2) };
+        var clock = Stopwatch.StartNew();
+        while (clock.Elapsed < TimeSpan.FromSeconds(60))
+        {
+            if (process.HasExited) throw new InvalidOperationException("Restarted test Web failed: " + string.Join('\n', output.TakeLast(18)));
+            try { using var response = await probe.GetAsync("/health/live"); if (response.IsSuccessStatusCode) return; }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
+            await Task.Delay(200);
+        }
+        throw new TimeoutException("Restarted test Web did not become ready.");
+    }
+
+    private async Task<Account> AddAccountCoreAsync(StoreSeed store, string[] permissions)
     {
         await using var db = Database.CreateTenantContext(store.StoreId);
         var suffix = Guid.NewGuid().ToString("N")[..12];

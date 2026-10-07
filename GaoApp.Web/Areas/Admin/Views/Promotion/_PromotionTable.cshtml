@@ -107,7 +107,15 @@
                                     else if (item.Type == PromotionType.ComboFixedPrice)
                                     {
                                         <div class="promo-setting-main">
-                                            Combo còn @($"{item.ComboFixedPrice ?? 0:n0}")
+                                            @if (item.ComboPricingMode == ComboPricingMode.MixedQuantity)
+                                            {
+                                                <span>@($"{item.ComboFixedPrice ?? 0:n0}") / thùng</span>
+                                                <div class="promo-sub">Từ @($"{item.ComboQuantity ?? 0:0.####}") đơn vị gốc: áp giá thùng cho toàn bộ</div>
+                                            }
+                                            else
+                                            {
+                                                <span>Combo còn @($"{item.ComboFixedPrice ?? 0:n0}")</span>
+                                            }
                                         </div>
                                     }
                                     else if (item.Type == PromotionType.BuyXGetY)

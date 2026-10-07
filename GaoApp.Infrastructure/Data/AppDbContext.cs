@@ -2,6 +2,7 @@
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Delivery;
 
 
 using Microsoft.EntityFrameworkCore;
@@ -79,6 +80,19 @@ public class AppDbContext : DbContext
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
+    public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+    public DbSet<DeliveryPickingWork> DeliveryPickingWorks => Set<DeliveryPickingWork>();
+    public DbSet<DeliveryPickingLine> DeliveryPickingLines => Set<DeliveryPickingLine>();
+    public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
+    public DbSet<DeliveryRevision> DeliveryRevisions => Set<DeliveryRevision>();
+    public DbSet<DeliveryJournalEntry> DeliveryJournalEntries => Set<DeliveryJournalEntry>();
+    public DbSet<DeliveryDispatchCostFragment> DeliveryDispatchCostFragments => Set<DeliveryDispatchCostFragment>();
+    public DbSet<DeliveryCommandReceipt> DeliveryCommandReceipts => Set<DeliveryCommandReceipt>();
+    public DbSet<DeliveryOutboxMessage> DeliveryOutboxMessages => Set<DeliveryOutboxMessage>();
+    public DbSet<DeliveryOutboxReceipt> DeliveryOutboxReceipts => Set<DeliveryOutboxReceipt>();
+    public DbSet<OperatingExpense> OperatingExpenses => Set<OperatingExpense>();
+    public DbSet<TreasuryEntry> TreasuryEntries => Set<TreasuryEntry>();
+    public DbSet<TreasuryOpeningBalance> TreasuryOpeningBalances => Set<TreasuryOpeningBalance>();
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
     public DbSet<OrderLegalEntityAllocation> OrderLegalEntityAllocations => Set<OrderLegalEntityAllocation>();
     public DbSet<OrderLegalEntityAllocationReversal> OrderLegalEntityAllocationReversals => Set<OrderLegalEntityAllocationReversal>();
@@ -289,6 +303,7 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        ProtectDeliveryHistory();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
         ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         ValidateTenantOwnership(pendingChanges);
@@ -310,6 +325,7 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        ProtectDeliveryHistory();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
         ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         await ValidateTenantOwnershipAsync(
@@ -321,6 +337,20 @@ public class AppDbContext : DbContext
         return await base.SaveChangesAsync(
             acceptAllChangesOnSuccess,
             cancellationToken: cancellationToken);
+    }
+
+    private void ProtectDeliveryHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.Entity is IDeliveryImmutableRecord && entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Không sửa/xóa lịch sử giao hàng đã ghi.");
+            if (entry.Entity is DeliveryOrder && entry.State == EntityState.Modified)
+                foreach (var name in new[] { "Code", "LookupToken", "SourceWarehouseId", "SourceLegalEntityId", "SourceCartId",
+                    "CreatedTerminalId", "CreatedShiftId", "CreatedByUserId", "CustomerId" })
+                    if (entry.Property(name).IsModified)
+                        throw new InvalidOperationException("Không thay nguồn gốc hồ sơ giao hàng.");
+        }
     }
 
     private List<PendingChange> CapturePendingChanges()

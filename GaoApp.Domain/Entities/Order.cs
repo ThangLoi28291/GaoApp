@@ -30,6 +30,9 @@ public class Order : BaseStoreEntity, IAuditTrackedEntity
     /// Khách hàng gắn với đơn, có thể null nếu bán lẻ không chọn khách.
     /// </summary>
     public int? CustomerId { get; set; }
+    /// <summary>Loại khách tại lúc chốt đơn; null dành cho dữ liệu trước tính năng báo cáo.</summary>
+    [StringLength(20)]
+    public string? CustomerPriceTierSnapshot { get; set; }
     public Customer? Customer { get; set; }
 
     // =========================

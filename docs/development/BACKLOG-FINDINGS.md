@@ -224,6 +224,19 @@ Việc đóng foundation findings không có nghĩa R2 feature expansion đã ho
 - **Scope decision:** Không sửa trong task tài liệu. Thực hiện sau security blocker F02; lookup phải same-Store/exactly-one, seller/buyer identities tách biệt, mismatch không được reason override, thay đổi trước Confirm phải audit và không đổi confirmed receipt.
 - **Current note (2026-08-03):** C1 đã thêm Store/receipt/line/LegalEntity ownership guard cho explicit detail mapping, nhưng không resolve `BuyerTaxCode` sang invoice LegalEntity. Evidence phía trên là historical baseline của finding; phần buyer identity/invoice-owner invariant vẫn chưa được triển khai.
 
+### PROMO-MIXED-QTY-PRECISION-20261007 — Mixed combo quantity representability
+
+- **Date:** 2026-10-07
+- **Classification:** Existing but incomplete
+- **Severity:** Medium (P2)
+- **Module:** Mixed-quantity promotion / admin validation
+- **Description:** `ValidateRequest` chỉ kiểm tra `ComboQuantity > 0` cho chế độ MixedQuantity; chưa kiểm tra số đó biểu diễn chính xác trong giới hạn/scale của cột `decimal(18,4)`. Giá trị dương `0.00001` và các giá trị có quá bốn chữ số thập phân qua điều kiện nguồn này. Đây là finding từ source của dependency khuyến mãi đã hoàn thành, không gán là regression do D04.
+- **Evidence:** `GaoApp.Application/Services/Promotions/PromotionAdminService.cs`, `ValidateRequest` dòng293–295; `GaoApp.Infrastructure/Data/Configurations/PromotionConfiguration.cs` dòng45 và migration71 `20261007090000_AddMixedQuantityPromotions` dùng `decimal(18,4)`. [Source finding receipt](../../Logs/delivery-roadmap/D04/run-20261007-01/implementation/r20/core/review-preparation/promotion-comboquantity-precision-source-finding.json), SHA256 `82F3B349C771990D6F418C05C45FBF985D58CE7A7C3E7AD9FA274BAA6ABF0B19`.
+- **Impact:** Suy luận từ source/schema: khi lưu, SQL có thể làm tròn ngưỡng hoặc từ chối số vượt miền biểu diễn; `0.00001` có thể thành0. Chưa chạy SQL repro, chưa quan sát dữ liệu sai; không ghi nhận một database defect đã kiểm chứng.
+- **Target task:** Promotion owner — validate exact `decimal(18,4)` representability and persistence round-trip before further mixed-quantity expansion.
+- **Status:** Open — source-only finding; runtime reproduction pending
+- **Scope decision:** Chỉ ghi backlog trong D04 r23, không sửa promotion source, migration hoặc assertion. D03 hiện từ chối giỏ có voucher/product/combo promotion bằng `PRICE_FEATURE_UNSUPPORTED`; finding này không phải blocker trực tiếp của luồng D04 đã khóa. Task promotion tiếp theo cần chốt rejection/normalization policy và kiểm tra giá trị sát0, over-scale và ngoài giới hạn, bảo vệ dữ liệu đã lưu.
+
 ## 4. Maintenance
 
 - Finding mới phải có file/method evidence trước khi thêm.

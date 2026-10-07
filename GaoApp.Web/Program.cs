@@ -115,6 +115,7 @@ try
     {
         options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
         options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
+        options.Filters.Add<GaoApp.Web.Services.StoreMonitor.StoreActivityFilter>();
     });
 
     // =========================================================
@@ -123,8 +124,13 @@ try
 
     builder.Services.AddSecuredPosRealtime();
     builder.Services.AddScoped<IPosRealtimeNotifier, PosRealtimeNotifier>();
+    Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<TimeProvider>(builder.Services, TimeProvider.System);
+    builder.Services.AddSingleton<GaoApp.Web.Services.StoreMonitor.StoreActivityRegistry>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.StoreMonitor.StoreActivityTicket>();
+    builder.Services.AddScoped<GaoApp.Web.Services.StoreMonitor.StoreActivityFilter>();
     builder.Services.AddScoped<GaoApp.Web.Services.Offline.PosOperationFilter>();
     builder.Services.AddScoped<GaoApp.Web.Services.Printing.ReceiptTemplateService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Delivery.DeliveryPosService>();
     builder.Services.AddScoped<GaoApp.Web.Services.CustomerDisplayService>();
     builder.Services.AddSingleton<GaoApp.Web.Services.CustomerDepositDisplayState>();
     builder.Services.AddScoped<GaoApp.Web.Services.Printing.ProductLabelService>();
@@ -157,6 +163,7 @@ try
     builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
     builder.Services.AddSingleton<GaoApp.Web.Services.Media.MediaCleanupStatus>();
     builder.Services.AddHostedService<GaoApp.Web.Services.Media.MediaCleanupWorker>();
+    builder.Services.AddHostedService<GaoApp.Web.Services.Delivery.DeliveryOutboxWorker>();
     builder.Services.AddAcbCallbackRouting(builder.Configuration);
 
     // =========================================================
@@ -254,6 +261,11 @@ try
     builder.Services.AddAuthorization();
 
     GaoApp.Web.Security.LoginRateLimiting.AddLoginRateLimiting(builder.Services, builder.Configuration);
+    builder.Services.AddRateLimiter(options => options.AddPolicy("delivery-lookup", context =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.Request.Host.Value + ":" + context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions {
+                PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true })));
 
     builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
     builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
@@ -416,7 +428,11 @@ try
     // 15) ROUTING
     // =========================================================
     app.UseRouting();
-    app.UseRateLimiter();
+    // Existing policies keep their pre-authentication placement. Delivery lookup needs the
+    // validated Store/user principal to isolate quotas, so only that policy runs below auth.
+    app.UseWhen(context => context.GetEndpoint()?.Metadata
+        .GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()?.PolicyName != "delivery-lookup",
+        branch => branch.UseRateLimiter());
 
     // =========================================================
     // 16) TENANT / TERMINAL RESOLUTION
@@ -444,6 +460,9 @@ try
     // =========================================================
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseWhen(context => context.GetEndpoint()?.Metadata
+        .GetMetadata<Microsoft.AspNetCore.RateLimiting.EnableRateLimitingAttribute>()?.PolicyName == "delivery-lookup",
+        branch => branch.UseRateLimiter());
 
     // =========================================================
     // 18) HEALTH CHECKS

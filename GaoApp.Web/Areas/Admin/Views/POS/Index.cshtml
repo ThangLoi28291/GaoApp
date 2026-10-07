@@ -21,6 +21,9 @@
     var canSellOnCredit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDebt.Sell)).Succeeded;
     var canViewCustomerProfile = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.Catalog.Customer.View)).Succeeded;
     var canUseDeposit = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Use)).Succeeded;
+    var canCreateDelivery = (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.Delivery.View)).Succeeded
+        && (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.Delivery.Create)).Succeeded
+        && (await CreditAuthorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.Create)).Succeeded;
     var currentTerminalId = User.FindFirst("terminal_id")?.Value ?? "";
     var currentTerminalName = User.FindFirst("terminal_name")?.Value ?? "";
     var currentTerminalCode = User.FindFirst("terminal_code")?.Value ?? "";
@@ -33,6 +36,7 @@
 <span id="posCustomerProfileAccess" data-allowed="@canViewCustomerProfile.ToString().ToLowerInvariant()" hidden></span>
 
 @section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos.checkout-feedback.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos.scan-feedback.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos.qr-history.css" asp-append-version="true" />
@@ -311,6 +315,11 @@
                                 <button type="button" id="btnCreditPayment" class="pos-payment-method-button pos-payment-method-button--credit" aria-pressed="false" aria-expanded="false" aria-controls="posCreditPanel" hidden>
                                     <i class="bx bx-wallet"></i><span>Công nợ <kbd>Alt+4</kbd></span>
                                 </button>
+                            }
+
+                            @if (canCreateDelivery)
+                            {
+                                <button type="button" id="btnOpenDelivery" class="pos-payment-method-button"><i class="bx bx-package"></i><span>Đơn giao · Thu sau</span></button>
                             }
 
                         </div>
@@ -1200,7 +1209,12 @@
     <p id="posScanGuardHelp">Kiểm tra sản phẩm và mã vạch trước khi tiếp tục. Các mã quét trong lúc cảnh báo sẽ không được thêm vào giỏ.</p>
     <button id="posScanGuardConfirm" type="button" autofocus>Đã kiểm tra — nhấn Enter</button>
 </dialog>
+@if (canCreateDelivery)
+{
+    <partial name="_DeliveryModal" />
+}
 @section PageScripts {
+    <script src="~/Admin/js/pos/pos.delivery.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>

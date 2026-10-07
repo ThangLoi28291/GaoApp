@@ -70,8 +70,14 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
         await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=12&qty=1');
         console.log('PASS cached result and arrow navigation');
         await search('893');
-        await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=1');
-        console.log('PASS first result from partial numeric search');
+        await selected(() => input.press('Enter'), '/admin/pos/cart/current/scan');
+        assert.deepEqual(await page.evaluate(() => commands.at(-1).body), { barcode: '893', quantity: 1 });
+        console.log('PASS partial numeric input preserves exact scan instead of choosing a fuzzy product');
+
+        await search('3+893');
+        await selected(() => input.press('Enter'), '/admin/pos/cart/current/scan');
+        assert.deepEqual(await page.evaluate(() => commands.at(-1).body), { barcode: '893', quantity: 3 });
+        console.log('PASS partial numeric input retains quantity prefix without choosing a fuzzy product');
 
         await search('4+sua');
         await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=4');

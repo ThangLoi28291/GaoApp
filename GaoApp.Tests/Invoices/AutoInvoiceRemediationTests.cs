@@ -98,12 +98,27 @@ public sealed class AutoInvoiceRemediationTests
         await using var db = CreateDb();
         var now = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
         db.Stores.Add(new Store { Id = 1, Name = "Test", SubDomain = "test", SubDomainNormalized = "TEST" });
+        var shift = new POSShift
+        {
+            StoreId = 1, OpenedByUserId = 9, OpenedAtUtc = now.AddHours(-1),
+            Terminal = new POSTerminal { StoreId = 1, Code = "POS-REMEDIATION", Name = "Remediation POS" },
+            Warehouse = new Warehouse
+            {
+                StoreId = 1, Code = "WH-REMEDIATION", Name = "Remediation warehouse",
+                LegalEntity = new LegalEntity
+                {
+                    StoreId = 1, Code = "LEGAL-REMEDIATION", Name = "Remediation owner", LegalName = "Remediation owner"
+                }
+            }
+        };
+        db.POSShifts.Add(shift);
+        await db.SaveChangesAsync();
         var head = Head(1);
         head.LegalEntityId = null;
         head.InvoiceDate = now;
         head.Order = new Order
         {
-            Id = 100, StoreId = 1, CompletedAtUtc = now,
+            Id = 100, StoreId = 1, CompletedAtUtc = now, POSShiftId = shift.Id, POSShift = shift,
             InvoiceIssuanceRoute = InvoiceIssuanceRoute.Automatic,
             GrandTotal = 60_000m,
             Payments = [new OrderPayment

@@ -82,30 +82,34 @@ window.PosQrHistory = (function () {
                 const recent = data.items.find(item => item.qrId === latestQrId);
                 note(recent ? `${recent.requestCode} · ${money(recent.amount)} · ${labels[recent.status] || recent.status}`
                     : data.items.length ? 'Các QR trước đã kết thúc. Xem từng lần trong lịch sử.' : 'Đơn này chưa có QR đã tạo.');
+                return data;
             } catch (error) {
                 if (current === revision) note(error.message, true);
             } finally { if (current === revision) reload.disabled = false; }
         }
-        async function open(qrId) {
+        async function open(qrId, warningMessage = '') {
             const orderId = Number(getOrderId());
-            if (opening || !qrId || orderId !== activeOrderId) return;
+            if (opening || !qrId || orderId !== activeOrderId) return false;
             const current = revision;
             opening = true; latest.disabled = true;
             note('Đang mở QR đã lưu…');
             try {
                 const saved = await get(`/admin/acb/payments/orders/${orderId}/qrs/${qrId}`);
-                if (revision !== current || Number(getOrderId()) !== orderId) return;
+                if (revision !== current || Number(getOrderId()) !== orderId) return false;
                 if (saved.qr?.id !== qrId || saved.qr?.orderId !== orderId)
                     throw new Error('QR trả về không khớp lần thanh toán đã chọn.');
-                onOpen({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly, savedStatus: saved.status, savedMessage: saved.message });
+                onOpen({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly, savedStatus: saved.status,
+                    savedMessage: saved.message, pendingWarningMessage: warningMessage });
                 note(`Đã mở lại ${saved.qr.requestCode} · ${money(saved.qr.amount)}.`);
+                return true;
             } catch (error) {
                 if (revision === current) note(error.message, true);
+                return false;
             } finally { opening = false; latest.disabled = false; }
         }
         latest.addEventListener('click', () => open(latestQrId));
         reload.addEventListener('click', refresh);
-        return { refresh, invalidate };
+        return { refresh, invalidate, open };
     }
     return { create };
 })();

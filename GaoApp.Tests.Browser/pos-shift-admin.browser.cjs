@@ -24,6 +24,57 @@ const path = require('node:path');
     try {
         admin = await login(info.user, info.password);
         await admin.goto(info.baseUrl + '/admin/pos-shift/handover-slips');
+        const nav = admin.locator('.pos-workspace-nav');
+        assert.equal(await nav.locator(':scope > a, :scope > button, :scope > .pos-nav-group').count(), 4);
+        await admin.locator('#posShiftNavToggle').click();
+        await admin.locator('#posShiftNavMenu.show').waitFor();
+        assert.equal(await admin.locator('#posShiftNavMenu [aria-current="page"]').innerText(), 'Phiếu nhận ca');
+        await admin.keyboard.press('ArrowDown');
+        assert.equal(await admin.evaluate(() => document.activeElement.getAttribute('href')), '/admin/pos-shift');
+        await admin.keyboard.press('Escape');
+        assert.equal(await admin.locator('#posShiftNavToggle').getAttribute('aria-expanded'), 'false');
+        await admin.locator('h1').click();
+        await admin.screenshot({ path: path.join(output, 'navigation-desktop.png'), animations: 'disabled' });
+        for (const width of [390, 320]) {
+            await admin.setViewportSize({ width, height: 844 });
+            assert.ok((await nav.boundingBox()).height <= 114, 'Mobile navigation stays within two rows');
+            assert.ok(await admin.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2));
+            if (width === 390) await admin.screenshot({ path: path.join(output, 'navigation-mobile.png'), animations: 'disabled' });
+            for (const group of ['Shift', 'Management']) {
+                await admin.locator(`#pos${group}NavToggle`).click();
+                const menu = admin.locator(`#pos${group}NavMenu.show`);
+                await menu.waitFor();
+                const bounds = await menu.boundingBox();
+                assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, 'Dropdown stays inside the phone viewport');
+                if (width === 390 && group === 'Shift') await admin.screenshot({ path: path.join(output, 'navigation-mobile-menu.png'), animations: 'disabled' });
+                await admin.keyboard.press('Escape');
+            }
+        }
+        await admin.setViewportSize({ width: 1440, height: 1000 });
+        if (process.env.POS_NAVIGATION_ONLY === '1') {
+            employee = await login(info.employeeUser, info.employeePassword);
+            await employee.goto(info.baseUrl + '/admin/pos-shift');
+            assert.equal(await employee.locator('a[href="/admin/pos-shift/handover-slips"]').count(), 0);
+            assert.equal(await employee.locator('a[href="/admin/pos-shift/manager-dashboard"]').count(), 0);
+            await employee.locator('#posManagementNavToggle').click();
+            assert.equal(await employee.locator('#posManagementNavMenu a[href="/admin/pos-shift/requests"]').isVisible(), true);
+            await admin.setViewportSize({ width: 390, height: 844 });
+            for (const [url, group] of [['/admin/pos-shift/history', 'Shift'], ['/admin/pos-shift/reconciliation', 'Shift'],
+                ['/admin/pos/orders-page', 'Management'], ['/admin/pos/dashboard', 'Management'], ['/admin/pos-shift/requests', 'Management'],
+                ['/admin/pos-shift/manager-dashboard', 'Management']]) {
+                await admin.goto(info.baseUrl + url);
+                const toggle = admin.locator(`#pos${group}NavToggle`);
+                assert.match(await toggle.getAttribute('class'), /active/);
+                await toggle.click();
+                const selected = admin.locator(`#pos${group}NavMenu [aria-current="page"]`);
+                assert.equal(await selected.getAttribute('href'), url);
+                assert.equal(await selected.isVisible(), true);
+                assert.ok(await admin.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2));
+            }
+            assert.deepEqual(errors, []);
+            console.log('PASS: compact POS navigation on desktop and 320/390px phones; keyboard, active pages, all shared workspaces and admin-only links verified.');
+            return;
+        }
         await admin.locator('#btnShowCreateSlipModal').click();
         await admin.locator('#createSlipModal.show').waitFor();
         assert.equal(await admin.locator('#ddlCreateSlipEmployee').count(), 0, 'Receiver is recorded when the shift opens');

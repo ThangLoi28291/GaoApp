@@ -11,6 +11,23 @@ public static class PermissionCatalog
     public static readonly IReadOnlyList<PermissionRecord> All = new ReadOnlyCollection<PermissionRecord>(
         new List<PermissionRecord>
         {
+            P(PermissionCodes.Delivery.View, "Xem đơn giao", "Delivery", "delivery", "order", "view"),
+            P(PermissionCodes.Delivery.Create, "Tạo đơn giao / sửa người nhận trước soạn", "Delivery", "delivery", "order", "create"),
+            P(PermissionCodes.Delivery.Pick, "Soạn hàng giao", "Delivery", "delivery", "order", "pick"),
+            P(PermissionCodes.Delivery.ApproveChanges, "Duyệt thay đổi hàng giao", "Delivery", "delivery", "order", "approve-changes"),
+            P(PermissionCodes.Delivery.Handover, "Bàn giao hàng cho người giao", "Delivery", "delivery", "order", "handover"),
+            P(PermissionCodes.Delivery.RecordDeparture, "Ghi nhận xuất phát", "Delivery", "delivery", "order", "depart"),
+            P(PermissionCodes.Delivery.ReportOwnOutcome, "Báo kết quả đơn mình giao", "Delivery", "delivery", "order", "report-own"),
+            P(PermissionCodes.Delivery.ReportOnBehalf, "Báo hộ kết quả giao", "Delivery", "delivery", "order", "report-proxy"),
+            P(PermissionCodes.Delivery.ReceiveReturns, "Nhận hàng giao trả về", "Delivery", "delivery", "order", "receive-returns"),
+            P(PermissionCodes.Delivery.ReconcileCash, "Đối soát tiền mặt giao hàng", "Delivery", "delivery", "order", "reconcile-cash"),
+            P(PermissionCodes.Delivery.ConfirmBankTransfer, "Xác nhận đã nhận chuyển khoản giao hàng", "Delivery", "delivery", "order", "confirm-bank"),
+            P(PermissionCodes.Delivery.Finalize, "Chốt đơn giao", "Delivery", "delivery", "order", "finalize"),
+            P(PermissionCodes.Delivery.Credit, "Chốt giao hàng công nợ", "Delivery", "delivery", "order", "credit"),
+            P(PermissionCodes.Delivery.Cancel, "Hủy đơn giao", "Delivery", "delivery", "order", "cancel"),
+            P(PermissionCodes.Delivery.ApproveExceptions, "Duyệt hàng giao hỏng / mất", "Delivery", "delivery", "order", "approve-exceptions"),
+            P(PermissionCodes.Delivery.ResolveShortage, "Xử lý hàng khách còn thiếu", "Delivery", "delivery", "order", "resolve-shortage"),
+            P(PermissionCodes.Delivery.ReassignCourier, "Đổi nhân viên giao", "Delivery", "delivery", "order", "reassign-courier"),
             P(PermissionCodes.CustomerDeposit.View, "Xem đặt cọc khách hàng", "Customers", "customer", "deposit", "view"),
             P(PermissionCodes.CustomerDeposit.Receive, "Nhận cọc khách hàng", "Customers", "customer", "deposit", "receive"),
             P(PermissionCodes.CustomerDeposit.Use, "Sử dụng cọc tại POS", "Customers", "customer", "deposit", "use"),
@@ -19,6 +36,7 @@ public static class PermissionCatalog
             P(PermissionCodes.CustomerDebt.Sell, "Chốt đơn bán công nợ", "Customers", "customer", "debt", "sell"),
             P(PermissionCodes.CustomerDebt.Collect, "Thu công nợ khách hàng", "Customers", "customer", "debt", "collect"),
             P(PermissionCodes.Admin.DashboardView, "Xem trang tổng quan quản trị", "Admin", "admin", "dashboard", "view"),
+            P(PermissionCodes.Admin.StoreMonitorView, "Giám sát hoạt động trực tiếp của cửa hàng", "Admin", "admin", "storemonitor", "view"),
             P(PermissionCodes.System.ReceiptTemplate.Manage, "Quản lý mẫu hóa đơn POS (chỉ quản trị viên)", "System", "system", "receipttemplate", "manage"),
             P(PermissionCodes.System.ProductLabel.Manage, "Quản lý mẫu tem và máy in tem", "System", "system", "productlabel", "manage"),
             P(PermissionCodes.System.ProductLabel.Print, "In tem sản phẩm và quản lý phiếu in", "System", "system", "productlabel", "print"),
@@ -207,6 +225,9 @@ P(PermissionCodes.Inventory.Adjustment.Cancel,  "Hủy phiếu điều chỉnh k
             P(PermissionCodes.Report.Inventory.Export, "Xuất báo cáo tồn kho", "Reports", "report", "inventory", "export"),
 
             P(PermissionCodes.Report.Profit.View,   "Xem báo cáo lợi nhuận", "Reports", "report", "profit", "view"),
+            P(PermissionCodes.Report.Expenses.Manage, "Nhập và sửa chi phí vận hành", "Reports", "report", "expenses", "manage"),
+            P(PermissionCodes.Report.Treasury.Manage, "Lập thu chi, số dư và thanh toán nhà cung cấp", "Reports", "report", "treasury", "manage"),
+            P(PermissionCodes.Report.Expenses.Confirm, "Ghi nhận và hủy chi phí vận hành", "Reports", "report", "expenses", "confirm"),
             P(PermissionCodes.Report.Profit.Export, "Xuất báo cáo lợi nhuận", "Reports", "report", "profit", "export"),
 
             P(PermissionCodes.Report.Purchase.View,   "Xem báo cáo mua hàng", "Reports", "report", "purchase", "view"),

@@ -239,6 +239,8 @@ public sealed class PromotionController : BaseAdminController
             productId = x.ProductId,
             variantId = x.VariantId,
             productName = x.ProductName,
+            variantName = x.VariantName,
+            sku = x.Sku,
             baseUnitName = x.BaseUnitName
         }));
     }

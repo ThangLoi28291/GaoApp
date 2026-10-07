@@ -1,0 +1,35 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.Delivery.DeliveryBillViewModel
+@using System.Globalization
+@{
+    Layout = null; var d = Model.Delivery; var p = Model.Picking; var vi = CultureInfo.GetCultureInfo("vi-VN");
+    string Money(decimal v) => v.ToString("N0", vi); string Price(decimal v) => v.ToString("N2", vi);
+    string Exact(string value, string format) => decimal.Parse(value, CultureInfo.InvariantCulture).ToString(format, vi);
+    var hasWork = p?.PickerUserId is not null;
+    var approved = hasWork && p!.ApprovedRevision is not null && p.ApprovedTotalText is not null;
+    var badge = d.State switch { "Created" => "CHỜ SOẠN · CHƯA THU TIỀN", "Picking" => "ĐANG SOẠN · CHƯA THU TIỀN", "AwaitingApproval" => "CHỜ DUYỆT · CHƯA THU TIỀN", "ReadyForHandover" when approved => "ĐÃ CHỐT SOẠN · CHƯA THU TIỀN", "HandedOver" => "ĐÃ BÀN GIAO", "Delivering" => "ĐANG GIAO", "AwaitingReconciliation" => "CHỜ ĐỐI SOÁT", "ReadyToSettle" => "CHỜ CHỐT THANH TOÁN", "CancellationPending" => "CHỜ XỬ LÝ HỦY", "Settled" => "ĐÃ CHỐT", "Cancelled" => "ĐÃ HỦY", _ => d.State };
+    var no = 0;
+}
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="referrer" content="no-referrer" /><title>Phiếu giao @d.Code</title><link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" /></head>
+<body class="delivery-bill-body">
+    <nav class="delivery-print-toolbar"><span>Phiếu giao A5 · 148 × 210 mm</span><button id="deliveryPrint" type="button">In phiếu A5</button><a href="@Model.LookupUrl">Xem hồ sơ đơn</a></nav>
+    <main class="delivery-sheet">
+        <header class="delivery-bill-header"><div><strong>@Model.StoreName</strong><h1>PHIẾU GIAO HÀNG</h1><p>@d.Code · Bản @d.Revision</p></div><span class="delivery-badge">@badge</span></header>
+        <div class="delivery-bill-meta"><span>@d.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</span><span>Quầy: @Model.TerminalName · Nhân viên: @Model.EmployeeName</span><span>Kho nguồn: @Model.WarehouseName · Giỏ: #@d.SourceCartId</span></div>
+        <section class="delivery-recipient"><strong>@d.RecipientName</strong><span>Điện thoại: @d.RecipientPhone</span><span>Giao đến: @d.RecipientAddress</span>@if (!string.IsNullOrWhiteSpace(d.Note)) { <span>Ghi chú: @d.Note</span> }</section>
+        @if (hasWork) { <p class="delivery-bill-picking">Người soạn: @p!.PickerName · @(approved ? "Lượng đã duyệt" : "Bản soạn dự kiến — cần kiểm tra trước giao")</p> }
+        <table class="delivery-lines delivery-bill-lines"><thead><tr class="delivery-bill-ident"><th colspan="5">Phiếu giao @d.Code · Bản @d.Revision</th></tr><tr><th>#</th><th>Hàng / ĐVT</th><th>@(hasWork ? approved ? "SL duyệt" : "SL dự kiến" : "SL")</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>
+        @if (hasWork)
+        {
+            foreach (var line in p!.Lines.Where(x => approved ? x.ApprovedQuantityText is not null && x.ApprovedQuantityText != "0" : x.IsActive || !x.IsReplacement))
+            { <tr><td>@(++no)</td><td>@line.ItemName <small>@line.UnitName @(line.IsReplacement ? "· Hàng thay thế" : "")</small></td><td>@Exact(approved ? line.ApprovedQuantityText! : line.PlannedQuantityText, "0.####")</td><td>@Exact(line.UnitPriceText, "N2")</td><td>@Exact(approved ? line.ApprovedNetText! : line.DraftNetText, "N0")</td></tr> }
+        }
+        else
+        { foreach (var line in d.Lines) { <tr><td>@(++no)</td><td>@line.ItemName <small>@line.UnitName</small></td><td>@line.OrderedQuantity.ToString("0.####", vi)</td><td>@Price(line.UnitPrice)</td><td>@Money(line.Net)</td></tr> } }
+        </tbody></table>
+        <section class="delivery-bill-summary"><div class="delivery-bill-total"><span>@(hasWork ? approved ? "Giá trị lượng đã duyệt" : "Giá trị bản soạn dự kiến" : "Giá trị dự kiến")</span><strong>@(hasWork ? Exact(approved ? p!.ApprovedTotalText! : p!.DraftTotalText, "N0") : Money(d.QuotedTotal)) đ</strong></div>
+        @if (hasWork) { <p class="delivery-payment-note">Giá trị gốc khi lập đơn: @Exact(p!.QuotedTotalText, "N0") đ. @(approved ? "Chỉ giao theo lượng đã duyệt trên bản này." : "Bản này chưa xác nhận lượng được giao.")</p> }
+        <p class="delivery-payment-note">Thanh toán theo lượng thực giao. Giá trị trên phiếu chưa phải số tiền đã thu.</p>
+        <footer class="delivery-bill-footer"><img id="deliveryQr" src="@Model.QrDataUrl" alt="QR tra hồ sơ đơn giao @d.Code" /><div><strong>Quét QR để tra đơn</strong><p>Dùng cho soạn và giao hàng.<br />Có thể nhập mã đơn khi không quét được.</p><b>@d.Code</b></div></footer>
+        </section>
+    </main><script src="~/Admin/js/delivery.bill.js" asp-append-version="true"></script>
+</body></html>

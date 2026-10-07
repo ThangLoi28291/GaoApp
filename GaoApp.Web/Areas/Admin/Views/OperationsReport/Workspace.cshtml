@@ -1,0 +1,116 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
+@{
+    ViewData["container"] = "container-fluid";
+    Layout = "_ContentNavbarLayout";
+    var section = ViewData["ReportView"]?.ToString() ?? "cashflow";
+    var canManage = (await Authorization.AuthorizeAsync(User, PermissionCodes.Report.Treasury.Manage)).Succeeded;
+    var canExport = (await Authorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.Export)).Succeeded;
+    var canSales = (await Authorization.AuthorizeAsync(User, PermissionCodes.Report.Sales.View)).Succeeded;
+}
+@section VendorStyles {
+    <link rel="stylesheet" href="~/vendor/libs/apex-charts/apex-charts.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports/management-report.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports/operations-report.css" asp-append-version="true" />
+}
+<div class="mr-workspace" data-management-report data-operations-report data-section="@(section)"
+     data-can-manage="@canManage.ToString().ToLowerInvariant()" data-can-export="@canExport.ToString().ToLowerInvariant()" aria-busy="true">
+    @Html.AntiForgeryToken()
+    <header class="mr-heading">
+        <div><p class="mr-eyebrow">BÁO CÁO QUẢN TRỊ</p><h1>@ViewData["Title"]</h1><p>@(section == "cashflow" ? "Theo dõi tiền thực thu, thực chi và số dư từng quỹ." : section == "inventory" ? "Biết hàng đang nằm ở đâu, giá trị bao nhiêu và cần xử lý gì." : "Theo dõi phải thu, phải trả và các khoản đến hạn.")</p></div>
+        <div class="mr-actions">
+            <button class="mr-button layout-menu-toggle" type="button" aria-label="Mở menu điều hướng" aria-controls="layout-menu"><i class="bx bx-menu" aria-hidden="true"></i>Menu</button>
+            @if (canManage && section == "cashflow") { <button class="mr-button mr-primary" type="button" data-money-new><i class="bx bx-plus" aria-hidden="true"></i>Lập thu chi</button> }
+            <button class="mr-button" type="button" data-refresh><i class="bx bx-refresh" aria-hidden="true"></i>Làm mới</button>
+        </div>
+    </header>
+    <nav class="mr-nav" aria-label="Các báo cáo">
+        @if (canSales) { <a href="/admin/reports/overview">Tổng quan</a> }
+        <a href="/admin/reports/profit">Kết quả kinh doanh</a><a href="/admin/reports/products">Sản phẩm</a>
+        <a href="/admin/reports/categories">Nhóm sản phẩm</a><a href="/admin/reports/groups">Sỉ & lẻ</a>
+        <a href="/admin/reports/customers">Khách hàng</a><a href="/admin/reports/expenses">Chi phí vận hành</a>
+        <a href="/admin/reports/cashflow" data-nav="cashflow">Thu chi & dòng tiền</a><a href="/admin/reports/inventory" data-nav="inventory">Tồn kho</a><a href="/admin/reports/debts" data-nav="debts">Công nợ</a>
+    </nav>
+    <form class="mr-filters" data-filters aria-label="Kỳ báo cáo">
+        <label>Kỳ nhanh<select name="preset"><option value="month">Tháng này</option><option value="last-month">Tháng trước</option><option value="today">Hôm nay</option><option value="week">7 ngày gần đây</option><option value="custom">Tùy chọn</option></select></label>
+        <label>Từ ngày<input name="fromDate" type="date" required /></label><label>Đến ngày<input name="toDate" type="date" required /></label>
+        @if (section == "cashflow") { <label>Quỹ<select name="fund"><option value="all">Tất cả</option><option value="cash">Tiền mặt</option><option value="bank">Chuyển khoản</option><option value="other">Thẻ, ví & khác</option></select></label> }
+        @if (section == "inventory") { <label>Kho<select name="warehouseId"><option value="">Tất cả kho</option></select></label><label>Ngưỡng sắp hết<input name="lowStockThreshold" type="number" min="0" max="1000000" step="0.001" value="5" /></label> }
+        <button class="mr-button mr-primary" type="submit">Áp dụng</button>
+    </form>
+    <p class="mr-context" data-context></p>
+    <div class="mr-live" role="status" aria-live="polite" data-live>Đang tải báo cáo…</div>
+    <div class="mr-error" role="alert" data-error hidden><span></span><button class="mr-button" type="button" data-refresh>Thử lại</button></div>
+    <div data-results hidden>
+        <div class="or-quality" data-quality></div>
+        <section class="mr-kpis" data-kpis aria-label="Chỉ số báo cáo"></section>
+        <div data-panels></div>
+        <section class="mr-panel" aria-labelledby="or-detail-title">
+            <div class="mr-panel-heading"><div><h2 id="or-detail-title">@(section == "cashflow" ? "Sổ thu chi" : section == "inventory" ? "Nhập · xuất · tồn theo sản phẩm" : "Đối chiếu công nợ theo chứng từ")</h2><p class="mr-caption" data-count></p></div>
+                @if (canExport) { <a class="mr-button" data-export>Xuất CSV toàn kỳ</a> }
+            </div>
+            <div class="mr-tools">
+                <label>Tìm trong báo cáo<input type="search" maxlength="100" data-search placeholder="Tên, mã hoặc nội dung…" /></label>
+                <label>Hiển thị<select data-state></select></label>
+            </div>
+            <div class="mr-table-wrap" data-table></div>
+            <div class="mr-pagination"><button class="mr-button" type="button" data-prev>Trước</button><span data-page></span><button class="mr-button" type="button" data-next>Sau</button></div>
+        </section>
+    </div>
+    <details class="mr-help"><summary>Cách đọc báo cáo</summary>
+        @if (section == "cashflow") {
+            <p>Tiền mặt và chuyển khoản được quản lý theo tổng quỹ. Số dư ban đầu là số đã đối chiếu vào đầu ngày; không cộng tiền mở ca thành doanh thu. Thẻ, ví và phương thức khác không tự gán vào chuyển khoản.</p>
+            <p>Thu bán hàng lấy tiền của đơn đã chốt và loại tiền trả lại cho khách khi đưa dư tiền mặt. Thu công nợ và tiền cọc tính một lần; sử dụng cọc để thanh toán đơn không tạo thêm dòng tiền.</p>
+            <p>Chuyển giữa hai quỹ có hai vế và không làm tăng dòng tiền thuần toàn cửa hàng. Biểu đồ thu/chi loại chuyển quỹ. Phiếu ngoài ca không tự thay đổi két tiền của ca POS.</p>
+            <p>Ngày phiếu nhập tay ghi theo ngày thực tế (UTC+7). Đảo phiếu tạo dòng ngược chiều vào ngày chọn và giữ phiếu gốc. Hủy ghi nhận chi phí không tự hoàn lại tiền.</p>
+        } else if (section == "inventory") {
+            <p>Tồn đầu kỳ + nhập − xuất = tồn cuối kỳ theo sổ kho. Mỗi mặt hàng giữ đơn vị gốc riêng. Ngưỡng sắp hết áp dụng theo số đơn vị gốc đã nhập.</p>
+            <p>Chậm luân chuyển là còn hàng và không có xuất bán trong kỳ đã chọn. Số ngày đủ bán = tồn cuối kỳ ÷ lượng xuất bán bình quân ngày trong kỳ; đây là tham khảo từ quá khứ.</p>
+            <p>Giá trị gồm bút toán định giá, điều chỉnh giá vốn và có trạng thái tạm tính. Thiếu sổ định giá hiển thị chưa xác định.</p>
+        } else {
+            <p>Nợ đầu kỳ + tăng nợ − giảm nợ = nợ cuối kỳ. Tuổi nợ dựa vào số ngày sau hạn thanh toán đến cuối ngày đã chọn. Chưa có hạn được hiển thị riêng.</p>
+            <p>Giảm công nợ có thể do trả hàng hoặc hủy đơn. Chỉ phiếu thực thu/thực chi được tính vào báo cáo dòng tiền.</p>
+        }
+    </details>
+    @if (canManage) {
+        <dialog class="mr-dialog" data-money-dialog aria-labelledby="or-money-title">
+            <form data-money-form>
+                <div class="mr-dialog-heading"><h2 id="or-money-title">Lập phiếu thu chi</h2><button type="button" class="mr-button" data-close aria-label="Đóng">×</button></div>
+                <p class="mr-caption">Ghi tiền đã thực thu/chi. Có phiếu tiền mặt trong ca thì chọn liên kết để không ghi hai lần.</p>
+                <p class="mr-caption" data-legacy-evidence hidden>Chứng từ cũ đã đánh dấu thanh toán nhưng chưa có phiếu. Chỉ lưu khi đã đối chiếu đúng ngày, quỹ và chứng từ; thao tác này bổ sung khoản chi vào dòng tiền.</p>
+                <p class="mr-caption">Danh sách gần đây gồm tối đa 500 chứng từ và 200 phiếu ca. Nút thanh toán tại báo cáo mở đúng chứng từ đang chọn.</p>
+                <div class="mr-form-grid">
+                    <label>Nghiệp vụ<select name="mode"><option value="out">Chi ngoài bán hàng</option><option value="in">Thu ngoài bán hàng</option><option value="transfer">Tiền mặt → chuyển khoản / ngược lại</option><option value="internal">Luân chuyển tiền mặt nội bộ</option><option value="expense">Thanh toán chi phí</option><option value="payable">Trả nhà cung cấp</option></select></label>
+                    <label>Ngày thực thu/chi<input name="date" type="date" required /></label>
+                    <label class="mr-span" data-source-label hidden>Chứng từ cần thanh toán<select name="source"></select></label>
+                    <label>Quỹ<select name="fund"><option value="cash">Tiền mặt</option><option value="bank">Chuyển khoản</option></select></label>
+                    <label data-target-label hidden>Chuyển đến<select name="targetFund"><option value="bank">Chuyển khoản</option><option value="cash">Tiền mặt</option></select></label>
+                    <label>Số tiền (VND)<input name="amount" type="number" min="0.01" max="1000000000000" step="0.01" required inputmode="decimal" /></label>
+                    <label class="mr-span">Nội dung<input name="name" maxlength="200" required /></label>
+                    <label class="mr-span" data-cash-label>Liên kết phiếu tiền mặt có sẵn<select name="cashVoucher"><option value="">Lập phiếu mới ngoài ca</option></select></label>
+                    <label class="mr-span">Tham chiếu chứng từ<input name="reference" maxlength="200" /></label>
+                    <label class="mr-span">Ghi chú<textarea name="note" maxlength="1000" rows="2"></textarea></label>
+                </div>
+                <p class="mr-error" data-form-error role="alert" hidden></p>
+                <div class="mr-dialog-actions"><button type="button" class="mr-button" data-close>Đóng</button><button type="submit" class="mr-button mr-primary">Lưu phiếu</button></div>
+            </form>
+        </dialog>
+        <dialog class="mr-dialog mr-dialog-small" data-opening-dialog aria-labelledby="or-opening-title">
+            <form data-opening-form>
+                <div class="mr-dialog-heading"><h2 id="or-opening-title">Số dư ban đầu</h2><button type="button" class="mr-button" data-close aria-label="Đóng">×</button></div>
+                <p class="mr-caption">Nhập số đã đối chiếu vào đầu ngày. Mỗi quỹ thiết lập một lần; điều chỉnh sau đó bằng phiếu thu chi có căn cứ.</p>
+                <div class="mr-form-grid"><label>Quỹ<select name="fund"><option value="cash">Tiền mặt</option><option value="bank">Chuyển khoản</option></select></label><label>Đầu ngày<input name="date" type="date" required /></label><label class="mr-span">Số dư (VND)<input name="amount" type="number" step="0.01" required /></label><label class="mr-span">Căn cứ đối chiếu<textarea name="note" maxlength="1000" rows="3" required></textarea></label></div>
+                <p class="mr-error" data-form-error role="alert" hidden></p><div class="mr-dialog-actions"><button type="button" class="mr-button" data-close>Đóng</button><button type="submit" class="mr-button mr-primary">Lưu số dư</button></div>
+            </form>
+        </dialog>
+        <dialog class="mr-dialog mr-dialog-small" data-action-dialog aria-labelledby="or-action-title">
+            <form data-action-form><div class="mr-dialog-heading"><h2 id="or-action-title">Đảo phiếu</h2><button class="mr-button" type="button" data-close aria-label="Đóng">×</button></div>
+                <p data-action-description></p><label data-action-date-label>Ngày đảo<input name="date" type="date" required /></label><label data-action-reason-label>Lý do<textarea name="reason" maxlength="500" rows="3" required></textarea></label>
+                <p class="mr-error" data-form-error role="alert" hidden></p><div class="mr-dialog-actions"><button class="mr-button" type="button" data-close>Đóng</button><button class="mr-button mr-primary" type="submit">Lưu</button></div>
+            </form>
+        </dialog>
+    }
+</div>
+@section VendorScripts { <script src="~/vendor/libs/apex-charts/apexcharts.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/reports/operations-report.page.js" asp-append-version="true"></script> }

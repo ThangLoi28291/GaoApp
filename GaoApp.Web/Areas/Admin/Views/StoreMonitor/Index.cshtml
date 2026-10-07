@@ -1,0 +1,51 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Giám sát trực tiếp · GaoApp</title>
+    <link rel="stylesheet" href="~/Admin/css/store-monitor.css" asp-append-version="true" />
+</head>
+<body class="wm-page">
+<div id="gao-store-wall" data-theme="light" data-stream-url="@Url.Action("Stream", "StoreActivity", new { area = "Admin" })" role="region" aria-label="Màn hình giám sát trực tiếp toàn tiệm">
+    <div class="wm-screen">
+        <header class="wm-header">
+            <div class="wm-brand"><span class="wm-brand-mark">G</span><div><strong>GaoApp</strong><span>Văn phòng · Giám sát cửa hàng</span></div></div>
+            <div class="wm-header-center"><span class="wm-live-dot"></span><span id="wm-connection">ĐANG KẾT NỐI</span></div>
+            <div class="wm-clock"><strong id="wm-clock">—</strong><span>@ViewData["StoreName"]</span></div>
+            <div class="wm-toolbar">
+                <button id="wm-motion" type="button" aria-pressed="true">Hiệu ứng</button>
+                <button id="wm-theme" type="button">Nền tối</button>
+                <button id="wm-fullscreen" type="button">Toàn màn hình</button>
+                <a asp-area="Admin" asp-controller="Home" asp-action="Index">Về quản trị</a>
+            </div>
+        </header>
+        <main class="wm-main">
+            <div class="wm-title-row"><div><div class="wm-overline">HOẠT ĐỘNG CỬA HÀNG · TRỰC TIẾP</div><h1>Mọi công việc, ngay lúc này.</h1></div><div class="wm-status-legend"><span><i class="wm-dot wm-dot-live"></i>Đang thao tác</span><span><i class="wm-dot wm-dot-saved"></i>Đã lưu</span><span><i class="wm-dot wm-dot-idle"></i>Đang mở</span></div></div>
+            <div class="wm-summary" id="wm-summary"></div>
+            <div class="wm-arrival" id="wm-arrival" role="status" aria-live="polite"><span class="wm-arrival-symbol" aria-hidden="true">↗</span><span id="wm-arrival-text">Đang chờ tín hiệu hoạt động của cửa hàng…</span><span class="wm-arrival-tag" id="wm-arrival-time">TRỰC TIẾP</span></div>
+            <div class="wm-body">
+                <section class="wm-operations" aria-label="Hoạt động theo khu vực">
+                    <div class="wm-area-grid">
+                        <article class="wm-area" id="wm-pos" aria-label="Quầy tính tiền"></article>
+                        <article class="wm-area" id="wm-receipt" aria-label="Nhập hàng"></article>
+                        <article class="wm-area" id="wm-warehouse" aria-label="Kiểm kê và chuyển kho"></article>
+                        <article class="wm-area" id="wm-label" aria-label="In tem"></article>
+                        <article class="wm-area" id="wm-delivery" aria-label="Giao hàng"></article>
+                        <article class="wm-area" id="wm-review" aria-label="Duyệt phiếu"></article>
+                    </div>
+                </section>
+                <aside class="wm-feed-panel" aria-label="Luồng cập nhật của cửa hàng"><div class="wm-feed-heading"><div><span class="wm-overline">DÒNG THỜI GIAN</span><h2>Vừa diễn ra</h2></div><span class="wm-live-dot"></span></div><ol id="wm-feed"></ol><div class="wm-attention" id="wm-attention">Hoạt động lưu thành công sẽ xuất hiện tại đây.</div></aside>
+            </div>
+            <section class="wm-team" aria-label="Nhân viên đang kết nối"><h2>Nhân viên đang kết nối</h2><div id="wm-team"></div></section>
+            <footer class="wm-screen-footer"><span><i class="wm-live-dot"></i><span id="wm-sync">Đang kết nối…</span></span><span>Trạng thái thao tác trên GaoApp · Giờ Việt Nam</span></footer>
+        </main>
+    </div>
+</div>
+<script src="~/Admin/js/store-monitor.page.js" asp-append-version="true"></script>
+</body>
+</html>

@@ -80,6 +80,8 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
         catch (InvalidOperationException)
         {
             // Do not expose internal quantity/linkage details in the POS form.
+            var unavailableCost = new SaleRestockCostException(orderId, orderLineId, SaleValuationCostPolicy.Quality.Unavailable, null);
+            return new(false, unavailableCost.ErrorCode, unavailableCost.SafeMessage, unavailableCost.ActionHint);
         }
         var unavailable = new SaleRestockCostException(orderId, orderLineId, SaleValuationCostPolicy.Quality.Unavailable, null);
         return new(false, unavailable.ErrorCode, unavailable.SafeMessage, unavailable.ActionHint);

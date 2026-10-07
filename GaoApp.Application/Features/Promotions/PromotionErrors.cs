@@ -4,6 +4,12 @@ namespace GaoApp.Application.Features.Promotions;
 
 public static class PromotionErrors
 {
+    public static readonly Error InvalidMixedQuantity =
+        new("Promotion.InvalidMixedQuantity", "Số lượng gốc mỗi thùng phải lớn hơn 0.");
+
+    public static readonly Error InvalidMixedMembers =
+        new("Promotion.InvalidMixedMembers", "Chọn ít nhất 2 mã hàng khác nhau, đang hoạt động và có cùng đơn vị gốc để ghép vị.");
+
     public static readonly Error InvalidId =
         new("Promotion.InvalidId", "Mã chương trình không hợp lệ.");
 

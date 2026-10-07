@@ -105,6 +105,16 @@ window.PosPayment = (function () {
         } = window.PosCommon;
 
         let currentPaymentQr = null;
+        let qrPopupHiding = false, queuedQrPopup = null;
+        const qrModalElement = document.getElementById('paymentQrModal');
+        qrModalElement?.addEventListener('hide.bs.modal', () => { qrPopupHiding = true; });
+        qrModalElement?.addEventListener('hidden.bs.modal', () => {
+            qrPopupHiding = false;
+            const queued = queuedQrPopup;
+            queuedQrPopup = null;
+            if (queued && queued === currentPaymentQr && Number(getCurrentDraft()?.orderId) === Number(queued.orderId))
+                showPaymentQrPopup(getQrEls());
+        });
         const qrHistory = window.PosQrHistory?.create({
             getOrderId: () => getCurrentDraft()?.orderId,
             onOpen: qr => {
@@ -2406,6 +2416,22 @@ window.PosPayment = (function () {
             }
         }
 
+        function showPaymentQrPopup(qrEls) {
+            if (!qrEls.modal || !window.bootstrap) return;
+            if (qrPopupHiding) {
+                queuedQrPopup = currentPaymentQr;
+                return;
+            }
+            queuedQrPopup = null;
+            window.bootstrap.Modal.getOrCreateInstance(qrEls.modal).show();
+            setTimeout(() => {
+                if (!qrEls.modal.classList.contains('show')) return;
+                const action = [qrEls.btnConfirmPaid, document.getElementById('btnCheckAcbPayment'), qrEls.btnCancelQr]
+                    .find(button => button && !button.hidden && button.style.display !== 'none' && !button.disabled);
+                (action || qrEls.modal.querySelector('[data-bs-dismiss="modal"]'))?.focus();
+            }, 200);
+        }
+
         function renderPaymentQr(qr) {
             qr = window.PosOffline?.manualQr(qr) || qr;
             const qrEls =
@@ -2519,24 +2545,7 @@ window.PosPayment = (function () {
                     '';
             }
 
-            if (
-                qrEls.modal &&
-                window.bootstrap
-            ) {
-                window.bootstrap.Modal
-                    .getOrCreateInstance(
-                        qrEls.modal
-                    )
-                    .show();
-
-                setTimeout(
-                    function () {
-                        qrEls.btnConfirmPaid
-                            ?.focus();
-                    },
-                    200
-                );
-            }
+            showPaymentQrPopup(qrEls);
 
             if (qr.readOnly) return;
             sendCustomerDisplayEvent(
@@ -2697,24 +2706,32 @@ window.PosPayment = (function () {
                         true,
 
                     onSuccess:
-                        function (qr) {
+                        async function (qr) {
                             try { sessionStorage.removeItem(intentStorageKey); } catch (_) { }
                             if (qr.blockedByPendingQr) {
                                 if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
                                 const saved = qr.savedQr;
+                                let reopened = false;
                                 if (saved?.qr?.orderId === qr.orderId && saved.qr.id === qr.qrId) {
                                     renderPaymentQr({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly,
                                         savedStatus: saved.status, savedMessage: saved.message, pendingWarningMessage: qr.message });
+                                    reopened = true;
+                                } else if (!saved?.qr && qr.qrId) {
+                                    const history = await qrHistory?.refresh();
+                                    if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
+                                    if (history?.orderId === qr.orderId && history.items.some(item => item.qrId === qr.qrId && item.canReopen))
+                                        reopened = await qrHistory.open(qr.qrId, qr.message);
                                 }
+                                if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
                                 showPaymentInlineError(qr.message, 'warning');
-                                if (!saved?.qr) {
+                                if (!reopened) {
                                     const link = document.createElement('a');
                                     link.href = `/admin/acb/payments/orders/${qr.orderId}`;
                                     link.target = '_blank'; link.rel = 'noopener'; link.className = 'd-block mt-2';
                                     link.textContent = 'Mở lịch sử giao dịch để xử lý QR';
                                     ensurePaymentErrorBox()?.appendChild(link);
                                 }
-                                qrHistory?.refresh();
+                                if (saved?.qr) qrHistory?.refresh();
                                 return;
                             }
                             renderPaymentQr(

@@ -26,6 +26,7 @@ public sealed class SqlServerSchemaSnapshotReader
         await ReadForeignKeysAsync(tables, ct);
         await ReadIndexesAsync(tables, ct);
         await ReadCheckConstraintsAsync(tables, ct);
+        await ReadTriggersAsync(tables, ct);
         var sequences = await ReadSequencesAsync(ct);
 
         return DatabaseSchemaCanonicalizer.WithFingerprint(
@@ -34,6 +35,33 @@ public sealed class SqlServerSchemaSnapshotReader
                 .Select(table => table.ToSchema())
                 .ToArray(),
             sequences);
+    }
+
+    private async Task ReadTriggersAsync(
+        IDictionary<DatabaseObjectIdentity, MutableTable> tables, CancellationToken ct)
+    {
+        const string sql = """
+            SELECT s.name, t.name, tr.name, m.definition, tr.is_disabled,
+                   tr.is_not_for_replication, m.uses_ansi_nulls, m.uses_quoted_identifier
+            FROM sys.triggers tr
+            INNER JOIN sys.tables t ON t.object_id=tr.parent_id
+            INNER JOIN sys.schemas s ON s.schema_id=t.schema_id
+            LEFT JOIN sys.sql_modules m ON m.object_id=tr.object_id
+            WHERE tr.is_ms_shipped=0 AND tr.parent_class=1;
+            """;
+        await using var command = CreateCommand(sql);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var identity = new DatabaseObjectIdentity(reader.GetString(0), reader.GetString(1));
+            if (tables.TryGetValue(identity, out var table))
+                table.Triggers.Add(new DatabaseTriggerSchema(
+                    DatabaseSchemaNormalization.NormalizeIdentifier(reader.GetString(2)),
+                    DeliverySchemaSqlCatalog.NormalizeDefinition(reader.IsDBNull(3) ? "" : reader.GetString(3)),
+                    reader.GetBoolean(4), reader.GetBoolean(5),
+                    !reader.IsDBNull(6) && reader.GetBoolean(6),
+                    !reader.IsDBNull(7) && reader.GetBoolean(7)));
+        }
     }
 
     private async Task<Dictionary<DatabaseObjectIdentity, MutableTable>>
@@ -713,6 +741,7 @@ public sealed class SqlServerSchemaSnapshotReader
         public List<DatabaseIndexSchema> Indexes { get; } = [];
         public List<DatabaseCheckConstraintSchema> CheckConstraints { get; } =
             [];
+        public List<DatabaseTriggerSchema> Triggers { get; } = [];
 
         public DatabaseTableSchema ToSchema()
             => new(
@@ -734,7 +763,7 @@ public sealed class SqlServerSchemaSnapshotReader
                     .OrderBy(
                         check => check.Name,
                         StringComparer.Ordinal)
-                    .ToArray());
+                    .ToArray()) { Triggers = Triggers.OrderBy(x => x.Name, StringComparer.Ordinal).ToArray() };
     }
 
     private readonly record struct StoreTypeFacets(

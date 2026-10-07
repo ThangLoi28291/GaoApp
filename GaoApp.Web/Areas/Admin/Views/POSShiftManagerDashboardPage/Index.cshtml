@@ -359,10 +359,7 @@
 
 <div class="manager-dashboard">
     @Html.AntiForgeryToken()
-    <div class="d-flex flex-wrap gap-2 mb-3">
-        <a href="/admin/pos-shift/handover-slips" class="btn btn-outline-primary">Tạo / quản lý phiếu nhận ca</a>
-        <a href="/admin/pos-shift" class="btn btn-outline-secondary">Nhận / chốt ca</a>
-    </div>
+    <partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
 
     <div class="manager-filter-card">
         <div class="manager-filter-grid">

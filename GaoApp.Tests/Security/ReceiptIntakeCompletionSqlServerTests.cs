@@ -20,6 +20,8 @@ public sealed class ReceiptIntakeCompletionSqlServerTests
     [Fact]
     public async Task Draft_survives_reload_keeps_original_then_approval_uses_employee_code_and_corrected_packing_atomically()
     {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(6, 1))
+            throw new PlatformNotSupportedException("Receipt completion photo fixtures require Windows System.Drawing.");
         await using var app = await FullApplicationFixture.StartAsync(); var store = app.Stores[0];
         var seed = await ReceiptIntakeSupplierSqlServerTests.SeedAsync(app, store);
         int unit;

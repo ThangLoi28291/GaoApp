@@ -1,0 +1,9 @@
+@{ ViewData["Title"] = "Đơn giao hàng"; Layout = "_ContentNavbarLayout"; }
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" /> }
+<div class="delivery-workspace" data-actor="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)">
+    <div class="delivery-heading"><div><p class="delivery-eyebrow">GIAO HÀNG · SOẠN HÀNG</p><h2>Soạn đúng hàng, rõ từng đơn</h2><p>Quét QR hoặc nhập mã đơn. Nhận soạn, ghi lượng thực có và chuyển quản lý xử lý hàng thiếu.</p></div><a class="btn btn-outline-primary" href="/admin/pos">Về POS</a></div>
+    <form id="deliverySearch" class="delivery-search"><label for="deliveryKey">Mã đơn / QR</label><div class="d-flex gap-2"><input id="deliveryKey" class="form-control" placeholder="GH-… hoặc đường dẫn QR" autocomplete="off" required maxlength="2048" /><button class="btn btn-primary">Tra đơn</button></div></form>
+    <div id="deliveryPageMessage" class="my-3" role="status" aria-live="polite"></div>
+    <div class="delivery-columns"><aside class="delivery-panel delivery-list-panel"><h4>Đơn mới nhất</h4><button type="button" id="deliveryRefreshList" class="delivery-link-button">Làm mới danh sách</button><div id="deliveryRecent"></div></aside><section id="deliveryDetail" class="delivery-panel" hidden aria-label="Chi tiết soạn hàng"></section></div>
+</div>
+@section PageScripts { <script src="~/Admin/js/delivery.page.js" asp-append-version="true"></script> }

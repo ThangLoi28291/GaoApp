@@ -8,6 +8,7 @@ using GaoApp.Application.Common.Security;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Tests.Security;
+using GaoApp.Tests.Reports;
 using Microsoft.EntityFrameworkCore;
 
 // This standalone probe uses the existing disposable fixture, never a configured application database.
@@ -19,15 +20,282 @@ async Task<object> Call(object? target, Type type, string method, params object[
     await task; return task.GetType().GetProperty("Result")!.GetValue(task)!;
 }
 var type = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.FullApplicationFixture")!;
-var fixture = await Call(null, type, args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
+var fixture = await Call(null, type, args.Contains("--delivery-picking") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
 await using var cleanup = (IAsyncDisposable)fixture;
 var store = ((IEnumerable)Read(fixture, "Stores")).Cast<object>().First();
-var account = args.Contains("--receipt-templates") || args.Contains("--kiosk")
+var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports")
     ? await Call(null, typeof(PosShiftAdministrationSqlServerTests), "AddAdminAsync", fixture, store)
     : await Call(fixture, type, "AddAccountAsync", store, new[] { "*" });
 var client = await Call(fixture, type, "LoginAsync", account);
 using var clientCleanup = (IDisposable)client;
 var http = (HttpClient)Read(client, "Http");
+if (args.Contains("--delivery-picking"))
+{
+    var pickingDatabase = Read(fixture, "Database");
+    var pickingStoreId = (int)Read(store, "StoreId");
+    var pickingWarehouseId = (int)Read(store, "WarehouseId");
+    AppDbContext PickingContext() => (AppDbContext)pickingDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(pickingDatabase, new object?[] { pickingStoreId, null })!;
+    var picker = await Call(fixture, type, "AddAccountAsync", store, new[] { PermissionCodes.Delivery.View, PermissionCodes.Delivery.Pick });
+    int originalVariantId = (int)Read(store, "VariantId"), replacementVariantId, missingVariantId;
+    await using (var seed = PickingContext())
+    {
+        var original = await seed.ProductVariants.SingleAsync(x => x.Id == originalVariantId);
+        original.Price = 80; original.ProductVariantName = "Gạo gốc <script>alert(1)</script>";
+        var replacement = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
+            Sku = "D04-REPLACEMENT", ProductVariantName = "Gạo thay thế", Price = 120, IsActive = true };
+        var missing = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
+            Sku = "D04-MISSING", ProductVariantName = "Hàng hết", Price = 30, IsActive = true };
+        seed.AddRange(replacement, missing); await seed.SaveChangesAsync();
+        replacementVariantId = replacement.Id; missingVariantId = missing.Id;
+    }
+    async Task<JsonElement> PickingPost(string path, object? body = null)
+    {
+        using var response = body is null ? await http.PostAsync(path, null) : await http.PostAsJsonAsync(path, body);
+        var text = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(path + ": " + (int)response.StatusCode + " " + text);
+        return JsonDocument.Parse(text).RootElement.Clone();
+    }
+    (await http.PostAsJsonAsync("/admin/pos/shift/open", new { openingCash = 0, warehouseId = Read(store, "WarehouseId") })).EnsureSuccessStatusCode();
+    async Task<int> PickingDraft(int variantId, string quantity)
+    {
+        var draft = await PickingPost("/admin/pos/draft"); var id = draft.GetProperty("orderId").GetInt32();
+        await PickingPost($"/admin/pos/{id}/items?variantId={variantId}&qty={quantity}"); return id;
+    }
+    async Task<JsonElement> PickingTransfer()
+    {
+        var snapshot = await http.GetFromJsonAsync<JsonElement>("/admin/api/deliveries/current-cart");
+        return await PickingPost("/admin/api/deliveries/from-current-cart", new {
+            clientRequestId = Guid.NewGuid(), sourceCartId = snapshot.GetProperty("sourceCartId").GetInt32(),
+            expectedVersion = snapshot.GetProperty("version").GetString(), expectedFingerprint = snapshot.GetProperty("fingerprint").GetString(),
+            recipientName = "Khách D04 <img src=x onerror=alert(1)>", recipientPhone = "0901234567",
+            recipientAddress = "Địa chỉ thử nghiệm", note = "Chỉ dữ liệu fixture"
+        });
+    }
+    var mainCart = await PickingDraft(originalVariantId, "10");
+    await PickingPost($"/admin/pos/{mainCart}/items?variantId={missingVariantId}&qty=1");
+    var main = (await PickingTransfer()).GetProperty("delivery").Clone();
+    var exactCart = await PickingDraft(originalVariantId, "1");
+    await using (var seed = PickingContext())
+    {
+        var cart = await seed.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == exactCart);
+        var line = cart.Lines.Single(); line.Quantity = 99999999999999.9999m; line.BaseQuantity = line.Quantity;
+        line.Multiplier = 1; line.UnitPrice = .01m; line.OriginalUnitPrice = .01m;
+        line.LineTotal = GaoApp.Domain.Delivery.DeliveryValues.PricedAmount(line.Quantity, line.UnitPrice);
+        cart.Subtotal = line.LineTotal; cart.GrandTotal = line.LineTotal; cart.BalanceDue = line.LineTotal;
+        await seed.SaveChangesAsync();
+    }
+    var exact = (await PickingTransfer()).GetProperty("delivery").Clone();
+    var handedCart = await PickingDraft(originalVariantId, "1");
+    var handed = (await PickingTransfer()).GetProperty("delivery").Clone();
+    await using (var seed = PickingContext())
+    {
+        var delivery = await seed.DeliveryOrders.SingleAsync(x => x.Id == handed.GetProperty("id").GetInt32());
+        // Fixture-only downstream state to prove D04 guards; no operational handover or inventory executor is invoked.
+        delivery.State = GaoApp.Domain.Delivery.DeliveryState.HandedOver; await seed.SaveChangesAsync();
+    }
+    var legacyCartId = await PickingDraft(originalVariantId, "1");
+    int legacyId;
+    await using (var seed = PickingContext())
+    {
+        var source = await seed.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == legacyCartId);
+        var sourceLine = source.Lines.Single();
+        var owner = await seed.Warehouses.Where(x => x.Id == pickingWarehouseId).Select(x => x.LegalEntityId).SingleAsync();
+        var legacy = new GaoApp.Domain.Delivery.DeliveryOrder {
+            StoreId = pickingStoreId, Code = "GH-D04-LEGACY", LookupToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)),
+            SourceCartId = source.Id, SourceWarehouseId = (int)Read(store, "WarehouseId"), SourceLegalEntityId = owner,
+            CreatedTerminalId = (int)Read(store, "TerminalId"), CreatedShiftId = source.POSShiftId, CreatedByUserId = (int)Read(account, "UserId"),
+            RecipientName = "Hồ sơ Draft lịch sử", RecipientPhone = "0901234567", RecipientAddress = "Fixture", QuotedTotal = source.GrandTotal
+        };
+        legacy.Lines.Add(new GaoApp.Domain.Delivery.DeliveryOrderLine {
+            StoreId = pickingStoreId, SourceCartId = source.Id, SourceOrderLineId = sourceLine.Id, VariantId = sourceLine.VariantId,
+            ItemName = sourceLine.ItemName, UnitName = sourceLine.SellingUnitName ?? sourceLine.UnitName ?? "", BaseUnitName = sourceLine.BaseUnitName ?? "",
+            OrderedQuantity = sourceLine.Quantity, BaseMultiplier = sourceLine.Multiplier, UnitPrice = sourceLine.UnitPrice,
+            Gross = sourceLine.LineTotal, Net = sourceLine.LineTotal
+        });
+        seed.Add(legacy); await seed.SaveChangesAsync(); legacyId = legacy.Id;
+    }
+    var pickingSource = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var pickingEvidence = Environment.GetEnvironmentVariable("GAO_DELIVERY_PICKING_TEST_OUTPUT") ??
+        Path.Combine(pickingSource, "TestResults", "delivery-picking");
+    Directory.CreateDirectory(pickingEvidence);
+    var pickingStart = new ProcessStartInfo("node") { WorkingDirectory = pickingSource, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    pickingStart.Environment["NODE_PATH"] = Path.Combine(pickingSource, "Logs", "pos-offline-browser-deps", "node_modules");
+    pickingStart.ArgumentList.Add(Path.Combine(pickingSource, "GaoApp.Tests.Browser", "delivery-picking.browser.cjs"));
+    using var pickingProbe = Process.Start(pickingStart)!;
+    await pickingProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"), actorId = Read(account, "UserId"),
+        pickerUser = Read(picker, "Name"), pickerPassword = Read(picker, "Password"), pickerId = Read(picker, "UserId"),
+        terminalId = Read(store, "TerminalId"), main, exact, handed, legacyId, replacementVariantId,
+        evidenceDirectory = pickingEvidence
+    }));
+    pickingProbe.StandardInput.Close(); using var pickingTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await pickingProbe.WaitForExitAsync(pickingTimeout.Token); } catch { if (!pickingProbe.HasExited) pickingProbe.Kill(true); throw; }
+    if (pickingProbe.ExitCode != 0) throw new InvalidOperationException("D04 picking browser failed.");
+    var probeResult = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(pickingEvidence, "browser-checks.json")));
+    var ackIds = probeResult.RootElement.GetProperty("commandIds").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).Distinct().ToArray();
+    await using var verify = PickingContext();
+    var operationalIds = new[] { main.GetProperty("id").GetInt32(), exact.GetProperty("id").GetInt32(), handed.GetProperty("id").GetInt32() };
+    var orders = await verify.DeliveryOrders.Where(x => operationalIds.Contains(x.Id)).ToListAsync();
+    var expectedEvents = orders.Sum(x => x.Revision);
+    if (await verify.DeliveryRevisions.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != expectedEvents ||
+        await verify.DeliveryOutboxMessages.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != expectedEvents ||
+        await verify.DeliveryCommandReceipts.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != 3 + ackIds.Length ||
+        await verify.DeliveryCommandReceipts.CountAsync(x => ackIds.Contains(x.ClientRequestId)) != ackIds.Length)
+        throw new InvalidOperationException("D04 revisions/receipts/outbox did not match actual distinct committed intents.");
+    if (await verify.InventoryTransactions.CountAsync() != 1 || await verify.InventoryReservations.AnyAsync() ||
+        await verify.DeliveryJournalEntries.AnyAsync() || await verify.DeliveryDispatchCostFragments.AnyAsync() ||
+        await verify.OrderPayments.AnyAsync() || await verify.Orders.AnyAsync(x => x.Status == OrderStatus.Completed))
+        throw new InvalidOperationException("D04 browser changed stock or finance.");
+    await File.WriteAllTextAsync(Path.Combine(pickingEvidence, "sql-effects.json"), JsonSerializer.Serialize(new {
+        distinctPickingIntents = ackIds.Length, expectedEvents, revisions = expectedEvents, receipts = 3 + ackIds.Length,
+        openingStockOnly = true, noReservations = true, noPayments = true, noCompletedSale = true, fixtureOnly = true
+    }, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("D04 PICKING BROWSER + EXACT SQL EFFECTS PASS — disposable fixture only."); return;
+}
+if (args.Contains("--delivery"))
+{
+    var deliveryDatabase = Read(fixture, "Database");
+    var deliveryVariantIds = new List<int>();
+    await using (var seedDb = (AppDbContext)deliveryDatabase.GetType().GetMethod("CreateTenantContext", flags)!.Invoke(deliveryDatabase, new object?[]{Read(store,"StoreId"),null})!)
+    {
+        var templateId=(int)Read(store,"VariantId");
+        var template = await seedDb.ProductVariants.SingleAsync(x=>x.Id==templateId);
+        for(var i=1;i<=28;i++) {
+            var variant = new ProductVariant { StoreId=(int)Read(store,"StoreId"), ProductId=template.ProductId, Sku="D03-LONG-"+i, ProductVariantName="Hàng thử A5 số "+i+" — mô tả dài để kiểm tra xuống dòng", Price=20, CostPrice=10, IsActive=true };
+            seedDb.Add(variant); await seedDb.SaveChangesAsync(); deliveryVariantIds.Add(variant.Id);
+            seedDb.InventoryBalances.Add(new(){StoreId=variant.StoreId,WarehouseId=(int)Read(store,"WarehouseId"),ProductVariantId=variant.Id,OnHandQty=100});
+        }
+        await seedDb.SaveChangesAsync();
+    }
+    var deliveryRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var deliveryStart = new ProcessStartInfo("node") { WorkingDirectory = deliveryRoot, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    deliveryStart.Environment["NODE_PATH"] = Path.Combine(deliveryRoot, "Logs", "pos-offline-browser-deps", "node_modules");
+    deliveryStart.ArgumentList.Add(Path.Combine(deliveryRoot, "GaoApp.Tests.Browser", "delivery.browser.cjs"));
+    using var probe = Process.Start(deliveryStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"),
+        terminalId = Read(store, "TerminalId"), warehouseId = Read(store, "WarehouseId"), variantId = Read(store, "VariantId"),
+        longVariantIds = deliveryVariantIds,
+        evidenceDirectory = Environment.GetEnvironmentVariable("GAO_DELIVERY_TEST_OUTPUT")
+    }));
+    probe.StandardInput.Close(); using var deliveryTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+    try { await probe.WaitForExitAsync(deliveryTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new Exception("Delivery browser probe failed.");
+    await using var deliveryDb = (AppDbContext)deliveryDatabase.GetType().GetMethod("CreateTenantContext", flags)!.Invoke(deliveryDatabase, new object?[]{Read(store,"StoreId"),null})!;
+    if (await deliveryDb.DeliveryOrders.CountAsync() != 2 || await deliveryDb.DeliveryRevisions.CountAsync() != 2 ||
+        await deliveryDb.POSAuditLogs.CountAsync(x=>x.Action=="DELIVERY_CREATED") != 2 || await deliveryDb.OrderPayments.AnyAsync() ||
+        await deliveryDb.Orders.CountAsync(x=>x.Status==OrderStatus.Completed) != 0 || await deliveryDb.InventoryTransactions.CountAsync()!=1)
+        throw new Exception("Delivery browser SQL effects were not exactly two transfers and unchanged opening stock.");
+    Console.WriteLine("DELIVERY BROWSER + SQL EFFECTS PASS — disposable fixture only."); return;
+}
+if (args.Contains("--store-monitor"))
+{
+    var monitorTerminalIds = new List<int> { (int)Read(store, "TerminalId") };
+    var monitorDatabase = Read(fixture, "Database");
+    var monitorStaff = new List<object> { account };
+    for (var staffIndex = 0; staffIndex < 2; staffIndex++)
+        monitorStaff.Add(await Call(fixture, type, "AddAccountAsync", store, new[] { "*" }));
+    int monitorLegalEntityId; var monitorLabelTaskIds = new List<int>();
+    var monitorWarehouseId = (int)Read(store, "WarehouseId");
+    await using (var monitorDb = (AppDbContext)monitorDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(monitorDatabase, new object?[] { Read(store, "StoreId"), null })!)
+    {
+        monitorLegalEntityId = await monitorDb.Warehouses.Where(x => x.Id == monitorWarehouseId).Select(x => x.LegalEntityId).SingleAsync();
+        for (var staffIndex = 0; staffIndex < monitorStaff.Count; staffIndex++)
+        {
+            var staffId = (int)Read(monitorStaff[staffIndex], "UserId");
+            (await monitorDb.Users.SingleAsync(x => x.Id == staffId)).FullName = new[] { "Lan Anh", "Hoàng Nam", "Mai Hương" }[staffIndex];
+        }
+        for (var labelIndex = 1; labelIndex <= 2; labelIndex++)
+        {
+            var receipt = new StockDocument { StoreId=(int)Read(store, "StoreId"), WarehouseId=(int)Read(store, "WarehouseId"), DocumentNo=$"MONITOR-LABEL-{labelIndex}" };
+            monitorDb.StockDocuments.Add(receipt); await monitorDb.SaveChangesAsync();
+            var labelTask = new ProductLabelTask { StoreId=receipt.StoreId, StockDocumentId=receipt.Id, DocumentNo=receipt.DocumentNo };
+            monitorDb.Add(labelTask); await monitorDb.SaveChangesAsync(); monitorLabelTaskIds.Add(labelTask.Id);
+        }
+        for (var counter = 2; counter <= 3; counter++)
+        {
+            var terminal = new POSTerminal { StoreId = (int)Read(store, "StoreId"), Code = $"E2E-0{counter}", Name = $"Quầy 0{counter}" };
+            monitorDb.POSTerminals.Add(terminal); await monitorDb.SaveChangesAsync(); monitorTerminalIds.Add(terminal.Id);
+        }
+    }
+    var monitorAccount = await Call(fixture, type, "AddAccountAsync", store, new[] { PermissionCodes.Admin.StoreMonitorView });
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var monitorStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    monitorStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    monitorStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "store-monitor.browser.cjs"));
+    using var probe = Process.Start(monitorStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new
+    {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"),
+        monitorUser = Read(monitorAccount, "Name"), monitorPassword = Read(monitorAccount, "Password"),
+        terminalId = Read(store, "TerminalId"), terminalIds = monitorTerminalIds,
+        warehouseId = Read(store, "WarehouseId"), variantId = Read(store, "VariantId"),
+        legalEntityId = monitorLegalEntityId, labelTaskIds = monitorLabelTaskIds,
+        staffAccounts = monitorStaff.Select(staff => new { user=Read(staff,"Name"), password=Read(staff,"Password") }),
+        evidenceDirectory = Environment.GetEnvironmentVariable("GAO_MONITOR_TEST_OUTPUT")
+    }));
+    probe.StandardInput.Close(); using var monitorTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+    try { await probe.WaitForExitAsync(monitorTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new Exception("Store monitor browser failed.");
+    Console.WriteLine("STORE MONITOR BROWSER PASS — three counters on one account, real operations and separate UI fixtures, disposable SQL only."); return;
+}
+if (args.Contains("--operations-reports"))
+{
+    var seed = await Call(null, typeof(OperationsReportSqlServerTests), "SeedBrowserAsync", fixture, store, client);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var operationsStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    operationsStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    operationsStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "operations-reports.browser.cjs"));
+    using var probe = Process.Start(operationsStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { baseUrl = $"http://{Read(store,"Host")}:{((Uri)Read(fixture,"Address")).Port}", user = Read(account,"Name"), password = Read(account,"Password"), terminalId = Read(store,"TerminalId"), day = Read(seed,"Day") }));
+    probe.StandardInput.Close(); using var operationsTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+    try { await probe.WaitForExitAsync(operationsTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new Exception("Operations reports browser failed.");
+    Console.WriteLine("OPERATIONS REPORT BROWSER PASS — disposable SQL only."); return;
+}
+if (args.Contains("--management-reports"))
+{
+    var reportDatabase=Read(fixture,"Database"); var storeId=(int)Read(store,"StoreId");
+    int wholesaleId,retailId;
+    await using(var reportDb=(AppDbContext)reportDatabase.GetType().GetMethod("CreateTenantContext",flags)!.Invoke(reportDatabase,new object?[]{storeId,null})!)
+    {
+        var wholesale=new Customer{StoreId=storeId,Name="Đại lý Minh An",PriceTier="WHOLESALE"};
+        var retail=new Customer{StoreId=storeId,Name="Nguyễn Thị Lan",PriceTier="RETAIL"};
+        reportDb.Customers.AddRange(wholesale,retail);await reportDb.SaveChangesAsync();wholesaleId=wholesale.Id;retailId=retail.Id;
+        var product=await reportDb.Products.SingleAsync();product.Name="Gạo ST25 · túi 5 kg";await reportDb.SaveChangesAsync();
+    }
+    (await http.PostAsJsonAsync("/admin/pos/shift/open",new{openingCash=0,warehouseId=Read(store,"WarehouseId")})).EnsureSuccessStatusCode();
+    for(var i=0;i<8;i++)
+    {
+        var customer=i%3==0?wholesaleId:retailId;
+        var draft=await (await http.PostAsync("/admin/pos/draft?customerId="+customer,null)).Content.ReadFromJsonAsync<JsonElement>();var id=draft.GetProperty("orderId").GetInt32();
+        var qty=i+1;
+        (await http.PostAsync($"/admin/pos/{id}/items?variantId={Read(store,"VariantId")}&qty={qty}",null)).EnsureSuccessStatusCode();
+        (await http.PostAsJsonAsync($"/admin/pos/{id}/payments",new{clientRequestId=Guid.NewGuid(),amount=qty*20,method=0})).EnsureSuccessStatusCode();
+        using var finalize=await http.PostAsync($"/admin/pos/{id}/finalize",null);if(!finalize.IsSuccessStatusCode)throw new Exception(await finalize.Content.ReadAsStringAsync());
+    }
+    var day=TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time")).Date;
+    foreach(var expense in new[]{new{Name="Mặt bằng tháng này",Category="rent",Amount=100m},new{Name="Giao hàng",Category="transport",Amount=45m},new{Name="Điện & nước",Category="utilities",Amount=35m}})
+    {
+        using var created=await http.PostAsJsonAsync("/admin/reports/expenses",new{clientRequestId=Guid.NewGuid(),expense.Name,expense.Category,expense.Amount,recognitionFrom=day,recognitionTo=day,isPaid=true});created.EnsureSuccessStatusCode();
+        var row=await created.Content.ReadFromJsonAsync<JsonElement>();(await http.PostAsJsonAsync($"/admin/reports/expenses/{row.GetProperty("id").GetInt32()}/confirm",new{rowVersion=row.GetProperty("rowVersion").GetString()})).EnsureSuccessStatusCode();
+    }
+    var source=(string)type.GetMethod("SourceRoot",flags)!.Invoke(null,null)!;
+    var reportStart=new ProcessStartInfo("node"){WorkingDirectory=source,UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true};
+    reportStart.Environment["NODE_PATH"]=Path.Combine(source,"Logs","pos-offline-browser-deps","node_modules");
+    reportStart.ArgumentList.Add(Path.Combine(source,"GaoApp.Tests.Browser","management-reports.browser.cjs"));
+    using var probe=Process.Start(reportStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new{baseUrl=$"http://{Read(store,"Host")}:{((Uri)Read(fixture,"Address")).Port}",user=Read(account,"Name"),password=Read(account,"Password"),terminalId=Read(store,"TerminalId"),day=day.ToString("yyyy-MM-dd")}));
+    probe.StandardInput.Close();using var reportTimeout=new CancellationTokenSource(TimeSpan.FromMinutes(4));
+    try{await probe.WaitForExitAsync(reportTimeout.Token);}catch{if(!probe.HasExited)probe.Kill(true);throw;}
+    if(probe.ExitCode!=0)throw new Exception("Management report browser failed.");
+    Console.WriteLine("MANAGEMENT REPORT BROWSER PASS — disposable SQL only.");return;
+}
 if (args.Contains("--input-invoice-library"))
 {
     var seedTask = (Task)typeof(InputInvoiceCatalogSqlServerTests).GetMethod("SeedAsync", flags)!.Invoke(null, new[] { fixture, store, (object)8 })!;

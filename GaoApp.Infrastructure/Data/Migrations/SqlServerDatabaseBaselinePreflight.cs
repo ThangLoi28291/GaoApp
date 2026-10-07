@@ -174,13 +174,15 @@ public sealed class SqlServerDatabaseBaselinePreflight
                     expectedManifest.Sequences.Select(
                         sequence => sequence.Identity.Schema))
                 .ToHashSet(StringComparer.Ordinal);
+            var expectedTriggers = expectedManifest.Tables.SelectMany(table => table.Triggers
+                .Select(trigger => new DatabaseObjectIdentity(table.Identity.Schema, trigger.Name))).ToHashSet();
             var unexpectedStructuralObjectCount =
                 inventory.Views.Count
                 + inventory.Procedures.Count
                 + inventory.Functions.Count
                 + inventory.Synonyms.Count
                 + inventory.UserDefinedTypes.Count
-                + inventory.OtherStructuralObjects.Count
+                + inventory.OtherStructuralObjects.Count(x => !expectedTriggers.Contains(x))
                 + inventory.UserSchemas.Count(
                     schema => !expectedSchemas.Contains(schema));
 
@@ -265,7 +267,8 @@ public sealed class SqlServerDatabaseBaselinePreflight
             mismatches.ForeignKeys,
             mismatches.Indexes,
             mismatches.CheckConstraints,
-            mismatches.Sequences
+            mismatches.Sequences,
+            mismatches.Triggers
         }.Count(count => count > 0);
 
     private static DatabaseCompatibilityResult Allowed(

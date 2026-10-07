@@ -128,6 +128,54 @@ public sealed class ReturnableValuationFragmentServiceTests
         Func<Task> costRead = () => service.GetForOrderLineAsync(700, 701);
         await costRead.Should().ThrowAsync<InvalidOperationException>(
             "missing master linkage must not silently drop the root or produce an empty successful cost result");
+
+        var readiness = await service.GetRestockReadinessAsync(700, 701);
+        readiness.CanRestock.Should().BeFalse();
+        readiness.BlockCode.Should().Be("POS_RETURN_COST_UNAVAILABLE");
+        readiness.BlockReason.Should().Be("Dòng hàng #701 chưa thể nhập lại kho vì lịch sử giá vốn chưa đủ hoặc chưa khớp.");
+        readiness.ActionHint.Should().Be("Quản lý cần kiểm tra phiếu nhập, tồn đầu kỳ và đối soát giá vốn của dòng hàng này. Sau khi xử lý, tải lại đơn để trả hàng.");
+    }
+
+    [Fact]
+    public async Task Over_reversed_quantity_readiness_hides_internal_cost_details()
+    {
+        await using var context = CreateContext();
+        context.InventoryValuationEntries.Add(new InventoryValuationEntry
+        {
+            Id = 100, StoreId = 1, InventoryTransactionId = 501, WarehouseId = 11, ProductVariantId = 99,
+            EntryType = InventoryValuationEntryType.Outbound, ReferenceType = InventoryReferenceType.Order,
+            ReferenceId = "700", ReferenceLineId = 701, ReferenceSubKey = "SALE-SOURCE",
+            Quantity = -5m, UnitCost = 10m, Amount = -50m, OccurredAtUtc = DateTime.UtcNow,
+            InventoryTransaction = new InventoryTransaction
+            {
+                Id = 501, StoreId = 1, WarehouseId = 11, ProductVariantId = 99,
+                TransactionType = InventoryTransactionType.SaleIssue,
+                ReferenceType = InventoryReferenceType.Order, ReferenceId = "700", ReferenceLineId = 701
+            },
+            RowVersion = new byte[8]
+        });
+        context.OrderLegalEntityAllocationReversals.Add(new OrderLegalEntityAllocationReversal
+        {
+            StoreId = 1, OrderId = 700, OrderLineId = 701, OrderLegalEntityAllocationId = 900,
+            LegalEntityId = 1, WarehouseId = 11, ProductVariantId = 99, SourceValuationEntryId = 100,
+            ReversalType = OrderLegalEntityReversalType.ReturnNoRestock,
+            BaseQuantity = 6m, FinancialAmount = 60m, OccurredAtUtc = DateTime.UtcNow, RowVersion = new byte[8]
+        });
+        await context.SaveChangesAsync();
+        var service = new ReturnableValuationFragmentService(
+            new InventoryValuationEntryRepository(context),
+            new OrderLegalEntityAllocationReversalRepository(context));
+        Func<Task> costRead = () => service.GetForOrderLineAsync(700, 701);
+        var costFailure = await costRead.Should().ThrowExactlyAsync<InvalidOperationException>()
+            .WithMessage("Source valuation quantity is over-reversed.");
+
+        var readiness = await service.GetRestockReadinessAsync(700, 701);
+
+        readiness.CanRestock.Should().BeFalse();
+        readiness.BlockCode.Should().Be("POS_RETURN_COST_UNAVAILABLE");
+        readiness.BlockReason.Should().Be("Dòng hàng #701 chưa thể nhập lại kho vì lịch sử giá vốn chưa đủ hoặc chưa khớp.");
+        readiness.BlockReason.Should().NotContain(costFailure.Which.Message);
+        readiness.ActionHint.Should().Be("Quản lý cần kiểm tra phiếu nhập, tồn đầu kỳ và đối soát giá vốn của dòng hàng này. Sau khi xử lý, tải lại đơn để trả hàng.");
     }
 
     private static InMemoryAppDbContext CreateContext()

@@ -62,7 +62,7 @@
     @await Html.PartialAsync("Sections/_ScriptsIncludes")
 </head>
 
-<body>
+<body data-store-activity-ticket="@ViewData["StoreActivityTicket"]">
     <!-- Layout Content -->
     @RenderBody()
     @await Component.InvokeAsync("EmployeeAccount")
@@ -76,6 +76,10 @@
     <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
     <script src="~/Admin/js/gaoapp.ui.js" asp-append-version="true"></script>
     <script src="~/Admin/js/employee-account.js" asp-append-version="true"></script>
+    @if (ViewData["StoreActivityTicket"] is string)
+    {
+        <script src="~/Admin/js/store-activity.presence.js" asp-append-version="true"></script>
+    }
 
     <!-- Vendor Scripts -->
     @RenderSection("VendorScripts", required: false)

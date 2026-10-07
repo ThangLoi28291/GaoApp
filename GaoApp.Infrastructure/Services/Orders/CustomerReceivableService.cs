@@ -140,9 +140,11 @@ public sealed partial class CustomerReceivableService(AppDbContext db, IAppUnitO
         }
         if (request.Method == PaymentMethod.Cash)
         {
+            // Persist the receipt identity inside the same transaction before attaching its cash mirror.
+            await db.SaveChangesAsync(ct);
             shift.AddCashIn(request.Amount);
             db.POSShiftCashTransactions.Add(new() { StoreId = StoreId, POSShiftId = shift.Id, Type = POSShiftCashTransactionType.CashIn,
-                Amount = request.Amount, Reason = "Thu công nợ khách hàng", Note = $"Khách #{request.CustomerId}; mã thu {request.ClientRequestId}", CreatedByUserId = pos.UserId.Value });
+                Amount = request.Amount, Reason = "Thu công nợ khách hàng", Note = $"Khách #{request.CustomerId}; mã thu {request.ClientRequestId}", CreatedByUserId = pos.UserId.Value, CustomerDebtReceiptId = receipt.Id });
         }
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);

@@ -6,9 +6,11 @@
     ViewData["container"] = "container-fluid";
     ViewData["menuFixed"] = "layout-menu-fixed";
     Layout = "_ContentNavbarLayout";
+    var canManagement = (await ProfitNavigationAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.View)).Succeeded;
 }
 
 @section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/reports/management-report.css" asp-append-version="true" />
     <link rel="stylesheet"
           href="~/vendor/libs/apex-charts/apex-charts.css"
           asp-append-version="true" />
@@ -18,6 +20,8 @@
 }
 
 @section header {
+    @if (!canManagement)
+    {
     <div data-gao-ui="modern" class="w-100">
         <div class="gds-page-header gds-page-header--compact sales-report-page-header">
             <div class="gds-page-header__main">
@@ -47,8 +51,16 @@
             </div>
         </div>
     </div>
+    }
 }
 
+@if (canManagement)
+{
+    ViewData["ReportView"] = "overview";
+    @await Html.PartialAsync("~/Areas/Admin/Views/Shared/_ManagementReportWorkspace.cshtml")
+}
+else
+{
 <div class="sales-report-page gds-page"
      data-sales-executive-report
      data-data-url="@Url.Action("GetData", "SalesExecutiveReport", new { area = "Admin" })"
@@ -543,12 +555,20 @@
     </div>
 </div>
 
+}
 @section VendorScripts {
     <script src="~/vendor/libs/apex-charts/apexcharts.js"
             asp-append-version="true"></script>
 }
 
 @section PageScripts {
+    @if (canManagement)
+    {
+        <script src="~/Admin/js/reports/management-report.page.js" asp-append-version="true"></script>
+    }
+    else
+    {
     <script src="~/Admin/js/reports/sales-report.page.js"
             asp-append-version="true"></script>
+    }
 }

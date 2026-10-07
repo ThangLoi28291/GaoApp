@@ -40,5 +40,6 @@ public class POSShiftCashTransactionConfiguration : IEntityTypeConfiguration<POS
         builder.HasIndex(x => new { x.StoreId, x.Type });
 
         builder.HasIndex(x => x.CreatedAtUtc);
+        builder.HasOne<CustomerDebtReceipt>().WithMany().HasForeignKey(x => x.CustomerDebtReceiptId).OnDelete(DeleteBehavior.Restrict);
     }
 }

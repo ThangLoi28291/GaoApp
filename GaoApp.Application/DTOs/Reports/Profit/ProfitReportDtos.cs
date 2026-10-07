@@ -76,6 +76,9 @@ public sealed class ProfitReportResponseDto
 // Detached evidence transferred only between repository and application. Never serialized by controllers.
 public sealed class ProfitSourceSnapshot
 {
+    public List<GaoApp.Application.DTOs.Reports.ReportCustomerInfo> Customers { get; set; } = [];
+    public List<GaoApp.Application.DTOs.Reports.ReportProductInfo> Products { get; set; } = [];
+    public List<OperatingExpense> OperatingExpenses { get; set; } = [];
     public int StoreId { get; init; }
     public DateTime ReadAtUtc { get; init; }
     public List<Order> Orders { get; set; } = [];
