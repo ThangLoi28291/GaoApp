@@ -1,4 +1,4 @@
-@{ ViewData["Title"] = "Kết quả chuyến giao"; Layout = "_ContentNavbarLayout"; }
+@{ ViewData["Title"] = "Bàn giao sau giao hàng"; Layout = "_ContentNavbarLayout"; }
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/delivery.outcomes.css" asp-append-version="true" />
@@ -6,20 +6,20 @@
 <div class="delivery-workspace delivery-outcomes-workspace" data-actor="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)" data-store="@(ViewData["DeliveryStoreId"])" data-trip="@(ViewData["DeliveryTripId"])">
     @Html.AntiForgeryToken()
     <header class="delivery-heading">
-        <div><p class="delivery-eyebrow">KẾT QUẢ GIAO HÀNG</p><h2>Kết quả chuyến giao</h2><p>Ghi đúng hàng khách nhận và tiền người giao báo thu.</p></div>
+        <div><p class="delivery-eyebrow">HÀNG VÀ TIỀN TẠI QUẦY</p><h2>Bàn giao sau giao hàng</h2><p>Kiểm tra hàng thực giao, hàng nhận về và tiền bàn giao để chốt từng đơn.</p></div>
         <a class="btn btn-outline-primary" href="/admin/deliveries/trips?trip=@ViewData["DeliveryTripId"]">← Về chuyến giao</a>
     </header>
     <div id="outcomeMessage" role="status" aria-live="polite"></div>
     <div id="outcomePending" hidden></div>
     <section id="outcomeFacts" class="outcome-facts" aria-label="Thông tin chuyến"></section>
-    <section id="outcomeReturn" class="outcome-return" aria-label="Ghi nhận người giao trở về"></section>
+    <section id="outcomeReturn" class="outcome-return" aria-label="Quầy và ca chốt hiện tại"></section>
     <div class="outcome-layout">
         <aside class="outcome-sidebar" aria-label="Các khách trong chuyến">
-            <div class="outcome-list-heading"><h3>Khách trong chuyến</h3><button type="button" id="outcomeReload" class="delivery-link-button">Tải bản mới</button></div>
-            <p id="outcomeProgress" aria-live="polite">Đang tải kết quả…</p>
+            <div class="outcome-list-heading"><h3>Đơn cần bàn giao</h3><button type="button" id="outcomeReload" class="delivery-link-button">Tải bản mới</button></div>
+            <p id="outcomeProgress" aria-live="polite">Đang tải bàn giao…</p>
             <div id="outcomeList" class="outcome-list"></div>
         </aside>
-        <main id="outcomeDetail" class="outcome-detail" aria-label="Kết quả từng đơn"><p class="outcome-empty">Chọn khách để ghi kết quả giao.</p></main>
+        <main id="outcomeDetail" class="outcome-detail" aria-label="Bàn giao từng đơn"><p class="outcome-empty">Chọn khách để kiểm tra hàng và tiền.</p></main>
     </div>
 </div>
 @section PageScripts {
