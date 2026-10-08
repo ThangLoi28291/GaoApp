@@ -511,7 +511,6 @@ public sealed class DeliveryD01T05ProxyReportTests
     [InlineData(DeliveryState.ReadyToSettle)]
     [InlineData(DeliveryState.Settled)]
     [InlineData(DeliveryState.Cancelled)]
-    [InlineData(DeliveryState.CancellationPending)]
     public void D01T05_LateReportsCannotRewriteLockedOutcomes(DeliveryState state)
         => D01Data.Error("REPORT_LOCKED", () => DeliveryReportPolicy.Record(D01Data.Actor(DeliveryCapability.ReportOnBehalf), D01Data.Origin,
             state, 44, 44, DeliveryReportSource.AtStore, D01Data.Departed, D01Data.Departed.AddHours(2)));

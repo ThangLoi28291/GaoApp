@@ -43,7 +43,11 @@ public sealed record DeliveryTripOrderDto(int DeliveryOrderId, string Code, stri
     string Version, int Position, bool IsActive, string AssignedOrderVersion, int AssignedApprovedRevision,
     bool IsStale, int SourceWarehouseId, string SourceWarehouseName, int SourceLegalEntityId,
     string SourceLegalEntityName, string RecipientName, string RecipientPhone, string RecipientAddress,
-    IReadOnlyList<DeliveryTripLineDto> Lines, DeliveryCustodyContextDto? Custody, bool CanRequestCancellation);
+    IReadOnlyList<DeliveryTripLineDto> Lines, DeliveryCustodyContextDto? Custody, bool CanRequestCancellation)
+{
+    public DeliveryOrderOutcomeDto? Outcome { get; init; }
+    public bool CanReportOutcome { get; init; }
+}
 public sealed record DeliveryTripEligibleOrderDto(int DeliveryOrderId, string Code, int Revision,
     string Version, int ApprovedRevision, int SourceWarehouseId, string SourceWarehouseName,
     int SourceLegalEntityId, string SourceLegalEntityName, string RecipientName, string RecipientAddress,
@@ -61,7 +65,13 @@ public sealed record DeliveryTripDetailDto(int StoreId, int TripId, string Code,
     int? DepartedByUserId, string? DepartedByName, DateTimeOffset? DepartedAtUtc,
     int? AbandonedByUserId, DateTimeOffset? AbandonedAtUtc,
     IReadOnlyList<DeliveryTripOrderDto> Orders, DeliveryTripCapabilities Capabilities,
-    IReadOnlyList<DeliveryTripHistoryDto> History);
+    IReadOnlyList<DeliveryTripHistoryDto> History)
+{
+    public DeliveryOutcomeCapabilitiesDto OutcomeCapabilities { get; init; } = new(false, false, false);
+    public DeliveryTripReturnDto? ReturnToStore { get; init; }
+    public bool AllOutcomesComplete { get; init; }
+    public bool ReadyForReconciliation { get; init; }
+}
 public sealed record DeliveryTripSummaryDto(int TripId, string Code, string State, int Revision, string Version,
     int CourierUserId, string CourierName, int ActiveOrderCount, DateTimeOffset CreatedAtUtc,
     DateTimeOffset? HandedOverAtUtc, DateTimeOffset? DepartedAtUtc);

@@ -41,6 +41,13 @@ public sealed class DeliveryTripController(IDeliveryTripService trips) : Control
     [HttpPost("{id:int}/orders/{orderId:int}/cancel-request"), Authorize(Policy = PermissionCodes.Delivery.Cancel), ValidateAntiForgeryToken]
     public Task<IActionResult> Cancel(int id, int orderId, [FromBody] DeliveryTripCancellationRequest request, CancellationToken ct)
         => Execute(() => trips.RequestCancellationAsync(id, orderId, request, ct));
+    // Own/proxy permission is resolved against the real courier inside the locked service command.
+    [HttpPost("{id:int}/orders/{orderId:int}/outcome"), ValidateAntiForgeryToken]
+    public Task<IActionResult> Outcome(int id, int orderId, [FromBody] DeliveryOutcomeRequest request, CancellationToken ct)
+        => Execute(() => trips.RecordOutcomeAsync(id, orderId, request, ct));
+    [HttpPost("{id:int}/return-to-store"), ValidateAntiForgeryToken]
+    public Task<IActionResult> ReturnToStore(int id, [FromBody] DeliveryTripReturnRequest request, CancellationToken ct)
+        => Execute(() => trips.RecordReturnToStoreAsync(id, request, ct));
     private async Task<IActionResult> Execute<T>(Func<Task<T>> operation)
     {
         Response.Headers.CacheControl = "no-store";

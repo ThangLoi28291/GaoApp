@@ -16,4 +16,8 @@ public interface IDeliveryTripService
     Task<DeliveryTripCommandAck> ReassignCourierAsync(int id, DeliveryTripReassignRequest request, CancellationToken ct = default);
     Task<DeliveryTripCommandAck> RequestCancellationAsync(int id, int orderId, DeliveryTripCancellationRequest request,
         CancellationToken ct = default);
+    Task<DeliveryTripCommandAck> RecordOutcomeAsync(int id, int orderId, DeliveryOutcomeRequest request,
+        CancellationToken ct = default);
+    Task<DeliveryTripCommandAck> RecordReturnToStoreAsync(int id, DeliveryTripReturnRequest request,
+        CancellationToken ct = default);
 }

@@ -7,8 +7,8 @@ public static class DeliveryReportPolicy
         DateTimeOffset departedAtUtc, DateTimeOffset serverRecordedAtUtc, DateTimeOffset? customerReceivedAtUtc = null)
     {
         DeliveryAccessPolicy.EnsureReport(actor, origin, assignedCourierId, reportedCourierId, source);
-        DeliveryValues.Require(state is DeliveryState.Delivering or DeliveryState.AwaitingReconciliation,
-            "REPORT_LOCKED", "Chỉ báo kết quả chuyến đang giao/chờ đối soát; không sửa sau khi khóa kết quả.");
+        DeliveryValues.Require(state is DeliveryState.Delivering or DeliveryState.AwaitingReconciliation or DeliveryState.CancellationPending,
+            "REPORT_LOCKED", "Chỉ báo kết quả đang giao/chờ đối soát/đang thu hồi; không sửa sau khi khóa kết quả.");
         DeliveryValues.Utc(departedAtUtc);
         DeliveryValues.Utc(serverRecordedAtUtc);
         DeliveryValues.Require(departedAtUtc >= origin.CreatedAtUtc && serverRecordedAtUtc >= departedAtUtc,

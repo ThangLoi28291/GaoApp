@@ -18,7 +18,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Delivery;
 
-public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
+public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser user,
     ICurrentStorePermissionService permissions, IDeliveryInventoryService inventory,
     IInventoryBalanceRepository balances) : IDeliveryTripService
 {
@@ -69,12 +69,15 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
         (DeliveryCapability.Handover, PermissionCodes.Delivery.Handover),
         (DeliveryCapability.RecordDeparture, PermissionCodes.Delivery.RecordDeparture),
         (DeliveryCapability.ReassignCourier, PermissionCodes.Delivery.ReassignCourier),
-        (DeliveryCapability.Cancel, PermissionCodes.Delivery.Cancel)
+        (DeliveryCapability.Cancel, PermissionCodes.Delivery.Cancel),
+        (DeliveryCapability.ReportOwnOutcome, PermissionCodes.Delivery.ReportOwnOutcome),
+        (DeliveryCapability.ReportOnBehalf, PermissionCodes.Delivery.ReportOnBehalf)
     ];
     private async Task Authorize(DeliveryCapability required, CancellationToken ct)
     {
         const DeliveryCapability known = DeliveryCapability.View | DeliveryCapability.Handover |
-            DeliveryCapability.RecordDeparture | DeliveryCapability.ReassignCourier | DeliveryCapability.Cancel;
+            DeliveryCapability.RecordDeparture | DeliveryCapability.ReassignCourier | DeliveryCapability.Cancel |
+            DeliveryCapability.ReportOwnOutcome | DeliveryCapability.ReportOnBehalf;
         if ((required & ~known) != 0 || (required & DeliveryCapability.View) == 0)
             throw Error(403, "DELIVERY_FORBIDDEN", "Phạm vi quyền chứng cứ không hợp lệ.");
         if (!user.IsAuthenticated || !await db.UserInStores.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.UserId == Actor &&
@@ -224,6 +227,8 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
                 await Authorize(receipt.RequiredCapabilities, ct);
                 var stored = JsonSerializer.Deserialize<DeliveryTripCommandAck>(receipt.OutcomeJson, Json)
                     ?? throw Error(409, "RECEIPT_INVALID", "Chứng cứ kết quả không hợp lệ.");
+                if (operation is "outcome" or "return-to-store")
+                    await ValidateOutcomeReplay(receipt, stored, currentMembers, key, operation, ct);
                 await tx.CommitAsync(ct); return stored with { Replayed = true };
             }
             if (await db.DeliveryCommandReceipts.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.ClientRequestId == key, ct))
@@ -250,7 +255,8 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
                 var order = await Order(member.DeliveryOrderId, false, false, ct);
                 outcomes.Add(new(order.Id, order.Revision, Version(order.RowVersion), order.State.ToString()));
             }
-            var recorded = DateTime.UtcNow;
+            var recorded = operation is "outcome" or "return-to-store"
+                ? await SqlUtcAtOrAfter(trip.DepartedAtUtc ?? trip.CreatedAtUtc, ct) : DateTime.UtcNow;
             var ack = new DeliveryTripCommandAck(key, trip.Id, operation, trip.Revision, Version(trip.RowVersion), Utc(recorded), false, outcomes);
             await RecordTrip(trip, key, operation, hash, requiredOriginal, request, ack, recorded, ct);
             await tx.CommitAsync(ct); return ack;
@@ -273,12 +279,17 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
         DeliveryCapability required, T request, DeliveryTripCommandAck ack, DateTime now, CancellationToken ct)
     {
         var bindings = await db.DeliveryTripOrders.AsNoTracking().Where(x => x.StoreId == Store && x.TripId == trip.Id).OrderBy(x => x.Id).ToListAsync(ct);
-        var snapshot = JsonSerializer.Serialize(new { trip.Id, trip.Code, state = trip.State.ToString(), trip.Revision, trip.CourierUserId,
+        var detail = JsonSerializer.SerializeToNode(new { trip.Id, trip.Code, state = trip.State.ToString(), trip.Revision, trip.CourierUserId,
             trip.Note, trip.HandedOverByUserId, trip.HandedOverAtUtc, trip.DepartedByUserId, trip.DepartedAtUtc,
             trip.AbandonedByUserId, trip.AbandonedAtUtc, action = operation, actorUserId = Actor, recordedAtUtc = Utc(now),
             attestationKind = operation is "handover" or "reassign" ? "AtStoreByStaff" : null, request,
             bindings = bindings.Select(x => new { x.Id, x.DeliveryOrderId, x.SourceWarehouseId, x.SourceLegalEntityId,
-                x.IsActive, x.Position, x.AssignedOrderVersion, x.AssignedApprovedRevision, x.CurrentCustodyEventId }) }, Json);
+                x.IsActive, x.Position, x.AssignedOrderVersion, x.AssignedApprovedRevision, x.CurrentCustodyEventId }) }, Json)!.AsObject();
+        if (operation == "return-to-store" && request is DeliveryTripReturnRequest returned)
+            detail["returnToStore"] = JsonSerializer.SerializeToNode(new DeliveryTripReturnSnapshot("delivery-return-v1", Store,
+                trip.Id, trip.Revision, key, Actor, trip.CourierUserId, Utc(trip.DepartedAtUtc!.Value), Utc(now),
+                returned.PhysicalReturnConfirmed, DeliveryTripPolicy.NormalizeNote(returned.ConfirmationNote)), Json);
+        var snapshot = detail.ToJsonString(Json);
         db.DeliveryTripRevisions.Add(new() { StoreId = Store, TripId = trip.Id, Revision = trip.Revision, ActorUserId = Actor,
             Action = operation, AggregateVersion = Version(trip.RowVersion), SnapshotJson = snapshot, SnapshotHash = Hash(snapshot) });
         db.DeliveryTripCommandReceipts.Add(new() { StoreId = Store, TripId = trip.Id, ClientRequestId = key, ActorUserId = Actor,
@@ -560,7 +571,7 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
         foreach (var revision in history) historyRows.Add(new(revision.Revision, revision.Action, revision.ActorUserId,
             await Name(revision.ActorUserId, ct), Utc(revision.CreatedAtUtc)));
         var courierActive = await db.UserInStores.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.UserId == trip.CourierUserId && x.IsActive && x.User.IsActive, ct);
-        return new(Store, trip.Id, trip.Code, trip.State.ToString(), trip.Revision, Version(trip.RowVersion), Utc(DateTime.UtcNow), trip.CourierUserId,
+        var detail = new DeliveryTripDetailDto(Store, trip.Id, trip.Code, trip.State.ToString(), trip.Revision, Version(trip.RowVersion), Utc(DateTime.UtcNow), trip.CourierUserId,
             await Name(trip.CourierUserId, ct), trip.CreatedByUserId, await Name(trip.CreatedByUserId, ct), Utc(trip.CreatedAtUtc), trip.Note,
             trip.HandedOverByUserId, trip.HandedOverByUserId.HasValue ? await Name(trip.HandedOverByUserId.Value, ct) : null,
             trip.HandedOverAtUtc.HasValue ? Utc(trip.HandedOverAtUtc.Value) : null, trip.DepartedByUserId,
@@ -572,6 +583,7 @@ public sealed class DeliveryTripService(AppDbContext db, ICurrentUser user,
                 trip.State == DeliveryTripState.HandedOver && canDepart && courierActive && eligible,
                 canHandover && canReassign && (trip.State == DeliveryTripState.Draft || trip.State == DeliveryTripState.HandedOver && eligible),
                 rows.Any(x => x.CanRequestCancellation)), historyRows);
+        return await ProjectOutcomes(trip, detail, ct);
     }
     public async Task<DeliveryTripDetailDto> GetAsync(int id, CancellationToken ct = default)
     {
