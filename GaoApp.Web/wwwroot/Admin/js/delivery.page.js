@@ -179,6 +179,8 @@
     const workspace = document.querySelector('.delivery-workspace');
     const storeId = Number(workspace.dataset.store);
     let intents, inventoryIntents, cancelReason = '', current = null, currentKey = '', printedRevision = null, busy = false, dirty = false, needsFresh = false, lookingUp = false, sequence = 0, readEpoch = 0;
+    let pickingFilter = 'all';
+    const pickingDrafts = new Map(); let pickingDraftOrderId = null;
     try {
         intents = createIntentStore(localStorage, workspace.dataset.actor ? location.origin + ':' + workspace.dataset.actor : '');
         inventoryIntents = createInventoryIntentStore(localStorage, location.origin, storeId, workspace.dataset.actor);
@@ -192,7 +194,7 @@
         const wrapper = node('label', null, 'delivery-input-label'); const title = node('span', label);
         const input = node('input'); input.type = 'text'; input.id = id; input.className = 'form-control'; input.value = value ?? '';
         input.maxLength = numeric ? 19 : 1000; if (numeric) { input.inputMode = 'decimal'; input.placeholder = 'Chưa ghi nhận'; }
-        input.addEventListener('input', () => { dirty = true; }); wrapper.append(title, input); return { wrapper, input };
+        input.addEventListener('input', () => { dirty = true; updatePickingDraft(); }); wrapper.append(title, input); return { wrapper, input };
     }
     async function get(path) {
         const response = await fetch('/admin/api/deliveries' + path, { cache: 'no-store', credentials: 'same-origin' });
@@ -277,63 +279,112 @@
         const changed = projectionChanged(current, data, needsFresh);
         current = data; needsFresh = false; if (force) dirty = false; if (changed || force) render(); return true;
     }
+    function updatePickingDraft() {
+        if (!current) return;
+        let edited = 0, shortageCount = 0;
+        for (const line of current.lines.filter(item => item.isActive)) {
+            const quantity = $('deliveryQty-' + line.lineId), reason = $('deliveryReason-' + line.lineId);
+            const card = $('deliveryLine-' + line.lineId), reasonBox = $('deliveryReasonBox-' + line.lineId), draftLabel = $('deliveryDraftLine-' + line.lineId);
+            let short = false, localState = '';
+            const value = quantity ? quantity.value : line.reportedQuantityText;
+            try {
+                if (value != null && value !== '') {
+                    const actual = scaledQuantity(value), needed = scaledQuantity(line.plannedQuantityText);
+                    short = actual < needed;
+                    localState = actual === 0n && needed > 0n ? 'Không có' : short ? 'Thiếu' : actual > needed ? 'Vượt lượng cần soạn' : 'Đủ';
+                }
+            } catch { localState = 'Kiểm tra số lượng'; }
+            if (short) shortageCount++;
+            const changed = quantity && (quantity.value !== (line.reportedQuantityText ?? '') || reason.value !== (line.shortageReason ?? ''));
+            if (quantity && reason && dirty) pickingDrafts.set(line.lineId, { quantity: quantity.value, reason: reason.value, reasonOpen: reasonBox?.dataset.open === 'true' });
+            if (changed) edited++;
+            if (card) { card.classList.toggle('has-shortage', short); card.classList.toggle('has-unsaved', !!changed); card.hidden = pickingFilter === 'short' && !short; }
+            if (draftLabel) { draftLabel.textContent = changed ? 'Chưa lưu · ' + (localState || 'Chưa nhập lượng') : ''; draftLabel.hidden = !changed; }
+            if (reasonBox) reasonBox.hidden = !short && !reason.value.trim() && reasonBox.dataset.open !== 'true';
+            for (const [kind, label] of [['Full', 'Đủ'], ['Short', 'Thiếu'], ['Missing', 'Không có']]) {
+                const control = $('delivery' + kind + '-' + line.lineId); if (control) control.setAttribute('aria-pressed', String(localState === label));
+            }
+        }
+        for (const line of current.lines.filter(item => !item.isActive)) { const card = $('deliveryLine-' + line.lineId); if (card) card.hidden = pickingFilter === 'short'; }
+        const emptyShortages = $('deliveryShortagesEmpty'); if (emptyShortages) emptyShortages.hidden = pickingFilter !== 'short' || shortageCount > 0;
+        const progress = $('deliveryDraftProgress'); if (progress) { progress.textContent = dirty ? (edited ? edited + ' dòng đang chỉnh · chưa lưu' : 'Có chỉnh sửa chưa lưu') : 'Không có chỉnh sửa chưa lưu'; progress.classList.toggle('is-dirty', dirty); }
+        const submit = $('deliverySubmitPicking'); if (submit) submit.disabled = submit.dataset.blocked === 'true' || dirty || current.lines.some(line => line.isActive && line.reportedQuantityText === null);
+        for (const [id, mode] of [['deliveryShowAll', 'all'], ['deliveryShowShortages', 'short']]) { const control = $(id); if (control) control.setAttribute('aria-pressed', String(pickingFilter === mode)); }
+    }
+    function foldSection(panel, label, cls = 'delivery-picking-secondary') { const section = node('details', null, cls); section.append(node('summary', label)); panel.append(section); return section; }
     function render() {
         $('deliveryKey').disabled = busy || lookingUp; $('deliverySearch').querySelector('button').disabled = busy || lookingUp;
         const panel = $('deliveryDetail'); if (!current) { panel.hidden = true; return; }
+        const sameDraftOrder = pickingDraftOrderId === current.delivery.id;
+        if (!sameDraftOrder) pickingFilter = 'all';
+        if (!dirty || !sameDraftOrder) pickingDrafts.clear();
+        pickingDraftOrderId = current.delivery.id;
+        if (dirty && sameDraftOrder) for (const line of current.lines) { const quantity = $('deliveryQty-' + line.lineId), reason = $('deliveryReason-' + line.lineId); if (quantity && reason) pickingDrafts.set(line.lineId, { quantity: quantity.value, reason: reason.value, reasonOpen: $('deliveryReasonBox-' + line.lineId)?.dataset.open === 'true' }); }
         panel.replaceChildren(); panel.hidden = false;
         const d = current.delivery, capabilities = current.capabilities, blocked = busy || lookingUp || needsFresh || !!pending() || !intents || !inventoryIntents;
         panel.dataset.revision = String(d.revision); panel.dataset.version = d.version; panel.dataset.state = d.state;
         panel.dataset.needsFresh = String(needsFresh);
         if (needsFresh) panel.append(note('Cần tải bản mới trước khi thao tác. Nội dung dưới đây là bản đã xem trước đó; kiểm tra kết quả hiện hành trên máy chủ.', 'delivery-revision-warning'));
-        const header = node('div', null, 'delivery-detail-heading'); header.append(node('h3', d.code), node('span', states[d.state] || d.state, 'delivery-badge state-' + d.state)); panel.append(header);
-        panel.append(note('Bản ' + d.revision + ' · Tạo ' + time(d.createdAtUtc) + ' · Quầy #' + d.createdTerminalId + ' · Giỏ #' + d.sourceCartId));
+        const header = node('div', null, 'delivery-detail-heading'); const identity = node('div'); identity.append(node('h3', d.recipientName || 'Khách nhận hàng'), note(d.code + ' · ' + (current.pickerName || 'Chưa nhận soạn'))); header.append(identity, node('span', states[d.state] || d.state, 'delivery-badge state-' + d.state)); panel.append(header);
         if (printedRevision && BigInt(printedRevision) < BigInt(d.revision)) panel.append(note('Phiếu đang quét là bản ' + printedRevision + '. Đơn hiện tại là bản ' + d.revision + ' — kiểm tra lượng mới trước khi soạn hoặc giao.', 'delivery-revision-warning'));
-        const recipient = node('section', null, 'delivery-recipient'); recipient.append(node('strong', d.recipientName), node('span', d.recipientPhone), node('span', d.recipientAddress)); if (d.note) recipient.append(node('span', d.note)); panel.append(recipient);
-        const facts = node('div', null, 'delivery-picking-facts'); facts.append(note('Người đang phụ trách: ' + (current.pickerName || 'Chưa nhận soạn')), note('Nhận lúc: ' + time(current.assignedAtUtc)), note('Gửi chốt: ' + time(current.submittedAtUtc))); panel.append(facts);
+        const recipient = node('section', null, 'delivery-recipient'); recipient.append(node('span', d.recipientPhone), node('span', d.recipientAddress)); if (d.note) recipient.append(node('span', d.note)); panel.append(recipient);
         const effective = current.lines.filter(line => line.isActive);
         const reported = effective.filter(line => line.reportedQuantityText !== null).length;
         const progress = node('div', null, 'delivery-picking-progress'); progress.setAttribute('role', 'progressbar'); progress.setAttribute('aria-valuemin', '0'); progress.setAttribute('aria-valuemax', String(effective.length)); progress.setAttribute('aria-valuenow', String(reported));
-        const bar = node('span'); bar.style.width = effective.length ? (reported * 100 / effective.length) + '%' : '0%'; progress.append(bar); panel.append(note(reported + '/' + effective.length + ' dòng đã ghi nhận kết quả'), progress);
+        const bar = node('span'); bar.style.width = effective.length ? (reported * 100 / effective.length) + '%' : '0%'; progress.append(bar); const savedProgress = note(reported + '/' + effective.length + ' dòng đã lưu trên máy chủ', 'delivery-saved-progress'); savedProgress.id = 'deliverySavedProgress'; panel.append(savedProgress, progress);
         pendingPanel(panel);
         const actions = node('div', null, 'delivery-actions');
         const refresh = button('Tải bản mới', () => loadCurrent(d.id, true).catch(e => message(e.message, true))); refresh.disabled = busy || lookingUp; actions.append(refresh);
         if (capabilities.canClaim) { const claim = button('Nhận soạn đơn này', () => command('claim'), 'btn btn-primary'); claim.id = 'deliveryClaim'; claim.disabled = blocked; actions.append(claim); }
         const bill = node('a', 'Mở / in phiếu A5', 'btn btn-outline-primary'); bill.href = '/admin/deliveries/' + d.id + '/bill'; bill.target = '_blank'; bill.rel = 'noopener'; actions.append(bill); panel.append(actions);
-        const lines = node('section', null, 'delivery-picking-lines'); lines.append(node('h4', 'Hàng trong đơn'));
+        const lines = node('section', null, 'delivery-picking-lines'); const lineHeading = node('div', null, 'delivery-line-heading'); lineHeading.append(node('h4', 'Hàng cần soạn'));
+        const filters = node('div', null, 'delivery-line-filters'); const showAll = button('Tất cả', () => { pickingFilter = 'all'; updatePickingDraft(); }); showAll.id = 'deliveryShowAll'; const showShort = button('Thiếu hàng', () => { pickingFilter = 'short'; updatePickingDraft(); }); showShort.id = 'deliveryShowShortages'; filters.append(showAll, showShort); lineHeading.append(filters); lines.append(lineHeading);
         for (const line of current.lines) {
             if (!line.isActive && line.isReplacement) continue;
-            const card = node('article', null, 'delivery-picking-line' + (line.reportedQuantityText === null ? '' : scaledQuantity(line.reportedQuantityText) < scaledQuantity(line.plannedQuantityText) ? ' has-shortage' : ' is-reported'));
+            const card = node('article', null, 'delivery-picking-line' + (!line.isActive ? ' is-removed' : line.reportedQuantityText === null ? '' : scaledQuantity(line.reportedQuantityText) < scaledQuantity(line.plannedQuantityText) ? ' has-shortage' : ' is-reported'));
             card.dataset.lineId = String(line.lineId);
-            const title = node('div', null, 'delivery-line-title'); title.append(node('strong', line.itemName), node('span', line.isReplacement ? 'Thay cho dòng #' + line.originalRootLineId : 'Hàng gốc', 'delivery-small-badge')); card.append(title);
-            card.append(note('Đặt gốc: ' + displayExact(line.orderedQuantityText) + ' ' + line.unitName + ' · Kế hoạch: ' + displayExact(line.plannedQuantityText) + ' · Đơn giá: ' + displayExact(line.unitPriceText, 2) + ' đ'));
-            const status = line.reportedQuantityText === null ? 'Chưa ghi nhận lượng thực có' : 'Đã soạn: ' + displayExact(line.reportedQuantityText) + ' ' + line.unitName;
-            card.append(node('div', status, 'delivery-line-status'), note(line.reportedAtUtc ? (line.reporterName || 'Nhân viên #' + line.reporterUserId) + ' · ' + time(line.reportedAtUtc) : 'Chờ người soạn kiểm tra'));
-            if (line.shortageReason) card.append(note('Lý do: ' + line.shortageReason, 'delivery-shortage-reason'));
-            if (line.approvedQuantityText !== null) card.append(note('Đã duyệt: ' + displayExact(line.approvedQuantityText) + ' ' + line.unitName + ' · ' + money(line.approvedNetText), 'delivery-approved-fact'));
+            card.id = 'deliveryLine-' + line.lineId;
+            const original = current.lines.find(item => item.lineId === line.originalRootLineId);
+            const title = node('div', null, 'delivery-line-title'); title.append(node('strong', line.itemName), node('span', line.isReplacement ? 'Thay cho ' + (original?.itemName || 'hàng gốc') : 'Hàng gốc', 'delivery-small-badge')); card.append(title);
+            const needed = node('div', null, 'delivery-needed'); needed.append(node('span', 'Cần soạn'), node('strong', displayExact(line.plannedQuantityText) + ' ' + line.unitName));
+            const row = node('div', null, 'delivery-quantity-row'); row.append(needed);
+            const status = !line.isActive ? 'Đã bỏ khỏi bản soạn' : line.reportedQuantityText === null ? 'Chưa lưu kết quả' : 'Đã lưu: ' + displayExact(line.reportedQuantityText) + ' ' + line.unitName;
+            const savedState = node('div', status, 'delivery-line-status'); const draftLabel = node('span', '', 'delivery-line-draft'); draftLabel.id = 'deliveryDraftLine-' + line.lineId; draftLabel.hidden = true;
             if (capabilities.canReport && line.isActive) {
-                const fields = node('div', null, 'delivery-report-fields');
-                const quantity = inputField('Lượng đã soạn (' + line.unitName + ')', line.reportedQuantityText, 'deliveryQty-' + line.lineId, true);
-                const reason = inputField('Lý do thiếu / không có hàng', line.shortageReason, 'deliveryReason-' + line.lineId);
+                const draft = dirty ? pickingDrafts.get(line.lineId) : null;
+                const quantity = inputField('Thực có (' + line.unitName + ')', draft ? draft.quantity : line.reportedQuantityText, 'deliveryQty-' + line.lineId, true);
+                const reason = inputField('Lý do thiếu / không có hàng', draft ? draft.reason : line.shortageReason, 'deliveryReason-' + line.lineId);
+                reason.wrapper.id = 'deliveryReasonBox-' + line.lineId; reason.wrapper.classList.add('delivery-shortage-input'); reason.wrapper.dataset.open = String(draft?.reasonOpen === true); reason.wrapper.hidden = true;
                 quantity.input.disabled = reason.input.disabled = blocked;
-                const full = button('Đủ theo kế hoạch', () => { quantity.input.value = line.plannedQuantityText; dirty = true; }); full.disabled = blocked;
-                const missing = button('Không có hàng', () => { quantity.input.value = '0'; dirty = true; reason.input.focus(); }); missing.disabled = blocked;
-                fields.append(quantity.wrapper, reason.wrapper); card.append(fields, full, missing);
+                const choices = node('div', null, 'delivery-quantity-choices');
+                const full = button('Đủ', () => { quantity.input.value = line.plannedQuantityText; reason.wrapper.dataset.open = 'false'; dirty = true; updatePickingDraft(); }); full.id = 'deliveryFull-' + line.lineId; full.disabled = blocked;
+                const short = button('Thiếu', () => { reason.wrapper.dataset.open = 'true'; reason.wrapper.hidden = false; quantity.input.focus(); }); short.id = 'deliveryShort-' + line.lineId; short.disabled = blocked;
+                const missing = button('Không có', () => { quantity.input.value = '0'; dirty = true; updatePickingDraft(); reason.input.focus(); }); missing.id = 'deliveryMissing-' + line.lineId; missing.disabled = blocked;
+                choices.append(full, short, missing); row.append(quantity.wrapper, choices); card.append(row, reason.wrapper);
             }
+            else { const actual = node('div', null, 'delivery-actual-readonly'); actual.append(node('span', 'Thực có'), node('strong', line.reportedQuantityText === null ? 'Chưa ghi nhận' : displayExact(line.reportedQuantityText) + ' ' + line.unitName)); row.append(actual); card.append(row); if (line.shortageReason) card.append(note('Lý do: ' + line.shortageReason, 'delivery-shortage-reason')); }
+            card.append(savedState, draftLabel);
+            if (line.approvedQuantityText !== null) card.append(note('Được giao: ' + displayExact(line.approvedQuantityText) + ' ' + line.unitName, 'delivery-approved-fact'));
+            const lineDetails = foldSection(card, 'Thông tin dòng hàng', 'delivery-line-details'); lineDetails.append(note('Đặt gốc: ' + displayExact(line.orderedQuantityText) + ' ' + line.unitName + ' · Giá gốc: ' + displayExact(line.unitPriceText, 2) + ' đ'), note(line.reportedAtUtc ? (line.reporterName || 'Nhân viên #' + line.reporterUserId) + ' · ' + time(line.reportedAtUtc) : 'Chưa có người ghi nhận'));
             lines.append(card);
         }
+        const emptyShortages = note('Chưa có mặt hàng thiếu trong kết quả đang xem.', 'delivery-muted'); emptyShortages.id = 'deliveryShortagesEmpty'; emptyShortages.hidden = true; lines.append(emptyShortages);
         panel.append(lines);
+        const primaryActions = node('div', null, 'delivery-picking-primary'); const draftProgress = note('', 'delivery-draft-progress'); draftProgress.id = 'deliveryDraftProgress'; primaryActions.append(draftProgress); const primaryButtons = node('div', null, 'delivery-primary-buttons'); primaryActions.append(primaryButtons);
         if (capabilities.canReport) {
             const save = button('Lưu kết quả soạn', () => {
                 try {
                     const reports = effective.filter(line => $('deliveryQty-' + line.lineId).value !== '').map(line => reportLine(line, $('deliveryQty-' + line.lineId).value, $('deliveryReason-' + line.lineId).value));
                     if (!reports.length) throw new Error('Nhập ít nhất một kết quả soạn.'); command('report', { lines: reports });
                 } catch (e) { message(e.message, true); }
-            }, 'btn btn-primary'); save.id = 'deliverySaveReport'; save.disabled = blocked; panel.append(save);
+            }, 'btn btn-primary'); save.id = 'deliverySaveReport'; save.disabled = blocked; primaryButtons.append(save);
         }
-        if (capabilities.canSubmit) { const submit = button('Gửi chốt soạn', () => command('submit'), 'btn btn-success'); submit.id = 'deliverySubmitPicking'; submit.disabled = blocked; panel.append(submit, note('Lưu kết quả trước khi gửi. Tất cả dòng cần có kết quả, kể cả lượng bằng 0.')); }
+        if (capabilities.canSubmit) { const submit = button('Gửi chốt soạn', () => command('submit'), 'btn btn-success'); submit.id = 'deliverySubmitPicking'; submit.dataset.blocked = String(blocked); submit.disabled = blocked || dirty || effective.some(line => line.reportedQuantityText === null); primaryButtons.append(submit); }
+        if (capabilities.canReport || capabilities.canSubmit) { primaryActions.append(note(effective.some(line => line.reportedQuantityText === null) ? 'Lưu đủ kết quả các mặt hàng trước khi gửi chốt. Dòng không có hàng cần ghi 0 và lý do.' : 'Lưu kết quả rồi gửi chốt. Dòng không có hàng vẫn cần ghi 0 và lý do.')); panel.append(primaryActions); }
+        const orderInfo = foldSection(panel, 'Thông tin đơn và giá trị'); orderInfo.append(note(d.code + ' · Bản ' + d.revision + ' · Tạo ' + time(d.createdAtUtc) + ' · Quầy #' + d.createdTerminalId + ' · Giỏ #' + d.sourceCartId), note('Người phụ trách: ' + (current.pickerName || 'Chưa nhận soạn') + ' · Nhận lúc: ' + time(current.assignedAtUtc) + ' · Gửi chốt: ' + time(current.submittedAtUtc)));
         const totals = node('div', null, 'delivery-picking-totals'); totals.append(note('Giá trị gốc: ' + money(current.quotedTotalText)), note('Bản soạn dự kiến: ' + money(current.draftTotalText)));
-        if (current.approvedTotalText !== null) totals.append(node('strong', 'Lượng được duyệt: ' + money(current.approvedTotalText))); else totals.append(note('Chưa có bản duyệt hiện hành.')); panel.append(totals);
-        renderInventory(panel, blocked);
+        if (current.approvedTotalText !== null) totals.append(node('strong', 'Lượng được duyệt: ' + money(current.approvedTotalText))); else totals.append(note('Chưa có bản duyệt hiện hành.')); orderInfo.append(totals);
+        const inventoryDetails = foldSection(panel, 'Tồn kho và hủy đơn'); renderInventory(inventoryDetails, blocked);
         const coverage = node('details', null, 'delivery-coverage'); coverage.append(node('summary', 'Lượng còn thiếu theo yêu cầu gốc'));
         for (const rootLine of current.rootCoverage) { const original = current.lines.find(line => line.lineId === rootLine.originalRootLineId); coverage.append(note((original?.itemName || 'Dòng #' + rootLine.originalRootLineId) + ': thiếu dự kiến ' + displayExact(rootLine.draftMissingQuantityText) + ' ' + (original?.unitName || '') + (rootLine.approvedMissingQuantityText !== null ? ' · thiếu sau duyệt ' + displayExact(rootLine.approvedMissingQuantityText) : ''))); } panel.append(coverage);
         if (capabilities.canPlan) renderPlan(panel, effective, blocked);
@@ -347,6 +398,7 @@
             catch (e) { historyBody.textContent = e.message; }
         }); panel.append(historySection);
         panel.append(note('Cập nhật máy chủ: ' + time(current.serverTimeUtc) + '. Kiểm tra lại bản hiện hành trước khi thao tác.', 'delivery-server-time'));
+        updatePickingDraft();
     }
     function renderInventory(panel, blocked) {
         const box = node('section', null, 'delivery-inventory'); box.id = 'deliveryInventory'; box.append(node('h4', 'Hàng tại kho và ngoài kho'));
@@ -452,7 +504,7 @@
     }
     async function recent() {
         try { const list = await get(''); const panel = $('deliveryRecent'); panel.replaceChildren(); if (!list.length) panel.append(note('Chưa có đơn giao.'));
-            for (const d of list) { const item = button(d.code + ' · ' + d.recipientName + ' · ' + (states[d.state] || d.state), () => lookup(d.code), 'delivery-recent'); panel.append(item); }
+            for (const d of list) { const item = button('', () => lookup(d.code), 'delivery-recent'); item.append(node('strong', d.recipientName || 'Khách nhận hàng'), node('span', d.code + ' · ' + (states[d.state] || d.state))); panel.append(item); }
         } catch (e) { message(e.message, true); }
     }
     $('deliverySearch').addEventListener('submit', e => { e.preventDefault(); lookup($('deliveryKey').value); });
