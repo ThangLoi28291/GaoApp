@@ -446,7 +446,8 @@ public sealed class DatabaseSecurityMetadataTests
                 "20261006173000_AddDeliveryPicking",
                 "20261007090000_AddMixedQuantityPromotions",
                 "20261007100000_AddDeliveryInventoryPosting",
-                "20261008100000_AddDeliveryTrips"
+                "20261008100000_AddDeliveryTrips",
+                "20261008180000_AllowDeliveryOpeningCostSources"
             ]);
     }
 

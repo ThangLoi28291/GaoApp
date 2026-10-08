@@ -1431,7 +1431,7 @@ public class InventoryMovementService : IInventoryMovementService
         var request = new CreateInventoryMovementRequest { WarehouseId = proof.WarehouseId, ProductVariantId = proof.VariantId,
             ReferenceType = InventoryReferenceType.Delivery, ReferenceId = input.DeliveryOrderId.ToString(), ReferenceLineId = proof.DeliveryOrderLineId.Value,
             ReferenceSubKey = "return:" + input.RequestId.ToString("N") + ":" + input.DispatchFragmentId,
-            TransactionType = InventoryTransactionType.DeliveryReturnIn, QuantityChange = proof.Quantity };
+            TransactionType = InventoryTransactionType.DeliveryReturnIn, QuantityChange = proof.Quantity, AllowNegativeBalance = true };
         return await CreateWithinTransactionAsync(request, warehouse, proof.StoreId, ct, proof);
     }
     public async Task<bool> TryCreateSourcePreservingTransferAsync(InventorySourcePreservingTransfer input, CancellationToken ct = default)

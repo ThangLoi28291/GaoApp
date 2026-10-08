@@ -254,6 +254,25 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 throw new InvalidOperationException("Delivery source validation references a missing schema-manifest table.");
             return true;
         }
+        if (DeliveryOpeningSourceSchemaSqlCatalog.TryGetReplacementDrop(migrationId, operation, out var openingReplacement))
+        {
+            if (!tables.TryGetValue(new DatabaseObjectIdentity("dbo", openingReplacement.Table), out var openingTable))
+                throw new InvalidOperationException("Opening replacement references a missing manifest table.");
+            var previous = openingTable.Triggers.SingleOrDefault(x => x.Name == openingReplacement.Name);
+            if (previous is null || previous.Definition != openingReplacement.PreviousDefinition || previous.IsDisabled || previous.IsNotForReplication ||
+                !previous.UsesAnsiNulls || !previous.UsesQuotedIdentifier)
+                throw new InvalidOperationException("Opening replacement requires the exact trusted historical FIFO protection.");
+            openingTable.Triggers.Remove(previous);
+            return true;
+        }
+        if (DeliveryOpeningSourceSchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var openingTrigger))
+        {
+            if (!tables.TryGetValue(new DatabaseObjectIdentity("dbo", openingTrigger.Table), out var openingTable) ||
+                openingTable.Triggers.Any(x => x.Name == openingTrigger.Trigger.Name))
+                throw new InvalidOperationException("Opening protection references a missing table or duplicate trigger.");
+            openingTable.Triggers.Add(openingTrigger.Trigger);
+            return true;
+        }
         if (DeliverySchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var deliveryTrigger))
         {
             var deliveryIdentity = new DatabaseObjectIdentity("dbo", deliveryTrigger.Table);

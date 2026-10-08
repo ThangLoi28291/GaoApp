@@ -309,9 +309,10 @@ public sealed class AutoInvoiceRoutingMigrationTests
         var migrations =
             db.Database.GetMigrations().ToList();
 
-        Assert.Equal(73, migrations.Count);
-        Assert.Equal("20261007100000_AddDeliveryInventoryPosting", migrations[^2]);
-        Assert.Equal("20261008100000_AddDeliveryTrips", migrations[^1]);
+        Assert.Equal(74, migrations.Count);
+        Assert.Equal("20261007100000_AddDeliveryInventoryPosting", migrations[^3]);
+        Assert.Equal("20261008100000_AddDeliveryTrips", migrations[^2]);
+        Assert.Equal("20261008180000_AllowDeliveryOpeningCostSources", migrations[^1]);
         Assert.Single(
             migrations,
             x => x == MigrationId);

@@ -59,7 +59,9 @@ public sealed class InventorySourceCostEvidenceRepository(AppDbContext db) : IIn
         var warehouse = await db.Warehouses.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(x => x.StoreId == layer.StoreId && x.Id == layer.WarehouseId, ct);
         if (source is null || tx is null || warehouse is null || source.IsDeleted || tx.IsDeleted || warehouse.IsDeleted ||
             layer.IsDeleted || layer.IsProvisionalSource || source.IsProvisional || tx.IsProvisionalCost || source.CostSourceType == InventoryCostSourceType.Unknown ||
-            source.EntryType != InventoryValuationEntryType.Inbound || source.CostFinalizedAtUtc is null || tx.CostFinalizedAtUtc is null ||
+            (source.EntryType != InventoryValuationEntryType.Inbound &&
+                (source.EntryType != InventoryValuationEntryType.Opening || tx.TransactionType != InventoryTransactionType.OpeningBalance)) ||
+            source.CostFinalizedAtUtc is null || tx.CostFinalizedAtUtc is null ||
             source.InventoryTransactionId != tx.Id || source.WarehouseId != layer.WarehouseId || source.ProductVariantId != layer.ProductVariantId ||
             tx.WarehouseId != layer.WarehouseId || tx.ProductVariantId != layer.ProductVariantId ||
             source.Quantity != layer.OriginalQuantity || source.UnitCost != layer.UnitCost || source.Amount < 0)
@@ -74,7 +76,7 @@ public sealed class InventorySourceCostEvidenceRepository(AppDbContext db) : IIn
             tx.QuantityChange <= 0 || tx.AfterQty != tx.BeforeQty + tx.QuantityChange ||
             (tx.PostingPrecisionPolicy == 0 && (source.Amount != decimal.Round(source.Quantity * source.UnitCost, 4, MidpointRounding.AwayFromZero) ||
                 tx.AfterInventoryValue != tx.BeforeInventoryValue + tx.TotalCost ||
-                siblings.Count(x => x.EntryType == InventoryValuationEntryType.Inbound) == 1 && tx.UnitCostSnapshot != source.UnitCost)))
+                siblings.Count(x => x.EntryType == source.EntryType) == 1 && tx.UnitCostSnapshot != source.UnitCost)))
             throw Bad("Lượng/giá trị bút toán nguồn không khớp chứng cứ nhập.");
         var allocations = await db.InventoryCostLayerAllocations.IgnoreQueryFilters().AsNoTracking()
             .Include(x => x.InventoryValuationEntry).Where(x => x.StoreId == layer.StoreId &&

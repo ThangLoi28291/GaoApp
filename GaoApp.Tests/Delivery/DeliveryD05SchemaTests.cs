@@ -20,7 +20,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
 {
     private const string Previous = "20261007090000_AddMixedQuantityPromotions";
     private const string Current = "20261007100000_AddDeliveryInventoryPosting";
-    private const string Latest = "20261008100000_AddDeliveryTrips";
+    private const string Latest = "20261008180000_AllowDeliveryOpeningCostSources";
 
     [Fact]
     public async Task M01_Current72_real_SQL_matches_manifest_and_preserves_legacy_quantity_capacity()
@@ -377,7 +377,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
     private static async Task<DatabaseSchemaManifest> AssertCurrent(AppDbContext db, bool d05Prefix = false)
     {
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(d05Prefix ? 72 : 73, applied.Length);
+        Assert.Equal(d05Prefix ? 72 : 74, applied.Length);
         Assert.Equal(d05Prefix ? Current : Latest, applied[^1]);
         Assert.Equal(Current, applied[71]); Assert.Equal(Previous, applied[70]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db); Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(applied, out var expected));

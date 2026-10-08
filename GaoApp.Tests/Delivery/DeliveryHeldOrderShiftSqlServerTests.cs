@@ -26,7 +26,7 @@ namespace GaoApp.Tests.Delivery;
 public sealed class DeliveryHeldOrderShiftSqlServerTests(DeliveryD02Fixture fixture)
 {
     private const string HeldShift = "20261006170000_PreserveHeldOrderShiftChanges";
-    private const string Latest = "20261008100000_AddDeliveryTrips";
+    private const string Latest = "20261008180000_AllowDeliveryOpeningCostSources";
     private const string Protection = "20261006163000_ProtectDeliverySourceCarts";
     private const string Foundation = "20261006153000_AddDeliveryFoundation";
     private const string OldSourceFk = "FK_DeliveryOrders_Orders_StoreId_SourceCartId_CreatedShiftId";
@@ -366,7 +366,7 @@ public sealed class DeliveryHeldOrderShiftSqlServerTests(DeliveryD02Fixture fixt
     private static async Task AssertSchema(AppDbContext db, bool latest)
     {
         var ids = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(latest ? 73 : 68, ids.Length);
+        Assert.Equal(latest ? 74 : 68, ids.Length);
         Assert.Equal(latest ? Latest : Protection, ids[^1]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids, out var expected));
