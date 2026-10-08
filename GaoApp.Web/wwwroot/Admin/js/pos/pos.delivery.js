@@ -8,7 +8,8 @@
         const shell = el('posShell');
         const storageKey = ['gao.delivery.intent.v1', shell.dataset.storeId, shell.dataset.terminalId, modal.dataset.actorId].join(':');
         const fields = ['deliveryName', 'deliveryPhone', 'deliveryAddress', 'deliveryNote'];
-        let snapshot = null, intent = null, busy = false;
+        let snapshot = null, intent = null, busy = false, loadEpoch = 0, editedFields = new Set();
+        fields.forEach(id => el(id).addEventListener('input', () => editedFields.add(id)));
         const money = v => Number(v).toLocaleString('vi-VN') + ' đ';
         const online = () => {
             const status = window.PosOffline?.status();
@@ -34,21 +35,30 @@
             if (!response.ok) { const error = new Error(data.message || 'Không thể xử lý đơn giao.'); error.status = response.status; error.code = data.code; throw error; }
             return data;
         }
-        function fill(body) { fields.forEach((id, i) => el(id).value = [body.recipientName, body.recipientPhone, body.recipientAddress, body.note][i] || ''); }
+        function fill(body, preserve = new Set()) { fields.forEach((id, i) => { if (!preserve.has(id)) el(id).value = [body.recipientName, body.recipientPhone, body.recipientAddress, body.note][i] || ''; }); }
+        function selectedRecipient() {
+            const draft = window.posApp?.state?.business?.currentDraft;
+            return { recipientName: draft?.customer?.name || draft?.customerName || '',
+                recipientPhone: draft?.customer?.phone || draft?.customerPhone || '',
+                recipientAddress: draft?.customer?.address || draft?.customerAddress || '' };
+        }
         async function load() {
+            const epoch = ++loadEpoch; editedFields = new Set();
             snapshot = null; el('deliveryResult').hidden = true; el('deliveryCart').replaceChildren();
             try {
                 intent = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
                 if (intent) { fill(intent); el('deliverySubmit').textContent = 'Kiểm tra / gửi lại yêu cầu cũ'; message('Có yêu cầu chưa xác nhận của giỏ #' + intent.sourceCartId + '. Gửi lại để nhận kết quả; cùng mã yêu cầu sẽ không tạo trùng đơn.', 'warning'); return; }
-                el('deliverySubmit').textContent = 'Tạo đơn chờ soạn'; fill({});
+                el('deliverySubmit').textContent = 'Tạo đơn chờ soạn'; fill(selectedRecipient()); buttons();
                 if (!online()) throw new Error(window.PosOffline?.status()?.message || 'Cần có mạng và đồng bộ xong giỏ POS trước khi tạo đơn giao.');
-                message('Đang lấy nội dung giỏ…'); snapshot = await request('current-cart'); fill(snapshot);
+                message('Đang lấy nội dung giỏ…'); const current = await request('current-cart');
+                if (epoch !== loadEpoch) return;
+                snapshot = current; fill(snapshot, editedFields);
                 const title = document.createElement('strong'); title.textContent = 'Giỏ #' + snapshot.sourceCartId + ' · ' + snapshot.warehouseName;
                 el('deliveryCart').append(title);
                 for (const line of snapshot.lines) { const row = document.createElement('div'); row.textContent = line.itemName + ' · ' + line.quantity + ' ' + line.unitName + ' · ' + money(line.lineTotal); el('deliveryCart').append(row); }
                 message('Giá trị dự kiến ' + money(snapshot.quotedTotal) + '. Tạo đơn chưa ghi nhận thanh toán.');
-            } catch (error) { message(error.message, 'warning'); }
-            finally { buttons(); }
+            } catch (error) { if (epoch === loadEpoch) message(error.message, 'warning'); }
+            finally { if (epoch === loadEpoch) buttons(); }
         }
         open.addEventListener('click', () => {
             const payment = document.getElementById('paymentModal');
