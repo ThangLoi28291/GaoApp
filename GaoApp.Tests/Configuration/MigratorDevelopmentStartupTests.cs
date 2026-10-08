@@ -54,7 +54,7 @@ public sealed class MigratorDevelopmentStartupTests
             catch { if (!process.HasExited) process.Kill(true); throw; }
             var diagnostic = await output + await error;
             Assert.True(process.ExitCode == 0, diagnostic);
-            Assert.Contains("SCHEMA_ONLY_VERIFIED; SourceMigrations=72; AppliedMigrations=72", diagnostic);
+            Assert.Contains("SCHEMA_ONLY_VERIFIED; SourceMigrations=73; AppliedMigrations=73", diagnostic);
         }
         await using var db = database.CreateHostContext();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());

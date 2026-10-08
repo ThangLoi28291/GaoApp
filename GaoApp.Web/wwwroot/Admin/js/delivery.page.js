@@ -88,13 +88,20 @@
         if (!Array.isArray(inventory.lines) || !Array.isArray(inventory.costFragments) || typeof inventory.canViewCosts !== 'boolean' || typeof inventory.canCancelBeforeHandover !== 'boolean')
             throw new Error('Dữ liệu kho chưa đầy đủ.');
         parseUtcDate(inventory.serverTimeUtc);
+        if (inventory.custody != null) {
+            const c = inventory.custody;
+            if (!Number.isSafeInteger(c.tripId) || c.tripId <= 0 || !Number.isSafeInteger(c.custodyEventId) || c.custodyEventId <= 0 ||
+                !Number.isSafeInteger(c.courierUserId) || c.courierUserId <= 0 || !Number.isSafeInteger(c.confirmedByUserId) || c.confirmedByUserId <= 0 ||
+                !['HandedOver', 'Departed'].includes(c.tripState) || !['Handover', 'Transfer'].includes(c.custodyKind)) throw new Error('Chứng cứ người giữ hàng chưa hợp lệ.');
+            parseUtcDate(c.confirmedAtUtc); if (c.departedAtUtc != null) parseUtcDate(c.departedAtUtc);
+        }
         const ids = new Set();
         for (const line of inventory.lines) {
             if (!Number.isSafeInteger(line.lineId) || line.lineId <= 0 || ids.has(line.lineId)) throw new Error('Dòng kho không hợp lệ.');
             ids.add(line.lineId);
             const held = scaledQuantity(line.heldBaseQuantityText), dispatched = scaledQuantity(line.dispatchedBaseQuantityText), returned = scaledQuantity(line.acceptedReturnedBaseQuantityText), outside = scaledQuantity(line.stockOutsideBaseQuantityText);
             if (held < 0n || returned > dispatched || outside !== dispatched - returned) throw new Error('Lượng kho chưa khớp chứng từ.');
-            if (line.inCustodyBaseQuantityText !== null) scaledQuantity(line.inCustodyBaseQuantityText);
+            if (line.inCustodyBaseQuantityText !== null && (!inventory.custody || scaledQuantity(line.inCustodyBaseQuantityText) !== outside)) throw new Error('Lượng trách nhiệm không khớp chứng cứ bàn giao.');
             if (!inventory.canViewCosts && (line.dispatchedCostText !== null || line.acceptedReturnedCostText !== null)) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
         }
         if (!inventory.canViewCosts && inventory.costFragments.length) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
@@ -355,7 +362,13 @@
             }
             row.append(facts, note(line.inCustodyBaseQuantityText === null ? 'Trách nhiệm giao: chưa có xác nhận.' : 'Lượng đã xác nhận trách nhiệm giao: ' + displayExact(line.inCustodyBaseQuantityText) + ' ' + line.baseUnitName, 'delivery-inventory-custody')); box.append(row);
         }
-        box.append(note('Lượng ngoài kho dựa trên chứng từ xuất và nhận trả. Theo dõi người giao và kết quả giao sẽ được kết nối ở bước tiếp theo.'), note('Chứng từ kho cập nhật: ' + time(inventory.serverTimeUtc), 'delivery-server-time'));
+        if (inventory.custody) {
+            const c = inventory.custody, context = node('div', null, 'delivery-inventory-custody'); context.id = 'deliveryCustodyContext';
+            context.append(note('Người giữ hàng: ' + c.courierName + ' · ' + c.tripCode), note('Nhân viên xác nhận: ' + c.confirmedByName + ' · ' + time(c.confirmedAtUtc)));
+            if (c.departedAtUtc) context.append(note('Xuất phát: ' + time(c.departedAtUtc) + ' · Nhân viên: ' + c.departedByName));
+            const link = node('a', 'Mở chuyến giao'); link.href = '/admin/deliveries/trips?trip=' + c.tripId; context.append(link); box.append(context);
+        }
+        box.append(note('Lượng ngoài kho dựa trên chứng từ xuất và nhận trả. Người giữ hàng chỉ hiện khi có xác nhận bàn giao; kết quả giao sẽ được cập nhật ở bước sau.'), note('Chứng từ kho cập nhật: ' + time(inventory.serverTimeUtc), 'delivery-server-time'));
         if (inventory.canCancelBeforeHandover) {
             const cancellation = node('details', null, 'delivery-cancel-section'); cancellation.append(node('summary', 'Hủy đơn trước bàn giao'));
             cancellation.append(note('Hủy đơn sẽ giải phóng lượng đang giữ. Hàng đã xuất kho cần quy trình nhận trả.'));

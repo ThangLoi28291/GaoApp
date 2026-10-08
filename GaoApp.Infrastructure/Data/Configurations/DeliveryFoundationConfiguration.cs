@@ -171,6 +171,7 @@ public sealed class DeliveryFoundationConfiguration :
     public void Configure(EntityTypeBuilder<DeliveryCommandReceipt> b)
     {
         Base(b, "DeliveryCommandReceipts", true); Parent(b);
+        b.ToTable(t => t.HasTrigger("TR_DeliveryCommandReceipts_TripNamespace"));
         b.HasIndex(x => new { x.StoreId, x.ClientRequestId }).IsUnique();
         b.Property(x => x.Operation).HasMaxLength(60).IsRequired();
         b.Property(x => x.RequestHash).HasMaxLength(64).IsRequired(); Json(b, "OutcomeJson");

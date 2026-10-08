@@ -20,6 +20,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
 {
     private const string Previous = "20261007090000_AddMixedQuantityPromotions";
     private const string Current = "20261007100000_AddDeliveryInventoryPosting";
+    private const string Latest = "20261008100000_AddDeliveryTrips";
 
     [Fact]
     public async Task M01_Current72_real_SQL_matches_manifest_and_preserves_legacy_quantity_capacity()
@@ -73,11 +74,21 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
         try
         {
             using var c = await DeliveryD05Case.CreateAsync(isolated); await c.Picking.ClaimAsync(); await c.Picking.ReportAsync("8");
-            var before = await c.SnapshotAsync();
             await using var db = isolated.Web.Database.CreateHostContext();
-            var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
-            Assert.Equal(51029, error.Number);
-            Assert.Equal(before, await c.SnapshotAsync()); await AssertCurrent(db);
+            try
+            {
+                await db.GetService<IMigrator>().MigrateAsync(Current);
+                await AssertCurrent(db, d05Prefix: true);
+                var before = await c.SnapshotAsync();
+                var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
+                Assert.Equal(51029, error.Number);
+                Assert.Equal(before, await c.SnapshotAsync()); await AssertCurrent(db, d05Prefix: true);
+            }
+            finally
+            {
+                await db.GetService<IMigrator>().MigrateAsync(Latest);
+                await AssertCurrent(db);
+            }
         }
         finally { await isolated.DisposeAsync(); }
     }
@@ -171,18 +182,23 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
             VALUES({seed.StoreId},{seed.WarehouseId},{seed.ProductVariantId},8,N'D05-HISTORICAL-FOURTH-DIGIT',1,{status},SYSUTCDATETIME(),SYSUTCDATETIME(),0);
             """);
         await sql.MigrateAsync();
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            UPDATE InventoryReservations SET ReservedQty=0.0001 WHERE StoreId={seed.StoreId} AND ReferenceId=N'D05-HISTORICAL-FOURTH-DIGIT';
-            """);
-        if (status == 1)
+        try
+        {
+            await sql.MigrateAsync(Current); await AssertCurrent(db, d05Prefix: true);
             await db.Database.ExecuteSqlInterpolatedAsync($"""
-                UPDATE InventoryBalances SET ReservedQty=0.0001 WHERE StoreId={seed.StoreId} AND WarehouseId={seed.WarehouseId} AND ProductVariantId={seed.ProductVariantId};
+                UPDATE InventoryReservations SET ReservedQty=0.0001 WHERE StoreId={seed.StoreId} AND ReferenceId=N'D05-HISTORICAL-FOURTH-DIGIT';
                 """);
-        var error = await Assert.ThrowsAsync<SqlException>(() => sql.MigrateAsync(Previous)); Assert.Equal(51029, error.Number);
-        var row = await db.InventoryReservations.AsNoTracking().SingleAsync(x => x.ReferenceId == "D05-HISTORICAL-FOURTH-DIGIT");
-        Assert.Equal(.0001m, row.ReservedQty); Assert.Equal(status, (int)row.Status);
-        Assert.Null(row.DeliveryOrderId); Assert.Null(row.DeliveryOrderLineId); await AssertCurrent(db);
-        Assert.All(await db.InventoryBalances.AsNoTracking().ToArrayAsync(), x => Assert.Equal((byte)0, x.QuantityPrecisionVersion));
+            if (status == 1)
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    UPDATE InventoryBalances SET ReservedQty=0.0001 WHERE StoreId={seed.StoreId} AND WarehouseId={seed.WarehouseId} AND ProductVariantId={seed.ProductVariantId};
+                    """);
+            var error = await Assert.ThrowsAsync<SqlException>(() => sql.MigrateAsync(Previous)); Assert.Equal(51029, error.Number);
+            var row = await db.InventoryReservations.AsNoTracking().SingleAsync(x => x.ReferenceId == "D05-HISTORICAL-FOURTH-DIGIT");
+            Assert.Equal(.0001m, row.ReservedQty); Assert.Equal(status, (int)row.Status);
+            Assert.Null(row.DeliveryOrderId); Assert.Null(row.DeliveryOrderLineId); await AssertCurrent(db, d05Prefix: true);
+            Assert.All(await db.InventoryBalances.AsNoTracking().ToArrayAsync(), x => Assert.Equal((byte)0, x.QuantityPrecisionVersion));
+        }
+        finally { await sql.MigrateAsync(Latest); await AssertCurrent(db); }
     }
 
     [Theory]
@@ -358,10 +374,12 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
         Assert.Equal(originalProof, Json(await db.InventoryValuationEntries.AsNoTracking().SingleAsync(x => x.Id == valuationId)));
     }
 
-    private static async Task<DatabaseSchemaManifest> AssertCurrent(AppDbContext db)
+    private static async Task<DatabaseSchemaManifest> AssertCurrent(AppDbContext db, bool d05Prefix = false)
     {
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(72, applied.Length); Assert.Equal(Current, applied[^1]); Assert.Equal(Previous, applied[^2]);
+        Assert.Equal(d05Prefix ? 72 : 73, applied.Length);
+        Assert.Equal(d05Prefix ? Current : Latest, applied[^1]);
+        Assert.Equal(Current, applied[71]); Assert.Equal(Previous, applied[70]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db); Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(applied, out var expected));
         await db.Database.OpenConnectionAsync();
         DatabaseSchemaManifest actual;
@@ -369,7 +387,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
         finally { await db.Database.CloseConnectionAsync(); }
         var comparison = DatabaseSchemaComparer.Compare(expected, actual);
         Assert.True(comparison.IsMatch, Json(comparison)); Assert.Equal(0, comparison.Mismatches.Total);
-        Assert.Equal(27, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(d05Prefix ? 27 : 38, actual.Tables.Sum(x => x.Triggers.Count));
         return actual;
     }
     private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);

@@ -121,7 +121,8 @@ public sealed class InventoryPostingMigrationTests
                 "20261006170000_PreserveHeldOrderShiftChanges",
                 "20261006173000_AddDeliveryPicking",
                 "20261007090000_AddMixedQuantityPromotions",
-                "20261007100000_AddDeliveryInventoryPosting");
+                "20261007100000_AddDeliveryInventoryPosting",
+                "20261008100000_AddDeliveryTrips");
         db.Database.HasPendingModelChanges().Should().BeFalse();
         var manifest = new EfCoreDatabaseSchemaManifestCatalog(db)
             .GetCurrentManifest();
@@ -314,7 +315,8 @@ public sealed class InventoryPostingMigrationTests
                 "20261006170000_PreserveHeldOrderShiftChanges",
                 "20261006173000_AddDeliveryPicking",
                 "20261007090000_AddMixedQuantityPromotions",
-                "20261007100000_AddDeliveryInventoryPosting");
+                "20261007100000_AddDeliveryInventoryPosting",
+                "20261008100000_AddDeliveryTrips");
         var afterRowCount = await ReadLegacyRowCountAsync(database);
         afterRowCount.Should().Be(beforeRowCount);
         var afterSignature = await ReadLegacySignatureAsync(database);

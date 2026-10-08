@@ -98,9 +98,227 @@ namespace GaoApp.Infrastructure.Migrations
                         {
                             t.HasTrigger("TR_DeliveryCommandReceipts_Immutable");
 
+                            t.HasTrigger("TR_DeliveryCommandReceipts_TripNamespace");
+
                             t.HasCheckConstraint("CK_DeliveryCommandReceipts_Live", "[IsDeleted] = 0");
 
                             t.HasCheckConstraint("CK_DeliveryCommandReceipts_OutcomeJson", "ISJSON([OutcomeJson]) = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCustodyEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConfirmationNote")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CourierUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PreviousCourierUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PreviousCustodyEventId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("RootClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "CourierUserId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId")
+                        .IsUnique()
+                        .HasFilter("[Kind]=1");
+
+                    b.HasIndex("StoreId", "EventId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "PreviousCourierUserId");
+
+                    b.HasIndex("StoreId", "PreviousCustodyEventId")
+                        .IsUnique()
+                        .HasFilter("[PreviousCustodyEventId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "TripId", "TripOrderId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.ToTable("DeliveryCustodyEvents", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryCustodyEvents_Immutable");
+
+                            t.HasTrigger("TR_DeliveryCustodyEvents_Source");
+
+                            t.HasCheckConstraint("CK_DeliveryCustodyEvents_Kind", "[RootClientRequestId]<>'00000000-0000-0000-0000-000000000000' AND LEN(LTRIM(RTRIM([ConfirmationNote])))>0 AND (([Kind]=1 AND [PreviousCustodyEventId] IS NULL AND [PreviousCourierUserId] IS NULL) OR ([Kind]=2 AND [PreviousCustodyEventId] IS NOT NULL AND [PreviousCourierUserId] IS NOT NULL AND [PreviousCourierUserId]<>[CourierUserId] AND [Reason] IS NOT NULL AND LEN(LTRIM(RTRIM([Reason])))>0))");
+
+                            t.HasCheckConstraint("CK_DeliveryCustodyEvents_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCustodyLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ConfirmedBaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CumulativeAcceptedReturnAtConfirmation")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("CustodyEventId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DispatchJournalEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryOrderLineId");
+
+                    b.HasIndex("DispatchJournalEntryId");
+
+                    b.HasIndex("StoreId", "VariantId");
+
+                    b.HasIndex("StoreId", "CustodyEventId", "DeliveryOrderLineId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "CustodyEventId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.ToTable("DeliveryCustodyLines", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryCustodyLines_Immutable");
+
+                            t.HasTrigger("TR_DeliveryCustodyLines_Source");
+
+                            t.HasCheckConstraint("CK_DeliveryCustodyLines_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryCustodyLines_Quantity", "[ConfirmedBaseQuantity]>=0 AND [CumulativeAcceptedReturnAtConfirmation]>=0");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -1160,6 +1378,464 @@ namespace GaoApp.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_DeliveryRevisions_Live", "[IsDeleted] = 0");
 
                             t.HasCheckConstraint("CK_DeliveryRevisions_SnapshotJson", "ISJSON([SnapshotJson]) = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTrip", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AbandonedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("AbandonedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("CourierUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DepartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DepartedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("HandedOverAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("HandedOverByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "AbandonedByUserId");
+
+                    b.HasIndex("StoreId", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "CourierUserId");
+
+                    b.HasIndex("StoreId", "CreatedByUserId");
+
+                    b.HasIndex("StoreId", "DepartedByUserId");
+
+                    b.HasIndex("StoreId", "HandedOverByUserId");
+
+                    b.HasIndex("StoreId", "State", "Id");
+
+                    b.ToTable("DeliveryTrips", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryTrips_Transition");
+
+                            t.HasCheckConstraint("CK_DeliveryTrips_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryTrips_State", "[Revision]>0 AND (([State]=0 AND [HandedOverByUserId] IS NULL AND [HandedOverAtUtc] IS NULL AND [DepartedByUserId] IS NULL AND [DepartedAtUtc] IS NULL AND [AbandonedByUserId] IS NULL AND [AbandonedAtUtc] IS NULL) OR ([State]=1 AND [HandedOverByUserId] IS NOT NULL AND [HandedOverAtUtc] IS NOT NULL AND [DepartedByUserId] IS NULL AND [DepartedAtUtc] IS NULL AND [AbandonedByUserId] IS NULL AND [AbandonedAtUtc] IS NULL) OR ([State]=2 AND [HandedOverByUserId] IS NOT NULL AND [HandedOverAtUtc] IS NOT NULL AND [DepartedByUserId] IS NOT NULL AND [DepartedAtUtc] IS NOT NULL AND [DepartedAtUtc]>=[HandedOverAtUtc] AND [AbandonedByUserId] IS NULL AND [AbandonedAtUtc] IS NULL) OR ([State]=3 AND [HandedOverByUserId] IS NULL AND [HandedOverAtUtc] IS NULL AND [DepartedByUserId] IS NULL AND [DepartedAtUtc] IS NULL AND [AbandonedByUserId] IS NOT NULL AND [AbandonedAtUtc] IS NOT NULL))");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripCommandReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("OutcomeJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("RequiredCapabilities")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "TripId");
+
+                    b.ToTable("DeliveryTripCommandReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryTripCommandReceipts_Immutable");
+
+                            t.HasTrigger("TR_DeliveryTripCommandReceipts_Namespace");
+
+                            t.HasCheckConstraint("CK_DeliveryTripCommandReceipts_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryTripCommandReceipts_OutcomeJson", "ISJSON([OutcomeJson])=1");
+
+                            t.HasCheckConstraint("CK_DeliveryTripCommandReceipts_Request", "[ClientRequestId]<>'00000000-0000-0000-0000-000000000000' AND [RequiredCapabilities]>0 AND [RequiredCapabilities]<=131071 AND LEN([RequestHash])=64");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AssignedApprovedRevision")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AssignedOrderVersion")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CurrentCustodyEventId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "CurrentCustodyEventId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId")
+                        .IsUnique()
+                        .HasFilter("[IsActive]=1 AND [IsDeleted]=0");
+
+                    b.HasIndex("StoreId", "TripId", "Position")
+                        .IsUnique()
+                        .HasFilter("[IsActive]=1 AND [IsDeleted]=0");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.ToTable("DeliveryTripOrders", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryTripOrders_Source");
+
+                            t.HasCheckConstraint("CK_DeliveryTripOrders_Assignment", "[Position]>0 AND [AssignedApprovedRevision]>0 AND LEN([AssignedOrderVersion])=12");
+
+                            t.HasCheckConstraint("CK_DeliveryTripOrders_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripOutboxMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "EventId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "TripId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("DeliveryTripOutboxMessages", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryTripOutboxMessages_Immutable");
+
+                            t.HasCheckConstraint("CK_DeliveryTripOutboxMessages_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryTripOutboxMessages_PayloadJson", "ISJSON([PayloadJson])=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripRevision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AggregateVersion")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("nvarchar(12)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SnapshotHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TripId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.ToTable("DeliveryTripRevisions", null, t =>
+                        {
+                            t.HasTrigger("TR_DeliveryTripRevisions_Immutable");
+
+                            t.HasCheckConstraint("CK_DeliveryTripRevisions_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_DeliveryTripRevisions_Revision", "[Revision]>0 AND LEN([AggregateVersion])=12 AND LEN([SnapshotHash])=64");
+
+                            t.HasCheckConstraint("CK_DeliveryTripRevisions_SnapshotJson", "ISJSON([SnapshotJson])=1");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -15653,6 +16329,94 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCustodyEvent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CourierUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PreviousCourierUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryCustodyEvent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PreviousCustodyEventId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTrip", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTripOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId", "TripOrderId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "TripId", "Id", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCustodyLine", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("DeliveryOrderLineId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryJournalEntry", null)
+                        .WithMany()
+                        .HasForeignKey("DispatchJournalEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryCustodyEvent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CustodyEventId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryDispatchCostFragment", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
@@ -16000,6 +16764,155 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTrip", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "AbandonedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CourierUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CreatedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DepartedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "HandedOverByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripCommandReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTrip", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripOrder", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryCustodyEvent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CurrentCustodyEventId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTrip", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripOutboxMessage", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTrip", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTripRevision", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId", "Revision")
+                        .HasPrincipalKey("StoreId", "TripId", "Revision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryTripRevision", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryTrip", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TripId")
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();

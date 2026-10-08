@@ -81,6 +81,13 @@ public class AppDbContext : DbContext
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
+    public DbSet<DeliveryTrip> DeliveryTrips => Set<DeliveryTrip>();
+    public DbSet<DeliveryTripOrder> DeliveryTripOrders => Set<DeliveryTripOrder>();
+    public DbSet<DeliveryCustodyEvent> DeliveryCustodyEvents => Set<DeliveryCustodyEvent>();
+    public DbSet<DeliveryCustodyLine> DeliveryCustodyLines => Set<DeliveryCustodyLine>();
+    public DbSet<DeliveryTripRevision> DeliveryTripRevisions => Set<DeliveryTripRevision>();
+    public DbSet<DeliveryTripCommandReceipt> DeliveryTripCommandReceipts => Set<DeliveryTripCommandReceipt>();
+    public DbSet<DeliveryTripOutboxMessage> DeliveryTripOutboxMessages => Set<DeliveryTripOutboxMessage>();
     public DbSet<DeliveryPickingWork> DeliveryPickingWorks => Set<DeliveryPickingWork>();
     public DbSet<DeliveryPickingLine> DeliveryPickingLines => Set<DeliveryPickingLine>();
     public DbSet<DeliveryOrderLine> DeliveryOrderLines => Set<DeliveryOrderLine>();
@@ -347,6 +354,22 @@ public class AppDbContext : DbContext
         {
             if (entry.Entity is IDeliveryImmutableRecord && entry.State is EntityState.Modified or EntityState.Deleted)
                 throw new InvalidOperationException("Không sửa/xóa lịch sử giao hàng đã ghi.");
+            if (entry.Entity is DeliveryTrip && entry.State == EntityState.Modified)
+            {
+                foreach (var name in new[] { "StoreId", "Code", "CreatedByUserId", "IsDeleted" })
+                    if (entry.Property(name).IsModified) throw new InvalidOperationException("Không thay nguồn chuyến giao đã ghi.");
+                if (entry.Property("DepartedAtUtc").OriginalValue is not null)
+                    foreach (var name in new[] { "DepartedAtUtc", "DepartedByUserId", "CourierUserId", "State" })
+                        if (entry.Property(name).IsModified) throw new InvalidOperationException("Không thay xuất phát/trách nhiệm chuyến đã đi.");
+            }
+            if (entry.Entity is DeliveryTripOrder && entry.State == EntityState.Modified)
+            {
+                foreach (var name in new[] { "StoreId", "TripId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId", "IsDeleted" })
+                    if (entry.Property(name).IsModified) throw new InvalidOperationException("Không thay nguồn phân công chuyến.");
+                if (entry.Property("CurrentCustodyEventId").OriginalValue is not null &&
+                    (!(bool)entry.Property("IsActive").CurrentValue! || entry.Property("CurrentCustodyEventId").CurrentValue is null))
+                    throw new InvalidOperationException("Không bỏ trách nhiệm hàng đã bàn giao.");
+            }
             if (entry.Entity is InventoryCostLayer && entry.State == EntityState.Modified &&
                 Convert.ToByte(entry.Property("CostBudgetPolicy").OriginalValue) == 1)
             {

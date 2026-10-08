@@ -77,6 +77,7 @@ try
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryFoundationService>();
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryPickingService>();
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryInventoryService>();
+    builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryTripService>();
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Reports.IOperationsReportService>();
     builder.Services.RemoveAll<IReceiptInvoiceBackfillService>();
     builder.Services.AddSingleton<

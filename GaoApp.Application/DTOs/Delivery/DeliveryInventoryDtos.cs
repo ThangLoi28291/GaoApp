@@ -24,7 +24,7 @@ public sealed record DeliveryInventorySummaryDto(int StoreId, int DeliveryOrderI
     string SourceLegalEntityName, bool CanCancelBeforeHandover, bool CanViewCosts, string HeldBaseQuantityText,
     string DispatchedBaseQuantityText, string AcceptedReturnedBaseQuantityText, string StockOutsideBaseQuantityText,
     string? InCustodyBaseQuantityText, IReadOnlyList<DeliveryInventoryLineDto> Lines,
-    IReadOnlyList<DeliveryInventoryCostFragmentDto> CostFragments);
+    IReadOnlyList<DeliveryInventoryCostFragmentDto> CostFragments, DeliveryCustodyContextDto? Custody = null);
 
 // Server integration only. D06/D07 validate durable custody/outcomes before invoking these in their aggregate transaction.
 public sealed record DeliveryInventoryDispatchRequest(Guid ClientRequestId, string ExpectedVersion, int ApprovedRevision);

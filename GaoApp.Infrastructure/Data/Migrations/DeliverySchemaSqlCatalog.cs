@@ -175,6 +175,7 @@ END;
     internal static bool TryGetTrigger(string migrationId, SqlOperation operation,
         out (string Table, DatabaseTriggerSchema Trigger) result)
     {
+        if (DeliveryTripSchemaSqlCatalog.TryGetTrigger(migrationId, operation, out result)) return true;
         result = default;
         var candidates = Entries.Where(x => x.MigrationId == migrationId).ToArray();
         if (candidates.Length == 0) return false;

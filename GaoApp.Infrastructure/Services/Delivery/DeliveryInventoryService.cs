@@ -156,12 +156,14 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
         var canCosts = await permissions.HasPermissionAsync(Store, Actor, PermissionCodes.Inventory.Valuation.View, ct);
         var fragments = canCosts ? await db.DeliveryDispatchCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).OrderBy(x => x.Id).ToListAsync(ct) : [];
         var returns = canCosts ? await db.DeliveryReturnedCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).ToListAsync(ct) : [];
+        var custody = await DeliveryCustodyProjection.ReadAsync(db, Store, order, ct);
         var rows = order.Lines.OrderBy(x => x.Id).Select(line =>
         {
             var held = holds.Where(x => x.DeliveryOrderLineId == line.Id).Sum(x => x.ReservedQty);
             var dispatched = journals.Where(x => x.DeliveryOrderLineId == line.Id && x.Kind == DeliveryJournalKind.Dispatch).Sum(x => x.BaseQuantity);
             var received = journals.Where(x => x.DeliveryOrderLineId == line.Id && x.Kind == DeliveryJournalKind.Return).Sum(x => x.BaseQuantity);
-            return new DeliveryInventoryLineDto(line.Id, line.VariantId, line.ItemName, line.BaseUnitName, Qty(held), Qty(dispatched), Qty(received), Qty(dispatched - received), null,
+            return new DeliveryInventoryLineDto(line.Id, line.VariantId, line.ItemName, line.BaseUnitName, Qty(held), Qty(dispatched), Qty(received), Qty(dispatched - received),
+                custody is not null ? Qty(custody.Quantities.GetValueOrDefault(line.Id)) : null,
                 canCosts ? Qty(journals.Where(x => x.DeliveryOrderLineId == line.Id && x.Kind == DeliveryJournalKind.Dispatch).Sum(x => x.CostAmount)) : null,
                 canCosts ? Qty(journals.Where(x => x.DeliveryOrderLineId == line.Id && x.Kind == DeliveryJournalKind.Return).Sum(x => x.CostAmount)) : null);
         }).ToArray();
@@ -174,7 +176,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             canCosts, Qty(holds.Sum(x => x.ReservedQty)), Qty(dispatchTotal), Qty(receivedTotal), Qty(dispatchTotal - receivedTotal), null, rows,
             fragments.Select(x => new DeliveryInventoryCostFragmentDto(x.Id, x.DeliveryOrderLineId, x.DeliveryJournalEntryId, x.InventoryTransactionId,
                 x.InventoryValuationEntryId, x.InventoryCostLayerId, x.InventoryCostLayerAllocationId, x.InventoryCostBudgetDebitId, Qty(x.BaseQuantity), Cost(x.UnitCost), Qty(x.CostAmount),
-                Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.BaseQuantity)), Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.CostAmount)), "Final")).ToArray());
+                Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.BaseQuantity)), Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.CostAmount)), "Final")).ToArray(), custody?.Context);
         if (tx is not null) await tx.CommitAsync(ct); return result;
     }
     private void DetachAggregate(int id)

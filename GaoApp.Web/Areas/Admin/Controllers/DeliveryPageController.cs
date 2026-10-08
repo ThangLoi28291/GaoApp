@@ -22,6 +22,13 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
         ViewData["DeliveryStoreId"] = db.CurrentStoreId;
         return View();
     }
+    [HttpGet("trips")]
+    public IActionResult Trips()
+    {
+        Response.Headers.CacheControl = "no-store";
+        ViewData["DeliveryStoreId"] = db.CurrentStoreId;
+        return View();
+    }
     [HttpGet("{id:int}/bill")]
     public async Task<IActionResult> Bill(int id, CancellationToken ct)
     {

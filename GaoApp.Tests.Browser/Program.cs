@@ -20,7 +20,7 @@ async Task<object> Call(object? target, Type type, string method, params object[
     await task; return task.GetType().GetProperty("Result")!.GetValue(task)!;
 }
 var type = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.FullApplicationFixture")!;
-var fixture = await Call(null, type, args.Contains("--delivery-picking") || args.Contains("--delivery-inventory") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
+var fixture = await Call(null, type, args.Contains("--delivery-picking") || args.Contains("--delivery-inventory") || args.Contains("--delivery-trips") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
 await using var cleanup = (IAsyncDisposable)fixture;
 var store = ((IEnumerable)Read(fixture, "Stores")).Cast<object>().First();
 var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports")
@@ -29,6 +29,82 @@ var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") |
 var client = await Call(fixture, type, "LoginAsync", account);
 using var clientCleanup = (IDisposable)client;
 var http = (HttpClient)Read(client, "Http");
+if (args.Contains("--delivery-trips"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Delivery.DeliveryD06BrowserFixture")
+        ?? throw new InvalidOperationException("D06 browser fixture seam is missing.");
+    var seed = await Call(null, seam, "PrepareAsync", fixture);
+    var tripStoreId = (int)Read(seed, "StoreId");
+    var tripDatabase = Read(fixture, "Database");
+    AppDbContext TripContext() => (AppDbContext)tripDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(tripDatabase, new object?[] { tripStoreId, null })!;
+    object AccountData(object value) => new { name = Read(value, "Name"), password = Read(value, "Password"), userId = Read(value, "UserId") };
+    object OrderData(object value) => new { id = Read(value, "Id"), lookupToken = Read(value, "LookupToken"), version = Read(value, "Version"),
+        code = Read(value, "Code"), sourceWarehouseId = Read(value, "SourceWarehouseId"), sourceLegalEntityId = Read(value, "SourceLegalEntityId"),
+        sourceWarehouseName = Read(value, "SourceWarehouseName"), sourceLegalEntityName = Read(value, "SourceLegalEntityName"), lines = Read(value, "Lines") };
+    object TripData(object value) => new { id = Read(value, "Id"), version = Read(value, "Version"), orderIds = Read(value, "OrderIds") };
+    var seedOrders = ((IEnumerable)Read(seed, "Orders")).Cast<object>().ToArray();
+    var primaryIds = seedOrders.Select(x => (int)Read(x, "Id")).ToArray();
+    var spareId = (int)Read(Read(seed, "Spare"), "Id");
+    int beforeTripReceipts, beforeTripHistory, beforeTripOutbox, beforePayments, beforeCompleted, beforeMoves, beforeOrderReceipts, beforeOrderHistory, beforeOrderOutbox;
+    Dictionary<int, (decimal Quantity, decimal Value)> beforeBalances;
+    await using (var before = TripContext())
+    {
+        beforeTripReceipts = await before.DeliveryTripCommandReceipts.CountAsync(); beforeTripHistory = await before.DeliveryTripRevisions.CountAsync(); beforeTripOutbox = await before.DeliveryTripOutboxMessages.CountAsync();
+        beforePayments = await before.OrderPayments.CountAsync(); beforeCompleted = await before.Orders.CountAsync(x => x.Status == OrderStatus.Completed); beforeMoves = await before.InventoryTransactions.CountAsync();
+        beforeOrderReceipts = await before.DeliveryCommandReceipts.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId));
+        beforeOrderHistory = await before.DeliveryRevisions.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId)); beforeOrderOutbox = await before.DeliveryOutboxMessages.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId));
+        beforeBalances = (await before.InventoryBalances.AsNoTracking().ToArrayAsync()).ToDictionary(x => x.Id, x => (x.OnHandQty, x.InventoryValue));
+        if (await before.DeliveryJournalEntries.AnyAsync(x => primaryIds.Contains(x.DeliveryOrderId))) throw new InvalidOperationException("D06 primary orders must start without stock or fabricated custody.");
+    }
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var evidence = Environment.GetEnvironmentVariable("GAO_DELIVERY_TRIP_TEST_OUTPUT") ?? Path.Combine(source, "TestResults", "delivery-trips"); Directory.CreateDirectory(evidence);
+    var tripStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    tripStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules"); tripStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "delivery-trip.browser.cjs"));
+    using var probe = Process.Start(tripStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        terminalId = Read(seed, "TerminalId"), storeId = tripStoreId, orders = seedOrders.Select(OrderData), spare = OrderData(Read(seed, "Spare")),
+        creator = AccountData(Read(seed, "Creator")), viewer = AccountData(Read(seed, "ViewOnly")), depart = AccountData(Read(seed, "DepartOnly")),
+        reassign = AccountData(Read(seed, "Reassign")), cancel = AccountData(Read(seed, "Cancel")), courier = AccountData(Read(seed, "Courier")), otherCourier = AccountData(Read(seed, "OtherCourier")),
+        handedOver = TripData(Read(seed, "HandedOver")), departed = TripData(Read(seed, "Departed")), expected = Read(seed, "Expected"), evidenceDirectory = evidence }));
+    probe.StandardInput.Close(); using var tripTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await probe.WaitForExitAsync(tripTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("D06 trip browser failed.");
+    using var result = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(evidence, "browser-checks.json")));
+    if (result.RootElement.GetProperty("checks").GetArrayLength() != 6) throw new InvalidOperationException("D06 six browser groups are incomplete.");
+    var commands = result.RootElement.GetProperty("commandIds").EnumerateArray().Select(x => Guid.Parse(x.GetString()!)).Distinct().ToArray();
+    if (commands.Length != 9) throw new InvalidOperationException("D06 expected exactly9 committed root commands.");
+    var mainTripId = result.RootElement.GetProperty("tripId").GetInt32();
+    await using var verify = TripContext();
+    if (await verify.DeliveryTripCommandReceipts.CountAsync(x => commands.Contains(x.ClientRequestId)) != 9 ||
+        await verify.DeliveryTripCommandReceipts.CountAsync() != beforeTripReceipts + 9 || await verify.DeliveryTripRevisions.CountAsync() != beforeTripHistory + 9 || await verify.DeliveryTripOutboxMessages.CountAsync() != beforeTripOutbox + 9)
+        throw new InvalidOperationException("D06 root receipts/history/outbox do not match exact commands/replay.");
+    var journals = await verify.DeliveryJournalEntries.AsNoTracking().Where(x => primaryIds.Contains(x.DeliveryOrderId)).ToArrayAsync();
+    if (journals.Length != 2 || journals.Any(x => x.Kind != GaoApp.Domain.Delivery.DeliveryJournalKind.Dispatch) ||
+        journals.Single(x => x.DeliveryOrderId == primaryIds[0]).BaseQuantity != 2 || journals.Single(x => x.DeliveryOrderId == primaryIds[0]).CostAmount != 18000 ||
+        journals.Single(x => x.DeliveryOrderId == primaryIds[1]).BaseQuantity != 3 || journals.Single(x => x.DeliveryOrderId == primaryIds[1]).CostAmount != 33000 ||
+        await verify.InventoryTransactions.CountAsync() != beforeMoves + 2 || await verify.OrderPayments.CountAsync() != beforePayments || await verify.Orders.CountAsync(x => x.Status == OrderStatus.Completed) != beforeCompleted ||
+        await verify.DeliveryCommandReceipts.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId)) != beforeOrderReceipts + 2 ||
+        await verify.DeliveryRevisions.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId)) != beforeOrderHistory + 9 || await verify.DeliveryOutboxMessages.CountAsync(x => primaryIds.Contains(x.DeliveryOrderId)) != beforeOrderOutbox + 9)
+        throw new InvalidOperationException("D06 handover must export each source once and all later commands preserve stock/finance.");
+    var balances = await verify.InventoryBalances.AsNoTracking().ToArrayAsync();
+    if (balances.Length != beforeBalances.Count || balances.Any(x => !beforeBalances.ContainsKey(x.Id)) ||
+        balances.Sum(x => x.OnHandQty - beforeBalances[x.Id].Quantity) != -5 || balances.Sum(x => x.InventoryValue - beforeBalances[x.Id].Value) != -51000)
+        throw new InvalidOperationException("D06 exact source balance quantities/values differ.");
+    var mainTrip = await verify.DeliveryTrips.AsNoTracking().SingleAsync(x => x.Id == mainTripId);
+    var active = await verify.DeliveryTripOrders.AsNoTracking().Where(x => x.TripId == mainTripId && x.IsActive).ToArrayAsync();
+    var currentEventIds = active.Where(x => x.CurrentCustodyEventId.HasValue).Select(x => x.CurrentCustodyEventId!.Value).ToArray();
+    if (mainTrip.State != GaoApp.Domain.Delivery.DeliveryTripState.Departed || mainTrip.DepartedAtUtc is null || active.Length != 2 ||
+        await verify.DeliveryCustodyEvents.CountAsync(x => x.TripId == mainTripId) != 4 || await verify.DeliveryCustodyLines.CountAsync(x => currentEventIds.Contains(x.CustodyEventId)) != 2 ||
+        await verify.DeliveryJournalEntries.AnyAsync(x => x.DeliveryOrderId == spareId) ||
+        (await verify.DeliveryOrders.SingleAsync(x => x.Id == primaryIds[0])).State != GaoApp.Domain.Delivery.DeliveryState.CancellationPending ||
+        (await verify.DeliveryOrders.SingleAsync(x => x.Id == primaryIds[1])).State != GaoApp.Domain.Delivery.DeliveryState.Delivering)
+        throw new InvalidOperationException("D06 departure/one-order recall must preserve genuine courier chains and the other order.");
+    await File.WriteAllTextAsync(Path.Combine(evidence, "sql-effects.json"), JsonSerializer.Serialize(new { committedRootCommands = 9, stockChildReceipts = 2, tripHistory = 9, orderHistory = 9,
+        dispatchJournals = journals, balanceDeltaQuantity = -5, balanceDeltaValue = -51000, mainTripId, currentCourier = mainTrip.CourierUserId,
+        physicalCustodyEvents = 4, currentCustodyLines = 2, noReturnOrFinance = true, fixtureOnly = true }, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("D06 TRIP BROWSER 6 GROUPS + EXACT SQL EFFECTS PASS — disposable fixture only."); return;
+}
 if (args.Contains("--delivery-inventory"))
 {
     var inventoryFixtureType = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Delivery.DeliveryD05BrowserFixture")
