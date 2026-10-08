@@ -6,21 +6,21 @@
 <div class="delivery-workspace delivery-trip-workspace" data-actor="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)" data-store="@(ViewData["DeliveryStoreId"])">
     @Html.AntiForgeryToken()
     <header class="delivery-heading">
-        <div><p class="delivery-eyebrow">GIAO HÀNG · CHUYẾN GIAO</p><h2>Rõ người nhận hàng, rõ giờ xuất phát</h2><p>Gom đơn vào chuyến. Xác nhận nhận hàng và ghi giờ đi tại tiệm.</p></div>
-        <a class="btn btn-outline-primary" href="/admin/deliveries">Về soạn hàng</a>
+        <div><p class="delivery-eyebrow">ĐIỀU PHỐI GIAO HÀNG</p><h2>Chuyến giao hàng</h2><p>Xếp đơn · bàn giao cho người giao · ghi nhận xuất phát</p></div>
+        <a class="btn btn-outline-primary" href="/admin/deliveries">← Soạn hàng</a>
     </header>
     <div id="deliveryTripMessage" class="delivery-page-message" role="status" aria-live="polite"></div>
     <div id="deliveryTripPending" hidden></div>
     <div class="delivery-trip-layout">
         <aside class="delivery-panel delivery-trip-sidebar" aria-label="Danh sách chuyến">
             <div class="delivery-trip-section-heading"><h3>Chuyến giao</h3><button type="button" id="deliveryTripRefresh" class="delivery-link-button">Làm mới</button></div>
-            <label class="delivery-input-label" for="deliveryTripState">Trạng thái<select id="deliveryTripState" class="form-select"><option value="">Tất cả</option><option value="Draft">Đã phân công</option><option value="HandedOver">Đã nhận hàng</option><option value="Departed">Đã xuất phát</option><option value="Abandoned">Đã hủy chuyến nháp</option></select></label>
+            <button type="button" id="deliveryTripNew" class="btn btn-primary w-100">+ Tạo chuyến mới</button>
+            <label class="delivery-input-label" for="deliveryTripState">Lọc trạng thái<select id="deliveryTripState" class="form-select"><option value="">Tất cả chuyến</option><option value="Draft">Đang xếp chuyến</option><option value="HandedOver">Đã nhận hàng</option><option value="Departed">Đã xuất phát</option><option value="Abandoned">Đã bỏ chuyến nháp</option></select></label>
             <div id="deliveryTripList" class="delivery-trip-list"></div>
             <button type="button" id="deliveryTripMore" class="delivery-link-button" hidden>Xem thêm chuyến</button>
-            <button type="button" id="deliveryTripNew" class="btn btn-primary w-100">Tạo chuyến</button>
         </aside>
         <main id="deliveryTripDetail" class="delivery-panel delivery-trip-detail" aria-label="Chi tiết chuyến">
-            <div class="delivery-trip-empty"><h3>Chọn chuyến để xem từng đơn</h3><p>Phân công mới chưa có nghĩa người giao đã nhận hàng.</p></div>
+            <div class="delivery-trip-empty"><span class="delivery-trip-empty-mark" aria-hidden="true">↗</span><h3>Chọn chuyến để bắt đầu</h3><p>Xem khách, hàng cần mang và người giao phụ trách.</p><p class="delivery-trip-muted">Chuyến nháp chưa ghi nhận bàn giao hàng.</p></div>
         </main>
     </div>
 </div>
