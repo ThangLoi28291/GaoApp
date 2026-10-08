@@ -271,4 +271,78 @@ public sealed class DeliveryD08HttpTests(DeliveryD02Fixture fixture)
             request with { CustomerReceivedAtUtc = DateTimeOffset.UtcNow.AddDays(1) } })
         { await c.RejectAsync(invalid, HttpStatusCode.BadRequest); Assert.Equal(before, await c.SnapshotAsync()); }
     }
+
+    [Theory]
+    [InlineData(4)]
+    [InlineData(2.5)]
+    public async Task H10_Proved_Opening_with_prior_FIFO_consumption_settles_the_remaining_budget_and_keeps_report_history(double quantity)
+    {
+        using var c = await DeliveryD08Case.CreateAsync(fixture, opening: true); var delivered = (decimal)quantity;
+        var report = await c.Legacy.RequestAsync(outcome: delivered == 4 ? "Full" : "Partial",
+            delivered: DeliveryD08Case.Text(delivered), returned: DeliveryD08Case.Text(4 - delivered));
+        await c.Legacy.ReportAsync(report with { ReportedCashText = DeliveryD08Case.Text(delivered * 20000) });
+        var source = await c.Legacy.SourceAsync(); var other = await c.Legacy.OtherOrderAsync();
+        var cart = await c.ClosingCartAsync(); var dispatch = await c.DispatchProofAsync();
+        await using var db = c.Context(); var variant = await c.Order.Inventory.VariantAsync();
+        var layer = await db.InventoryCostLayers.AsNoTracking().SingleAsync(x => x.ProductVariantId == variant && x.ReferenceType == InventoryReferenceType.None);
+        var valuation = await db.InventoryValuationEntries.AsNoTracking().SingleAsync(x => x.Id == layer.InventoryValuationEntryId);
+        var transaction = await db.InventoryTransactions.AsNoTracking().SingleAsync(x => x.Id == layer.InventoryTransactionId);
+        var sourceProof = JsonSerializer.Serialize(new { transaction, valuation });
+        Assert.Equal(InventoryValuationEntryType.Opening, valuation.EntryType);
+        Assert.Equal(InventoryTransactionType.OpeningBalance, transaction.TransactionType);
+        Assert.False(valuation.IsProvisional); Assert.NotNull(valuation.CostFinalizedAtUtc);
+        Assert.Equal(5m, valuation.Quantity); Assert.Equal(43805m, valuation.Amount); Assert.Equal(valuation.Quantity, layer.OriginalQuantity);
+        var fragment = await db.DeliveryDispatchCostFragments.AsNoTracking().SingleAsync(x => x.DeliveryOrderId == c.Id);
+        var debit = await db.InventoryCostBudgetDebits.AsNoTracking().SingleAsync(x => x.Id == fragment.InventoryCostBudgetDebitId);
+        Assert.True(debit.Id > 0); Assert.Equal(layer.Id, debit.InventoryCostLayerId);
+        Assert.Equal(4m, debit.AnchorQuantity); Assert.Equal(35044m, debit.AnchorAmount);
+        Assert.True(valuation.Quantity > debit.AnchorQuantity); Assert.Equal(layer.BudgetAnchorQuantity, debit.AnchorQuantity);
+        Assert.Equal(layer.BudgetAnchorAmount, debit.AnchorAmount); Assert.Equal(0m, debit.StartQuantity); Assert.Equal(4m, debit.EndQuantity);
+        var prior = await db.InventoryCostLayerAllocations.AsNoTracking().SingleAsync(x => x.InventoryCostLayerId == layer.Id && x.Id != fragment.InventoryCostLayerAllocationId);
+        Assert.False(prior.IsProvisional); Assert.Equal(1m, prior.Quantity); Assert.Equal(8761m, prior.Amount);
+        var history = JsonSerializer.Serialize(await db.DeliveryRevisions.AsNoTracking().Where(x => x.DeliveryOrderId == c.Id && x.Action == "trip-outcome").ToArrayAsync());
+        var request = await c.RequestAsync(delivered); var ack = await c.ConfirmAsync(request);
+        Assert.Equal("Settled", ack.State); Assert.Equal(DeliveryD08Case.Text(delivered * 20000), ack.Settlement.PayableText);
+        var sale = await c.SaleAsync(ack); Assert.Equal(delivered * 20000, sale.GrandTotal); Assert.Equal(sale.GrandTotal, sale.PaidTotal);
+        Assert.Equal(delivered * 8761, sale.Lines.Sum(x => x.LineCostTotal)); Assert.All(sale.Lines, x => Assert.False(x.IsProvisionalCost));
+        var balance = await db.InventoryBalances.AsNoTracking().SingleAsync(x => x.ProductVariantId == variant && x.WarehouseId == c.Order.Account.Store.WarehouseId);
+        Assert.Equal(4 - delivered, balance.OnHandQty); Assert.Equal((4 - delivered) * 8761, balance.InventoryValue);
+        var returns = await db.DeliveryReturnedCostFragments.AsNoTracking().Where(x => x.DeliveryOrderId == c.Id).ToArrayAsync();
+        Assert.Equal(4 - delivered, returns.Sum(x => x.BaseQuantity)); Assert.Equal((4 - delivered) * 8761, returns.Sum(x => x.CostAmount));
+        Assert.Empty(await db.InventoryTransactions.Where(x => x.ReferenceType == InventoryReferenceType.Order && x.ReferenceId == sale.Id.ToString()).ToArrayAsync());
+        var fresh = await c.WorkspaceAsync(); var row = fresh.Trip.Orders.Single(x => x.DeliveryOrderId == c.Id);
+        Assert.Equal(ack.Settlement, fresh.Orders.Single(x => x.DeliveryOrderId == c.Id).Settlement);
+        Assert.Equal("0", Assert.Single(row.Lines).InCustodyBaseQuantityText); Assert.NotNull(row.Custody);
+        var saved = Assert.IsType<DeliveryOrderOutcomeDto>(row.Outcome); Assert.True(saved.IsCurrentValid);
+        Assert.Equal(report.Outcome, saved.Outcome); Assert.Equal(DeliveryD08Case.Text(delivered), Assert.Single(saved.Lines).DeliveredBaseQuantityText);
+        Assert.Equal("0", Assert.Single(saved.Lines).PendingReturnBaseQuantityText);
+        var detail = await c.Client.Http.GetFromJsonAsync<DeliveryTripDetailDto>(c.Trip.Path());
+        Assert.Equal("0", Assert.Single(detail!.Orders.Single(x => x.DeliveryOrderId == c.Id).Lines).InCustodyBaseQuantityText);
+        Assert.Equal(history, JsonSerializer.Serialize(await db.DeliveryRevisions.AsNoTracking().Where(x => x.DeliveryOrderId == c.Id && x.Action == "trip-outcome").ToArrayAsync()));
+        Assert.Equal(sourceProof, JsonSerializer.Serialize(new {
+            transaction = await db.InventoryTransactions.AsNoTracking().SingleAsync(x => x.Id == layer.InventoryTransactionId),
+            valuation = await db.InventoryValuationEntries.AsNoTracking().SingleAsync(x => x.Id == layer.InventoryValuationEntryId) }));
+        Assert.Equal(source, await c.Legacy.SourceAsync()); Assert.Equal(other, await c.Legacy.OtherOrderAsync());
+        Assert.Equal(cart, await c.ClosingCartAsync()); Assert.Equal(dispatch, await c.DispatchProofAsync());
+        var posted = await c.SnapshotAsync(); Assert.True((await c.ConfirmAsync(request)).Replayed); Assert.Equal(posted, await c.SnapshotAsync());
+    }
+
+    [Fact]
+    public async Task H11_Wrong_Opening_transaction_pair_is_refused_at_the_real_guard_without_stock_or_financial_effects()
+    {
+        using var first = await DeliveryD08Case.OpeningOrderAsync(fixture, wrongPair: true);
+        await first.ReadyAsync();
+        var courier = await fixture.Web.AddAccountAsync(first.Account.Store);
+        var other = await fixture.Web.AddAccountAsync(first.Account.Store);
+        using var trip = new DeliveryD06Case(fixture.Web, [first], courier, other);
+        await trip.CreateDraftAsync(); var request = await trip.HandoverRequestAsync(); var before = await trip.SnapshotAsync();
+        using var response = await first.Client.Http.PostAsJsonAsync(trip.Path("handover"), request);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("COST_NOT_READY", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(before, await trip.SnapshotAsync());
+        await using var db = trip.Context();
+        Assert.False(await db.DeliveryDispatchCostFragments.AnyAsync(x => x.DeliveryOrderId == first.Id));
+        Assert.False(await db.DeliveryJournalEntries.AnyAsync(x => x.DeliveryOrderId == first.Id));
+        Assert.False(await db.DeliveryRevisions.AnyAsync(x => x.DeliveryOrderId == first.Id && x.Action == "counter-handover"));
+    }
 }

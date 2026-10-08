@@ -36,9 +36,9 @@ internal sealed class DeliveryD08Case(DeliveryD07Case legacy, FullApplicationFix
     internal static string Text(decimal number) => number.ToString("0.####", CultureInfo.InvariantCulture);
 
     internal static async Task<DeliveryD08Case> CreateAsync(DeliveryD02Fixture fixture,
-        decimal? stock = null, string? promotion = null)
+        decimal? stock = null, string? promotion = null, bool opening = false)
     {
-        var first = promotion is null
+        var first = opening ? await OpeningOrderAsync(fixture) : promotion is null
             ? new DeliveryD06Order(new DeliveryD05Case(await DeliveryD04Case.CreateAsync(fixture,
                 quantity: 4, unitPrice: 20000, customerTier: "RETAIL",
                 stockLayers: stock is null ? [(4m, 9000m)] : stock > 0 ? [(stock.Value, 5000m)] : [])))
@@ -67,6 +67,41 @@ internal sealed class DeliveryD08Case(DeliveryD07Case legacy, FullApplicationFix
             if (trip is not null) trip.Dispose(); else { first.Dispose(); second?.Dispose(); }
             throw;
         }
+    }
+
+    internal static async Task<DeliveryD06Order> OpeningOrderAsync(DeliveryD02Fixture fixture, bool wrongPair = false)
+    {
+        var order = new DeliveryD06Order(new DeliveryD05Case(await DeliveryD04Case.CreateAsync(fixture,
+            quantity: 4, unitPrice: 20000, customerTier: "RETAIL", stockLayers: [])));
+        try
+        {
+            // Coherent historical Opening, then a real legacy FIFO consumption.
+            // Original5 remains immutable; the later promoted budget begins at4.
+            await order.Inventory.SeedHistoricalFinalSourceAsync(5, 8761, 43805);
+            var variant = await order.Inventory.VariantAsync();
+            await using var db = order.Inventory.Picking.Source.Context();
+            var layer = await db.InventoryCostLayers.SingleAsync(x => x.ProductVariantId == variant);
+            var transaction = await db.InventoryTransactions.SingleAsync(x => x.Id == layer.InventoryTransactionId);
+            var valuation = await db.InventoryValuationEntries.SingleAsync(x => x.Id == layer.InventoryValuationEntryId);
+            transaction.TransactionType = wrongPair ? InventoryTransactionType.PurchaseReceipt : InventoryTransactionType.OpeningBalance;
+            valuation.EntryType = InventoryValuationEntryType.Opening;
+            transaction.ReferenceType = valuation.ReferenceType = layer.ReferenceType = InventoryReferenceType.None;
+            transaction.ReferenceId = valuation.ReferenceId = layer.ReferenceId = "D08-OPENING-" + order.Id;
+            await db.SaveChangesAsync();
+            if (!wrongPair)
+            {
+                var prior = await InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(
+                    new InventoryMovementFactory().CreateAdjustmentDecrease(order.Account.Store.WarehouseId,
+                        variant, 1, null, "D08 Opening prior FIFO consumption"));
+                Assert.True(prior.IsCreated);
+                var allocation = await db.InventoryCostLayerAllocations.AsNoTracking().SingleAsync(x => x.InventoryCostLayerId == layer.Id);
+                Assert.False(allocation.IsProvisional); Assert.Equal(1m, allocation.Quantity); Assert.Equal(8761m, allocation.Amount);
+                await db.Entry(layer).ReloadAsync(); Assert.Equal((byte)0, layer.CostBudgetPolicy);
+                Assert.Equal(5m, layer.OriginalQuantity); Assert.Equal(4m, layer.RemainingQuantity);
+            }
+            return order;
+        }
+        catch { order.Dispose(); throw; }
     }
 
     internal static async Task<(FullApplicationFixture.Account Account, FullApplicationFixture.Client Client,

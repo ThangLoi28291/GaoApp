@@ -8,6 +8,7 @@ using GaoApp.Domain.Delivery;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Repositories.Inventory;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Delivery;
@@ -91,8 +92,15 @@ public sealed class DeliverySaleCostEvidence(AppDbContext db) : IDeliverySaleCos
                         debit.Amount == InventoryCostBudgetPolicy.Slice(debit.AnchorQuantity, debit.AnchorAmount, debit.StartQuantity, fragment.BaseQuantity));
                     var inbound = await db.InventoryValuationEntries.AsNoTracking().SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == layer!.InventoryValuationEntryId, ct);
                     Proof(inbound is not null && inbound.InventoryTransactionId == layer!.InventoryTransactionId && inbound.WarehouseId == order.SourceWarehouseId &&
-                        inbound.ProductVariantId == line.VariantId && inbound.EntryType == InventoryValuationEntryType.Inbound && inbound.Quantity == debit!.AnchorQuantity &&
-                        inbound.Amount == debit.AnchorAmount && inbound.UnitCost == layer.UnitCost && layer.UnitCost == fragment.UnitCost);
+                        inbound.ProductVariantId == line.VariantId && (inbound.EntryType is InventoryValuationEntryType.Inbound or InventoryValuationEntryType.Opening) &&
+                        inbound.Quantity == layer.OriginalQuantity && debit!.AnchorQuantity > 0 && debit.AnchorQuantity <= layer.OriginalQuantity &&
+                        debit.AnchorAmount >= 0 && inbound.Amount >= debit.AnchorAmount && inbound.UnitCost == layer.UnitCost && layer.UnitCost == fragment.UnitCost);
+                    if (inbound!.EntryType == InventoryValuationEntryType.Opening)
+                        await ProveOpeningSource(order, layer!, inbound, ct);
+                    // Promoted anchors cover the proved historical remainder, not the original inbound quantity/amount.
+                    // The policy1 branch only reads its complete contiguous debit prefix and exact current remainder.
+                    try { await new InventorySourceCostEvidenceRepository(db).PromoteLayerAsync(layer!, ct); }
+                    catch (BusinessRuleException) { Proof(false); }
                     foreach (var physical in physicalReturns)
                         Proof(physical.UnitCost == fragment.UnitCost && physical.CostAmount == InventoryCostBudgetPolicy.Slice(debit!.AnchorQuantity, debit.AnchorAmount,
                             debit.StartQuantity + physical.StartQuantity, physical.BaseQuantity));
@@ -117,6 +125,36 @@ public sealed class DeliverySaleCostEvidence(AppDbContext db) : IDeliverySaleCos
                 slices.Any(x => x.Quality != "Confirmed") ? "Provisional" : "Confirmed", Slices = slices });
         }
         return result;
+    }
+
+    private async Task ProveOpeningSource(DeliveryOrder order, InventoryCostLayer layer, InventoryValuationEntry source, CancellationToken ct)
+    {
+        var tx = await db.InventoryTransactions.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(x =>
+            x.StoreId == Store && x.Id == layer.InventoryTransactionId, ct);
+        Proof(!layer.IsDeleted && !layer.IsProvisionalSource && !source.IsDeleted && !source.IsProvisional &&
+            source.CostFinalizedAtUtc is not null && source.CostSourceType != InventoryCostSourceType.Unknown &&
+            tx is not null && !tx.IsDeleted && !tx.IsProvisionalCost && tx.CostFinalizedAtUtc is not null &&
+            tx.CostSourceType != InventoryCostSourceType.Unknown && tx.TransactionType == InventoryTransactionType.OpeningBalance &&
+            source.InventoryTransactionId == tx.Id && tx.WarehouseId == layer.WarehouseId && tx.ProductVariantId == layer.ProductVariantId &&
+            await db.Warehouses.IgnoreQueryFilters().AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == layer.WarehouseId &&
+                !x.IsDeleted && x.LegalEntityId == order.SourceLegalEntityId, ct) &&
+            await db.LegalEntities.IgnoreQueryFilters().AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceLegalEntityId && !x.IsDeleted, ct));
+        // This is the exact initial-import alias already accepted by the original source-evidence gate.
+        var legacyOpeningAlias = source.ReferenceType == InventoryReferenceType.None && source.ReferenceId == "LEGACY-PRODUCT" &&
+            source.ReferenceLineId is > 0 && source.InventoryCostLayerId == layer.Id && source.CostSourceType == InventoryCostSourceType.Manual &&
+            tx!.CostSourceType == InventoryCostSourceType.Manual && tx.PostingPrecisionPolicy == 0 &&
+            source.ReferenceSubKey == "LEGACY-OPENING" && layer.ReferenceSubKey == "LEGACY-POS" && tx.ReferenceSubKey == "LEGACY-POS";
+        Proof(source.ReferenceType == layer.ReferenceType && source.ReferenceId == layer.ReferenceId && source.ReferenceLineId == layer.ReferenceLineId &&
+            (source.ReferenceSubKey == layer.ReferenceSubKey || legacyOpeningAlias) && source.ReferenceType == tx!.ReferenceType &&
+            source.ReferenceId == tx.ReferenceId && source.ReferenceLineId == tx.ReferenceLineId);
+        var siblings = await db.InventoryValuationEntries.IgnoreQueryFilters().AsNoTracking().Where(x =>
+            x.StoreId == Store && x.InventoryTransactionId == tx!.Id).ToListAsync(ct);
+        Proof(siblings.All(x => !x.IsDeleted && x.WarehouseId == layer.WarehouseId && x.ProductVariantId == layer.ProductVariantId) &&
+            siblings.Sum(x => x.Quantity) == tx!.QuantityChange && siblings.Sum(x => x.Amount) == tx.TotalCost &&
+            tx.QuantityChange > 0 && tx.AfterQty == tx.BeforeQty + tx.QuantityChange &&
+            (tx.PostingPrecisionPolicy != 0 || source.Amount == decimal.Round(source.Quantity * source.UnitCost, 4, MidpointRounding.AwayFromZero) &&
+                tx.AfterInventoryValue == tx.BeforeInventoryValue + tx.TotalCost &&
+                (siblings.Count(x => x.EntryType == source.EntryType) != 1 || tx.UnitCostSnapshot == source.UnitCost)));
     }
 
     public async Task EnsureGenericSaleReturnSupportedAsync(int saleOrderId, CancellationToken ct = default)
