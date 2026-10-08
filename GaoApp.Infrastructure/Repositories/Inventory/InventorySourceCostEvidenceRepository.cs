@@ -66,8 +66,16 @@ public sealed class InventorySourceCostEvidenceRepository(AppDbContext db) : IIn
             tx.WarehouseId != layer.WarehouseId || tx.ProductVariantId != layer.ProductVariantId ||
             source.Quantity != layer.OriginalQuantity || source.UnitCost != layer.UnitCost || source.Amount < 0)
             throw Bad("Nguồn nhập FIFO thiếu, tạm tính hoặc không khớp.");
+        // Initial import names the same positive product event LEGACY-OPENING in
+        // its valuation and LEGACY-POS in the transaction/layer (Migration.sql).
+        var legacyOpeningAlias = source.EntryType == InventoryValuationEntryType.Opening &&
+            tx.TransactionType == InventoryTransactionType.OpeningBalance && source.ReferenceType == InventoryReferenceType.None &&
+            source.ReferenceId == "LEGACY-PRODUCT" && source.ReferenceLineId is > 0 && source.InventoryCostLayerId == layer.Id &&
+            source.CostSourceType == InventoryCostSourceType.Manual && tx.CostSourceType == InventoryCostSourceType.Manual &&
+            tx.PostingPrecisionPolicy == 0 && source.ReferenceSubKey == "LEGACY-OPENING" &&
+            layer.ReferenceSubKey == "LEGACY-POS" && tx.ReferenceSubKey == "LEGACY-POS";
         if (source.ReferenceType != layer.ReferenceType || source.ReferenceId != layer.ReferenceId || source.ReferenceLineId != layer.ReferenceLineId ||
-            source.ReferenceSubKey != layer.ReferenceSubKey || source.ReferenceType != tx.ReferenceType || source.ReferenceId != tx.ReferenceId || source.ReferenceLineId != tx.ReferenceLineId)
+            (source.ReferenceSubKey != layer.ReferenceSubKey && !legacyOpeningAlias) || source.ReferenceType != tx.ReferenceType || source.ReferenceId != tx.ReferenceId || source.ReferenceLineId != tx.ReferenceLineId)
             throw Bad("Định danh gốc của nguồn nhập FIFO không khớp.");
         InventoryPostingPrecisionPolicy.Cost(layer.UnitCost);
         var siblings = await db.InventoryValuationEntries.IgnoreQueryFilters().AsNoTracking().Where(x => x.StoreId == layer.StoreId && x.InventoryTransactionId == tx.Id).ToListAsync(ct);
