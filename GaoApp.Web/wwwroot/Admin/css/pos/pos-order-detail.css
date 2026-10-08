@@ -1145,3 +1145,4 @@
         grid-template-columns: 1fr;
     }
 }
+.ord-line-price,.ord-line-discount{font-size:12px;line-height:1.6;color:#47745d;margin-top:5px}.ord-price-breakdown{margin-top:18px;padding:16px;border:1px solid #dce5ee;border-radius:12px;background:#f7fafc}.ord-price-breakdown h6{margin:0 0 10px}.ord-price-breakdown dl{margin:0}.ord-price-breakdown dl>div{display:flex;justify-content:space-between;gap:16px;padding:4px 0}.ord-price-breakdown dt{font-weight:400}.ord-price-breakdown dd{margin:0;white-space:nowrap}.ord-price-breakdown .ord-price-net{margin-top:6px;border-top:1px solid #dce5ee;padding-top:10px;font-weight:700}.ord-price-breakdown p{margin:10px 0 0;color:#667b8d;font-size:12px}.ord-stat-value.ord-delivery-status{font-size:20px}.ord-delivery-link{display:inline-block;margin-top:6px;font-weight:600;color:#276892}

@@ -1,4 +1,5 @@
 @model GaoApp.Application.DTOs.POS.OrderReceiptDto
+@using System.Globalization
 
 @{
     ViewData["Title"] = "Chi tiết đơn POS";
@@ -12,6 +13,14 @@
 
     var paymentCount = Model.Payments?.Count ?? 0;
     var lineCount = Model.Lines?.Count ?? 0;
+    var vi = CultureInfo.GetCultureInfo("vi-VN");
+    string Money(decimal amount) => amount.ToString("N0", vi);
+    (string Label, decimal Amount)[] priceDiscounts = {
+        ("Giảm giá dòng hàng", Model.LineDiscountTotal), ("Khuyến mãi sản phẩm", Model.PromotionDiscountTotal),
+        ("Giảm combo" + (string.IsNullOrWhiteSpace(Model.ComboPromotionName) ? "" : " · " + Model.ComboPromotionName), Model.ComboDiscountTotal),
+        ("Giảm cấp đơn", Model.OrderDiscount), ("Giảm voucher", Model.VoucherDiscountTotal)
+    };
+    var otherDiscount = Math.Max(0, Model.DiscountTotal - priceDiscounts.Sum(x => x.Amount));
 
     var rewardVouchers = Model.RewardVouchers
         ?? new List<GaoApp.Application.DTOs.POS.OrderRewardVoucherDto>();
@@ -59,6 +68,9 @@
             "onhold" => "ord-badge-warning",
             "voided" => "ord-badge-dark",
             "refunded" => "ord-badge-info",
+            "deliverypending" => "ord-badge-warning",
+            "deliverysettled" => "ord-badge-success",
+            "deliverycancelled" => "ord-badge-danger",
             _ => "ord-badge-muted"
         };
     }
@@ -91,9 +103,19 @@
             "onhold" => "Đang giữ",
             "voided" => "Hủy sau chốt",
             "refunded" => "Đã hoàn tiền",
+            "deliverypending" => "Đơn giao · Chưa chốt",
+            "deliverysettled" => "Đơn giao · Đã chốt",
+            "deliverycancelled" => "Đơn giao · Đã hủy",
             _ => status!
         };
     }
+
+    public string GetDeliveryStateText(string state) => state switch {
+        "Created" => "Chờ soạn", "Picking" => "Đang soạn", "AwaitingApproval" => "Chờ duyệt",
+        "ReadyForHandover" => "Chờ bàn giao", "HandedOver" => "Đã bàn giao", "Delivering" => "Đang giao",
+        "AwaitingReconciliation" => "Chờ đối soát", "ReadyToSettle" => "Chờ chốt thanh toán",
+        "CancellationPending" => "Chờ xử lý hủy", "Settled" => "Đã chốt", "Cancelled" => "Đã hủy", _ => "Đơn giao"
+    };
 
     public string GetPaymentStatusTextVi(string? paymentStatus)
     {
@@ -264,13 +286,20 @@
 
     <div class="ord-overview">
         <div class="ord-stat primary">
-            <div class="ord-stat-label">Tổng tiền đơn</div>
-            <div class="ord-stat-value">@Model.GrandTotal.ToString("N0") đ</div>
+            <div class="ord-stat-label">@(Model.Delivery is null ? "Tổng tiền đơn" : "Giá trị dự kiến khi lập đơn")</div>
+            <div class="ord-stat-value">@Money(Model.GrandTotal) đ</div>
             <div class="ord-stat-sub">
-                Tạm tính: <strong>@Model.Subtotal.ToString("N0") đ</strong>
+                Tiền hàng gốc: <strong>@Money(Model.Subtotal) đ</strong>
             </div>
         </div>
 
+        @if (Model.Delivery is not null) {
+            <div class="ord-stat warning"><div class="ord-stat-label">@GetStatusTextVi(Model.DisplayStatus)</div>
+                <div class="ord-stat-value ord-delivery-status">@GetDeliveryStateText(Model.Delivery.State)</div>
+                <div class="ord-stat-sub">@(Model.Delivery.IsPendingSettlement ? "Chưa thu tiền" : "Xem thanh toán tại hồ sơ giao")</div>
+            </div>
+        }
+        else {
         <div class="ord-stat success">
             <div class="ord-stat-label">Đã thanh toán</div>
             <div class="ord-stat-value">@Model.PaidTotal.ToString("N0") đ</div>
@@ -294,6 +323,7 @@
             <div class="ord-stat-label">Số thanh toán</div>
             <div class="ord-stat-value">@paymentCount</div>
         </div>
+        }
 
         <div class="ord-stat danger">
     <div class="ord-stat-label">Voucher</div>
@@ -321,13 +351,19 @@
                     <div class="ord-info">
                         <div class="ord-info-label">Trạng thái</div>
                         <div class="ord-badges">
-                            <span class="ord-badge @GetStatusBadgeClass(Model.Status)">
-                                @GetStatusTextVi(Model.Status)
+                            <span class="ord-badge @GetStatusBadgeClass(Model.DisplayStatus)">
+                                @GetStatusTextVi(Model.DisplayStatus)
                             </span>
+                            @if (Model.Delivery is null) {
                             <span class="ord-badge @GetPaymentBadgeClass(Model.PaymentStatus)">
                                 @GetPaymentStatusTextVi(Model.PaymentStatus)
                             </span>
+                            }
                         </div>
+                        @if (Model.Delivery is not null) {
+                            <div class="ord-info-sub">@Model.Delivery.Code · @GetDeliveryStateText(Model.Delivery.State)</div>
+                            <a class="ord-delivery-link" href="@Model.Delivery.BillUrl">Xem phiếu giao A5</a>
+                        }
                     </div>
 
                     <div class="ord-info">
@@ -438,8 +474,8 @@
                                         <th style="width:68px;">#</th>
                                         <th>Sản phẩm</th>
                                         <th class="text-end">SL</th>
-                                        <th class="text-end">Đơn giá</th>
-                                        <th class="text-end">Thành tiền</th>
+                                        <th class="text-end">Giá gốc / ĐVT</th>
+                                        <th class="text-end">Sau giảm</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -476,15 +512,21 @@
                                                             <span> | Barcode: @line.Barcode</span>
                                                         }
                                                     </div>
+                                                    <div class="ord-line-price">Giá gốc: @Money(line.GrossAmount) đ
+                                                        @if (line.LineDiscount > 0) { <span> · Giảm dòng: −@Money(line.LineDiscount) đ</span> }
+                                                        @if (line.PromotionDiscount > 0) { <span> · @(line.PromotionName ?? "Khuyến mãi"): −@Money(line.PromotionDiscount) đ</span> }
+                                                    </div>
+                                                    @if (line.IsPromotionGift) { <div class="ord-line-discount">Hàng tặng · @line.GiftPromotionName</div> }
+                                                    @if (!string.IsNullOrWhiteSpace(line.ComboPromotionName)) { <div class="ord-line-discount">Combo: @line.ComboPromotionName · giảm tại tổng đơn</div> }
                                                 </td>
                                                 <td class="text-end">
                                                     <div class="ord-cell-main">@line.Quantity</div>
                                                 </td>
                                                 <td class="text-end">
-                                                    <div class="ord-cell-main">@line.UnitPrice.ToString("N0")</div>
+                                                    <div class="ord-cell-main">@Money(line.UnitPrice)</div>
                                                 </td>
                                                 <td class="text-end">
-                                                    <div class="ord-cell-main">@line.LineTotal.ToString("N0")</div>
+                                                    <div class="ord-cell-main">@Money(line.LineTotal)</div>
                                                 </td>
                                             </tr>
                                             index++;
@@ -495,6 +537,16 @@
                         </div>
                     </div>
 
+                    <section class="ord-price-breakdown">
+                        <h6>@(Model.Delivery is null ? "Chi tiết giá trị đơn" : "Giá trị dự kiến khi lập đơn")</h6>
+                        <dl><div><dt>Tiền hàng gốc</dt><dd>@Money(Model.Subtotal) đ</dd></div>
+                            @foreach (var discount in priceDiscounts.Where(x => x.Amount > 0)) { <div><dt>@discount.Label</dt><dd>−@Money(discount.Amount) đ</dd></div> }
+                            @if (otherDiscount > 0) { <div><dt>Giảm giá khác</dt><dd>−@Money(otherDiscount) đ</dd></div> }
+                            <div class="ord-price-net"><dt>@(Model.Delivery is null ? "Tổng tiền" : "Giá trị dự kiến")</dt><dd>@Money(Model.GrandTotal) đ</dd></div>
+                        </dl>
+                        @if (Model.Delivery is not null) { <p>@(Model.Delivery.IsPendingSettlement ? "Chưa thu tiền. " : "")Giá trị nguồn đã lưu khi lập đơn; tra thanh toán tại hồ sơ giao.</p> }
+                    </section>
+                    @if (Model.Delivery is null) {
                     <div class="ord-section ord-payment-section">
                         <div class="ord-payment-card">
                             <div>
@@ -509,6 +561,7 @@
                             </button>
                         </div>
                     </div>
+                    }
                 </div>
             </div>
         </div>

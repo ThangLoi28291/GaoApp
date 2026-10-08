@@ -306,3 +306,4 @@
 @media (prefers-reduced-motion: reduce) {
     .pos-orders-page *, .pos-orders-page *::before, .pos-orders-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.pos-orders-page .po-delivery-filter{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap;cursor:pointer}.pos-orders-page .po-delivery-filter input{width:17px;height:17px;accent-color:#3c73a2}.pos-orders-page .po-source-caption{display:block;color:#68798e;font-size:11px;line-height:1.5}.pos-orders-page .po-line-discount{color:#39785a}.pos-orders-page .po-preview-lines .po-amount small{display:block;font-weight:400;color:#69798d;font-size:11px}.pos-orders-page .po-delivery-link{display:inline-block;margin:0 0 14px;color:#276892;font-weight:600}

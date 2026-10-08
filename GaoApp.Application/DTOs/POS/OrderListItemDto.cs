@@ -17,6 +17,8 @@ public sealed class OrderListItemDto
 
     public string Status { get; set; } = default!;
     public string PaymentStatus { get; set; } = default!;
+    public OrderDeliveryInfoDto? Delivery { get; set; }
+    public string DisplayStatus => Delivery?.DisplayStatus ?? Status;
 
     public decimal GrandTotal { get; set; }
     public decimal PaidTotal { get; set; }

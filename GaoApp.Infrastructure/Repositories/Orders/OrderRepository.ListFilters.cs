@@ -1,6 +1,7 @@
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using GaoApp.Domain.Delivery;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Orders;
@@ -38,6 +39,8 @@ public sealed partial class OrderRepository
     private IQueryable<Order> ApplyListFilters(IQueryable<Order> orders, int storeId, OrderListQueryDto? filters)
     {
         if (filters == null) return orders;
+        if (filters.DeliveryOnly)
+            orders = orders.Where(o => _db.DeliveryOrders.Any(d => d.StoreId == storeId && !d.IsDeleted && d.SourceCartId == o.Id));
         // Keep unfiltered count/timeline queries free of joins. Match dimensions only when requested.
         if (filters.EmployeeId.HasValue || !string.IsNullOrWhiteSpace(filters.Employee))
         {
@@ -103,10 +106,13 @@ public sealed partial class OrderRepository
             from t in terminals.DefaultIfEmpty()
             join c in _db.Customers.Where(c => c.StoreId == storeId && !c.IsDeleted) on o.CustomerId equals c.Id into customers
             from c in customers.DefaultIfEmpty()
+            join d in _db.DeliveryOrders.Where(d => d.StoreId == storeId && !d.IsDeleted) on o.Id equals d.SourceCartId into deliveryLinks
+            from d in deliveryLinks.DefaultIfEmpty()
             select new
             {
                 o.Id, o.CustomerId, CustomerName = c.Name, CustomerPhone = c.Phone,
                 TerminalName = t.Name, TerminalCode = t.Code,
+                DeliveryOrderId = (int?)d.Id, DeliveryCode = d.Code, DeliveryState = (DeliveryState?)d.State,
                 CashierName = _db.UserInStores.Where(m => m.StoreId == storeId && !m.IsDeleted && !m.User.IsDeleted && m.UserId == s.OpenedByUserId)
                     .OrderBy(m => m.Id).Select(m => string.IsNullOrWhiteSpace(m.User.FullName) ? m.User.UserName : m.User.FullName).FirstOrDefault()
             }).TagWith("POS orders: page identities").ToDictionaryAsync(x => x.Id, ct);
@@ -119,6 +125,8 @@ public sealed partial class OrderRepository
         {
             item.PaymentMethods = byOrder[item.OrderId].OrderBy(m => m).Select(m => m.ToString()).ToList();
             if (!details.TryGetValue(item.OrderId, out var detail)) continue;
+            if (detail.DeliveryOrderId is int deliveryId && detail.DeliveryState is DeliveryState state)
+                item.Delivery = DeliveryInfo(deliveryId, detail.DeliveryCode, state);
             item.CustomerName = detail.CustomerName ?? (detail.CustomerId.HasValue ? "Khách đã xóa / không còn thông tin" : "Khách lẻ");
             item.CustomerPhone = detail.CustomerPhone;
             item.CashierName = detail.CashierName;

@@ -34,19 +34,19 @@
             <span class="po-metric-note">Tất cả các trang</span>
         </article>
         <article class="po-metric">
-            <div class="po-metric-label">Tổng tiền đơn <i class="bx bx-wallet" aria-hidden="true"></i></div>
+            <div class="po-metric-label">Giá trị đơn / dự kiến giao <i class="bx bx-wallet" aria-hidden="true"></i></div>
             <div class="po-metric-value" id="metricTotal">—</div>
             <span class="po-metric-note">Các đơn trên trang này</span>
         </article>
         <article class="po-metric">
-            <div class="po-metric-label">Đã thanh toán <i class="bx bx-check-circle" aria-hidden="true"></i></div>
+            <div class="po-metric-label">Đã thanh toán tại POS <i class="bx bx-check-circle" aria-hidden="true"></i></div>
             <div class="po-metric-value po-text-success" id="metricPaid">—</div>
-            <span class="po-metric-note">Các đơn trên trang này</span>
+            <span class="po-metric-note">Các đơn trên trang này · chưa gồm thanh toán giao hàng</span>
         </article>
         <article class="po-metric">
-            <div class="po-metric-label">Còn thiếu <i class="bx bx-time-five" aria-hidden="true"></i></div>
+            <div class="po-metric-label">Còn thiếu tại POS <i class="bx bx-time-five" aria-hidden="true"></i></div>
             <div class="po-metric-value" id="metricDue">—</div>
-            <span class="po-metric-note">Các đơn trên trang này</span>
+            <span class="po-metric-note">Các đơn trên trang này · chưa gồm thanh toán giao hàng</span>
         </article>
     </section>
 
@@ -103,6 +103,7 @@
                 </div>
             </div>
             <div class="po-filter-bottom">
+                <label class="po-delivery-filter" for="deliveryOnly"><input type="checkbox" id="deliveryOnly" /> Chỉ đơn giao</label>
                 <div class="po-periods" role="group" aria-label="Khoảng thời gian nhanh">
                     <span class="po-period-label"><i class="bx bx-calendar" aria-hidden="true"></i> Thời gian</span>
                     <button type="button" class="po-chip" data-range="clear" aria-pressed="true">Tất cả</button>

@@ -11,6 +11,8 @@ public sealed class OrderReceiptDto
 
     public string Status { get; set; } = default!;
     public string PaymentStatus { get; set; } = default!;
+    public OrderDeliveryInfoDto? Delivery { get; set; }
+    public string DisplayStatus => Delivery?.DisplayStatus ?? Status;
 
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? FinalizedAtUtc { get; set; }
@@ -32,6 +34,12 @@ public sealed class OrderReceiptDto
 
     public decimal Subtotal { get; set; }
     public decimal DiscountTotal { get; set; }
+    public decimal LineDiscountTotal { get; set; }
+    public decimal PromotionDiscountTotal { get; set; }
+    public decimal ComboDiscountTotal { get; set; }
+    public decimal OrderDiscount { get; set; }
+    public string? ComboPromotionName { get; set; }
+    public string? ComboPromotionNote { get; set; }
     public decimal GrandTotal { get; set; }
 
     public decimal PaidTotal { get; set; }

@@ -49,6 +49,9 @@ public interface IOrderRepository
 
     Task<Order?> GetByIdWithDetailsAsync(int orderId, CancellationToken ct = default);
 
+    Task<GaoApp.Application.DTOs.POS.OrderDeliveryInfoDto?> GetDeliveryInfoAsync(int orderId, CancellationToken ct = default)
+        => Task.FromResult<GaoApp.Application.DTOs.POS.OrderDeliveryInfoDto?>(null);
+
     Task<Order?> GetCompletedOrderForVoidAsync(int orderId, CancellationToken ct = default);
 
     Task<Order?> GetCompletedOrderForRefundAsync(int orderId, CancellationToken ct = default);

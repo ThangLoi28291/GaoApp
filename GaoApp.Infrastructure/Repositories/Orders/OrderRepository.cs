@@ -2,6 +2,7 @@
 using GaoApp.Domain.Entities;
 using GaoApp.Application.DTOs.POS;
 using GaoApp.Domain.Enums;
+using GaoApp.Domain.Delivery;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 namespace GaoApp.Infrastructure.Repositories.Orders;
@@ -122,7 +123,12 @@ public sealed partial class OrderRepository : IOrderRepository
 
         // 1) Lọc theo trạng thái
         if (status.HasValue)
+        {
             q = q.Where(o => o.Status == status.Value);
+            if (status == OrderStatus.Cancelled)
+                q = q.Where(o => !_db.DeliveryOrders.Any(d => d.StoreId == storeId && !d.IsDeleted &&
+                    d.SourceCartId == o.Id && d.State != DeliveryState.Cancelled));
+        }
 
         // 2) Lọc theo ngày (chuẩn POS)
         // - Completed: dùng CompletedAtUtc (vì thời điểm chốt)
@@ -329,6 +335,21 @@ public sealed partial class OrderRepository : IOrderRepository
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
+    public async Task<OrderDeliveryInfoDto?> GetDeliveryInfoAsync(int orderId, CancellationToken ct = default)
+    {
+        if (_db.CurrentStoreId is not > 0) return null;
+        var storeId = _db.CurrentStoreId.Value;
+        var delivery = await _db.DeliveryOrders.AsNoTracking()
+            .Where(d => d.StoreId == storeId && !d.IsDeleted && d.SourceCartId == orderId &&
+                _db.Orders.Any(o => o.StoreId == storeId && !o.IsDeleted && o.Id == orderId))
+            .Select(d => new { d.Id, d.Code, d.State }).SingleOrDefaultAsync(ct);
+        return delivery is null ? null : DeliveryInfo(delivery.Id, delivery.Code, delivery.State);
+    }
+    private static OrderDeliveryInfoDto DeliveryInfo(int id, string code, DeliveryState state) => new()
+    {
+        DeliveryOrderId = id, Code = code, State = state.ToString(),
+        SettlementStatus = state == DeliveryState.Cancelled ? "cancelled" : state == DeliveryState.Settled ? "settled" : "pending"
+    };
     public async Task<Order?> GetCompletedOrderForVoidAsync(int orderId, CancellationToken ct = default)
     {
         return await _db.Orders

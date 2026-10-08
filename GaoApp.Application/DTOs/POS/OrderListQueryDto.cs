@@ -11,6 +11,7 @@ public sealed class OrderListQueryDto
 
     public OrderStatus? Status { get; set; } // null = tất cả
     public string? Keyword { get; set; }     // orderNumber, note...
+    public bool DeliveryOnly { get; set; }
 
     [StringLength(320)] public string? Employee { get; set; }
     [StringLength(200)] public string? Customer { get; set; }

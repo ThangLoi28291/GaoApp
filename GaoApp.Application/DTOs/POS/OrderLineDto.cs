@@ -46,6 +46,7 @@ public sealed class OrderLineDto
     public decimal Quantity { get; set; }
 
     public decimal UnitPrice { get; set; }
+    public decimal GrossAmount { get; set; }
     public List<OrderLineUnitPriceDto> UnitPrices { get; set; } = new();
     public decimal LineDiscount { get; set; }
     public decimal LineTotal { get; set; }

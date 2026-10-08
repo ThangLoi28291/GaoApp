@@ -1,6 +1,7 @@
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Delivery;
 using GaoApp.Application.Interfaces.Services.Delivery;
+using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Web.Areas.Admin.ViewModels.Delivery;
 using GaoApp.Web.Services.Delivery;
@@ -13,7 +14,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Area("Admin"), Authorize(Policy = PermissionCodes.Delivery.View)]
 [Route("admin/deliveries")]
 public sealed class DeliveryPageController(IDeliveryFoundationService deliveries, AppDbContext db,
-    IDeliveryPickingService? picking = null) : Controller
+    IDeliveryPickingService? picking = null, IPOSService? pos = null) : Controller
 {
     [HttpGet("")]
     public IActionResult Index()
@@ -42,11 +43,14 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
             var terminal = await db.POSTerminals.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.StoreId == store.Id && x.Id == detail.CreatedTerminalId, ct);
             var employee = await db.Users.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == detail.CreatedByUserId, ct);
             var warehouse = await db.Warehouses.AsNoTracking().SingleAsync(x => x.StoreId == store.Id && x.Id == detail.SourceWarehouseId, ct);
+            var sourceReceipt = pos is null ? null : await pos.GetReceiptAsync(detail.SourceCartId, ct);
+            if (sourceReceipt is not null && sourceReceipt.OrderId != detail.SourceCartId)
+                throw new InvalidOperationException("Delivery bill source receipt does not match its immutable source cart.");
             var lookup = Url.Action(nameof(Index), "DeliveryPage", new { area = "Admin", key = detail.LookupToken, revision = detail.Revision }, Request.Scheme)!;
             Response.Headers.CacheControl = "no-store";
             Response.Headers["Referrer-Policy"] = "no-referrer";
             return View(new DeliveryBillViewModel(detail, store.Name, terminal.Name, employee.FullName ?? employee.UserName,
-                warehouse.Name, lookup, "data:image/png;base64," + Convert.ToBase64String(DeliveryQrRenderer.Png(lookup)), currentPicking));
+                warehouse.Name, lookup, "data:image/png;base64," + Convert.ToBase64String(DeliveryQrRenderer.Png(lookup)), currentPicking, sourceReceipt));
         }
         catch (DeliveryFoundationException ex) { return StatusCode(ex.StatusCode, new { code = ex.Code, message = ex.Message }); }
     }

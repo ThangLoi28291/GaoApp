@@ -64,6 +64,8 @@ public class POSReceiptController : BasePOSPageController
         {
             return NotFound();
         }
+        if (receipt.Delivery is not null)
+            return Redirect(receipt.Delivery.BillUrl);
 
         string? selfServiceUrl = null;
         DateTime? selfServiceExpiresAtUtc = null;

@@ -2471,6 +2471,7 @@ ICustomerDepositService? deposits = null)
             ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
         var transferOrderIds = await _orders.GetBankTransferOrderIdsAsync(new[] { order.Id }, ct);
+        var delivery = await _orders.GetDeliveryInfoAsync(order.Id, ct);
         var cashier = order.POSShift?.OpenedByUserId is > 0
             ? (await _users.GetByIdsAsync(new List<int> { order.POSShift.OpenedByUserId }, ct)).FirstOrDefault()
             : null;
@@ -2487,6 +2488,7 @@ ICustomerDepositService? deposits = null)
             HasBankTransfer = transferOrderIds.Contains(order.Id),
             OrderNumber = order.OrderNumber,
             Status = order.Status.ToString(),
+            Delivery = delivery,
             PaymentStatus = order.PaymentStatus.ToString(),
             CreatedAtUtc = order.CreatedAtUtc,
             FinalizedAtUtc = order.CompletedAtUtc,
@@ -2507,6 +2509,12 @@ ICustomerDepositService? deposits = null)
             StorePhone = order.Store?.ReceiptPhone,
             Subtotal = order.Subtotal,
             DiscountTotal = order.DiscountTotal,
+            LineDiscountTotal = Math.Round(orderLines.Sum(x => x.LineDiscount), 0, MidpointRounding.AwayFromZero),
+            PromotionDiscountTotal = order.PromotionDiscountTotal,
+            ComboDiscountTotal = order.ComboDiscountTotal,
+            OrderDiscount = order.OrderDiscount,
+            ComboPromotionName = order.ComboPromotionName,
+            ComboPromotionNote = order.ComboPromotionNote,
             GrandTotal = order.GrandTotal,
             VoucherDiscountTotal = order.VoucherDiscountTotal,
             RewardVouchers = order.RewardVouchers
@@ -2550,6 +2558,7 @@ ICustomerDepositService? deposits = null)
 
                     Quantity = x.Quantity,
                     UnitPrice = x.UnitPrice,
+                    GrossAmount = Math.Round(x.Quantity * x.UnitPrice, 0, MidpointRounding.AwayFromZero),
                     LineDiscount = x.LineDiscount,
                     LineTotal = x.LineTotal,
                     SellingUnitId = x.SellingUnitId,
@@ -2557,6 +2566,18 @@ ICustomerDepositService? deposits = null)
                     OriginalUnitPrice = x.OriginalUnitPrice,
                     PromotionDiscount = x.PromotionDiscount,
                     PromotionName = x.PromotionName,
+                    ComboPromotionId = x.ComboPromotionId,
+                    ComboPromotionName = x.ComboPromotionName,
+                    ComboPromotionNote = x.ComboPromotionNote,
+                    ComboAllocatedDiscount = x.ComboAllocatedDiscount,
+                    PromotionType = x.PromotionType,
+                    PromotionBuyQuantity = x.PromotionBuyQuantity,
+                    PromotionGiftQuantity = x.PromotionGiftQuantity,
+                    IsPromotionGift = x.IsPromotionGift,
+                    GiftPromotionId = x.GiftPromotionId,
+                    GiftSourceLineId = x.GiftSourceLineId,
+                    GiftPromotionName = x.GiftPromotionName,
+                    GiftPromotionNote = x.GiftPromotionNote,
                     BaseUnitId = x.BaseUnitId,
                     BaseUnitName = x.BaseUnitName,
                     Multiplier = x.Multiplier,

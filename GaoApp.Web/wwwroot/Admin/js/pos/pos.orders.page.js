@@ -1,5 +1,38 @@
 (() => {
     'use strict';
+    const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+    const money = value => num(value).toLocaleString('vi-VN');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const token = value => String(value ?? '').trim().toLowerCase().replace(/[\s_-]/g, '');
+    const displayStatus = order => order.displayStatus || order.delivery?.displayStatus || (order.delivery
+        ? ({ pending: 'DeliveryPending', settled: 'DeliverySettled', cancelled: 'DeliveryCancelled' }[order.delivery.settlementStatus] || 'DeliveryPending') : order.status);
+    const deliveryBillUrl = order => Number.isSafeInteger(order.delivery?.deliveryOrderId) && order.delivery.deliveryOrderId > 0
+        ? '/admin/deliveries/' + order.delivery.deliveryOrderId + '/bill' : '';
+    const deliveryStateLabel = state => ({ Created: 'Chờ soạn', Picking: 'Đang soạn', AwaitingApproval: 'Chờ duyệt', ReadyForHandover: 'Chờ bàn giao', HandedOver: 'Đã bàn giao', Delivering: 'Đang giao', AwaitingReconciliation: 'Chờ đối soát', ReadyToSettle: 'Chờ chốt thanh toán', CancellationPending: 'Chờ xử lý hủy', Settled: 'Đã chốt', Cancelled: 'Đã hủy' }[state] || 'Đơn giao');
+    function priceBreakdownRows(order) {
+        const rows = [['Giảm giá dòng hàng', num(order.lineDiscountTotal)], ['Khuyến mãi sản phẩm', num(order.promotionDiscountTotal)],
+            ['Giảm combo' + (order.comboPromotionName ? ' · ' + order.comboPromotionName : ''), num(order.comboDiscountTotal)],
+            ['Giảm cấp đơn', num(order.orderDiscount)], ['Giảm voucher', num(order.voucherDiscountTotal)]];
+        const other = num(order.discountTotal) - rows.reduce((sum, row) => sum + row[1], 0);
+        if (other > 0) rows.push(['Giảm giá khác', other]);
+        return rows.filter(row => row[1] > 0);
+    }
+    function priceBreakdownMarkup(order) {
+        return '<div><dt>Tiền hàng gốc</dt><dd>' + money(order.subtotal) + ' đ</dd></div>' +
+            priceBreakdownRows(order).map(([label, amount]) => '<div><dt>' + esc(label) + '</dt><dd>−' + money(amount) + ' đ</dd></div>').join('');
+    }
+    function sourceLineMarkup(line) {
+        const code = [line.scannedBarcode, line.barcode, line.sku].map(value => String(value ?? '').trim()).find(Boolean) || '—';
+        return '<li><div><strong class="po-product-name">' + esc(line.itemName) + '</strong><small class="po-product-code">Mã: ' + esc(code) + '</small>' +
+            '<small>Giá gốc: ' + money(line.quantity) + ' ' + esc(line.sellingUnitName || line.unitName || '') + ' × ' + money(line.unitPrice) + ' đ = ' + money(line.grossAmount) + ' đ</small>' +
+            (num(line.lineDiscount) > 0 ? '<small class="po-line-discount">Giảm dòng: −' + money(line.lineDiscount) + ' đ</small>' : '') +
+            (num(line.promotionDiscount) > 0 ? '<small class="po-line-discount">' + esc(line.promotionName || 'Khuyến mãi') + ': −' + money(line.promotionDiscount) + ' đ</small>' : '') +
+            (line.isPromotionGift ? '<small class="po-line-discount">Hàng tặng · ' + esc(line.giftPromotionName || 'Khuyến mãi') + '</small>' : '') +
+            (line.comboPromotionName ? '<small class="po-line-discount">Combo: ' + esc(line.comboPromotionName) + ' · giảm tại tổng đơn</small>' : '') +
+            '</div><strong class="po-amount"><small>Sau giảm</small>' + money(line.lineTotal) + ' đ</strong></li>';
+    }
+    function appendDeliveryOnly(query, enabled) { if (enabled === true || enabled === 'true') query.set('deliveryOnly', 'true'); else query.delete('deliveryOnly'); return query; }
+    if (typeof module !== 'undefined' && module.exports) { module.exports = { displayStatus, deliveryBillUrl, deliveryStateLabel, priceBreakdownRows, priceBreakdownMarkup, sourceLineMarkup, appendDeliveryOnly }; return; }
     const root = document.querySelector('.pos-orders-page');
     if (!root) return;
     const $ = id => root.querySelector('#' + id);
@@ -10,18 +43,15 @@
     const fields = ['keyword', 'fromDate', 'toDate', 'status', 'employee', 'employeeId', 'customer', 'terminal', 'terminalId', 'settlement'];
     const settlementLabels = { Cash: 'Tiền mặt', BankTransfer: 'Chuyển khoản', Credit: 'Đơn bán công nợ',
         OutstandingCredit: 'Công nợ — còn nợ', Mixed: 'Nhiều hình thức thanh toán', Card: 'Thẻ', EWallet: 'Ví điện tử', Other: 'Khác' };
-    const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
     const positiveInt = (value, fallback = 1) => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
-    const money = value => num(value).toLocaleString('vi-VN');
-    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const token = value => String(value ?? '').trim().toLowerCase().replace(/[\s_-]/g, '');
     const list = value => Array.isArray(value) ? value : [];
     const VIETNAM_TIME_ZONE = 'Asia/Ho_Chi_Minh';
     const detailUrl = id => '/admin/pos/order-detail/' + id;
     const icon = name => '<i class="bx bx-' + name + '" aria-hidden="true"></i>';
     const statuses = {
         completed: ['Đã chốt', 'success'], draft: ['Nháp', 'neutral'], onhold: ['Đang giữ', 'warning'],
-        cancelled: ['Đã hủy', 'danger'], voided: ['Hủy sau chốt', 'danger'], refunded: ['Đã hoàn tiền', 'info']
+        cancelled: ['Đã hủy', 'danger'], voided: ['Hủy sau chốt', 'danger'], refunded: ['Đã hoàn tiền', 'info'],
+        deliverypending: ['Đơn giao · Chưa chốt', 'warning'], deliverysettled: ['Đơn giao · Đã chốt', 'success'], deliverycancelled: ['Đơn giao · Đã hủy', 'danger']
     };
     const payments = {
         paid: ['Đã thanh toán', 'success'], unpaid: ['Chưa thanh toán', 'danger'],
@@ -80,11 +110,11 @@
             const range = period(button.dataset.range);
             button.setAttribute('aria-pressed', String($('fromDate').value === range.fromDate && $('toDate').value === range.toDate));
         });
-        const active = fields.filter(id => id !== 'keyword' && !id.endsWith('Id') && $(id).value).length;
+        const active = fields.filter(id => id !== 'keyword' && !id.endsWith('Id') && $(id).value).length + ($('deliveryOnly').checked ? 1 : 0);
         $('btnToggleFilters').innerHTML = icon('filter-alt') + ' Bộ lọc' + (active ? ' · ' + active : '');
     }
     function readFilters() {
-        return Object.fromEntries(fields.map(name => [name, $(name).value.trim()]));
+        return { ...Object.fromEntries(fields.map(name => [name, $(name).value.trim()])), deliveryOnly: $('deliveryOnly').checked ? 'true' : '' };
     }
     function validFilters() {
         $('toDate').setCustomValidity($('fromDate').value && $('toDate').value && $('fromDate').value > $('toDate').value
@@ -98,6 +128,7 @@
     function restoreUrl() {
         const query = new URLSearchParams(location.search);
         fields.forEach(name => { $(name).value = query.get(name) || ''; });
+        $('deliveryOnly').checked = query.get('deliveryOnly') === 'true';
         root.dispatchEvent(new Event('orders:filters-reset'));
         if (!$('status').value) $('status').value = '';
         state.page = positiveInt(query.get('page'), 1);
@@ -108,6 +139,7 @@
     function queryFor(filters) {
         const query = new URLSearchParams();
         fields.forEach(name => { if (filters[name]) query.set(name, filters[name]); });
+        appendDeliveryOnly(query, filters.deliveryOnly);
         query.set('page', state.page); query.set('pageSize', state.pageSize);
         return query;
     }
@@ -122,14 +154,15 @@
             if (filters[key]) parts.push(label + ': ' + filters[key]);
         });
         if (settlementLabels[filters.settlement]) parts.push(settlementLabels[filters.settlement]);
+        if (filters.deliveryOnly === 'true') parts.push('Chỉ đơn giao');
         $('filterSummary').textContent = parts.join(' · ');
     }
     function updateMetrics() {
         $('metricCount').textContent = state.loaded ? money(state.total) : '—';
         [['metricTotal', 'grandTotal'], ['metricPaid', 'paidTotal'], ['metricDue', 'balanceDue']].forEach(([id, key]) => {
-            $(id).innerHTML = state.loaded ? money(state.items.reduce((sum, order) => sum + num(order[key]), 0)) + '<small>đ</small>' : '—';
+            $(id).innerHTML = state.loaded ? money(state.items.reduce((sum, order) => sum + (order.delivery && key !== 'grandTotal' ? 0 : num(order[key])), 0)) + '<small>đ</small>' : '—';
         });
-        $('metricDue').classList.toggle('po-text-warning', state.loaded && state.items.some(order => num(order.balanceDue) > 0));
+        $('metricDue').classList.toggle('po-text-warning', state.loaded && state.items.some(order => !order.delivery && num(order.balanceDue) > 0));
     }
     function updatePaging() {
         const page = state.loaded ? state.displayedPage : state.page;
@@ -202,11 +235,13 @@
                 (order.customerPhone ? '<span class="po-order-meta">' + icon('phone') + esc(order.customerPhone) + '</span>' : '') + '</td>' +
                 '<td><span class="po-order-meta po-cashier">' + icon('user-circle') + esc(order.cashierName || 'Chưa rõ nhân viên') + '</span>' +
                 '<span class="po-order-meta po-terminal">' + icon('desktop') + esc(order.terminalName || order.terminalCode || 'Chưa rõ máy') + '</span>' +
-                '<div class="po-statuses">' + badge(order.status, statuses) + '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span></div></td>' +
-                '<td class="po-align-right"><span class="po-mobile-label">Tổng tiền đơn</span><span class="po-amount">' + money(order.grandTotal) + ' <small>đ</small></span></td>' +
-                '<td><div class="po-paid-line"><span>Đã trả</span><strong>' + money(order.paidTotal) + ' đ</strong></div>' +
+                '<div class="po-statuses">' + badge(displayStatus(order), statuses) + (order.delivery ? '' : '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span>') + '</div>' +
+                (order.delivery ? '<span class="po-order-meta">' + esc(order.delivery.code) + ' · ' + esc(deliveryStateLabel(order.delivery.state)) + '</span>' : '') + '</td>' +
+                '<td class="po-align-right"><span class="po-mobile-label">' + (order.delivery ? 'Giá trị dự kiến khi lập đơn' : 'Tổng tiền đơn') + '</span><span class="po-amount">' + money(order.grandTotal) + ' <small>đ</small></span>' +
+                (order.delivery ? '<small class="po-source-caption">Giá trị dự kiến khi lập đơn</small>' : '') + '</td>' +
+                '<td>' + (order.delivery ? '<span class="po-source-caption">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem thanh toán tại hồ sơ giao') + '</span>' : '<div class="po-paid-line"><span>Đã trả</span><strong>' + money(order.paidTotal) + ' đ</strong></div>' +
                 (due > 0 ? '<div class="po-due-line"><span>Còn thiếu</span><strong>' + money(due) + ' đ</strong></div>'
-                    : '<span class="po-settled">' + icon('check') + (payToken === 'paid' ? 'Đã thanh toán đủ' : 'Không còn thiếu') + '</span>') + settlementBadges(order) + '</td>' +
+                    : '<span class="po-settled">' + icon('check') + (payToken === 'paid' ? 'Đã thanh toán đủ' : 'Không còn thiếu') + '</span>') + settlementBadges(order)) + '</td>' +
                 '<td>' + extras(order) + '</td>' +
                 '<td><div class="po-actions"><button type="button" class="po-icon-button" data-print-order-id="' + id + '" aria-label="In lại ' + name + '" title="In lại hóa đơn"' + (!id ? ' disabled' : '') + '>' + icon('printer') + '</button>' +
                 '<button type="button" class="po-icon-button po-action-trigger" data-menu-id="' + id + '" aria-label="Thao tác ' + name + '" aria-expanded="false" aria-controls="orderActions" title="Thao tác khác"' + (!id ? ' disabled' : '') + '>' + icon('dots-horizontal-rounded') + '</button></div></td></tr>';
@@ -282,6 +317,7 @@
         const canVoid = completed && elapsed >= 0 && elapsed <= 15 * 60 * 1000;
         menu.innerHTML = '<button type="button" data-preview-id="' + id + '">' + icon('show') + 'Xem nhanh đơn hàng</button>' +
             '<a href="' + detailUrl(id) + '">' + icon('file') + 'Chi tiết đầy đủ</a>' +
+            (deliveryBillUrl(order) ? '<a href="' + deliveryBillUrl(order) + '">' + icon('printer') + 'Phiếu giao · ' + esc(order.delivery.code) + '</a>' : '') +
             (order.hasBankTransfer === true ? '<a href="/admin/acb/payments/orders/' + id + '" data-acb-order-id="' + id + '">' + icon('transfer-alt') + 'Thông tin chuyển khoản</a>' : '') +
             (completed ? '<div class="po-menu-separator"></div><a href="' + detailUrl(id) + '" data-refund-order-id="' + id + '">' + icon('undo') + 'Hoàn tiền / trả hàng</a>' : '') +
             (canVoid ? '<a class="po-action-danger" href="' + detailUrl(id) + '" data-void-order-id="' + id + '">' + icon('x-circle') + 'Hủy sau chốt</a>' : '');
@@ -333,32 +369,30 @@
         }
     }
     function renderPreview(order) {
-        const productCode = line => [line.scannedBarcode, line.barcode, line.sku]
-            .map(value => String(value ?? '').trim()).find(Boolean) || '—';
         const meta = (label, value) => '<div><dt>' + label + '</dt><dd>' + esc(value || '—') + '</dd></div>';
         const total = (label, value, cls = '') => '<div class="' + cls + '"><dt>' + label + '</dt><dd>' + money(value) + ' đ</dd></div>';
         const paymentMethod = method => ({ cash: 'Tiền mặt', banktransfer: 'Chuyển khoản', card: 'Thẻ', ewallet: 'Ví điện tử' }[token(method)] || method);
         $('previewTitle').textContent = orderName(order);
-        $('previewBody').innerHTML = '<div class="po-preview-status">' + badge(order.status, statuses) + badge(order.paymentStatus, payments) + '</div>' +
+        $('previewBody').innerHTML = '<div class="po-preview-status">' + badge(displayStatus(order), statuses) + (order.delivery ? '' : badge(order.paymentStatus, payments)) + '</div>' +
+            (order.delivery ? '<p class="po-preview-note">' + esc(order.delivery.code) + ' · ' + esc(deliveryStateLabel(order.delivery.state)) + '</p>' +
+                (deliveryBillUrl(order) ? '<a class="po-delivery-link" href="' + deliveryBillUrl(order) + '">Xem phiếu giao A5</a>' : '') : '') +
             '<dl class="po-preview-meta">' + meta('Khách hàng', order.customerName || 'Khách lẻ') + meta('Thu ngân', order.cashierName) +
             (order.customerPhone ? meta('Điện thoại', order.customerPhone) : '') + meta('Máy tính tiền', order.terminalName || order.terminalCode) +
-            meta('Tạo lúc', dateTime(order.createdAtUtc)) + meta('Hoàn tất', dateTime(order.finalizedAtUtc)) + '</dl>' +
+            meta('Tạo lúc', dateTime(order.createdAtUtc)) + (order.delivery ? '' : meta('Hoàn tất', dateTime(order.finalizedAtUtc))) + '</dl>' +
             (order.shiftCode ? '<details class="po-preview-section"><summary>Mã ca để tra cứu</summary><p class="po-preview-note">' + esc(order.shiftCode) + '</p></details>' : '') +
             '<section class="po-preview-section"><h3>Sản phẩm <span>' + order.lines.length + ' dòng hàng</span></h3><ul class="po-preview-lines">' +
-            (order.lines.map(line => '<li><div><strong class="po-product-name">' + esc(line.itemName) + '</strong>' +
-                '<small class="po-product-code">Mã: ' + esc(productCode(line)) + '</small>' +
-                '<small>' + money(line.quantity) + ' ' + esc(line.sellingUnitName || line.unitName || '') + ' × ' + money(line.unitPrice) + ' đ</small></div>' +
-                '<strong class="po-amount">' + money(line.lineTotal) + ' đ</strong></li>').join('') ||
+            (order.lines.map(sourceLineMarkup).join('') ||
                 '<li><span class="po-text-muted">Đơn chưa có sản phẩm.</span></li>') + '</ul></section>' +
-            '<section class="po-preview-section"><h3>Thanh toán</h3><dl class="po-preview-totals">' +
-            total('Tạm tính', order.subtotal) + (num(order.discountTotal) ? total('Giảm giá', order.discountTotal) : '') +
-            total('Tổng tiền', order.grandTotal, 'po-preview-grand') +
+            '<section class="po-preview-section"><h3>' + (order.delivery ? 'Giá trị dự kiến khi lập đơn' : 'Thanh toán') + '</h3><dl class="po-preview-totals">' +
+            priceBreakdownMarkup(order) + total(order.delivery ? 'Giá trị dự kiến' : 'Tổng tiền', order.grandTotal, 'po-preview-grand') +
+            (order.delivery ? '' :
             (num(order.depositAmount) > 0 ? total('Trừ tiền cọc', order.depositAmount) + total('Cần trả sau cọc', Math.max(0, num(order.grandTotal) - num(order.depositAmount))) : '') +
             total(num(order.depositAmount) > 0 ? 'Đã thanh toán (gồm cọc)' : 'Đã thanh toán', order.paidTotal, 'po-text-success') +
             total('Còn thiếu', order.balanceDue, num(order.balanceDue) > 0 ? 'po-text-warning' : '') +
             (num(order.changeDue) > 0 ? total('Tiền thừa', order.changeDue) : '') +
-            (num(order.refundedTotal) > 0 ? total('Đã hoàn tiền', order.refundedTotal, 'po-text-warning') : '') + '</dl></section>' +
-            (list(order.payments).length ? '<section class="po-preview-section"><h3>Các khoản thanh toán</h3><ul class="po-preview-lines">' +
+            (num(order.refundedTotal) > 0 ? total('Đã hoàn tiền', order.refundedTotal, 'po-text-warning') : '')) + '</dl>' +
+            (order.delivery ? '<p class="po-preview-note">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem thanh toán tại hồ sơ giao') + ' · Giá trị nguồn đã lưu khi lập đơn.</p>' : '') + '</section>' +
+            (!order.delivery && list(order.payments).length ? '<section class="po-preview-section"><h3>Các khoản thanh toán</h3><ul class="po-preview-lines">' +
                 order.payments.map(payment => '<li><div><strong>' + esc(paymentMethod(payment.method)) + '</strong><small>' + esc(dateTime(payment.createdAt)) +
                     (payment.reference ? ' · ' + esc(payment.reference) : '') + '</small></div><strong class="po-amount">' + money(payment.amount) + ' đ</strong></li>').join('') + '</ul></section>' : '') +
             (num(order.depositAmount) > 0 || num(order.voucherDiscountTotal) > 0 || list(order.rewardVouchers).length ? '<section class="po-preview-section"><h3>Cọc / Voucher</h3>' + extras(order, true) + '</section>' : '') +
@@ -383,6 +417,7 @@
     function resetFilters() {
         $('ordersFilters').reset(); $('toDate').setCustomValidity('');
         fields.forEach(name => { $(name).value = ''; });
+        $('deliveryOnly').checked = false;
         root.dispatchEvent(new Event('orders:filters-reset'));
         state.page = 1; syncPeriods(); void loadOrders();
     }
@@ -434,6 +469,7 @@
         $('btnToggleFilters').setAttribute('aria-expanded', String(expanded));
     });
     fields.forEach(id => $(id).addEventListener('change', syncPeriods));
+    $('deliveryOnly').addEventListener('change', syncPeriods);
     $('btnRefresh').addEventListener('click', () => void loadOrders({ useApplied: true }));
     $('pageSize').addEventListener('change', () => { state.pageSize = Number($('pageSize').value); state.page = 1; void loadOrders({ useApplied: true }); });
     $('btnPrevPage').addEventListener('click', () => { if (!state.busy && state.page > 1) { state.page--; void loadOrders({ useApplied: true }); } });

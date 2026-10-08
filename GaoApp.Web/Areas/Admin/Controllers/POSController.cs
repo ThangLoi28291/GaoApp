@@ -531,6 +531,8 @@ public class POSController : BasePOSPageController
         CancellationToken ct = default)
     {
         var model = await _pos.GetReceiptAsync(orderId, ct);
+        if (model.Delivery is not null)
+            return Redirect(model.Delivery.BillUrl);
 
         return View("~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
             new GaoApp.Web.Services.Printing.ReceiptPrintModel(model, [], CurrentStoreId, runtime.TerminalId, autoPrint,

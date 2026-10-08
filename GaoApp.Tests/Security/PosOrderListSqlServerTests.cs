@@ -1,10 +1,13 @@
 using System.Data.Common;
 using System.Diagnostics;
 using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.POS;
+using GaoApp.Domain.Delivery;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Repositories.Orders;
 using GaoApp.Tests.Configuration;
+using GaoApp.Tests.Delivery;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -16,6 +19,41 @@ namespace GaoApp.Tests.Security;
 [Collection("SqlServerConcurrency")]
 public sealed class PosOrderListSqlServerTests(ITestOutputHelper output)
 {
+    [Fact]
+    public async Task Delivery_overlay_and_cancelled_filter_use_same_store_links_with_exact_small_page_counts()
+    {
+        await using var app = await FullApplicationFixture.StartDeliveryAsync();
+        using var active = await DeliveryBillPresentationSeed.CreateAsync(app);
+        using var cancelled = await DeliveryBillPresentationSeed.CreateAsync(app, state: DeliveryState.Cancelled);
+        using var ordinary = await DeliveryBillPresentationSeed.CreateAsync(app, linkDelivery: false);
+        using var foreign = await DeliveryBillPresentationSeed.CreateAsync(app, storeIndex: 1);
+        await using var db = app.Database.CreateTenantContext(active.Account.Store.StoreId);
+        // A note resembling a delivery code is not a relational delivery link.
+        var ordinaryOrder = await db.Orders.SingleAsync(x => x.Id == ordinary.OrderId);
+        ordinaryOrder.Note = "Chuyển giao " + active.Code; await db.SaveChangesAsync();
+        var repo = new OrderRepository(db);
+        var all = await repo.QueryOrdersAsync(null, null, null, "PRES-", 1, 20);
+        Assert.Equal(3, all.Total); Assert.Equal(3, all.Items.Count);
+        Assert.Equal("DeliveryPending", Assert.Single(all.Items, x => x.OrderId == active.OrderId).DisplayStatus);
+        Assert.Equal("DeliveryCancelled", Assert.Single(all.Items, x => x.OrderId == cancelled.OrderId).DisplayStatus);
+        var plain = Assert.Single(all.Items, x => x.OrderId == ordinary.OrderId);
+        Assert.Null(plain.Delivery); Assert.Equal("Cancelled", plain.DisplayStatus);
+        var cancelledOnly = await repo.QueryOrdersAsync(null, null, OrderStatus.Cancelled, "PRES-", 1, 20);
+        Assert.Equal(2, cancelledOnly.Total);
+        Assert.DoesNotContain(cancelledOnly.Items, x => x.OrderId == active.OrderId);
+        var deliveries = new OrderListQueryDto { DeliveryOnly = true };
+        var first = await repo.QueryOrdersAsync(null, null, null, "PRES-", 1, 1, filters: deliveries);
+        var second = await repo.QueryOrdersAsync(null, null, null, "PRES-", 2, 1, filters: deliveries);
+        Assert.Equal(2, first.Total); Assert.Equal(2, second.Total);
+        Assert.NotEqual(Assert.Single(first.Items).OrderId, Assert.Single(second.Items).OrderId);
+        var cancelledDelivery = await repo.QueryOrdersAsync(null, null, OrderStatus.Cancelled, "PRES-", 1, 20, filters: deliveries);
+        Assert.Equal(cancelled.OrderId, Assert.Single(cancelledDelivery.Items).OrderId);
+        Assert.Equal(1, cancelledDelivery.Total);
+        var keyword = await repo.QueryOrdersAsync(null, null, null, active.Number, 1, 20, filters: deliveries);
+        Assert.Equal(active.OrderId, Assert.Single(keyword.Items).OrderId);
+        Assert.Null(await repo.GetDeliveryInfoAsync(foreign.OrderId));
+    }
+
     [Fact]
     public async Task Four_hundred_thousand_orders_keep_exact_counts_and_deep_pages_after_count_index_migration()
     {
