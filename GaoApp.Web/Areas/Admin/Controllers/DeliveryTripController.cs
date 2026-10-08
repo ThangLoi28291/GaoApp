@@ -19,6 +19,14 @@ public sealed class DeliveryTripController(IDeliveryTripService trips) : Control
     public Task<IActionResult> Options(CancellationToken ct) => Execute(() => trips.GetOptionsAsync(ct));
     [HttpGet("{id:int}")]
     public Task<IActionResult> Get(int id, CancellationToken ct) => Execute(() => trips.GetAsync(id, ct));
+    [HttpGet("{id:int}/handover")]
+    public Task<IActionResult> HandoverWorkspace(int id, CancellationToken ct) => Execute(() => trips.GetHandoverAsync(id, ct));
+    [HttpPost("{id:int}/handover/{orderId:int}/preview"), ValidateAntiForgeryToken]
+    public Task<IActionResult> HandoverPreview(int id, int orderId, [FromBody] DeliveryHandoverPreviewRequest request, CancellationToken ct)
+        => Execute(() => trips.PreviewHandoverAsync(id, orderId, request, ct));
+    [HttpPost("{id:int}/handover/{orderId:int}"), Authorize(Policy = PermissionCodes.Delivery.Finalize), ValidateAntiForgeryToken]
+    public Task<IActionResult> ConfirmHandover(int id, int orderId, [FromBody] DeliveryHandoverRequest request, CancellationToken ct)
+        => Execute(() => trips.ConfirmHandoverAsync(id, orderId, request, ct));
     [HttpPost(""), Authorize(Policy = PermissionCodes.Delivery.Handover), ValidateAntiForgeryToken]
     public Task<IActionResult> Create([FromBody] DeliveryTripCreateDraftRequest request, CancellationToken ct)
         => Execute(() => trips.CreateDraftAsync(request, ct));

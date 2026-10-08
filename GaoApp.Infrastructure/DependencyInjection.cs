@@ -154,6 +154,8 @@ public static class DependencyInjection
             GaoApp.Infrastructure.Services.Delivery.DeliveryInventoryService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryTripService,
             GaoApp.Infrastructure.Services.Delivery.DeliveryTripService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliverySaleCostEvidence,
+            GaoApp.Infrastructure.Services.Delivery.DeliverySaleCostEvidence>();
         services.AddScoped<GaoApp.Infrastructure.Services.Delivery.DeliveryOutboxProcessor>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess,
             GaoApp.Infrastructure.Security.StoreAdminAccess>();

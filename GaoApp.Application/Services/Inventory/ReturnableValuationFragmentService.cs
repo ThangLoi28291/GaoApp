@@ -2,6 +2,7 @@
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Orders;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Interfaces.Services.Delivery;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Inventory;
@@ -45,15 +46,17 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
     private readonly IInventoryValuationEntryRepository _valuationRepository;
     private readonly IOrderLegalEntityAllocationReversalRepository _reversalRepository;
     private readonly ISalesReturnRestockRepository? _pending;
+    private readonly IDeliverySaleCostEvidence? _deliverySales;
 
     public ReturnableValuationFragmentService(
         IInventoryValuationEntryRepository valuationRepository,
         IOrderLegalEntityAllocationReversalRepository reversalRepository,
-        ISalesReturnRestockRepository? pending = null)
+        ISalesReturnRestockRepository? pending = null, IDeliverySaleCostEvidence? deliverySales = null)
     {
         _valuationRepository = valuationRepository;
         _reversalRepository = reversalRepository;
         _pending = pending;
+        _deliverySales = deliverySales;
     }
 
     public Task<List<ReturnableValuationFragmentDto>> GetForOrderLineAsync(
@@ -89,6 +92,7 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
 
     public async Task ValidateVoidClosureAsync(int orderId, int orderLineId, CancellationToken ct)
     {
+        if (_deliverySales is not null) await _deliverySales.EnsureGenericSaleReturnSupportedAsync(orderId, ct);
         var sources = await _valuationRepository.GetSaleIssueEntriesByOrderLineAsync(orderId, orderLineId, ct);
         if (sources.Count == 0)
             throw new InvalidOperationException("Void is missing original sale cost evidence.");
@@ -105,6 +109,7 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
 
     public async Task<ReturnableValuationFragmentDto> GetReservedSourceAsync(int orderId, int orderLineId, int sourceId, CancellationToken ct)
     {
+        if (_deliverySales is not null) await _deliverySales.EnsureGenericSaleReturnSupportedAsync(orderId, ct);
         var source = (await _valuationRepository.GetSaleIssueEntriesByOrderLineAsync(orderId, orderLineId, ct))
             .SingleOrDefault(x => x.Id == sourceId)
             ?? throw new SaleRestockCostException(orderId, orderLineId, SaleValuationCostPolicy.Quality.Unavailable, "Reserved source is missing.");
@@ -126,6 +131,7 @@ public class ReturnableValuationFragmentService : IReturnableValuationFragmentSe
     private async Task<List<ReturnableValuationFragmentDto>> GetCoreAsync(
         int orderId, int orderLineId, bool requireFinalCost, CancellationToken ct)
     {
+        if (_deliverySales is not null) await _deliverySales.EnsureGenericSaleReturnSupportedAsync(orderId, ct);
         // Lấy toàn bộ outbound source entries của dòng bán gốc.
         // Nếu outbound đã split theo FIFO layer thì ở đây sẽ có nhiều source entry.
         var sourceEntries = await _valuationRepository.GetSaleIssueEntriesByOrderLineAsync(

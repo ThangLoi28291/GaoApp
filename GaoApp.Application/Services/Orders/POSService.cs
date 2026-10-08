@@ -19,6 +19,7 @@ using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Interfaces.Services.Delivery;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Interfaces.Services.Promotions;
 using GaoApp.Application.Interfaces.Services.Rewards;
@@ -33,7 +34,7 @@ using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Orders;
 
-public sealed class POSService : IPOSService
+public sealed partial class POSService : IPOSService, IDeliverySaleFinalizer
 {
     private const decimal MaxPosQuantity = 1_000_000m;
     private readonly ICustomerDepositService? _deposits;
@@ -109,9 +110,11 @@ IOrderLegalEntityFinalizeService legalEntityFinalizeService,
 IOrderLegalEntityReversalService legalEntityReversalService,
 IEnumerable<IOrderFinalizeGuard>? finalizeGuards = null,
 ICustomerReceivableService? receivables = null,
-ICustomerDepositService? deposits = null)
+ICustomerDepositService? deposits = null,
+IDeliverySaleCostEvidence? deliverySaleEvidence = null)
     {
         _deposits = deposits;
+        _deliverySaleEvidence = deliverySaleEvidence;
         _receivables = receivables;
         _uow = uow;
         _orders = orders;
@@ -3981,6 +3984,7 @@ ICustomerDepositService? deposits = null)
 
     public async Task<OrderReceiptDto> VoidCompletedOrderAsync(int orderId, string reason, CancellationToken ct = default)
     {
+        if (_deliverySaleEvidence is not null) await _deliverySaleEvidence.EnsureGenericSaleReturnSupportedAsync(orderId, ct);
         reason = (reason ?? string.Empty).Trim();
 
         if (string.IsNullOrWhiteSpace(reason))

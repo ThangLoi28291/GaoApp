@@ -99,6 +99,7 @@ public static class DependencyInjection
         services.AddScoped<IProductImageService, ProductImageService>();
 
         services.AddScoped<IPOSService, POSService>();
+        services.AddScoped<IDeliverySaleFinalizer>(sp => (IDeliverySaleFinalizer)sp.GetRequiredService<IPOSService>());
         services.AddSingleton<IOrderLegalEntityAllocationService, OrderLegalEntityAllocationService>();
         services.AddScoped<IOrderLegalEntityFinalizeService, OrderLegalEntityFinalizeService>();
         services.AddScoped<IOrderLegalEntityReversalService, OrderLegalEntityReversalService>();

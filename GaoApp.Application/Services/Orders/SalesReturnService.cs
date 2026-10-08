@@ -11,6 +11,7 @@ using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Application.Interfaces.Services.Orders;
+using GaoApp.Application.Interfaces.Services.Delivery;
 using GaoApp.Application.Interfaces.Services.Rewards;
 using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
@@ -60,6 +61,7 @@ public sealed class SalesReturnService : ISalesReturnService
     private readonly IOrderLegalEntityReversalService _legalEntityReversalService;
     private readonly IDraftInvoiceReturnSyncService _draftInvoiceReturnSyncService;
     private readonly ISalesReturnRestockRepository? _pendingRestock;
+    private readonly IDeliverySaleCostEvidence? _deliverySales;
     public SalesReturnService(
         IUnitOfWork uow,
         IOrderRepository orders,
@@ -79,10 +81,11 @@ public sealed class SalesReturnService : ISalesReturnService
         IOrderLegalEntityReversalService legalEntityReversalService,
         IDraftInvoiceReturnSyncService draftInvoiceReturnSyncService,
         ICustomerReceivableService? receivables = null, ICustomerDepositService? deposits = null,
-        ISalesReturnRestockRepository? pendingRestock = null)
+        ISalesReturnRestockRepository? pendingRestock = null, IDeliverySaleCostEvidence? deliverySales = null)
     {
         _deposits = deposits;
         _pendingRestock = pendingRestock;
+        _deliverySales = deliverySales;
         _receivables = receivables;
         _uow = uow;
         _orders = orders;
@@ -107,6 +110,8 @@ public sealed class SalesReturnService : ISalesReturnService
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
+
+        if (_deliverySales is not null) await _deliverySales.EnsureGenericSaleReturnSupportedAsync(request.OrderId, ct);
 
         request.Lines ??= new();
         request.Payments ??= new();
